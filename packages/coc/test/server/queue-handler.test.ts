@@ -1878,11 +1878,116 @@ describe('Queue Handler', () => {
             expect(body.history[1].id).toBe('task-new-idle');
             expect(body.history[0].chatMeta.lastActivityAt).toBeGreaterThan(body.history[1].chatMeta.lastActivityAt);
         });
-    });
 
-    // ========================================================================
-    // Task config
-    // ========================================================================
+        it('should include process title in chatMeta when set', async () => {
+            const processesDir = path.join(dataDir, 'processes');
+            fs.mkdirSync(processesDir, { recursive: true });
+            fs.writeFileSync(path.join(processesDir, 'proc-titled.json'), JSON.stringify({
+                workspaceId: '',
+                process: {
+                    id: 'proc-titled',
+                    type: 'clarification',
+                    promptPreview: 'test',
+                    fullPrompt: 'test prompt',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    title: 'Fix Authentication Bug',
+                    conversationTurns: [
+                        { role: 'user', content: 'Fix the auth bug', timestamp: new Date().toISOString(), turnIndex: 0 },
+                        { role: 'assistant', content: 'Done', timestamp: new Date().toISOString(), turnIndex: 1 },
+                    ],
+                },
+            }));
+
+            const repoRoot = path.resolve('/test/title-present');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [{
+                    id: 'task-titled',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: Date.now(),
+                    payload: { prompt: 'Fix the auth bug' },
+                    displayName: 'Titled chat',
+                    processId: 'proc-titled',
+                    repoId,
+                }],
+            }));
+
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const task = body.history.find((t: any) => t.id === 'task-titled');
+            expect(task).toBeDefined();
+            expect(task.chatMeta).toBeDefined();
+            expect(task.chatMeta.title).toBe('Fix Authentication Bug');
+        });
+
+        it('should have undefined chatMeta.title when process has no title', async () => {
+            const processesDir = path.join(dataDir, 'processes');
+            fs.mkdirSync(processesDir, { recursive: true });
+            fs.writeFileSync(path.join(processesDir, 'proc-no-title.json'), JSON.stringify({
+                workspaceId: '',
+                process: {
+                    id: 'proc-no-title',
+                    type: 'clarification',
+                    promptPreview: 'test',
+                    fullPrompt: 'test prompt',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    conversationTurns: [
+                        { role: 'user', content: 'Hello', timestamp: new Date().toISOString(), turnIndex: 0 },
+                        { role: 'assistant', content: 'Hi', timestamp: new Date().toISOString(), turnIndex: 1 },
+                    ],
+                },
+            }));
+
+            const repoRoot = path.resolve('/test/title-absent');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [{
+                    id: 'task-no-title',
+                    type: 'chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: Date.now(),
+                    payload: { prompt: 'Hello' },
+                    displayName: 'Untitled chat',
+                    processId: 'proc-no-title',
+                    repoId,
+                }],
+            }));
+
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const task = body.history.find((t: any) => t.id === 'task-no-title');
+            expect(task).toBeDefined();
+            expect(task.chatMeta).toBeDefined();
+            expect(task.chatMeta.title).toBeUndefined();
+        });
+    });
 
     describe('Task config', () => {
         it('should preserve execution config', async () => {
