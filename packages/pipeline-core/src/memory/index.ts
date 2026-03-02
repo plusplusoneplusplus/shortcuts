@@ -18,3 +18,4 @@ export type {
 
 export { FileMemoryStore, computeRepoHash } from './memory-store';
 export { MemoryRetriever } from './memory-retriever';
+export { createWriteMemoryTool, WriteMemoryToolOptions, WriteMemoryArgs } from './write-memory-tool';
