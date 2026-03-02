@@ -1,632 +1,94 @@
-# Pipeline Core Package - Developer Reference
+# Pipeline Core — Developer Reference
 
-This is a pure Node.js package (`pipeline-core`) that provides the AI pipeline execution engine. It has no VS Code dependencies and can be used in CLI tools, tests, and other Node.js environments.
+Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep Wiki, and the VS Code extension.
 
-## Package Structure
+## Source Layout
 
-```
-packages/pipeline-core/
-├── src/
-│   ├── index.ts              # Main public API
-│   ├── logger.ts             # Pluggable logger abstraction
-│   ├── errors/               # Error handling
-│   │   ├── index.ts          # Error module exports
-│   │   ├── error-codes.ts    # ErrorCode enum, mapSystemErrorCode()
-│   │   └── pipeline-core-error.ts  # PipelineCoreError base class
-│   ├── config/               # Configuration defaults
-│   │   ├── index.ts          # Config module exports
-│   │   └── defaults.ts       # Centralized default constants
-│   ├── runtime/              # Runtime policies
-│   │   ├── index.ts          # Runtime module exports
-│   │   ├── cancellation.ts   # CancellationError, createCancellationToken
-│   │   ├── timeout.ts        # TimeoutError, withTimeout
-│   │   ├── retry.ts          # RetryExhaustedError, withRetry, backoff strategies
-│   │   └── policy.ts         # Unified policy runner (runWithPolicy)
-│   ├── queue/                # Task queue system
-│   │   ├── index.ts          # Queue module exports
-│   │   ├── types.ts          # TaskPriority, QueueStatus, QueuedTask (generic payload)
-│   │   ├── task-queue-manager.ts  # TaskQueueManager (priority-based queue)
-│   │   └── queue-executor.ts     # QueueExecutor (executes tasks with concurrency)
-│   ├── ai/                   # AI service components (lightweight)
-│   │   ├── index.ts          # AI module exports
-│   │   ├── types.ts          # AI types (backends, models, results)
-│   │   ├── cli-utils.ts      # Shell escaping, temp file handling
-│   │   ├── command-types.ts       # AI command type definitions
-│   │   ├── process-types.ts       # AI process tracking types
-│   │   ├── prompt-builder.ts      # Pure prompt template variable substitution
-│   │   ├── program-utils.ts       # Program existence checking
-│   │   └── timeouts.ts            # Re-exports default AI timeout
-│   ├── copilot-sdk-wrapper/  # Copilot SDK integration
-│   │   ├── index.ts          # Module exports
-│   │   ├── copilot-sdk-service.ts  # Copilot SDK wrapper with session pooling
-│   │   ├── model-registry.ts      # Central AI model registry
-│   │   ├── mcp-config-loader.ts   # MCP server config loader (~/.copilot/mcp-config.json)
-│   │   ├── trusted-folder.ts      # Trusted folder management
-│   │   └── types.ts               # SDK wrapper type definitions
-│   ├── process-store.ts      # ProcessStore interface — abstract storage for AI processes
-│   ├── file-process-store.ts # FileProcessStore — JSON file-based persistence
-│   ├── map-reduce/           # Map-reduce framework
-│   │   ├── index.ts          # Map-reduce exports
-│   │   ├── types.ts          # Core types (WorkItem, MapResult, etc.)
-│   │   ├── executor.ts       # MapReduceExecutor
-│   │   ├── concurrency-limiter.ts  # Parallel execution control
-│   │   ├── prompt-template.ts      # Template rendering
-│   │   ├── temp-file-utils.ts      # Temp file management
-│   │   ├── reducers/         # Reducer implementations
-│   │   ├── splitters/        # Splitter implementations
-│   │   └── jobs/             # Pre-built job factories
-│   ├── pipeline/             # YAML pipeline execution
-│   │   ├── index.ts          # Pipeline exports
-│   │   ├── types.ts          # Pipeline config types
-│   │   ├── executor.ts       # Pipeline executor
-│   │   ├── csv-reader.ts     # CSV parsing
-│   │   ├── template.ts       # Template engine
-│   │   ├── filter-executor.ts    # Rule/AI/hybrid filters
-│   │   ├── prompt-resolver.ts    # Prompt file resolution
-│   │   ├── skill-resolver.ts     # Skill loading
-│   │   └── input-generator.ts    # AI input generation
-│   ├── tasks/                # Task discovery and execution
-│   │   ├── index.ts          # Task module exports
-│   │   ├── types.ts          # Task types (TaskInfo, TaskDocument, etc.)
-│   │   ├── task-manager.ts   # Task lifecycle management
-│   │   ├── task-operations.ts # Task CRUD operations
-│   │   ├── task-parser.ts    # Parse task markdown files
-│   │   ├── task-scanner.ts   # Scan directories for task files
-│   │   ├── task-prompt-builder.ts  # Build AI prompts for tasks
-│   │   ├── discovery-prompt-builder.ts  # Discovery-specific prompts
-│   │   └── related-items-loader.ts     # Load related task items
-│   ├── discovery/            # Discovery features
-│   │   ├── index.ts          # Discovery module exports
-│   │   ├── types.ts          # Discovery types
-│   │   ├── prompt-files.ts   # Prompt file resolution
-│   │   └── skill-files.ts    # Skill file resolution
-│   ├── editor/               # Editor integration (parsing & rendering)
-│   │   ├── index.ts          # Editor module exports
-│   │   ├── types.ts          # Editor types
-│   │   ├── anchor.ts         # Comment anchor positioning
-│   │   ├── anchor-types.ts   # Anchor type definitions
-│   │   ├── file-state-store.ts  # File state persistence
-│   │   ├── state-store.ts    # General state store
-│   │   ├── host.ts           # Editor host interface
-│   │   ├── messages.ts       # Editor message types
-│   │   ├── transport.ts      # Message transport layer
-│   │   ├── parsing/          # Markdown parsing (markdown-parser, block-renderers)
-│   │   └── rendering/        # Markdown rendering (renderer, headings, selections, cursors)
-│   └── utils/                # Shared utilities
-│       ├── index.ts          # Utils exports
-│       ├── file-utils.ts     # Safe file I/O
-│       ├── glob-utils.ts     # File pattern matching
-│       ├── exec-utils.ts     # Shell execution
-│       ├── http-utils.ts     # HTTP requests
-│       ├── text-matching.ts  # Fuzzy matching
-│       ├── ai-response-parser.ts  # JSON extraction
-│       ├── template-engine.ts     # Template variable substitution engine
-│       ├── terminal-types.ts      # Terminal type definitions
-│       ├── window-focus-service.ts  # Window focus service
-│       ├── external-terminal-launcher.ts  # External terminal launcher
-│       └── process-monitor.ts     # Process monitoring utilities
-├── test/                     # Vitest tests (61 test files)
-│   ├── ai/                   # AI tests
-│   │   ├── mcp-config-loader.test.ts
-│   │   └── model-registry.test.ts
-│   ├── errors/               # Error handling tests
-│   │   └── pipeline-core-error.test.ts
-│   ├── process-store.test.ts        # ProcessStore interface tests
-│   ├── file-process-store.test.ts   # FileProcessStore persistence tests
-│   ├── map-reduce/           # Map-reduce tests
-│   │   ├── concurrency-limiter.test.ts
-│   │   ├── executor.test.ts
-│   │   ├── prompt-template.test.ts
-│   │   ├── reduce-process-tracking.test.ts
-│   │   ├── reducers.test.ts
-│   │   ├── splitters.test.ts
-│   │   └── temp-file-utils.test.ts
-│   ├── pipeline/             # Pipeline tests
-│   │   ├── ai-reduce.test.ts
-│   │   ├── batch-mapping.test.ts
-│   │   ├── csv-reader.test.ts
-│   │   ├── edge-cases.test.ts
-│   │   ├── executor.test.ts
-│   │   ├── index.test.ts
-│   │   ├── input-generator.test.ts
-│   │   ├── multi-model-fanout.test.ts
-│   │   ├── results-file.test.ts
-│   │   ├── skill-resolver.test.ts
-│   │   ├── template.test.ts
-│   │   └── text-mode.test.ts
-│   ├── queue/                # Queue tests
-│   │   ├── queue-executor.test.ts
-│   │   └── task-queue-manager.test.ts
-│   ├── runtime/              # Runtime policy tests
-│   │   └── policy.test.ts
-│   └── utils/                # Utils tests
-│       ├── ai-response-parser.test.ts
-│       └── template-engine.test.ts
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
-```
+| Module | Path | Purpose |
+|--------|------|---------|
+| **logger** | `src/logger.ts` | Pluggable logger (`setLogger`, `getLogger`, `nullLogger`) with `LogCategory` |
+| **errors** | `src/errors/` | `PipelineCoreError` with `ErrorCode` enum, `wrapError`, `toPipelineCoreError` |
+| **config** | `src/config/defaults.ts` | Default constants (`DEFAULT_AI_TIMEOUT_MS`, `DEFAULT_PARALLEL_LIMIT`, etc.) |
+| **runtime** | `src/runtime/` | `runWithPolicy` (timeout + retry + cancellation), `withTimeout`, `withRetry`, backoff strategies |
+| **queue** | `src/queue/` | `TaskQueueManager` (priority queue) + `QueueExecutor` (concurrency control, events) |
+| **ai** | `src/ai/` | AI types, CLI shell escaping, prompt builder, program utils, timeout defaults |
+| **copilot-sdk** | `src/copilot-sdk-wrapper/` | `CopilotSDKService` (session pooling), `ModelRegistry`, MCP config loader, trusted folders |
+| **process-store** | `src/process-store.ts`, `src/file-process-store.ts` | Abstract `ProcessStore` + `FileProcessStore` (JSON, atomic writes, 500-process cap) |
+| **map-reduce** | `src/map-reduce/` | `MapReduceExecutor`, concurrency limiter, splitters, reducers, pre-built job factories |
+| **pipeline** | `src/pipeline/` | YAML pipeline executor, CSV reader, template engine, filter executor, skill/prompt resolvers |
+| **memory** | `src/memory/` | Persistent AI memory system (see [Memory System](#memory-system) below) |
+| **tasks** | `src/tasks/` | Task scanner, parser, CRUD ops, prompt builders for task discovery |
+| **discovery** | `src/discovery/` | Prompt file and skill file resolution |
+| **editor** | `src/editor/` | Comment anchors, markdown parsing/rendering, file state, message transport |
+| **utils** | `src/utils/` | File I/O, glob, HTTP, text matching, AI response parsing, template engine |
 
-## Key Modules
+Entry point: `src/index.ts` — re-exports all public API from the modules above.
 
-### Logger
+## Memory System
 
-Pluggable logger abstraction that allows different environments to provide their own logging implementation.
+Persistent memory that lets AI interactions learn from past executions. Stores observations per-repo under `~/.coc/memory/`. Design doc: `docs/designs/coc-memory.md`.
 
+**Storage layout:** `~/.coc/memory/system/` (global) and `~/.coc/memory/repos/<hash>/` (per-repo, hash = SHA-256 of resolved repo root, 16-char hex prefix). Each repo dir contains `raw/*.md` (timestamped observations), `consolidated.md` (AI-synthesized summary), `index.json` (metadata), and `repo-info.json`.
+
+### Components (`src/memory/`)
+
+| File | Export | Role |
+|------|--------|------|
+| `types.ts` | `MemoryStore`, `MemoryConfig`, `RawObservation`, `ConsolidatedMemory`, `MemoryIndex`, etc. | All type definitions and the store interface |
+| `memory-store.ts` | `FileMemoryStore`, `computeRepoHash` | CRUD for raw observations, consolidated memory, index, repo-info. Atomic writes (tmp→rename), sequential write queue. Follows `FileProcessStore` patterns. |
+| `memory-retriever.ts` | `MemoryRetriever` | Loads `consolidated.md` for a repo/system level, formats as a context block for prompt injection |
+| `write-memory-tool.ts` | `createWriteMemoryTool` | Factory returning a `write_memory` tool (via `defineTool`) that AI can call organically during a session to record observations |
+| `memory-aggregator.ts` | `MemoryAggregator` | Checks batch threshold, consolidates raw observations into `consolidated.md` using an AI invoker |
+| `with-memory.ts` | `withMemory` | Orchestrator: retrieve context → inject `write_memory` tool → invoke AI → check aggregation threshold |
+
+### Usage Patterns
+
+**Simple — `withMemory()` wrapper** (single AI call):
 ```typescript
-import { setLogger, getLogger, consoleLogger, nullLogger, LogCategory } from 'pipeline-core';
+import { withMemory, FileMemoryStore } from 'pipeline-core';
 
-// Use default console logger
-const logger = getLogger();
-logger.info(LogCategory.AI, 'Processing started');
-
-// Set custom logger (e.g., VS Code OutputChannel)
-setLogger({
-    debug: (cat, msg) => outputChannel.appendLine(`[DEBUG] [${cat}] ${msg}`),
-    info: (cat, msg) => outputChannel.appendLine(`[INFO] [${cat}] ${msg}`),
-    warn: (cat, msg) => outputChannel.appendLine(`[WARN] [${cat}] ${msg}`),
-    error: (cat, msg, err) => outputChannel.appendLine(`[ERROR] [${cat}] ${msg} ${err || ''}`),
+const store = new FileMemoryStore({ baseDir: '~/.coc/memory' });
+const result = await withMemory(innerInvoker, prompt, {
+    store, repoHash: 'abc123...', level: 'repo',
 });
-
-// Disable logging (for tests)
-setLogger(nullLogger);
 ```
 
-### Error Handling
-
-Structured error handling with error codes, metadata, and error chaining.
-
+**Complex — direct service calls** (multi-step like pipeline map-reduce or wiki):
 ```typescript
-import { 
-    PipelineCoreError, 
-    ErrorCode, 
-    toPipelineCoreError,
-    wrapError,
-    isPipelineCoreError 
-} from 'pipeline-core';
+import { MemoryRetriever, createWriteMemoryTool, MemoryAggregator } from 'pipeline-core';
 
-// Create a structured error
-throw new PipelineCoreError('Failed to parse CSV', {
-    code: ErrorCode.CSV_PARSE_ERROR,
-    cause: originalError,
-    meta: { filePath: 'input.csv', line: 42, phase: 'input' }
-});
+const retriever = new MemoryRetriever(store);
+const context = await retriever.retrieve({ repoHash, level: 'repo' });
+// Inject context into prompt...
 
-// Convert any error to PipelineCoreError
-try {
-    await riskyOperation();
-} catch (error) {
-    const pipelineError = toPipelineCoreError(error, ErrorCode.UNKNOWN, {
-        executionId: 'exec-123',
-        phase: 'map'
-    });
-    throw pipelineError;
-}
+const { tool } = createWriteMemoryTool({ store, repoHash, pipeline: 'my-pipeline' });
+// Pass tool to AI session's available tools...
 
-// Wrap error with context
-try {
-    await processItem(item);
-} catch (error) {
-    throw wrapError(
-        `Failed to process item ${item.id}`,
-        error,
-        ErrorCode.PROCESSING_ERROR,
-        { itemIndex: 0, totalItems: 10 }
-    );
-}
-
-// Check error type
-if (isPipelineCoreError(error)) {
-    console.log(`Error code: ${error.code}`);
-    console.log(`Metadata:`, error.meta);
-    console.log(`Detailed:`, error.toDetailedString());
-}
+const aggregator = new MemoryAggregator(store, aiInvoker);
+await aggregator.aggregateIfNeeded(repoHash, { threshold: 10 });
 ```
 
-### Runtime Policies
+**Key design decisions:**
+- Memory is **caller-side opt-in** — the AI invoker (`createCLIAIInvoker`) is never modified
+- Capture uses a **tool** (`write_memory` via `defineTool`), not a follow-up prompt — avoids polluting session history
+- Two integration patterns: `withMemory()` for simple cases, direct services for complex orchestration
 
-Unified policy system for timeout, retry, and cancellation.
-
-```typescript
-import { 
-    runWithPolicy, 
-    withTimeout, 
-    withRetry,
-    createPolicyRunner,
-    TimeoutError,
-    RetryExhaustedError 
-} from 'pipeline-core';
-
-// Simple timeout
-const result = await withTimeout(
-    () => fetchData(),
-    { timeoutMs: 5000, operationName: 'fetchData' }
-);
-
-// Retry with exponential backoff
-const result = await withRetry(
-    () => apiCall(),
-    {
-        attempts: 3,
-        delayMs: 1000,
-        backoff: 'exponential',
-        maxDelayMs: 30000,
-        operationName: 'apiCall'
-    }
-);
-
-// Unified policy (timeout + retry + cancellation)
-const cancellationToken = createCancellationToken();
-const result = await runWithPolicy(
-    () => processData(),
-    {
-        timeoutMs: 10000,
-        retryOnFailure: true,
-        retryAttempts: 3,
-        retryDelayMs: 1000,
-        backoff: 'exponential',
-        isCancelled: cancellationToken.isCancelled,
-        operationName: 'processData',
-        meta: { executionId: 'exec-123' }
-    }
-);
-
-// Create a reusable policy runner
-const aiPolicy = createPolicyRunner({
-    timeoutMs: 30000,
-    retryOnFailure: true,
-    retryAttempts: 2,
-    operationName: 'AI Invocation'
-});
-
-// Use the policy runner
-const result = await aiPolicy(() => invokeAI(prompt));
-```
-
-### Task Queue
-
-Priority-based task queue with concurrency control. `QueuedTask` uses generic `type: string` and `payload: Record<string, unknown>` — domain-specific payload types are defined by consuming packages.
-
-```typescript
-import { 
-    TaskQueueManager, 
-    QueueExecutor,
-    TaskPriority 
-} from 'pipeline-core';
-
-// Create queue manager
-const queueManager = new TaskQueueManager({
-    maxQueueSize: 100,
-    maxHistorySize: 1000
-});
-
-// Enqueue tasks with priorities
-const taskId1 = queueManager.enqueue({
-    type: 'follow-prompt',
-    priority: 'high',
-    payload: { prompt: 'Analyze code', model: 'claude-sonnet-4.6' },
-    config: { timeoutMs: 60000 }
-});
-
-const taskId2 = queueManager.enqueue({
-    type: 'follow-prompt',
-    priority: 'low',
-    payload: { prompt: 'Generate summary', model: 'claude-haiku-4.5' },
-    config: { timeoutMs: 60000 }
-});
-
-// Create executor
-const executor = new QueueExecutor(
-    queueManager,
-    async (task) => {
-        // Execute the task — use task.type to dispatch
-        return await processTask(task);
-    },
-    {
-        maxConcurrency: 3,
-        autoStart: true
-    }
-);
-
-// Listen to events
-executor.on('taskStarted', (task) => {
-    console.log(`Task ${task.id} started`);
-});
-
-executor.on('taskCompleted', (task, result) => {
-    console.log(`Task ${task.id} completed:`, result);
-});
-
-executor.on('taskFailed', (task, error) => {
-    console.error(`Task ${task.id} failed:`, error);
-});
-
-// Control execution
-executor.start();  // Start processing
-executor.stop();   // Stop processing (running tasks complete)
-executor.cancelTask(taskId1);  // Cancel specific task
-```
-
-### Config Defaults
-
-Centralized default constants for consistent configuration across the package.
-
-```typescript
-import {
-    DEFAULT_AI_TIMEOUT_MS,
-    DEFAULT_PARALLEL_LIMIT,
-    DEFAULT_MAX_CONCURRENCY,
-    DEFAULT_MAX_SESSIONS,
-    DEFAULT_RETRY_ATTEMPTS,
-    DEFAULT_QUEUE_MAX_CONCURRENT
-} from 'pipeline-core';
-
-// Use defaults in configuration
-const executor = createExecutor({
-    maxConcurrency: DEFAULT_MAX_CONCURRENCY,
-    timeoutMs: DEFAULT_AI_TIMEOUT_MS
-});
-
-const queueExecutor = new QueueExecutor(queueManager, taskExecutor, {
-    maxConcurrency: DEFAULT_QUEUE_MAX_CONCURRENT
-});
-```
-
-### AI Service
-
-Copilot SDK integration with session pooling and CLI utilities.
-
-```typescript
-import { 
-    CopilotSDKService, 
-    getCopilotSDKService,
-    approveAllPermissions,
-    escapeShellArg,
-    buildCliCommand,
-    getModelLabel,
-    isValidModel
-} from 'pipeline-core';
-
-// Get singleton service
-const service = getCopilotSDKService();
-
-// Check availability
-if (await service.isAvailable()) {
-    // Send message with SDK
-    const result = await service.sendMessage({
-        prompt: 'Analyze this code',
-        workingDirectory: '/path/to/project',
-        timeoutMs: 60000,
-        onPermissionRequest: approveAllPermissions  // ⚠️ Use cautiously
-    });
-    
-    if (result.success) {
-        console.log(result.response);
-    }
-}
-
-// Build CLI command with proper escaping
-const { command, deliveryMethod } = buildCliCommand('copilot', {
-    prompt: 'Hello world',
-    model: 'gpt-4'
-});
-
-// Model registry utilities
-if (isValidModel('claude-sonnet-4.6')) {
-    const label = getModelLabel('claude-sonnet-4.6');
-    console.log(`Using model: ${label}`);
-}
-```
-
-### Map-Reduce Framework
-
-Parallel AI processing with splitters, mappers, and reducers.
-
-```typescript
-import { 
-    createExecutor,
-    createFileSplitter,
-    createDeterministicReducer,
-    createCodeReviewJob
-} from 'pipeline-core';
-
-// Create executor
-const executor = createExecutor({
-    maxConcurrency: 5,
-    timeoutMs: 60000,
-    onProgress: (progress) => console.log(`${progress.percentage}%`)
-});
-
-// Execute a job
-const result = await executor.execute(myJob, inputData);
-```
-
-### Pipeline Execution
-
-YAML-based pipeline configuration and execution.
-
-```typescript
-import { 
-    executePipeline,
-    parsePipelineYAML,
-    readCSVFile,
-    substituteTemplate
-} from 'pipeline-core';
-
-// Parse pipeline config
-const config = await parsePipelineYAML(yamlContent);
-
-// Execute pipeline
-const result = await executePipeline(config, {
-    aiInvoker: myAIInvoker,
-    pipelineDirectory: '/path/to/pipeline',
-    onProgress: (progress) => console.log(progress.message)
-});
-```
-
-### Utilities
-
-Safe file operations, HTTP requests, text matching, and more.
-
-```typescript
-import {
-    safeReadFile,
-    safeWriteFile,
-    glob,
-    httpGet,
-    calculateSimilarity,
-    extractJSON,
-    substituteTemplateVariables
-} from 'pipeline-core';
-
-// Safe file operations
-const content = await safeReadFile('/path/to/file.txt');
-await safeWriteFile('/path/to/output.txt', 'content');
-
-// Glob pattern matching
-const files = glob('**/*.ts', '/project');
-
-// HTTP requests
-const response = await httpGet('https://api.example.com/data');
-
-// Text similarity
-const similarity = calculateSimilarity('hello', 'hallo');
-
-// Extract JSON from AI response
-const json = extractJSON('Some text {"result": true} more text');
-
-// Template variable substitution
-const result = substituteTemplateVariables(
-    'Hello {{name}}, you have {{count}} items',
-    { name: 'Alice', count: 5 }
-);
-// Result: 'Hello Alice, you have 5 items'
-```
-
-### Process Store
-
-Abstract storage for AI process tracking, designed for multi-workspace server scenarios.
-
-```typescript
-import {
-    ProcessStore,
-    FileProcessStore,
-    WorkspaceInfo,
-    ProcessFilter,
-    ProcessOutputEvent
-} from 'pipeline-core';
-
-// FileProcessStore — JSON file persistence at configurable directory
-const store = new FileProcessStore({ dataDir: '~/.coc' });
-await store.initialize();
-
-// Register a workspace
-const workspace: WorkspaceInfo = {
-    id: 'a1b2c3d4e5f6a7b8',  // SHA-256 of workspace root (first 16 hex)
-    name: 'my-project',
-    rootPath: '/path/to/project',
-    color: '#4fc3f7'
-};
-await store.registerWorkspace(workspace);
-
-// Add/update processes
-await store.addProcess(workspace.id, process);
-await store.updateProcess(processId, { status: 'completed', endTime: Date.now() });
-
-// Query with filters
-const filter: ProcessFilter = { workspaceId: workspace.id, status: 'running', limit: 50 };
-const processes = await store.getAllProcesses(filter);
-
-// Stream output events
-store.onProcessOutput(processId, (event: ProcessOutputEvent) => {
-    console.log(event.chunk);
-});
-
-// Cleanup
-await store.clearProcesses('completed');
-```
-
-**Key behaviors:**
-- Atomic writes via temp file + rename pattern
-- Sequential write queue prevents corruption
-- Max 500 processes retained; pruning preserves non-terminal processes
-- In-memory EventEmitter per process for streaming support
-
-## Testing
-
-Tests use Vitest and are located in `test/`. There are 61 test files covering all modules.
+## Build & Test
 
 ```bash
-# Run all tests
-npm run test:run
-
-# Run tests in watch mode
-npm test
-
-# Run specific test file
-npx vitest run test/map-reduce/concurrency-limiter.test.ts
-
-# Run tests for a specific module
-npx vitest run test/queue/
+npm run build          # Build TypeScript
+npx tsc --noEmit       # Type check only
+npm run test:run       # Run all Vitest tests
+npx vitest run test/memory/  # Run specific module tests
 ```
 
-## Building
+## Cross-Platform
 
-```bash
-# Build TypeScript
-npm run build
-
-# Type check only
-npx tsc --noEmit
-```
-
-## Integration with VS Code Extension
-
-The VS Code extension imports from this package:
-
-```typescript
-// In extension code
-import { 
-    executePipeline,
-    CopilotSDKService,
-    setLogger,
-    PipelineCoreError,
-    ErrorCode,
-    runWithPolicy
-} from 'pipeline-core';
-
-// Set up VS Code logger
-setLogger({
-    debug: (cat, msg) => getExtensionLogger().debug(cat, msg),
-    info: (cat, msg) => getExtensionLogger().info(cat, msg),
-    warn: (cat, msg) => getExtensionLogger().warn(cat, msg),
-    error: (cat, msg, err) => getExtensionLogger().error(cat, msg, err),
-});
-
-// Use structured error handling
-try {
-    await executePipeline(config, options);
-} catch (error) {
-    if (isPipelineCoreError(error)) {
-        vscode.window.showErrorMessage(
-            `Pipeline failed: ${error.message} (${error.code})`
-        );
-    }
-}
-```
-
-## Cross-Platform Compatibility
-
-All code is designed to work on Linux, macOS, and Windows:
-- Path handling uses `path.join()` and `path.resolve()`
-- Shell escaping handles platform differences
-- Line endings are normalized
-- Temp files use `os.tmpdir()`
-- EventEmitter-based queue system (no platform-specific APIs)
+Paths use `path.join()`/`path.resolve()`. Shell escaping handles platform differences. Temp files use `os.tmpdir()`. Tests use `fs.mkdtemp()` for isolation.
 
 ## See Also
 
-- `docs/designs/pipeline-core-extraction.md` - Design document for package extraction
-- `src/shortcuts/ai-service/AGENTS.md` - VS Code AI service integration
-- `src/shortcuts/map-reduce/AGENTS.md` - VS Code map-reduce integration
-- `src/shortcuts/yaml-pipeline/AGENTS.md` - VS Code pipeline UI
+- `docs/designs/coc-memory.md` — Memory system design doc
+- `docs/designs/pipeline-core-extraction.md` — Package extraction design
+- `src/shortcuts/ai-service/AGENTS.md` — VS Code AI service wrapper
+- `src/shortcuts/yaml-pipeline/AGENTS.md` — VS Code pipeline UI
