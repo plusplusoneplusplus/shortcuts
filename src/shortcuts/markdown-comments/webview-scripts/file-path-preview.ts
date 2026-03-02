@@ -423,42 +423,49 @@ function findFilePathLink(target: EventTarget | null): HTMLElement | null {
 
 // --- Initialization ---
 
+function isMobile(): boolean {
+    return (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+        /Mobi|Android|iPhone|iPad|Touch/i.test(navigator.userAgent);
+}
+
 /**
  * Initialize file path preview handlers.
  * Sets up event delegation on document.body for hover and click on `.file-path-link` spans.
  */
 export function initFilePathPreview(): void {
-    // Hover: mouseover with delay
-    document.body.addEventListener('mouseover', (e) => {
-        const target = findFilePathLink(e.target);
-        if (!target) return;
+    if (!isMobile()) {
+        // Hover: mouseover with delay
+        document.body.addEventListener('mouseover', (e) => {
+            const target = findFilePathLink(e.target);
+            if (!target) return;
 
-        cancelHide();
-        if (hoverTimer) clearTimeout(hoverTimer);
+            cancelHide();
+            if (hoverTimer) clearTimeout(hoverTimer);
 
-        currentHoverTarget = target;
-        hoverTimer = setTimeout(() => {
-            showTooltip(target);
-            hoverTimer = null;
-        }, HOVER_DELAY_MS);
-    });
+            currentHoverTarget = target;
+            hoverTimer = setTimeout(() => {
+                showTooltip(target);
+                hoverTimer = null;
+            }, HOVER_DELAY_MS);
+        });
 
-    // Hover: mouseout — schedule hide
-    document.body.addEventListener('mouseout', (e) => {
-        const target = findFilePathLink(e.target);
-        if (!target) return;
+        // Hover: mouseout — schedule hide
+        document.body.addEventListener('mouseout', (e) => {
+            const target = findFilePathLink(e.target);
+            if (!target) return;
 
-        if (hoverTimer) {
-            clearTimeout(hoverTimer);
-            hoverTimer = null;
-        }
-        scheduleHide();
-    });
+            if (hoverTimer) {
+                clearTimeout(hoverTimer);
+                hoverTimer = null;
+            }
+            scheduleHide();
+        });
 
-    // Keep tooltip visible when mouse enters it
-    const tooltip = getOrCreateTooltip();
-    tooltip.addEventListener('mouseenter', () => cancelHide());
-    tooltip.addEventListener('mouseleave', () => scheduleHide());
+        // Keep tooltip visible when mouse enters it
+        const tooltip = getOrCreateTooltip();
+        tooltip.addEventListener('mouseenter', () => cancelHide());
+        tooltip.addEventListener('mouseleave', () => scheduleHide());
+    }
 
     // Click: open dialog or open in editor
     document.body.addEventListener('click', (e) => {

@@ -4351,5 +4351,45 @@ suite('Webview Scripts Tests', () => {
             assert.strictEqual(result!.selectedText, '\tIndented with tab');
         });
     });
+
+    suite('File Path Preview — Mobile Detection', () => {
+        /**
+         * Mirrors the isMobile() helper added to file-path-preview.ts webview script.
+         * Since the webview script is browser-bundled, we test the logic inline.
+         */
+        function isMobile(matchesCoarse: boolean, userAgent: string): boolean {
+            const mediaMatches = matchesCoarse;
+            const uaMatches = /Mobi|Android|iPhone|iPad|Touch/i.test(userAgent);
+            return mediaMatches || uaMatches;
+        }
+
+        test('returns true when pointer is coarse', () => {
+            assert.strictEqual(isMobile(true, 'Mozilla/5.0 (Windows NT 10.0)'), true);
+        });
+
+        test('returns true for iPhone user agent', () => {
+            assert.strictEqual(isMobile(false, 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)'), true);
+        });
+
+        test('returns true for Android user agent', () => {
+            assert.strictEqual(isMobile(false, 'Mozilla/5.0 (Linux; Android 12; Pixel 6)'), true);
+        });
+
+        test('returns true for Mobi user agent', () => {
+            assert.strictEqual(isMobile(false, 'Mozilla/5.0 (Mobi; Linux)'), true);
+        });
+
+        test('returns true for iPad user agent', () => {
+            assert.strictEqual(isMobile(false, 'Mozilla/5.0 (iPad; CPU OS 15_0 like Mac OS X)'), true);
+        });
+
+        test('returns false for desktop with fine pointer', () => {
+            assert.strictEqual(isMobile(false, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'), false);
+        });
+
+        test('returns false for desktop macOS user agent', () => {
+            assert.strictEqual(isMobile(false, 'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) AppleWebKit/537.36'), false);
+        });
+    });
 });
 

@@ -48,6 +48,11 @@ function escapeHtml(text: string): string {
         .replace(/"/g, '&quot;');
 }
 
+function isMobile(): boolean {
+    return (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+        /Mobi|Android|iPhone|iPad|Touch/i.test(navigator.userAgent);
+}
+
 export interface FilePreviewProps {
     filePath: string;
     wsId?: string;
@@ -124,6 +129,7 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
     }, [filePath, resolveWsId]);
 
     const handleMouseEnter = useCallback(() => {
+        if (isMobile()) return;
         if (hideTimerRef.current) {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;

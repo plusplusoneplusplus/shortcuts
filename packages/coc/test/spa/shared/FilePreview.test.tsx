@@ -339,6 +339,63 @@ describe('FilePreview', () => {
         });
     });
 
+    describe('mobile device (pointer: coarse)', () => {
+        function mockCoarsePointer() {
+            const original = window.matchMedia;
+            window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+                matches: query === '(pointer: coarse)',
+                media: query,
+                onchange: null,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                addListener: vi.fn(),
+                removeListener: vi.fn(),
+                dispatchEvent: vi.fn(),
+            }));
+            return () => { window.matchMedia = original; };
+        }
+
+        it('does not show tooltip on mouseEnter when pointer is coarse', async () => {
+            const restore = mockCoarsePointer();
+            try {
+                mockPreviewResponse();
+                renderFilePreview();
+
+                await act(async () => {
+                    fireEvent.mouseEnter(screen.getByTestId('trigger'));
+                });
+
+                // Tooltip should not appear
+                await new Promise(r => setTimeout(r, 50));
+                expect(document.querySelector('.file-preview-lines')).toBeNull();
+                expect(document.querySelector('[class*="fixed z-50"]')).toBeNull();
+            } finally {
+                restore();
+            }
+        });
+
+        it('does not fetch preview data on mouseEnter when pointer is coarse', async () => {
+            const restore = mockCoarsePointer();
+            try {
+                mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+                renderFilePreview();
+
+                await act(async () => {
+                    fireEvent.mouseEnter(screen.getByTestId('trigger'));
+                });
+
+                await new Promise(r => setTimeout(r, 50));
+                // Only the AppProvider preferences fetch should have been called, not the preview fetch
+                const previewCalls = mockFetch.mock.calls.filter((c: any[]) =>
+                    String(c[0]).includes('/files/preview')
+                );
+                expect(previewCalls.length).toBe(0);
+            } finally {
+                restore();
+            }
+        });
+    });
+
     describe('tooltip visibility', () => {
         it('hides tooltip on mouse leave after delay', async () => {
             vi.useFakeTimers();

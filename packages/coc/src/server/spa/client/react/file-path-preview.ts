@@ -409,33 +409,40 @@ async function showTooltip(target: HTMLElement): Promise<void> {
     }
 }
 
+function isMobile(): boolean {
+    return (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+        /Mobi|Android|iPhone|iPad|Touch/i.test(navigator.userAgent);
+}
+
 function initFilePathPreviewDelegation(): void {
-    document.body.addEventListener('mouseover', (event) => {
-        const target = findPathLink(event.target);
-        if (!target) return;
+    if (!isMobile()) {
+        document.body.addEventListener('mouseover', (event) => {
+            const target = findPathLink(event.target);
+            if (!target) return;
 
-        if (hideTimer) {
-            clearTimeout(hideTimer);
-            hideTimer = null;
-        }
-        if (activeTarget === target) return;
+            if (hideTimer) {
+                clearTimeout(hideTimer);
+                hideTimer = null;
+            }
+            if (activeTarget === target) return;
 
-        if (hoverTimer) clearTimeout(hoverTimer);
-        hoverTimer = setTimeout(() => {
-            showTooltip(target);
-        }, HOVER_DELAY_MS);
-    });
+            if (hoverTimer) clearTimeout(hoverTimer);
+            hoverTimer = setTimeout(() => {
+                showTooltip(target);
+            }, HOVER_DELAY_MS);
+        });
 
-    document.body.addEventListener('mouseout', (event) => {
-        const target = findPathLink(event.target);
-        if (!target) return;
+        document.body.addEventListener('mouseout', (event) => {
+            const target = findPathLink(event.target);
+            if (!target) return;
 
-        if (hoverTimer) {
-            clearTimeout(hoverTimer);
-            hoverTimer = null;
-        }
-        scheduleHide();
-    });
+            if (hoverTimer) {
+                clearTimeout(hoverTimer);
+                hoverTimer = null;
+            }
+            scheduleHide();
+        });
+    }
 
     // Keep links from navigating when rendered as anchors in markdown.
     document.body.addEventListener('click', (event) => {

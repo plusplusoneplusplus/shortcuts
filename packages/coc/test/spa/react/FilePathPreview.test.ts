@@ -252,6 +252,120 @@ describe('file-path-preview delegation', () => {
         );
     });
 
+    it('does not register hover listeners on mobile (pointer: coarse)', async () => {
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="/Users/test/src/app.ts">app.ts</span>
+            </div>
+        `;
+
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+            matches: query === '(pointer: coarse)',
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        }));
+
+        // Spy before import so we capture all registrations
+        const addSpy = vi.spyOn(document.body, 'addEventListener');
+
+        try {
+            await import('../../../src/server/spa/client/react/file-path-preview');
+
+            const mouseoverCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseover');
+            const mouseoutCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseout');
+            expect(mouseoverCalls.length).toBe(0);
+            expect(mouseoutCalls.length).toBe(0);
+        } finally {
+            window.matchMedia = originalMatchMedia;
+        }
+    });
+
+    it('does not register hover listeners when UA matches mobile pattern', async () => {
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="/Users/test/src/app.ts">app.ts</span>
+            </div>
+        `;
+
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        }));
+
+        const originalUA = navigator.userAgent;
+        Object.defineProperty(navigator, 'userAgent', {
+            value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)',
+            configurable: true,
+        });
+
+        const addSpy = vi.spyOn(document.body, 'addEventListener');
+
+        try {
+            await import('../../../src/server/spa/client/react/file-path-preview');
+
+            const mouseoverCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseover');
+            const mouseoutCalls = addSpy.mock.calls.filter(([evt]) => evt === 'mouseout');
+            expect(mouseoverCalls.length).toBe(0);
+            expect(mouseoutCalls.length).toBe(0);
+        } finally {
+            window.matchMedia = originalMatchMedia;
+            Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true });
+        }
+    });
+
+    it('click still works on mobile (hover suppressed but click preserved)', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/.vscode/tasks/sample.md';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}">sample.md</span>
+            </div>
+        `;
+
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ workspaces: [] }),
+        }) as any);
+
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+            matches: query === '(pointer: coarse)',
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        }));
+
+        try {
+            await import('../../../src/server/spa/client/react/file-path-preview');
+
+            const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+            const link = document.querySelector('.file-path-link') as HTMLElement;
+            link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+            expect(dispatchSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'coc-open-markdown-review' })
+            );
+        } finally {
+            window.matchMedia = originalMatchMedia;
+        }
+    });
+
     it('positions tooltip using measured dimensions instead of hardcoded size', async () => {
         const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
         document.body.innerHTML = `
