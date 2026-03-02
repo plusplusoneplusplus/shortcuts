@@ -31,6 +31,8 @@ export interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
     pinnedChats?: Record<string, string[]>;
+    /** Whether the repos sidebar (left panel) is collapsed. */
+    reposSidebarCollapsed?: boolean;
 }
 
 // ============================================================================
@@ -118,6 +120,10 @@ export function validatePreferences(raw: unknown): UserPreferences {
         if (Object.keys(validated).length > 0) {
             result.pinnedChats = validated;
         }
+    }
+
+    if (typeof obj.reposSidebarCollapsed === 'boolean') {
+        result.reposSidebarCollapsed = obj.reposSidebarCollapsed;
     }
 
     return result;

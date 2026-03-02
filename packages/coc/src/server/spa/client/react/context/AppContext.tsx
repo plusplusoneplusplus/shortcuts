@@ -3,9 +3,22 @@
  * Replaces the global mutable appState singleton from state.ts.
  */
 
-import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
+import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
 import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
+import { getApiBase } from '../utils/config';
+
+// ── Sidebar persistence ────────────────────────────────────────────────
+
+export const SIDEBAR_KEY = 'coc-repos-sidebar-collapsed';
+
+export function getInitialSidebarCollapsed(): boolean {
+    try {
+        return localStorage.getItem(SIDEBAR_KEY) === 'true';
+    } catch {
+        return false;
+    }
+}
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -44,7 +57,7 @@ const initialState: AppContextState = {
     workspaces: [],
     selectedRepoId: null,
     activeRepoSubTab: 'info',
-    reposSidebarCollapsed: false,
+    reposSidebarCollapsed: getInitialSidebarCollapsed(),
     selectedWikiId: null,
     selectedWikiComponentId: null,
     wikiView: 'list',
@@ -78,6 +91,7 @@ export type AppAction =
     | { type: 'SET_SELECTED_REPO'; id: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
     | { type: 'TOGGLE_REPOS_SIDEBAR' }
+    | { type: 'SET_REPOS_SIDEBAR_COLLAPSED'; value: boolean }
     | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
     | { type: 'SET_WIKIS'; wikis: any[] }
     | { type: 'SELECT_WIKI'; wikiId: string | null }
@@ -147,8 +161,18 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedRepoId: action.id };
         case 'SET_REPO_SUB_TAB':
             return { ...state, activeRepoSubTab: action.tab };
-        case 'TOGGLE_REPOS_SIDEBAR':
-            return { ...state, reposSidebarCollapsed: !state.reposSidebarCollapsed };
+        case 'TOGGLE_REPOS_SIDEBAR': {
+            const next = !state.reposSidebarCollapsed;
+            try { localStorage.setItem(SIDEBAR_KEY, String(next)); } catch { /* SSR / test */ }
+            fetch(getApiBase() + '/preferences', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reposSidebarCollapsed: next }),
+            }).catch(() => {});
+            return { ...state, reposSidebarCollapsed: next };
+        }
+        case 'SET_REPOS_SIDEBAR_COLLAPSED':
+            return state.reposSidebarCollapsed === action.value ? state : { ...state, reposSidebarCollapsed: action.value };
         case 'SET_WIKI_VIEW':
             return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId, wikiView: action.view };
         case 'SET_WIKIS':
@@ -255,6 +279,32 @@ const AppContext = createContext<{ state: AppContextState; dispatch: Dispatch<Ap
 
 export function AppProvider({ children }: { children: ReactNode }) {
     const [state, dispatch] = useReducer(appReducer, initialState);
+
+    // Sync sidebar collapsed state from server on mount + cross-tab sync
+    useEffect(() => {
+        let cancelled = false;
+        fetch(getApiBase() + '/preferences')
+            .then(r => r.json())
+            .then((prefs) => {
+                if (!cancelled && typeof prefs.reposSidebarCollapsed === 'boolean') {
+                    dispatch({ type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: prefs.reposSidebarCollapsed });
+                    try { localStorage.setItem(SIDEBAR_KEY, String(prefs.reposSidebarCollapsed)); } catch { /* SSR / test */ }
+                }
+            })
+            .catch(() => {});
+
+        const onStorage = (e: StorageEvent) => {
+            if (e.key === SIDEBAR_KEY && e.newValue !== null) {
+                dispatch({ type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: e.newValue === 'true' });
+            }
+        };
+        window.addEventListener('storage', onStorage);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('storage', onStorage);
+        };
+    }, []);
+
     return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;
 }
 

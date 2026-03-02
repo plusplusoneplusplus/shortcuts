@@ -2,8 +2,8 @@
  * Tests for AppContext reducer — process CRUD, workspace, filters, conversation cache.
  */
 
-import { describe, it, expect } from 'vitest';
-import { appReducer, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/context/AppContext';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { appReducer, SIDEBAR_KEY, getInitialSidebarCollapsed, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/context/AppContext';
 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {
@@ -268,6 +268,14 @@ describe('AppContext reducer', () => {
     });
 
     describe('repos sidebar', () => {
+        beforeEach(() => {
+            localStorage.clear();
+            globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+        });
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
         it('TOGGLE_REPOS_SIDEBAR collapses when currently expanded', () => {
             const state = makeState({ reposSidebarCollapsed: false });
             const result = appReducer(state, { type: 'TOGGLE_REPOS_SIDEBAR' });
@@ -278,6 +286,72 @@ describe('AppContext reducer', () => {
             const state = makeState({ reposSidebarCollapsed: true });
             const result = appReducer(state, { type: 'TOGGLE_REPOS_SIDEBAR' });
             expect(result.reposSidebarCollapsed).toBe(false);
+        });
+
+        it('TOGGLE_REPOS_SIDEBAR persists to localStorage', () => {
+            const state = makeState({ reposSidebarCollapsed: false });
+            appReducer(state, { type: 'TOGGLE_REPOS_SIDEBAR' });
+            expect(localStorage.getItem(SIDEBAR_KEY)).toBe('true');
+
+            const state2 = makeState({ reposSidebarCollapsed: true });
+            appReducer(state2, { type: 'TOGGLE_REPOS_SIDEBAR' });
+            expect(localStorage.getItem(SIDEBAR_KEY)).toBe('false');
+        });
+
+        it('TOGGLE_REPOS_SIDEBAR fires PATCH to server', () => {
+            const state = makeState({ reposSidebarCollapsed: false });
+            appReducer(state, { type: 'TOGGLE_REPOS_SIDEBAR' });
+            expect(globalThis.fetch).toHaveBeenCalledWith(
+                expect.stringContaining('/preferences'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: JSON.stringify({ reposSidebarCollapsed: true }),
+                }),
+            );
+        });
+
+        it('SET_REPOS_SIDEBAR_COLLAPSED sets value', () => {
+            const state = makeState({ reposSidebarCollapsed: false });
+            const result = appReducer(state, { type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: true });
+            expect(result.reposSidebarCollapsed).toBe(true);
+        });
+
+        it('SET_REPOS_SIDEBAR_COLLAPSED returns same reference if unchanged', () => {
+            const state = makeState({ reposSidebarCollapsed: true });
+            const result = appReducer(state, { type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: true });
+            expect(result).toBe(state);
+        });
+
+        it('SET_REPOS_SIDEBAR_COLLAPSED toggles from true to false', () => {
+            const state = makeState({ reposSidebarCollapsed: true });
+            const result = appReducer(state, { type: 'SET_REPOS_SIDEBAR_COLLAPSED', value: false });
+            expect(result.reposSidebarCollapsed).toBe(false);
+        });
+    });
+
+    // ── getInitialSidebarCollapsed ──────────────────────────────────
+    describe('getInitialSidebarCollapsed', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+
+        it('returns false when localStorage is empty', () => {
+            expect(getInitialSidebarCollapsed()).toBe(false);
+        });
+
+        it('returns true when localStorage has "true"', () => {
+            localStorage.setItem(SIDEBAR_KEY, 'true');
+            expect(getInitialSidebarCollapsed()).toBe(true);
+        });
+
+        it('returns false when localStorage has "false"', () => {
+            localStorage.setItem(SIDEBAR_KEY, 'false');
+            expect(getInitialSidebarCollapsed()).toBe(false);
+        });
+
+        it('returns false for unexpected values', () => {
+            localStorage.setItem(SIDEBAR_KEY, 'garbage');
+            expect(getInitialSidebarCollapsed()).toBe(false);
         });
     });
 
