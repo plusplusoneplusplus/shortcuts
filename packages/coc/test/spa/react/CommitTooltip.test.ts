@@ -135,9 +135,22 @@ describe('CommitTooltip', () => {
             expect(source).toContain('anchorRect');
         });
 
+        it('positions tooltip to the right of the anchor (right panel overlay)', () => {
+            expect(source).toContain('anchorRect.right');
+        });
+
+        it('aligns tooltip top with hovered row', () => {
+            expect(source).toContain('anchorRect.top');
+        });
+
         it('flips above if overflowing bottom viewport', () => {
             expect(source).toContain('viewportH');
-            expect(source).toContain('anchorRect.top');
+            expect(source).toContain('anchorRect.top - rect.height');
+        });
+
+        it('guards against right-side viewport overflow', () => {
+            expect(source).toContain('viewportW');
+            expect(source).toContain('window.innerWidth');
         });
 
         it('uses z-50 for stacking', () => {

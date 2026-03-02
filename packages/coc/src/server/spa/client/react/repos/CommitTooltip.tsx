@@ -26,15 +26,19 @@ export function CommitTooltip({ commit, anchorRect }: CommitTooltipProps) {
         const rect = tooltip.getBoundingClientRect();
         const viewportH = window.innerHeight;
 
-        let top = anchorRect.bottom + 4;
-        const left = anchorRect.left;
+        let top = anchorRect.top;
+        const left = anchorRect.right + 8;
 
         // Flip above if overflowing bottom
         if (top + rect.height > viewportH) {
             top = anchorRect.top - rect.height - 4;
         }
 
-        setPosition({ top, left });
+        // Guard against right-side overflow
+        const viewportW = window.innerWidth;
+        const finalLeft = Math.min(left, viewportW - rect.width - 8);
+
+        setPosition({ top, left: finalLeft });
     }, [anchorRect]);
 
     const handleCopyHash = (e: React.MouseEvent) => {
