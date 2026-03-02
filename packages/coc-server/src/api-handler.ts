@@ -333,7 +333,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const skip = Math.max(parseInt(String(parsed.query.skip || '0'), 10) || 0, 0);
 
             try {
-                const format = '%H%n%h%n%s%n%an%n%aI%n%P';
+                const format = '%H%n%h%n%s%n%an%n%aI%n%P%n%b';
                 const raw = execGitSync(
                     `log --format="${format}" --skip=${skip} --max-count=${limit} -z`,
                     ws.rootPath
@@ -342,6 +342,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 const commits: Array<{
                     hash: string; shortHash: string; subject: string;
                     author: string; date: string; parentHashes: string[];
+                    body: string;
                 }> = [];
 
                 if (raw.trim()) {
@@ -356,6 +357,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                                 author: lines[3],
                                 date: lines[4],
                                 parentHashes: lines[5] ? lines[5].split(' ').filter(Boolean) : [],
+                                body: lines.slice(6).join('\n').trim(),
                             });
                         }
                     }

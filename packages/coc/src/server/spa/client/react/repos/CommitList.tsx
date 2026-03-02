@@ -16,6 +16,7 @@ export interface GitCommitItem {
     author: string;
     date: string;
     parentHashes: string[];
+    body?: string;
 }
 
 interface CommitListProps {

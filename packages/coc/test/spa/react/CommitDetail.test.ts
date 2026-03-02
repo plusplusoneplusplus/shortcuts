@@ -64,6 +64,10 @@ describe('CommitDetail', () => {
         it('accepts parentHashes prop', () => {
             expect(source).toContain('parentHashes: string[]');
         });
+
+        it('accepts optional body prop', () => {
+            expect(source).toContain('body?: string');
+        });
     });
 
     describe('files API integration', () => {
@@ -206,6 +210,21 @@ describe('CommitDetail', () => {
         it('shows empty state when no files changed', () => {
             expect(source).toContain('No files changed');
             expect(source).toContain('data-testid="no-files-changed"');
+        });
+    });
+
+    describe('commit body / description', () => {
+        it('has commit body section with data-testid', () => {
+            expect(source).toContain('data-testid="commit-body"');
+        });
+
+        it('only renders body when present', () => {
+            expect(source).toContain('{body}');
+            expect(source).toContain('body &&');
+        });
+
+        it('renders body text in a pre element with word wrap', () => {
+            expect(source).toContain('whitespace-pre-wrap');
         });
     });
 

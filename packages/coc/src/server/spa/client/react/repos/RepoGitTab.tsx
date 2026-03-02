@@ -224,6 +224,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             author={rightPanelView.commit.author}
             date={rightPanelView.commit.date}
             parentHashes={rightPanelView.commit.parentHashes}
+            body={rightPanelView.commit.body}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
         <BranchFileDiff

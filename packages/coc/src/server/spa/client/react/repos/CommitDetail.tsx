@@ -17,6 +17,7 @@ export interface CommitDetailProps {
     author: string;
     date: string;
     parentHashes: string[];
+    body?: string;
 }
 
 interface FileChange {
@@ -39,7 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
     D: 'text-[#d32f2f]',
 };
 
-export function CommitDetail({ workspaceId, hash, subject, author, date, parentHashes }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, subject, author, date, parentHashes, body }: CommitDetailProps) {
     const [files, setFiles] = useState<FileChange[]>([]);
     const [filesLoading, setFilesLoading] = useState(true);
     const [filesError, setFilesError] = useState<string | null>(null);
@@ -107,6 +108,13 @@ export function CommitDetail({ workspaceId, hash, subject, author, date, parentH
                     )}
                 </div>
             </div>
+
+            {/* Commit body / description */}
+            {body && (
+                <div className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="commit-body">
+                    <pre className="text-xs text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap font-sans leading-relaxed m-0">{body}</pre>
+                </div>
+            )}
 
             {/* Files list */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">

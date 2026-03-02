@@ -325,6 +325,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('subject={rightPanelView.commit.subject}');
         });
 
+        it('passes body to CommitDetail', () => {
+            expect(source).toContain('body={rightPanelView.commit.body}');
+        });
+
         it('uses key prop on CommitDetail to force remount on hash change', () => {
             expect(source).toContain('key={rightPanelView.commit.hash}');
         });

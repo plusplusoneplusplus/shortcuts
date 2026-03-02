@@ -98,6 +98,10 @@ describe('CommitList', () => {
         it('has parentHashes field', () => {
             expect(source).toContain('parentHashes: string[]');
         });
+
+        it('has optional body field', () => {
+            expect(source).toContain('body?: string');
+        });
     });
 
     describe('single-select behavior', () => {
