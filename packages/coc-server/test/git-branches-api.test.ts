@@ -652,6 +652,19 @@ describe('Git Branches API endpoints', () => {
 
             expect(mockFetch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'upstream');
         });
+
+        it('should succeed with empty body (no Content-Type, no body)', async () => {
+            mockFetch.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/fetch`, {
+                method: 'POST',
+                // no body, no headers — matches what the SPA client sends
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockFetch).toHaveBeenCalledWith(WORKSPACE_ROOT, undefined);
+        });
     });
 
     // -----------------------------------------------------------------------
