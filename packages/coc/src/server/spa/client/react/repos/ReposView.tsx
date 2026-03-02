@@ -6,24 +6,58 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { fetchApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ReposGrid } from './ReposGrid';
 import { MiniReposSidebar } from './MiniReposSidebar';
 import { RepoDetail } from './RepoDetail';
+import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { cn } from '../shared';
 import { countTasks } from './repoGrouping';
 import { fetchPipelines } from './pipeline-api';
 import type { RepoData } from './repoGrouping';
 
+function MobileRepoHeader({ onBack }: { onBack: () => void }) {
+    return (
+        <div className="flex items-center h-11 px-3 gap-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] shrink-0">
+            <button
+                onClick={onBack}
+                className="flex items-center justify-center w-8 h-8 rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                aria-label="Back to repository list"
+                data-testid="mobile-back-button"
+            >
+                ←
+            </button>
+            <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                Repositories
+            </span>
+        </div>
+    );
+}
+
 export function ReposView() {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
+    const { breakpoint } = useBreakpoint();
+    const isMobile = breakpoint === 'mobile';
+    const isTablet = breakpoint === 'tablet';
+    const hasSelection = state.selectedRepoId !== null;
+    const heightClass = isMobile
+        ? 'h-[calc(100vh-48px-56px)]'
+        : 'h-[calc(100vh-48px)]';
     const [repos, setRepos] = useState<RepoData[]>([]);
     const [loading, setLoading] = useState(true);
     const selectedRepoIdRef = useRef(state.selectedRepoId);
     selectedRepoIdRef.current = state.selectedRepoId;
     const processThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleBack = useCallback(() => {
+        dispatch({ type: 'SET_SELECTED_REPO', id: null });
+        if (location.hash.startsWith('#repo')) {
+            location.hash = '#repos';
+        }
+    }, [dispatch]);
 
     const fetchRepos = useCallback(async () => {
         try {
@@ -148,46 +182,78 @@ export function ReposView() {
         };
     }, []);
 
-    const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
-
     if (loading && repos.length === 0) {
         return (
-            <div id="view-repos" className="flex items-center justify-center h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] text-sm text-[#848484]">
+            <div id="view-repos" className={`flex items-center justify-center ${heightClass} text-sm text-[#848484]`}>
                 Loading repositories...
             </div>
         );
     }
 
-    return (
-        <div id="view-repos" className="flex h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] overflow-hidden">
-            {/* Left: sidebar */}
-            <aside
-                id="repos-sidebar"
-                data-testid="repos-sidebar"
-                className={cn(
-                    'shrink-0 min-h-0 flex flex-col overflow-hidden transition-[width,min-width,opacity] duration-150 ease-out border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]',
-                    state.reposSidebarCollapsed
-                        ? 'w-12 min-w-[48px]'
-                        : 'w-[280px] min-w-[240px]'
-                )}
-            >
-                {state.reposSidebarCollapsed ? (
-                    <MiniReposSidebar repos={repos} onRefresh={fetchRepos} />
-                ) : (
-                    <ReposGrid repos={repos} onRefresh={fetchRepos} />
-                )}
-            </aside>
+    const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
 
-            {/* Right: detail */}
-            <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
-                {selectedRepo ? (
-                    <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
-                ) : (
-                    <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">
-                        👈 Select a repository to view details
+    return (
+        <div id="view-repos" className={`flex ${heightClass} overflow-hidden`}>
+            {isMobile ? (
+                // ── Mobile: master-detail ──
+                hasSelection && selectedRepo ? (
+                    <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+                        <MobileRepoHeader onBack={handleBack} />
+                        <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
+                            <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                        </main>
                     </div>
-                )}
-            </main>
+                ) : (
+                    <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden">
+                        <ReposGrid repos={repos} onRefresh={fetchRepos} />
+                    </div>
+                )
+            ) : isTablet ? (
+                // ── Tablet: collapsible sidebar via ResponsiveSidebar ──
+                <>
+                    <ResponsiveSidebar isOpen={false} onClose={() => {}} width={260} tabletWidth={260}>
+                        <ReposGrid repos={repos} onRefresh={fetchRepos} />
+                    </ResponsiveSidebar>
+                    <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
+                        {selectedRepo ? (
+                            <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                        ) : (
+                            <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">
+                                👈 Select a repository to view details
+                            </div>
+                        )}
+                    </main>
+                </>
+            ) : (
+                // ── Desktop: existing aside with collapse to MiniReposSidebar ──
+                <>
+                    <aside
+                        id="repos-sidebar"
+                        data-testid="repos-sidebar"
+                        className={cn(
+                            'shrink-0 min-h-0 flex flex-col overflow-hidden transition-[width,min-width,opacity] duration-150 ease-out border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]',
+                            state.reposSidebarCollapsed
+                                ? 'w-12 min-w-[48px]'
+                                : 'w-[280px] min-w-[240px]'
+                        )}
+                    >
+                        {state.reposSidebarCollapsed ? (
+                            <MiniReposSidebar repos={repos} onRefresh={fetchRepos} />
+                        ) : (
+                            <ReposGrid repos={repos} onRefresh={fetchRepos} />
+                        )}
+                    </aside>
+                    <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
+                        {selectedRepo ? (
+                            <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                        ) : (
+                            <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">
+                                👈 Select a repository to view details
+                            </div>
+                        )}
+                    </main>
+                </>
+            )}
         </div>
     );
 }

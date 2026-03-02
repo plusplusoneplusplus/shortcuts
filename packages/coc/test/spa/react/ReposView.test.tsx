@@ -56,6 +56,11 @@ function makeRepo(overrides: Partial<RepoData> & { workspace: any }): RepoData {
     };
 }
 
+// jsdom doesn't implement scrollIntoView
+if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = vi.fn();
+}
+
 // ============================================================================
 // repoGrouping.ts utility tests
 // ============================================================================
@@ -814,10 +819,10 @@ describe('ReposView — process event throttling', () => {
         expect(source).toContain('selectedRepoIdRef');
         expect(source).toContain('selectedRepoIdRef.current = state.selectedRepoId');
         // Inside fetchRepos body, selectedRepoIdRef.current should be used instead of state.selectedRepoId
-        const fetchReposBody = source.substring(
-            source.indexOf('const fetchRepos = useCallback'),
-            source.indexOf('}, [dispatch]);') + 15,
-        );
+        const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
+        // Find the `, [dispatch]);` that closes fetchRepos (skip earlier occurrences like handleBack)
+        const fetchReposEnd = source.indexOf('}, [dispatch]);', fetchReposStart);
+        const fetchReposBody = source.substring(fetchReposStart, fetchReposEnd + 15);
         expect(fetchReposBody).toContain('selectedRepoIdRef.current');
         // fetchRepos dependency array should NOT include state.selectedRepoId
         expect(fetchReposBody).not.toContain(', state.selectedRepoId');

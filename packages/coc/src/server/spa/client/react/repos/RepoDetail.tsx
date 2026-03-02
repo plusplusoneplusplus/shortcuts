@@ -58,6 +58,22 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [newChatTrigger, setNewChatTrigger] = useState(0);
     const newChatTriggerProcessedRef = useRef(0);
+    const tabStripRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll active tab into view when sub-tab changes
+    useEffect(() => {
+        if (!tabStripRef.current) return;
+        const activeBtn = tabStripRef.current.querySelector(
+            `[data-subtab="${activeSubTab}"]`
+        ) as HTMLElement | null;
+        if (activeBtn) {
+            activeBtn.scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest',
+                inline: 'center',
+            });
+        }
+    }, [activeSubTab]);
 
     async function handleResumeQueue() {
         setIsPauseResumeLoading(true);
@@ -159,13 +175,21 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             </div>
 
             {/* Sub-tab bar */}
-            <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4">
+            <div
+                ref={tabStripRef}
+                className={cn(
+                    'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4',
+                    'overflow-x-auto scrollbar-hide'
+                )}
+                style={{ WebkitOverflowScrolling: 'touch' }}
+                data-testid="repo-sub-tab-strip"
+            >
                 {SUB_TABS.map(t => (
                     <button
                         key={t.key}
                         data-subtab={t.key}
                         className={cn(
-                            'repo-sub-tab px-3 py-2 text-xs font-medium transition-colors relative',
+                            'repo-sub-tab px-3 py-2 text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
                             activeSubTab === t.key
                                 ? 'active text-[#0078d4] dark:text-[#3794ff]'
                                 : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
