@@ -1220,3 +1220,94 @@ describe('W keyboard shortcut simulation', () => {
         expect(dispatches).toHaveLength(0);
     });
 });
+
+// ─── handleHash wiki deep-link in repos context ──────────────────
+
+describe('handleHash wiki deep-link dispatch simulation (repos context)', () => {
+    function simulateRepoWikiHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const parts = hash.split('/');
+        if (parts[0] !== 'repos' || !parts[1]) return dispatches;
+
+        dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+        if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+            dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+        }
+
+        if (parts[2] === 'wiki' && parts[3]) {
+            const wikiId = decodeURIComponent(parts[3]);
+            if (parts[4] === 'component' && parts[5]) {
+                dispatches.push({
+                    type: 'SET_REPO_WIKI_DEEP_LINK',
+                    wikiId,
+                    tab: 'browse',
+                    componentId: decodeURIComponent(parts[5]),
+                });
+            } else if (parts[4] && VALID_WIKI_PROJECT_TABS.has(parts[4])) {
+                const tab = parts[4];
+                let adminTab: string | null = null;
+                if (tab === 'admin' && parts[5] && VALID_WIKI_ADMIN_TABS.has(parts[5])) {
+                    adminTab = parts[5];
+                }
+                dispatches.push({ type: 'SET_REPO_WIKI_DEEP_LINK', wikiId, tab, adminTab });
+            } else {
+                dispatches.push({ type: 'SET_REPO_WIKI_ID', wikiId });
+            }
+        } else if (parts[2] === 'wiki') {
+            dispatches.push({ type: 'SET_REPO_WIKI_ID', wikiId: null });
+        }
+
+        return dispatches;
+    }
+
+    it('#repos/{id}/wiki/{wikiId} dispatches SET_REPO_WIKI_ID', () => {
+        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_WIKI_ID', wikiId: 'my-wiki' });
+    });
+
+    it('#repos/{id}/wiki/{wikiId}/ask dispatches SET_REPO_WIKI_DEEP_LINK with tab', () => {
+        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki/ask');
+        expect(dispatches).toContainEqual({
+            type: 'SET_REPO_WIKI_DEEP_LINK',
+            wikiId: 'my-wiki',
+            tab: 'ask',
+            adminTab: null,
+        });
+    });
+
+    it('#repos/{id}/wiki/{wikiId}/component/{cId} dispatches with componentId', () => {
+        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki/component/auth-module');
+        expect(dispatches).toContainEqual({
+            type: 'SET_REPO_WIKI_DEEP_LINK',
+            wikiId: 'my-wiki',
+            tab: 'browse',
+            componentId: 'auth-module',
+        });
+    });
+
+    it('#repos/{id}/wiki/{wikiId}/admin/seeds dispatches with adminTab', () => {
+        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki/admin/seeds');
+        expect(dispatches).toContainEqual({
+            type: 'SET_REPO_WIKI_DEEP_LINK',
+            wikiId: 'my-wiki',
+            tab: 'admin',
+            adminTab: 'seeds',
+        });
+    });
+
+    it('#repos/{id}/wiki (no wikiId) dispatches SET_REPO_WIKI_ID with null', () => {
+        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_WIKI_ID', wikiId: null });
+    });
+
+    it('URL-encoded wikiId is properly decoded', () => {
+        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/wiki%20with%20spaces');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_WIKI_ID', wikiId: 'wiki with spaces' });
+    });
+
+    it('dispatches SET_REPO_SUB_TAB wiki alongside wiki deep-link', () => {
+        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+    });
+});

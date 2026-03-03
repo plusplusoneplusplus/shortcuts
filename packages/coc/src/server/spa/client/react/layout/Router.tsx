@@ -192,6 +192,29 @@ export function Router() {
                     } else if (parts[2] === 'git') {
                         dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null });
                     }
+                    // Wiki deep-link: #repos/{id}/wiki/{wikiId} and deeper paths
+                    if (parts[2] === 'wiki' && parts[3]) {
+                        const wikiId = decodeURIComponent(parts[3]);
+                        if (parts[4] === 'component' && parts[5]) {
+                            dispatch({
+                                type: 'SET_REPO_WIKI_DEEP_LINK',
+                                wikiId,
+                                tab: 'browse',
+                                componentId: decodeURIComponent(parts[5]),
+                            });
+                        } else if (parts[4] && VALID_WIKI_PROJECT_TABS.has(parts[4])) {
+                            const tab = parts[4] as WikiProjectTab;
+                            let adminTab: WikiAdminTab | null = null;
+                            if (tab === 'admin' && parts[5] && VALID_WIKI_ADMIN_TABS.has(parts[5])) {
+                                adminTab = parts[5] as WikiAdminTab;
+                            }
+                            dispatch({ type: 'SET_REPO_WIKI_DEEP_LINK', wikiId, tab, adminTab });
+                        } else {
+                            dispatch({ type: 'SET_REPO_WIKI_ID', wikiId });
+                        }
+                    } else if (parts[2] === 'wiki') {
+                        dispatch({ type: 'SET_REPO_WIKI_ID', wikiId: null });
+                    }
                 }
             }
 

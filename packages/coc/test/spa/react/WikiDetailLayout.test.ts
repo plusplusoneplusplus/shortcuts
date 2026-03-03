@@ -9,11 +9,19 @@ const wikiDetailPath = resolve(
 const wikiDetailSource = readFileSync(wikiDetailPath, 'utf-8');
 
 describe('WikiDetail layout constraints', () => {
-    it('keeps the wiki shell viewport height fixed with overflow hidden', () => {
-        expect(wikiDetailSource).toContain('h-[calc(100vh-48px)] overflow-hidden');
+    it('uses conditional height: h-full when embedded, calc height otherwise', () => {
+        expect(wikiDetailSource).toContain("embedded ? 'h-full' : 'h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)]'");
     });
 
     it('keeps the right content pane min-h-0 so child views can scroll', () => {
         expect(wikiDetailSource).toContain('flex-1 min-w-0 min-h-0 overflow-hidden');
+    });
+
+    it('hides back button when embedded', () => {
+        expect(wikiDetailSource).toContain('{!embedded && (');
+    });
+
+    it('shows compact tab bar when embedded', () => {
+        expect(wikiDetailSource).toContain('{embedded && (');
     });
 });

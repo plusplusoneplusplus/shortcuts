@@ -29,6 +29,10 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         conversationCache: {},
         wsStatus: 'closed',
         selectedGitCommitHash: null,
+        selectedRepoWikiId: null,
+        repoWikiInitialTab: null,
+        repoWikiInitialAdminTab: null,
+        repoWikiInitialComponentId: null,
         ...overrides,
     };
 }
@@ -597,6 +601,74 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedRepoId: 'r1' });
             const result = appReducer(state, { type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
             expect(result.selectedRepoId).toBe('r1');
+        });
+    });
+
+    // ── Repo wiki deep-link actions ────────────────────────────────
+    describe('SET_REPO_WIKI_ID', () => {
+        it('sets selectedRepoWikiId', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_WIKI_ID', wikiId: 'w1' });
+            expect(result.selectedRepoWikiId).toBe('w1');
+        });
+
+        it('clears selectedRepoWikiId to null', () => {
+            const state = makeState({ selectedRepoWikiId: 'w1' });
+            const result = appReducer(state, { type: 'SET_REPO_WIKI_ID', wikiId: null });
+            expect(result.selectedRepoWikiId).toBeNull();
+        });
+    });
+
+    describe('SET_REPO_WIKI_DEEP_LINK', () => {
+        it('sets all four fields', () => {
+            const result = appReducer(makeState(), {
+                type: 'SET_REPO_WIKI_DEEP_LINK',
+                wikiId: 'w1',
+                tab: 'admin',
+                adminTab: 'seeds',
+                componentId: null,
+            });
+            expect(result.selectedRepoWikiId).toBe('w1');
+            expect(result.repoWikiInitialTab).toBe('admin');
+            expect(result.repoWikiInitialAdminTab).toBe('seeds');
+            expect(result.repoWikiInitialComponentId).toBeNull();
+        });
+
+        it('sets componentId for browse tab', () => {
+            const result = appReducer(makeState(), {
+                type: 'SET_REPO_WIKI_DEEP_LINK',
+                wikiId: 'w1',
+                tab: 'browse',
+                componentId: 'auth-module',
+            });
+            expect(result.repoWikiInitialComponentId).toBe('auth-module');
+            expect(result.repoWikiInitialTab).toBe('browse');
+        });
+
+        it('defaults missing optional fields to null', () => {
+            const result = appReducer(makeState(), {
+                type: 'SET_REPO_WIKI_DEEP_LINK',
+                wikiId: 'w1',
+            });
+            expect(result.selectedRepoWikiId).toBe('w1');
+            expect(result.repoWikiInitialTab).toBeNull();
+            expect(result.repoWikiInitialAdminTab).toBeNull();
+            expect(result.repoWikiInitialComponentId).toBeNull();
+        });
+    });
+
+    describe('CLEAR_REPO_WIKI_INITIAL', () => {
+        it('resets initial fields but keeps selectedRepoWikiId', () => {
+            const state = makeState({
+                selectedRepoWikiId: 'w1',
+                repoWikiInitialTab: 'ask',
+                repoWikiInitialAdminTab: 'seeds',
+                repoWikiInitialComponentId: 'comp-1',
+            });
+            const result = appReducer(state, { type: 'CLEAR_REPO_WIKI_INITIAL' });
+            expect(result.selectedRepoWikiId).toBe('w1');
+            expect(result.repoWikiInitialTab).toBeNull();
+            expect(result.repoWikiInitialAdminTab).toBeNull();
+            expect(result.repoWikiInitialComponentId).toBeNull();
         });
     });
 });

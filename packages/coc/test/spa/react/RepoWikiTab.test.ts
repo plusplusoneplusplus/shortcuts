@@ -28,6 +28,22 @@ describe('RepoWikiTab', () => {
         it('should accept workspacePath prop', () => {
             expect(content).toContain('workspacePath');
         });
+
+        it('should accept initialWikiId prop', () => {
+            expect(content).toContain('initialWikiId');
+        });
+
+        it('should accept initialTab prop', () => {
+            expect(content).toContain('initialTab');
+        });
+
+        it('should accept initialAdminTab prop', () => {
+            expect(content).toContain('initialAdminTab');
+        });
+
+        it('should accept initialComponentId prop', () => {
+            expect(content).toContain('initialComponentId');
+        });
     });
 
     describe('empty state rendering', () => {
@@ -76,6 +92,51 @@ describe('RepoWikiTab', () => {
         it('should check repoWikis.length === 1 for single wiki state', () => {
             expect(content).toMatch(/repoWikis\.length\s*===\s*1/);
         });
+
+        it('should pass onHashChange to WikiDetail in single wiki state', () => {
+            expect(content).toContain('onHashChange={handleWikiHashChange}');
+        });
+    });
+
+    describe('multi-wiki selector (state 3)', () => {
+        it('should render a wiki selector with data-testid', () => {
+            expect(content).toContain('data-testid="repo-wiki-selector"');
+        });
+
+        it('should check repoWikis.length > 1 for multi-wiki state', () => {
+            expect(content).toMatch(/repoWikis\.length\s*>\s*1/);
+        });
+
+        it('should sort wikis by generatedAt descending', () => {
+            expect(content).toContain('generatedAt');
+            expect(content).toContain('localeCompare');
+        });
+
+        it('should show wiki count badge', () => {
+            expect(content).toContain('wikis');
+        });
+
+        it('should handle wiki selection with handleWikiSelect', () => {
+            expect(content).toContain('handleWikiSelect');
+        });
+
+        it('should update location.hash on wiki selection', () => {
+            expect(content).toMatch(/location\.hash.*repos.*wiki/);
+        });
+
+        it('should dispatch CLEAR_REPO_WIKI_INITIAL after consuming deep-link', () => {
+            expect(content).toContain("'CLEAR_REPO_WIKI_INITIAL'");
+        });
+    });
+
+    describe('deep-link support', () => {
+        it('should have handleWikiHashChange callback', () => {
+            expect(content).toContain('handleWikiHashChange');
+        });
+
+        it('should pass initial deep-link props conditionally to WikiDetail in multi-wiki state', () => {
+            expect(content).toContain('activeWikiId === initialWikiId ? initialTab : null');
+        });
     });
 
     describe('integration with RepoDetail', () => {
@@ -97,6 +158,22 @@ describe('RepoWikiTab', () => {
 
         it('should receive workspaceId and workspacePath props', () => {
             expect(detailContent).toMatch(/RepoWikiTab\s+workspaceId=\{ws\.id\}\s+workspacePath=\{ws\.rootPath\}/);
+        });
+
+        it('should pass initialWikiId from state', () => {
+            expect(detailContent).toContain('initialWikiId={state.selectedRepoWikiId}');
+        });
+
+        it('should pass initialTab from state', () => {
+            expect(detailContent).toContain('initialTab={state.repoWikiInitialTab}');
+        });
+
+        it('should pass initialAdminTab from state', () => {
+            expect(detailContent).toContain('initialAdminTab={state.repoWikiInitialAdminTab}');
+        });
+
+        it('should pass initialComponentId from state', () => {
+            expect(detailContent).toContain('initialComponentId={state.repoWikiInitialComponentId}');
         });
     });
 });

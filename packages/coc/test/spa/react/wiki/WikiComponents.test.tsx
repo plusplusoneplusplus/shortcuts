@@ -65,6 +65,10 @@ describe('AppContext reducer — wiki actions', () => {
         wikiDetailInitialAdminTab: null,
         wikis: [],
         conversationCache: {},
+        selectedRepoWikiId: null,
+        repoWikiInitialTab: null,
+        repoWikiInitialAdminTab: null,
+        repoWikiInitialComponentId: null,
     };
 
     it('SET_WIKIS replaces wiki list', () => {
@@ -1573,7 +1577,7 @@ describe('WikiDetail embedded mode', () => {
             </Wrap>
         );
         await waitFor(() => {
-            expect(screen.getByText('My Wiki')).toBeTruthy();
+            expect(screen.getByText('Ask')).toBeTruthy();
         });
         expect(screen.queryByTitle('Back to wiki list')).toBeNull();
     });
@@ -1585,10 +1589,8 @@ describe('WikiDetail embedded mode', () => {
             </Wrap>
         );
         await waitFor(() => {
-            expect(screen.getByText('My Wiki')).toBeTruthy();
+            expect(document.getElementById('wiki-project-tabs')).toBeTruthy();
         });
-        expect(document.getElementById('wiki-project-title')).toBeTruthy();
-        expect(document.getElementById('wiki-project-tabs')).toBeTruthy();
         expect(screen.getByText('Browse')).toBeTruthy();
         expect(screen.getByText('Ask')).toBeTruthy();
     });
@@ -1663,9 +1665,8 @@ describe('RepoWikiTab single wiki inline view', () => {
             </Wrap>
         );
         await waitFor(() => {
-            expect(document.getElementById('wiki-project-title')).toBeTruthy();
+            expect(document.getElementById('wiki-project-tabs')).toBeTruthy();
         });
-        expect(document.getElementById('wiki-project-tabs')).toBeTruthy();
     });
 
     it('does not show back button when rendering inline (embedded mode)', async () => {
@@ -1678,7 +1679,7 @@ describe('RepoWikiTab single wiki inline view', () => {
             </Wrap>
         );
         await waitFor(() => {
-            expect(document.getElementById('wiki-project-title')).toBeTruthy();
+            expect(document.getElementById('wiki-project-tabs')).toBeTruthy();
         });
         expect(screen.queryByTitle('Back to wiki list')).toBeNull();
     });
@@ -1697,8 +1698,8 @@ describe('RepoWikiTab single wiki inline view', () => {
         });
     });
 
-    it('returns null for multiple matching wikis (state 3 placeholder)', async () => {
-        const { container } = render(
+    it('shows multi-wiki selector for multiple matching wikis (state 3)', async () => {
+        render(
             <Wrap>
                 <SeededRepoWikiTab
                     wikis={[
@@ -1709,10 +1710,10 @@ describe('RepoWikiTab single wiki inline view', () => {
                 />
             </Wrap>
         );
-        // Multiple wikis: component returns null — no wiki content rendered
+        // Multiple wikis: component shows selector dropdown
         await waitFor(() => {
-            expect(document.getElementById('view-wiki')).toBeNull();
+            expect(document.querySelector('[data-testid="repo-wiki-selector"]')).toBeTruthy();
         });
-        expect(container.querySelector('#wiki-project-title')).toBeNull();
+        expect(document.getElementById('wiki-project-title')).toBeNull();
     });
 });

@@ -26,6 +26,10 @@ interface ComponentGraph {
 interface WikiDetailProps {
     wikiId: string;
     embedded?: boolean;
+    initialTab?: WikiProjectTab | null;
+    initialAdminTab?: WikiAdminTab | null;
+    initialComponentId?: string | null;
+    onHashChange?: (path: string) => void;
 }
 
 type WikiStatus = 'loaded' | 'generating' | 'error' | 'pending';
@@ -51,7 +55,7 @@ function buildWikiHash(wikiId: string, tab: WikiProjectTab, componentId?: string
     return base + '/' + tab;
 }
 
-export function WikiDetail({ wikiId, embedded }: WikiDetailProps) {
+export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, initialComponentId, onHashChange }: WikiDetailProps) {
     const { state, dispatch } = useApp();
     const { isMobile } = useBreakpoint();
     const [graph, setGraph] = useState<ComponentGraph | null>(null);
@@ -74,6 +78,20 @@ export function WikiDetail({ wikiId, embedded }: WikiDetailProps) {
             dispatch({ type: 'CLEAR_WIKI_INITIAL_TAB' });
         }
     }, [state.wikiDetailInitialTab, embedded]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Consume initial tab/adminTab/componentId from props when embedded
+    useEffect(() => {
+        if (!embedded) return;
+        if (initialTab && WIKI_TABS.includes(initialTab)) {
+            setActiveTab(initialTab);
+        }
+        if (initialAdminTab) {
+            setAdminSubTab(initialAdminTab);
+        }
+        if (initialComponentId) {
+            dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId: initialComponentId });
+        }
+    }, [embedded, initialTab, initialAdminTab, initialComponentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const wiki = useMemo(
         () => state.wikis.find((w: any) => w.id === wikiId),
@@ -102,25 +120,34 @@ export function WikiDetail({ wikiId, embedded }: WikiDetailProps) {
     const changeTab = useCallback((tab: WikiProjectTab) => {
         setActiveTab(tab);
         if (tab !== 'admin') setAdminSubTab(null);
-        if (!embedded) {
-            location.hash = buildWikiHash(wikiId, tab, tab === 'browse' ? state.selectedWikiComponentId : null);
+        const hash = buildWikiHash(wikiId, tab, tab === 'browse' ? state.selectedWikiComponentId : null);
+        if (onHashChange) {
+            onHashChange(hash.replace(/^#wiki\/[^/]+/, ''));
+        } else if (!embedded) {
+            location.hash = hash;
         }
-    }, [wikiId, state.selectedWikiComponentId, embedded]);
+    }, [wikiId, state.selectedWikiComponentId, onHashChange, embedded]);
 
     const handleAdminTabChange = useCallback((subTab: WikiAdminTab) => {
         setAdminSubTab(subTab);
-        if (!embedded) {
-            location.hash = buildWikiHash(wikiId, 'admin', null, subTab);
+        const hash = buildWikiHash(wikiId, 'admin', null, subTab);
+        if (onHashChange) {
+            onHashChange(hash.replace(/^#wiki\/[^/]+/, ''));
+        } else if (!embedded) {
+            location.hash = hash;
         }
-    }, [wikiId, embedded]);
+    }, [wikiId, onHashChange, embedded]);
 
     const handleSelectComponent = useCallback((componentId: string) => {
         dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId });
-        if (!embedded) {
-            location.hash = buildWikiHash(wikiId, 'browse', componentId);
+        const hash = buildWikiHash(wikiId, 'browse', componentId);
+        if (onHashChange) {
+            onHashChange(hash.replace(/^#wiki\/[^/]+/, ''));
+        } else if (!embedded) {
+            location.hash = hash;
         }
         setActiveTab('browse');
-    }, [dispatch, wikiId, embedded]);
+    }, [dispatch, wikiId, onHashChange, embedded]);
 
     const selectedComponentId = state.selectedWikiComponentId;
 
@@ -196,16 +223,15 @@ export function WikiDetail({ wikiId, embedded }: WikiDetailProps) {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] overflow-hidden" id="view-wiki">
-            {/* Top bar */}
+        <div className={cn('flex flex-col overflow-hidden', embedded ? 'h-full' : 'h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)]')} id="view-wiki">
+            {/* Top bar — only in standalone mode */}
+            {!embedded && (
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {!embedded && (
-                    <button
-                        className="text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
-                        onClick={handleBack}
-                        title="Back to wiki list"
-                    >←</button>
-                )}
+                <button
+                    className="text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                    onClick={handleBack}
+                    title="Back to wiki list"
+                >←</button>
                 <span
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ background: wiki?.color || '#848484' }}
@@ -237,6 +263,34 @@ export function WikiDetail({ wikiId, embedded }: WikiDetailProps) {
                     ))}
                 </div>
             </div>
+            )}
+            {/* Compact tab bar — only in embedded mode */}
+            {embedded && (
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <Badge status={cfg.badge}>
+                    {wikiStatus === 'generating' && <Spinner size="sm" />}
+                    {cfg.label}
+                </Badge>
+                <div className="flex-1" />
+                <div className="flex gap-0.5" id="wiki-project-tabs">
+                    {WIKI_TABS.map(t => (
+                        <button
+                            key={t}
+                            className={cn(
+                                'wiki-project-tab px-2.5 py-1 text-xs rounded transition-colors flex-shrink-0 whitespace-nowrap',
+                                activeTab === t
+                                    ? 'bg-[#0078d4] text-white active'
+                                    : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                            )}
+                            data-wiki-project-tab={t}
+                            onClick={() => changeTab(t)}
+                        >
+                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            )}
 
             {/* Two-pane layout */}
             <div className="flex flex-1 min-h-0">

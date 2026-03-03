@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -40,6 +40,10 @@ export interface AppContextState {
     wikiDetailInitialTab: string | null;
     wikiDetailInitialAdminTab: string | null;
     wikis: any[];
+    selectedRepoWikiId: string | null;
+    repoWikiInitialTab: WikiProjectTab | null;
+    repoWikiInitialAdminTab: WikiAdminTab | null;
+    repoWikiInitialComponentId: string | null;
     selectedPipelineName: string | null;
     selectedChatSessionId: string | null;
     selectedGitCommitHash: string | null;
@@ -65,6 +69,10 @@ const initialState: AppContextState = {
     wikiDetailInitialTab: null,
     wikiDetailInitialAdminTab: null,
     wikis: [],
+    selectedRepoWikiId: null,
+    repoWikiInitialTab: null,
+    repoWikiInitialAdminTab: null,
+    repoWikiInitialComponentId: null,
     selectedPipelineName: null,
     selectedChatSessionId: null,
     selectedGitCommitHash: null,
@@ -113,7 +121,10 @@ export type AppAction =
     | { type: 'SET_SELECTED_PIPELINE'; name: string | null }
     | { type: 'SET_SELECTED_CHAT_SESSION'; id: string | null }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
-    | { type: 'SET_WS_STATUS'; status: WsStatus };
+    | { type: 'SET_WS_STATUS'; status: WsStatus }
+    | { type: 'SET_REPO_WIKI_ID'; wikiId: string | null }
+    | { type: 'SET_REPO_WIKI_DEEP_LINK'; wikiId: string; tab?: WikiProjectTab | null; adminTab?: WikiAdminTab | null; componentId?: string | null }
+    | { type: 'CLEAR_REPO_WIKI_INITIAL' };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -273,6 +284,18 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedGitCommitHash: action.hash };
         case 'SET_WS_STATUS':
             return state.wsStatus === action.status ? state : { ...state, wsStatus: action.status };
+        case 'SET_REPO_WIKI_ID':
+            return { ...state, selectedRepoWikiId: action.wikiId };
+        case 'SET_REPO_WIKI_DEEP_LINK':
+            return {
+                ...state,
+                selectedRepoWikiId: action.wikiId,
+                repoWikiInitialTab: action.tab ?? null,
+                repoWikiInitialAdminTab: action.adminTab ?? null,
+                repoWikiInitialComponentId: action.componentId ?? null,
+            };
+        case 'CLEAR_REPO_WIKI_INITIAL':
+            return { ...state, repoWikiInitialTab: null, repoWikiInitialAdminTab: null, repoWikiInitialComponentId: null };
         default:
             return state;
     }
