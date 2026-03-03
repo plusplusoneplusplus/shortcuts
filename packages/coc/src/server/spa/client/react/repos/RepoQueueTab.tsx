@@ -420,12 +420,16 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                     onClick={() => selectTask(task.id, task)}
                                     data-task-id={task.id}
                                 >
-                                    <div className="flex items-center justify-between text-xs">
-                                        <span>
-                                            {task.type === 'chat' ? '💬' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '🚫'}{' '}
-                                            {(task.displayName || task.type || 'Task').substring(0, 35)}
+                                    <div className="flex items-center justify-between gap-1.5 text-xs">
+                                        <span className="flex items-center gap-1 min-w-0 truncate">
+                                            <span className="shrink-0">
+                                                {task.type === 'chat' ? '💬' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '🚫'}
+                                            </span>
+                                            <span className="truncate">
+                                                {task.displayName || task.type || 'Task'}
+                                            </span>
                                         </span>
-                                        <span className="text-[10px] text-[#848484]">
+                                        <span className="text-[10px] text-[#848484] shrink-0 whitespace-nowrap tabular-nums">
                                             {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                         </span>
                                     </div>
