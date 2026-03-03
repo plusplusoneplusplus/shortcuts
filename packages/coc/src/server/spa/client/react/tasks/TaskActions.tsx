@@ -54,7 +54,7 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
 
     return (
         <div className={`flex flex-col px-3 py-2 text-xs ${noBorder ? '' : 'border-b border-[#e0e0e0] dark:border-[#3c3c3c]'}`}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
                 {openFilePath && (
                     <>
                         <Button variant="ghost" size="sm" onClick={handleCopyPath}>
@@ -64,6 +64,18 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
                             Open in editor
                         </Button>
                     </>
+                )}
+
+                {selectedFolderPath && (
+                    <span
+                        data-testid="cwd-display"
+                        className="font-mono text-[#848484] dark:text-[#666] overflow-hidden whitespace-nowrap cursor-pointer hover:text-[#616161] dark:hover:text-[#999] min-w-0 shrink"
+                        style={{ direction: 'rtl', textOverflow: 'ellipsis' }}
+                        title={selectedFolderPath}
+                        onClick={() => copyToClipboard(selectedFolderPath)}
+                    >
+                        {selectedFolderPath}
+                    </span>
                 )}
 
                 <label className="flex items-center gap-1 ml-auto cursor-pointer text-[#616161] dark:text-[#999]">
@@ -91,18 +103,6 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
                     </div>
                 )}
             </div>
-
-            {selectedFolderPath && (
-                <div
-                    data-testid="cwd-display"
-                    className="mt-0.5 font-mono text-[#848484] dark:text-[#666] overflow-hidden whitespace-nowrap cursor-pointer hover:text-[#616161] dark:hover:text-[#999]"
-                    style={{ direction: 'rtl', textOverflow: 'ellipsis' }}
-                    title={selectedFolderPath}
-                    onClick={() => copyToClipboard(selectedFolderPath)}
-                >
-                    {selectedFolderPath}
-                </div>
-            )}
         </div>
     );
 }
