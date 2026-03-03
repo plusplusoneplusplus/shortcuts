@@ -13,10 +13,10 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, CopilotSDKService, MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
 import type { RunPipelinePayload } from '@plusplusoneplusplus/coc-server';
-import { denyAllPermissions, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
+import { denyAllPermissions, isWithinDirectory, loadDefaultMcpConfig } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { discoverPipelines } from '@plusplusoneplusplus/coc-server';
@@ -706,6 +706,18 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
                 // Empty body is fine — all fields are optional
             }
 
+            // Resolve MCP filter
+            let resolvedMcpServers: Record<string, MCPServerConfig> | undefined;
+            if (Array.isArray(ws.enabledMcpServers)) {
+                const defaultMcp = loadDefaultMcpConfig();
+                const allServers = defaultMcp.mcpServers;
+                resolvedMcpServers = Object.fromEntries(
+                    ws.enabledMcpServers
+                        .filter(key => key in allServers)
+                        .map(key => [key, allServers[key]])
+                );
+            }
+
             const payload: RunPipelinePayload = {
                 kind: 'run-pipeline',
                 pipelinePath: resolvedDir,
@@ -713,6 +725,7 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
                 model: body?.model,
                 params: body?.params,
                 workspaceId: id,
+                mcpServers: resolvedMcpServers,          // undefined when null (global config)
             };
 
             const taskInput: CreateTaskInput = {

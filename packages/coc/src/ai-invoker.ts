@@ -106,7 +106,10 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 workingDirectory: options.workingDirectory,
                 timeoutMs,
                 onPermissionRequest: permissionHandler,
-                loadDefaultMcpConfig: options.loadMcpConfig !== false,
+                loadDefaultMcpConfig: options.mcpServers !== undefined
+                    ? false                             // explicit server list → skip global load
+                    : options.loadMcpConfig !== false,  // existing behaviour preserved
+                mcpServers: options.mcpServers,
                 onStreamingChunk: options.onChunk,
                 tools: options.tools,
             };

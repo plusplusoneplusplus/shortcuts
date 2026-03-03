@@ -12,6 +12,22 @@ import {
 } from '../src/ai-invoker';
 import type { CLIAIInvokerOptions, AIAvailabilityResult } from '../src/ai-invoker';
 
+// Module-level mock for getCopilotSDKService to capture SendMessageOptions
+const mockSendMessageCapture = vi.fn().mockResolvedValue({ success: true, response: 'ok' });
+const mockIsAvailableCapture = vi.fn().mockResolvedValue({ available: true });
+const mockServiceCapture = {
+    sendMessage: mockSendMessageCapture,
+    isAvailable: mockIsAvailableCapture,
+};
+
+vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+    return {
+        ...actual,
+        getCopilotSDKService: () => mockServiceCapture,
+    };
+});
+
 describe('AI Invoker', () => {
     // ========================================================================
     // Dry Run Invoker
@@ -134,6 +150,68 @@ describe('AI Invoker', () => {
             if (!result.available) {
                 expect(typeof result.reason).toBe('string');
             }
+        });
+    });
+
+    // ========================================================================
+    // mcpServers and loadDefaultMcpConfig SendMessageOptions
+    // ========================================================================
+
+    describe('mcpServers and loadDefaultMcpConfig in SendMessageOptions', () => {
+        beforeEach(() => {
+            mockSendMessageCapture.mockReset();
+            mockSendMessageCapture.mockResolvedValue({ success: true, response: 'ok' });
+        });
+
+        it('should set loadDefaultMcpConfig=false and forward mcpServers when mcpServers is defined', async () => {
+            const mcpServers = {
+                github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
+            };
+            const invoker = createCLIAIInvoker({ mcpServers });
+            await invoker('test prompt');
+
+            expect(mockSendMessageCapture).toHaveBeenCalledOnce();
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.loadDefaultMcpConfig).toBe(false);
+            expect(sendOptions.mcpServers).toEqual(mcpServers);
+        });
+
+        it('should set loadDefaultMcpConfig=false and forward empty mcpServers when mcpServers is {}', async () => {
+            const invoker = createCLIAIInvoker({ mcpServers: {} });
+            await invoker('test prompt');
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.loadDefaultMcpConfig).toBe(false);
+            expect(sendOptions.mcpServers).toEqual({});
+        });
+
+        it('should preserve loadDefaultMcpConfig=true when mcpServers is undefined and loadMcpConfig is not set', async () => {
+            const invoker = createCLIAIInvoker({});
+            await invoker('test prompt');
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.loadDefaultMcpConfig).toBe(true);
+            expect(sendOptions.mcpServers).toBeUndefined();
+        });
+
+        it('should respect loadMcpConfig=false when mcpServers is undefined', async () => {
+            const invoker = createCLIAIInvoker({ loadMcpConfig: false });
+            await invoker('test prompt');
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.loadDefaultMcpConfig).toBe(false);
+            expect(sendOptions.mcpServers).toBeUndefined();
+        });
+
+        it('should override loadMcpConfig with loadDefaultMcpConfig=false when mcpServers is defined', async () => {
+            // Even if loadMcpConfig is explicitly true, mcpServers presence takes precedence
+            const mcpServers = { server1: { command: 'npx', args: ['server1'] } };
+            const invoker = createCLIAIInvoker({ mcpServers, loadMcpConfig: true });
+            await invoker('test prompt');
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.loadDefaultMcpConfig).toBe(false);
+            expect(sendOptions.mcpServers).toEqual(mcpServers);
         });
     });
 });

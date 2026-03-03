@@ -1042,6 +1042,7 @@ export class CLITaskExecutor implements TaskExecutor {
             model: payload.model || config.job?.model || config.map?.model,
             approvePermissions: this.approvePermissions,
             workingDirectory: payload.workingDirectory,
+            mcpServers: payload.mcpServers,          // forward per-workspace MCP filter
         });
 
         // Execute

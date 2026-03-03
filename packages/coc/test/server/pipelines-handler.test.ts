@@ -7,7 +7,7 @@
  * Uses port 0 (OS-assigned) for test isolation.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -15,6 +15,26 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+
+// Mock loadDefaultMcpConfig from pipeline-core to control the global MCP config in tests.
+// executePipeline is also mocked to avoid actual AI execution in pipeline-run tests.
+const mockLoadDefaultMcpConfig = vi.fn().mockReturnValue({
+    mcpServers: {} as Record<string, any>,
+    configPath: '',
+    loadedAt: 0,
+});
+
+vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+    return {
+        ...actual,
+        loadDefaultMcpConfig: () => mockLoadDefaultMcpConfig(),
+        executePipeline: vi.fn().mockResolvedValue({
+            executionStats: { totalItems: 0, successfulItems: 0, failedItems: 0, durationMs: 0 },
+            output: { formattedOutput: '' },
+        }),
+    };
+});
 
 // ============================================================================
 // Helpers
@@ -65,6 +85,14 @@ function postJSON(url: string, data: unknown) {
 function patchJSON(url: string, data: unknown) {
     return request(url, {
         method: 'PATCH',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
+
+function putJSON(url: string, data: unknown) {
+    return request(url, {
+        method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
     });
@@ -502,6 +530,99 @@ reduce:
             const body = JSON.parse(res.body);
             expect(body.taskId).toBeDefined();
             expect(body.pipelineName).toBe('param-pipeline');
+        });
+    });
+
+    // ========================================================================
+    // POST /api/workspaces/:id/pipelines/:name/run — MCP filter
+    // ========================================================================
+
+    describe('POST /api/workspaces/:id/pipelines/:name/run — MCP filter', () => {
+        const JOB_YAML = `name: "MCP Test Job"\njob:\n  prompt: "Say hello"\n`;
+
+        beforeEach(() => {
+            mockLoadDefaultMcpConfig.mockReset();
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                mcpServers: {},
+                configPath: '',
+                loadedAt: 0,
+            });
+        });
+
+        async function runAndGetTask(srv: ExecutionServer, wsId: string, pipeName: string) {
+            const runRes = await postJSON(
+                `${srv.url}/api/workspaces/${wsId}/pipelines/${pipeName}/run`,
+                {}
+            );
+            expect(runRes.status).toBe(201);
+            const { taskId } = JSON.parse(runRes.body);
+            const taskRes = await request(`${srv.url}/api/queue/${taskId}`);
+            expect(taskRes.status).toBe(200);
+            return JSON.parse(taskRes.body).task;
+        }
+
+        it('should set payload.mcpServers=undefined when enabledMcpServers is not set (global config)', async () => {
+            createPipelines({ 'mcp-pipe': JOB_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            // No PUT to mcp-config — enabledMcpServers is undefined
+            const task = await runAndGetTask(srv, wsId, 'mcp-pipe');
+            expect(task.payload.mcpServers).toBeUndefined();
+        });
+
+        it('should set payload.mcpServers=undefined when enabledMcpServers=null (opt-out)', async () => {
+            createPipelines({ 'mcp-pipe-null': JOB_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: null });
+            const task = await runAndGetTask(srv, wsId, 'mcp-pipe-null');
+            expect(task.payload.mcpServers).toBeUndefined();
+        });
+
+        it('should set payload.mcpServers={} when enabledMcpServers=[] (all disabled)', async () => {
+            createPipelines({ 'mcp-pipe-empty': JOB_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                mcpServers: { serverA: { command: 'npx', args: ['serverA'] } },
+                configPath: '',
+                loadedAt: 0,
+            });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: [] });
+            const task = await runAndGetTask(srv, wsId, 'mcp-pipe-empty');
+            expect(task.payload.mcpServers).toEqual({});
+        });
+
+        it('should filter to only named server when enabledMcpServers=["serverA"]', async () => {
+            createPipelines({ 'mcp-pipe-filter': JOB_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const serverAConfig = { command: 'npx', args: ['-y', 'serverA'] };
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                mcpServers: {
+                    serverA: serverAConfig,
+                    serverB: { command: 'npx', args: ['-y', 'serverB'] },
+                },
+                configPath: '',
+                loadedAt: 0,
+            });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: ['serverA'] });
+            const task = await runAndGetTask(srv, wsId, 'mcp-pipe-filter');
+            expect(task.payload.mcpServers).toEqual({ serverA: serverAConfig });
+        });
+
+        it('should produce {} when named server is absent from global config', async () => {
+            createPipelines({ 'mcp-pipe-absent': JOB_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                mcpServers: { serverA: { command: 'npx', args: ['serverA'] } },
+                configPath: '',
+                loadedAt: 0,
+            });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: ['serverX'] });
+            const task = await runAndGetTask(srv, wsId, 'mcp-pipe-absent');
+            expect(task.payload.mcpServers).toEqual({});
         });
     });
 });

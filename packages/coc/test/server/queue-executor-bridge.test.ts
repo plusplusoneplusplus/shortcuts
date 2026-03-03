@@ -5394,6 +5394,76 @@ job:
                 promptPreview: 'Run pipeline: my-named-pipeline',
             }));
         });
+
+        it('should forward mcpServers from payload to createCLIAIInvoker', async () => {
+            readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                if (String(p).includes('pipeline.yaml')) { return SIMPLE_JOB_YAML; }
+                return '';
+            });
+            mockExecutePipeline.mockResolvedValue({
+                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                output: { formattedOutput: 'done' },
+            });
+
+            const mcpServers = {
+                serverA: { command: 'npx', args: ['-y', 'serverA'] },
+            };
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-mcp-forward',
+                type: 'run-pipeline',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'run-pipeline' as const,
+                    pipelinePath: '/workspace/.vscode/pipelines/mcp-pipe',
+                    workingDirectory: '/workspace',
+                    mcpServers,
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockCreateCLIAIInvoker).toHaveBeenCalledWith(expect.objectContaining({
+                mcpServers,
+            }));
+        });
+
+        it('should not set mcpServers on createCLIAIInvoker when payload.mcpServers is undefined', async () => {
+            readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                if (String(p).includes('pipeline.yaml')) { return SIMPLE_JOB_YAML; }
+                return '';
+            });
+            mockExecutePipeline.mockResolvedValue({
+                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                output: { formattedOutput: 'done' },
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-mcp-undefined',
+                type: 'run-pipeline',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'run-pipeline' as const,
+                    pipelinePath: '/workspace/.vscode/pipelines/no-mcp',
+                    workingDirectory: '/workspace',
+                    // mcpServers intentionally omitted
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            expect(mockCreateCLIAIInvoker).toHaveBeenCalledWith(expect.objectContaining({
+                mcpServers: undefined,
+            }));
+        });
     });
 });
 
