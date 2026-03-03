@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useGlobalToast } from '../context/ToastContext';
 import { Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { WikiDetail } from '../wiki/WikiDetail';
 import type { WikiProjectTab, WikiAdminTab } from '../types/dashboard';
+
+function slugify(name: string): string {
+    const s = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    return s || 'wiki-' + Date.now();
+}
 
 interface RepoWikiTabProps {
     workspaceId: string;
@@ -17,6 +23,7 @@ interface RepoWikiTabProps {
 
 export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initialTab, initialAdminTab, initialComponentId }: RepoWikiTabProps) {
     const { state, dispatch } = useApp();
+    const { addToast } = useGlobalToast();
 
     const repoWikis = useMemo(() => {
         const filtered = state.wikis.filter((w: any) => w.repoPath === workspacePath);
@@ -61,15 +68,20 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
 
     const handleGenerateWiki = useCallback(async () => {
         if (!workspacePath) return;
+        const repoName = workspacePath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? 'wiki';
+        const id = slugify(repoName);
         const res = await fetchApi('/api/wikis', {
             method: 'POST',
-            body: JSON.stringify({ repoPath: workspacePath }),
+            body: JSON.stringify({ id, name: repoName, repoPath: workspacePath }),
         });
         if (res.ok) {
             const wiki = await res.json();
             location.hash = '#wiki/' + encodeURIComponent(wiki.id) + '/admin';
+        } else {
+            const body = await res.json().catch(() => ({ error: 'Failed to create wiki' }));
+            addToast(body.error || 'Failed to create wiki', 'error');
         }
-    }, [workspacePath]);
+    }, [workspacePath, addToast]);
 
     const handleRetryGeneration = useCallback(async (wikiId: string) => {
         try {

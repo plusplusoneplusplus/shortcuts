@@ -78,6 +78,26 @@ describe('RepoWikiTab', () => {
         it('should send repoPath in the request body', () => {
             expect(content).toContain('repoPath');
         });
+
+        it('should include id in the POST body derived from slugified repo name', () => {
+            expect(content).toMatch(/JSON\.stringify\(\s*\{[^}]*\bid\b[^}]*\}/);
+        });
+
+        it('should include name in the POST body', () => {
+            expect(content).toMatch(/JSON\.stringify\(\s*\{[^}]*\bname\b[^}]*\}/);
+        });
+
+        it('should slugify the repo name for id generation', () => {
+            expect(content).toContain('slugify');
+        });
+
+        it('should show a toast on POST failure', () => {
+            expect(content).toContain('addToast');
+        });
+
+        it('should handle non-ok response with error toast', () => {
+            expect(content).toMatch(/res\.ok[\s\S]*?else/);
+        });
     });
 
     describe('single wiki inline view (state 2)', () => {
