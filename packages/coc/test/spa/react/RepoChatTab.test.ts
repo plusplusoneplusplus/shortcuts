@@ -219,6 +219,11 @@ describe('RepoChatTab', () => {
             expect(source).toContain('workingDirectory: workspacePath');
         });
 
+        it('sends workingDirectory unconditionally (not gated by useProjectRoot)', () => {
+            // workingDirectory must appear as a plain key, not inside a conditional spread
+            expect(source).not.toContain('useProjectRoot ? { workingDirectory: workspacePath }');
+        });
+
         it('creates optimistic user turn after submit', () => {
             expect(source).toContain("role: 'user', content: prompt");
         });

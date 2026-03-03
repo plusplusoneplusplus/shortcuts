@@ -373,6 +373,33 @@ describe('Queue Handler', () => {
             expect(body.task.payload.prompt).toBeUndefined();
         });
 
+        it('should promote top-level workspaceId into payload', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                workspaceId: 'ws-abc-123',
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.workspaceId).toBe('ws-abc-123');
+        });
+
+        it('should not overwrite payload.workspaceId with top-level value', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'chat',
+                workspaceId: 'top-level-id',
+                payload: { workspaceId: 'payload-id', prompt: 'test' },
+                displayName: 'Chat',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.workspaceId).toBe('payload-id');
+        });
+
         it('should promote top-level prompt for ai-clarification type', async () => {
             const srv = await startServer();
 

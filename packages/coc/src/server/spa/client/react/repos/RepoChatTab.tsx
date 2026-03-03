@@ -499,7 +499,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 body: JSON.stringify({
                     type: readOnly ? 'readonly-chat' : 'chat',
                     workspaceId,
-                    ...(useProjectRoot ? { workingDirectory: workspacePath } : {}),
+                    workingDirectory: workspacePath,
                     prompt,
                     displayName: 'Chat',
                     images: initialImagePaste.images.length > 0

@@ -169,6 +169,13 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
         payload.workingDirectory = taskSpec.workingDirectory.trim();
     }
 
+    // Promote top-level workspaceId into payload when not already present
+    // This enables resolveRootPath() to look up the workspace's rootPath as a fallback cwd.
+    if (typeof taskSpec.workspaceId === 'string' && taskSpec.workspaceId.trim()
+        && !payload.workspaceId) {
+        payload.workspaceId = taskSpec.workspaceId.trim();
+    }
+
     // Promote top-level images into payload when not already present
     if (Array.isArray(taskSpec.images) && taskSpec.images.length > 0 && !payload.images) {
         payload.images = taskSpec.images.filter((img: unknown) => typeof img === 'string');
