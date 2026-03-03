@@ -807,6 +807,15 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             </Button>
                         </>
                     )}
+                    {(task?.config?.model || task?.metadata?.model) && (
+                        <span
+                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
+                            data-testid="chat-model-badge"
+                            title="Model used for this chat session"
+                        >
+                            {task.config?.model || task.metadata?.model}
+                        </span>
+                    )}
                     {metadataProcess && <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />}
                 </div>
             </div>
@@ -901,30 +910,12 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             </div>
                             {isMobile ? (
                                 <div className="flex items-center justify-between gap-2" data-testid="chat-followup-controls-row">
-                                    {(task?.config?.model || task?.metadata?.model) && (
-                                        <span
-                                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] max-w-[40%] truncate"
-                                            data-testid="chat-model-badge"
-                                            title="Model used for this chat session"
-                                        >
-                                            {task.config?.model || task.metadata?.model}
-                                        </span>
-                                    )}
                                     <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()} className="ml-auto">
                                         {sending ? '...' : 'Send'}
                                     </Button>
                                 </div>
                             ) : (
                                 <>
-                                    {(task?.config?.model || task?.metadata?.model) && (
-                                        <span
-                                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
-                                            data-testid="chat-model-badge"
-                                            title="Model used for this chat session"
-                                        >
-                                            {task.config?.model || task.metadata?.model}
-                                        </span>
-                                    )}
                                     <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
                                         {sending ? '...' : 'Send'}
                                     </Button>

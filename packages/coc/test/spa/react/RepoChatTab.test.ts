@@ -1202,41 +1202,36 @@ describe('RepoChatTab', () => {
         });
     });
 
-    describe('read-only model badge in follow-up area', () => {
-        it('renders a model badge with data-testid in follow-up area', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            expect(inputSection).toContain('data-testid="chat-model-badge"');
+    describe('model badge in header', () => {
+        it('renders a model badge with data-testid in header area', () => {
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('data-testid="chat-model-badge"');
         });
 
         it('reads model from task.config.model or task.metadata.model', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            expect(inputSection).toContain('task?.config?.model');
-            expect(inputSection).toContain('task?.metadata?.model');
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('task?.config?.model');
+            expect(headerSection).toContain('task?.metadata?.model');
         });
 
         it('only shows model badge when model is available', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            expect(inputSection).toContain("(task?.config?.model || task?.metadata?.model) && (");
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain("(task?.config?.model || task?.metadata?.model) && (");
         });
 
         it('displays model text from config or metadata', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            expect(inputSection).toContain('task.config?.model || task.metadata?.model');
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('task.config?.model || task.metadata?.model');
         });
 
-        it('model badge is positioned between textarea and Send button', () => {
+        it('model badge is not present in the input area', () => {
             const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            const textareaIdx = inputSection.indexOf('<textarea');
-            const badgeIdx = inputSection.indexOf('chat-model-badge');
-            const sendBtnIdx = inputSection.indexOf("'Send'");
-            expect(textareaIdx).toBeGreaterThan(-1);
-            expect(badgeIdx).toBeGreaterThan(textareaIdx);
-            expect(sendBtnIdx).toBeGreaterThan(badgeIdx);
+            expect(inputSection).not.toContain('chat-model-badge');
         });
 
         it('model badge has a title attribute for accessibility', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
-            expect(inputSection).toContain('title="Model used for this chat session"');
+            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('title="Model used for this chat session"');
         });
     });
 
