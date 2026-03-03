@@ -53,40 +53,54 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
     };
 
     return (
-        <div className={`flex items-center gap-2 px-3 py-2 text-xs ${noBorder ? '' : 'border-b border-[#e0e0e0] dark:border-[#3c3c3c]'}`}>
-            {openFilePath && (
-                <>
-                    <Button variant="ghost" size="sm" onClick={handleCopyPath}>
-                        Copy path
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={handleOpenInEditor}>
-                        Open in editor
-                    </Button>
-                </>
-            )}
+        <div className={`flex flex-col px-3 py-2 text-xs ${noBorder ? '' : 'border-b border-[#e0e0e0] dark:border-[#3c3c3c]'}`}>
+            <div className="flex items-center gap-2">
+                {openFilePath && (
+                    <>
+                        <Button variant="ghost" size="sm" onClick={handleCopyPath}>
+                            Copy path
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleOpenInEditor}>
+                            Open in editor
+                        </Button>
+                    </>
+                )}
 
-            <label className="flex items-center gap-1 ml-auto cursor-pointer text-[#616161] dark:text-[#999]">
-                <input
-                    type="checkbox"
-                    checked={showContextFiles}
-                    onChange={toggleShowContextFiles}
-                    className="accent-[#0078d4]"
-                />
-                Context files
-            </label>
+                <label className="flex items-center gap-1 ml-auto cursor-pointer text-[#616161] dark:text-[#999]">
+                    <input
+                        type="checkbox"
+                        checked={showContextFiles}
+                        onChange={toggleShowContextFiles}
+                        className="accent-[#0078d4]"
+                    />
+                    Context files
+                </label>
 
-            {nonContextSelected.length > 0 && (
-                <div className="flex items-center gap-1 ml-2">
-                    <span className="text-[#616161] dark:text-[#999]">
-                        {nonContextSelected.length} selected
-                    </span>
-                    <Button variant="primary" size="sm" data-testid="queue-all-btn"
-                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', folderPath: selectedFolderPath ?? null })}>
-                        Queue all
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={onClearSelection}>
-                        Clear
-                    </Button>
+                {nonContextSelected.length > 0 && (
+                    <div className="flex items-center gap-1 ml-2">
+                        <span className="text-[#616161] dark:text-[#999]">
+                            {nonContextSelected.length} selected
+                        </span>
+                        <Button variant="primary" size="sm" data-testid="queue-all-btn"
+                            onClick={() => queueDispatch({ type: 'OPEN_DIALOG', folderPath: selectedFolderPath ?? null })}>
+                            Queue all
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={onClearSelection}>
+                            Clear
+                        </Button>
+                    </div>
+                )}
+            </div>
+
+            {selectedFolderPath && (
+                <div
+                    data-testid="cwd-display"
+                    className="mt-0.5 font-mono text-[#848484] dark:text-[#666] overflow-hidden whitespace-nowrap cursor-pointer hover:text-[#616161] dark:hover:text-[#999]"
+                    style={{ direction: 'rtl', textOverflow: 'ellipsis' }}
+                    title={selectedFolderPath}
+                    onClick={() => copyToClipboard(selectedFolderPath)}
+                >
+                    {selectedFolderPath}
                 </div>
             )}
         </div>

@@ -237,4 +237,58 @@ describe('TaskActions — conditional buttons', () => {
         // README.md is a context file, so only 2 non-context files
         expect(screen.getByText('2 selected')).toBeTruthy();
     });
+
+    it('shows CWD display when selectedFolderPath is set', () => {
+        render(
+            <Wrap>
+                <TaskActions
+                    wsId="ws1"
+                    openFilePath={null}
+                    selectedFilePaths={[]}
+                    tasksFolderPath=".vscode/tasks"
+                    selectedFolderPath="coc/tasks"
+                    onClearSelection={vi.fn()}
+                />
+            </Wrap>
+        );
+        const cwd = screen.getByTestId('cwd-display');
+        expect(cwd).toBeTruthy();
+        expect(cwd.getAttribute('title')).toBe('coc/tasks');
+    });
+
+    it('does not show CWD display when selectedFolderPath is null', () => {
+        render(
+            <Wrap>
+                <TaskActions
+                    wsId="ws1"
+                    openFilePath={null}
+                    selectedFilePaths={[]}
+                    tasksFolderPath=".vscode/tasks"
+                    selectedFolderPath={null}
+                    onClearSelection={vi.fn()}
+                />
+            </Wrap>
+        );
+        expect(screen.queryByTestId('cwd-display')).toBeNull();
+    });
+
+    it('clicking CWD display copies selectedFolderPath to clipboard', () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText } });
+
+        render(
+            <Wrap>
+                <TaskActions
+                    wsId="ws1"
+                    openFilePath={null}
+                    selectedFilePaths={[]}
+                    tasksFolderPath=".vscode/tasks"
+                    selectedFolderPath="coc/tasks"
+                    onClearSelection={vi.fn()}
+                />
+            </Wrap>
+        );
+        fireEvent.click(screen.getByTestId('cwd-display'));
+        expect(writeText).toHaveBeenCalledWith('coc/tasks');
+    });
 });

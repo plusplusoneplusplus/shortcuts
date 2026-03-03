@@ -133,18 +133,26 @@ describe('TaskTree', () => {
     it('truncates columns on ancestor folder click', () => {
         renderTaskTree(mockTree);
 
-        // Click feature1 → column 1 appears
+        // Click feature1 → column 1 appears; 2 total → both visible (cols 0 and 1)
         fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
 
-        // Click sub folder inside feature1 → column 2 appears
+        // Click sub folder inside feature1 → column 2 appears; 3 total → sliding window shows cols 1 and 2 only
         fireEvent.click(screen.getByTestId('task-tree-item-sub'));
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+        // Column 0 is hidden by the sliding window
+        expect(screen.queryByTestId('miller-column-0')).toBeNull();
+        // Overflow indicator appears
+        expect(screen.getByTestId('column-overflow-indicator')).toBeTruthy();
 
-        // Click feature2 in column 0 → columns 1 and 2 should be replaced
-        fireEvent.click(screen.getByTestId('task-tree-item-feature2'));
+        // Click the file in col 1 → columns truncate to [col0, col1]; sliding window shows both
+        fireEvent.click(screen.getByTestId('task-tree-item-task'));
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         expect(screen.queryByTestId('miller-column-2')).toBeNull();
+        expect(screen.queryByTestId('column-overflow-indicator')).toBeNull();
     });
 
     it('sets openFilePath on file click', () => {
@@ -204,10 +212,12 @@ describe('TaskTree', () => {
         // On Windows, relativePath may use backslashes; deep-link must still split correctly
         renderTaskTree(mockTree, { initialFolderPath: 'feature1\\sub' });
 
-        // Should produce root + feature1 + sub = 3 columns
-        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        // Should produce root + feature1 + sub = 3 columns total, but sliding window shows only last 2
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         expect(screen.getByTestId('miller-column-2')).toBeTruthy();
+        // Column 0 is hidden by the sliding window
+        expect(screen.queryByTestId('miller-column-0')).toBeNull();
+        expect(screen.getByTestId('column-overflow-indicator')).toBeTruthy();
     });
 
     it('initialises to initialFilePath with backslash separators (Windows)', () => {

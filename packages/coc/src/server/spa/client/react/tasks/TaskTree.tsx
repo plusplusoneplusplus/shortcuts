@@ -228,12 +228,26 @@ export function TaskTree({
         ? (items: DragItem[], targetFolder: string) => onDropCallback(items, targetFolder)
         : () => {};
 
+    const MAX_VISIBLE_COLUMNS = 2;
+    const visibleStartIndex = Math.max(0, columns.length - MAX_VISIBLE_COLUMNS);
+    const visibleColumns = columns.slice(visibleStartIndex);
+
     return (
         <div
             className="flex flex-row h-full min-h-0"
             data-testid="task-tree"
         >
-            {columns.map((colNodes, colIndex) => {
+            {visibleStartIndex > 0 && (
+                <div
+                    data-testid="column-overflow-indicator"
+                    className="flex-shrink-0 flex items-start pt-2 px-1 text-xs text-[#848484] dark:text-[#666] border-r border-[#e0e0e0] dark:border-[#3c3c3c] select-none"
+                    title={`${visibleStartIndex} hidden column${visibleStartIndex > 1 ? 's' : ''}`}
+                >
+                    ‹ {visibleStartIndex}
+                </div>
+            )}
+            {visibleColumns.map((colNodes, relIndex) => {
+                const colIndex = visibleStartIndex + relIndex;
                 const columnFolder = getColumnFolder(colIndex);
                 const columnFolderPath = columnFolder ? getFolderKey(columnFolder) : '';
                 return (
