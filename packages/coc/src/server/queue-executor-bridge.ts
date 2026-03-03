@@ -17,7 +17,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ResolveCommentsPayload, RunPipelinePayload, TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
+import type { ResolveCommentsPayload, RunPipelinePayload, RunScriptPayload, TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
@@ -26,6 +26,7 @@ import {
     isFollowPromptPayload,
     isResolveCommentsPayload,
     isRunPipelinePayload,
+    isRunScriptPayload,
     isTaskGenerationPayload,
     saveImagesToTempFiles,
 } from '@plusplusoneplusplus/coc-server';
@@ -54,6 +55,7 @@ import {
 } from '@plusplusoneplusplus/pipeline-core';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { ImageBlobStore } from './image-blob-store';
 import { OutputFileManager } from './output-file-manager';
@@ -742,8 +744,57 @@ export class CLITaskExecutor implements TaskExecutor {
             return this.executeResolveComments(task);
         }
 
+        // Run script: spawn a child process and capture stdout/stderr
+        if (isRunScriptPayload(task.payload)) {
+            return this.executeRunScript(task);
+        }
+
         // For code-review: placeholder (no-op)
         return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
+    }
+
+    private async executeRunScript(task: QueuedTask): Promise<unknown> {
+        const payload = task.payload as unknown as RunScriptPayload;
+        const startTime = Date.now();
+
+        return new Promise((resolve, reject) => {
+            const child = spawn(payload.script, [], {
+                shell: true,
+                cwd: payload.workingDirectory,
+            });
+
+            let stdout = '';
+            let stderr = '';
+            let timedOut = false;
+
+            const timeoutMs = (task.config as any)?.timeoutMs;
+            let timer: NodeJS.Timeout | undefined;
+            if (timeoutMs != null && timeoutMs > 0) {
+                timer = setTimeout(() => {
+                    timedOut = true;
+                    child.kill();
+                }, timeoutMs);
+            }
+
+            child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+            child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+            child.on('error', (err) => {
+                if (timer) clearTimeout(timer);
+                reject(err);
+            });
+
+            child.on('close', (exitCode) => {
+                if (timer) clearTimeout(timer);
+                const durationMs = Date.now() - startTime;
+                resolve({
+                    success: !timedOut && exitCode === 0,
+                    result: { stdout, stderr, exitCode: timedOut ? null : exitCode },
+                    durationMs,
+                    timedOut,
+                });
+            });
+        });
     }
 
     private async executeWithAI(task: QueuedTask, prompt: string, options?: { tools?: Tool<any>[] }): Promise<unknown> {

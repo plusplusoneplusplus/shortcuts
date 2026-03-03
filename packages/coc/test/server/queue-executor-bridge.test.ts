@@ -77,6 +77,34 @@ vi.mock('../../src/server/image-blob-store', () => ({
 }));
 
 // ============================================================================
+// Mock child_process for run-script tests
+// ============================================================================
+
+import { EventEmitter } from 'events';
+
+interface FakeChild extends EventEmitter {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: ReturnType<typeof vi.fn>;
+}
+
+function makeFakeChild(): FakeChild {
+    const child = new EventEmitter() as FakeChild;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = vi.fn(() => {
+        // Simulate process being killed: emit close with null exit code
+        setImmediate(() => child.emit('close', null));
+    });
+    return child;
+}
+
+const mockSpawn = vi.fn();
+vi.mock('child_process', () => ({
+    spawn: (...args: any[]) => mockSpawn(...args),
+}));
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -6096,5 +6124,136 @@ describe('CLITaskExecutor - sdkSessionId stored via onSessionCreated', () => {
         expect(mockSendMessage).toHaveBeenCalledWith(
             expect.objectContaining({ onSessionCreated: expect.any(Function) }),
         );
+    });
+});
+
+// ============================================================================
+// run-script Tasks
+// ============================================================================
+
+describe('CLITaskExecutor — run-script tasks', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        mockSpawn.mockReset();
+        mockIsAvailable.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    function makeRunScriptTask(overrides?: Partial<QueuedTask>): QueuedTask {
+        return {
+            id: 'rs-task-1',
+            type: 'run-script',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'run-script', script: 'echo hello' },
+            config: {},
+            ...overrides,
+        };
+    }
+
+    it('happy path — exit code 0, captures stdout', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store);
+        const task = makeRunScriptTask();
+
+        const resultPromise = executor.execute(task);
+
+        setImmediate(() => {
+            child.stdout.emit('data', Buffer.from('hello\n'));
+            child.emit('close', 0);
+        });
+
+        const result = await resultPromise;
+        const inner = result.result as any;
+
+        expect(result.success).toBe(true);
+        expect(inner.success).toBe(true);
+        expect(inner.result.stdout).toBe('hello\n');
+        expect(inner.result.stderr).toBe('');
+        expect(inner.result.exitCode).toBe(0);
+        expect(inner.timedOut).toBe(false);
+    });
+
+    it('non-zero exit — success false, correct exitCode', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store);
+        const task = makeRunScriptTask({ id: 'rs-task-2' });
+
+        const resultPromise = executor.execute(task);
+
+        setImmediate(() => {
+            child.stderr.emit('data', Buffer.from('error output'));
+            child.emit('close', 1);
+        });
+
+        const result = await resultPromise;
+        const inner = result.result as any;
+
+        expect(inner.success).toBe(false);
+        expect(inner.result.exitCode).toBe(1);
+        expect(inner.result.stderr).toBe('error output');
+    });
+
+    it('timeout — kills process, timedOut true, exitCode null', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store);
+        const task = makeRunScriptTask({
+            id: 'rs-task-3',
+            config: { timeoutMs: 50 },
+        });
+
+        const result = await executor.execute(task);
+        const inner = result.result as any;
+
+        expect(child.kill).toHaveBeenCalled();
+        expect(inner.timedOut).toBe(true);
+        expect(inner.success).toBe(false);
+        expect(inner.result.exitCode).toBeNull();
+    }, 2000);
+
+    it('spawn error — executor returns failed result', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store);
+        const task = makeRunScriptTask({ id: 'rs-task-4' });
+
+        const resultPromise = executor.execute(task);
+
+        setImmediate(() => {
+            child.emit('error', new Error('spawn ENOENT'));
+        });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(false);
+    });
+
+    it('non-run-script task still reaches AI path (regression guard)', async () => {
+        mockSendMessage.mockResolvedValue({ success: true, response: 'AI response', sessionId: 'sess-1' });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'ai-task-1',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'Do something' },
+            config: { timeoutMs: 30000 },
+        };
+
+        const result = await executor.execute(task);
+
+        expect(result.success).toBe(true);
+        expect(mockSpawn).not.toHaveBeenCalled();
     });
 });
