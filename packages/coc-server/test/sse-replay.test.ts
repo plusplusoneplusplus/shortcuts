@@ -387,6 +387,50 @@ describe('SSE replay', () => {
         expect(snapshotTurns[5].streaming).toBe(true);
     });
 
+    // Test 11: No writes after disconnect
+    it('stops writing chunks to response after client disconnects', async () => {
+        let outputCallback: ((e: ProcessOutputEvent) => void) | undefined;
+        store.onProcessOutput = vi.fn((_id, cb) => {
+            outputCallback = cb;
+            return () => { outputCallback = undefined; };
+        });
+        const process = createProcessFixture({ id: 'p-disc', status: 'running', conversationTurns: [] });
+        store.processes.set('p-disc', process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        handleProcessStream(req as any, res as any, 'p-disc', store);
+        await vi.waitFor(() => expect(store.onProcessOutput).toHaveBeenCalled());
+
+        // First chunk arrives before disconnect
+        outputCallback!({ type: 'chunk', content: 'before-close' });
+        // Client disconnects
+        (req as any).emit('close');
+        // Second chunk arrives after disconnect — must NOT be written
+        outputCallback?.({ type: 'chunk', content: 'after-close' });
+
+        const frames = parseSSEFrames(res._chunks);
+        const chunkFrames = frames.filter(f => f.event === 'chunk');
+        expect(chunkFrames).toHaveLength(1);
+        expect((chunkFrames[0].data as any).content).toBe('before-close');
+    });
+
+    // Test 12: Unsubscribe is called on disconnect
+    it('calls the store unsubscribe function when client disconnects', async () => {
+        const unsubscribe = vi.fn();
+        store.onProcessOutput = vi.fn((_id, _cb) => unsubscribe);
+        const process = createProcessFixture({ id: 'p-unsub', status: 'running', conversationTurns: [] });
+        store.processes.set('p-unsub', process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        handleProcessStream(req as any, res as any, 'p-unsub', store);
+        await vi.waitFor(() => expect(store.onProcessOutput).toHaveBeenCalled());
+
+        (req as any).emit('close');
+        expect(unsubscribe).toHaveBeenCalledTimes(1);
+    });
+
     // Test 10: Suggestions event is forwarded to SSE stream
     it('forwards suggestions event to SSE stream', async () => {
         let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;
