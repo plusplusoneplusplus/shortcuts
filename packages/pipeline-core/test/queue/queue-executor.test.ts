@@ -867,6 +867,69 @@ describe('QueueExecutor', () => {
             expect(completedCount).toBe(3);
         });
     });
+
+    // ========================================================================
+    // Pause Marker
+    // ========================================================================
+
+    describe('pause marker', () => {
+        it('executor pauses when it encounters a pause marker', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+
+            // enqueue a task then insert a marker before it
+            queueManager.insertPauseMarker(0);
+
+            executor.start();
+
+            // Give the loop a chance to run
+            await delay(80);
+
+            expect(queueManager.isPaused()).toBe(true);
+            // The marker was consumed (no longer in queue)
+            expect(queueManager.getQueueItems().some(i => (i as any).kind === 'pause-marker')).toBe(false);
+        });
+
+        it('emits pause-marker-reached event when marker is consumed', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            const handler = vi.fn();
+            executor.on('pause-marker-reached', handler);
+
+            queueManager.insertPauseMarker(0);
+
+            executor.start();
+
+            await waitFor(() => handler.mock.calls.length > 0, 2000);
+
+            expect(handler).toHaveBeenCalledTimes(1);
+        });
+
+        it('tasks after a marker run after manually resuming', async () => {
+            let completedCount = 0;
+            const countingExecutor = createSimpleTaskExecutor(async () => {
+                completedCount++;
+                return 'done';
+            });
+
+            executor = new QueueExecutor(queueManager, countingExecutor, { autoStart: false });
+
+            queueManager.enqueue(createTestTask());
+            queueManager.insertPauseMarker(1);
+            queueManager.enqueue(createTestTask());
+
+            executor.start();
+
+            // Wait until first task done and queue pauses on marker
+            await waitFor(() => queueManager.isPaused() && completedCount === 1, 2000);
+
+            expect(completedCount).toBe(1);
+
+            queueManager.resume();
+
+            await waitFor(() => completedCount === 2, 2000);
+
+            expect(completedCount).toBe(2);
+        });
+    });
 });
 
 // ============================================================================

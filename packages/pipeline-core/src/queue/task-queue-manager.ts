@@ -13,6 +13,8 @@
 import { EventEmitter } from 'events';
 import {
     QueuedTask,
+    PauseMarker,
+    QueueItem,
     CreateTaskInput,
     TaskUpdate,
     QueueChangeEvent,
@@ -24,12 +26,21 @@ import {
     generateTaskId,
 } from './types';
 
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/** Type guard: true when the queue item is a PauseMarker. */
+function isPauseMarker(item: QueueItem): item is PauseMarker {
+    return (item as PauseMarker).kind === 'pause-marker';
+}
+
 /**
  * Task queue manager for managing AI task execution queue
  */
 export class TaskQueueManager extends EventEmitter {
-    /** Queue of pending tasks (sorted by priority) */
-    private queue: QueuedTask[] = [];
+    /** Queue of pending tasks and pause markers (sorted by priority for tasks; markers at absolute positions) */
+    private queue: Array<QueueItem> = [];
     /** Currently running tasks */
     private running: Map<string, QueuedTask> = new Map();
     /** History of completed/failed/cancelled tasks */
@@ -70,7 +81,7 @@ export class TaskQueueManager extends EventEmitter {
         }
 
         // Check queue size limit
-        if (this.options.maxQueueSize > 0 && this.queue.length >= this.options.maxQueueSize) {
+        if (this.options.maxQueueSize > 0 && this.size() >= this.options.maxQueueSize) {
             throw new Error(`Queue is full (max size: ${this.options.maxQueueSize})`);
         }
 
@@ -93,17 +104,24 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
-     * Remove and return the next task from the queue
-     * @returns The next task, or undefined if queue is empty
+     * Remove and return the next eligible item from the queue.
+     * Pause markers are returned (and consumed) when encountered in order.
+     * Frozen tasks and tasks from paused repos are skipped.
+     * @returns The next item, or undefined if queue is empty
      */
-    dequeue(): QueuedTask | undefined {
+    dequeue(): QueueItem | undefined {
         if (this.queue.length === 0) {
             return undefined;
         }
 
-        // Skip frozen tasks and (when configured) tasks from paused repos
         for (let i = 0; i < this.queue.length; i++) {
-            const task = this.queue[i];
+            const item = this.queue[i];
+            if (isPauseMarker(item)) {
+                // Markers are always eligible — return and consume
+                this.queue.splice(i, 1);
+                return item;
+            }
+            const task = item as QueuedTask;
             if (task.frozen) continue;
             if (this.getTaskRepoId && this.pausedRepos.size > 0) {
                 const repoId = this.getTaskRepoId(task);
@@ -116,12 +134,17 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
-     * Get the next eligible task without removing it.
+     * Get the next eligible item without removing it.
+     * Pause markers are returned when encountered in order.
      * Skips frozen tasks and (when configured) tasks from paused repos.
-     * @returns The next eligible task, or undefined if none available
+     * @returns The next eligible item, or undefined if none available
      */
-    peek(): QueuedTask | undefined {
-        for (const task of this.queue) {
+    peek(): QueueItem | undefined {
+        for (const item of this.queue) {
+            if (isPauseMarker(item)) {
+                return item;
+            }
+            const task = item as QueuedTask;
             if (task.frozen) continue;
             if (this.getTaskRepoId && this.pausedRepos.size > 0) {
                 const repoId = this.getTaskRepoId(task);
@@ -140,14 +163,25 @@ export class TaskQueueManager extends EventEmitter {
      * Get all tasks (queued + running + history)
      */
     getAll(): QueuedTask[] {
-        return [...this.queue, ...Array.from(this.running.values()), ...this.history];
+        return [
+            ...this.queue.filter((item): item is QueuedTask => !isPauseMarker(item)),
+            ...Array.from(this.running.values()),
+            ...this.history,
+        ];
     }
 
     /**
-     * Get all queued tasks (waiting for execution)
+     * Get all queue items in order, including pause markers.
+     */
+    getQueueItems(): Array<QueueItem> {
+        return [...this.queue];
+    }
+
+    /**
+     * Get all queued tasks (waiting for execution, excluding pause markers)
      */
     getQueued(): QueuedTask[] {
-        return [...this.queue];
+        return this.queue.filter((item): item is QueuedTask => !isPauseMarker(item));
     }
 
     /**
@@ -186,23 +220,24 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
-     * Get the number of queued tasks
+     * Get the number of queued tasks (excludes pause markers)
      */
     size(): number {
-        return this.queue.length;
+        return this.queue.filter(t => !isPauseMarker(t)).length;
     }
 
     /**
      * Get queue statistics
      */
     getStats(): QueueStats {
+        const taskCount = this.queue.filter(t => !isPauseMarker(t)).length;
         return {
-            queued: this.queue.length,
+            queued: taskCount,
             running: this.running.size,
             completed: this.history.filter(t => t.status === 'completed').length,
             failed: this.history.filter(t => t.status === 'failed').length,
             cancelled: this.history.filter(t => t.status === 'cancelled').length,
-            total: this.queue.length + this.running.size + this.history.length,
+            total: taskCount + this.running.size + this.history.length,
             isPaused: this.paused,
             isDraining: this.draining,
             pausedRepos: Array.from(this.pausedRepos),
@@ -217,8 +252,8 @@ export class TaskQueueManager extends EventEmitter {
      * Get a task by ID (searches all: queued, running, history)
      */
     getTask(id: string): QueuedTask | undefined {
-        // Check queue
-        const queued = this.queue.find(t => t.id === id);
+        // Check queue (exclude pause markers)
+        const queued = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
         if (queued) return queued;
 
         // Check running
@@ -237,9 +272,9 @@ export class TaskQueueManager extends EventEmitter {
      */
     updateTask(id: string, updates: TaskUpdate): boolean {
         // Try to find in queue
-        const queueIndex = this.queue.findIndex(t => t.id === id);
+        const queueIndex = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (queueIndex !== -1) {
-            const task = this.queue[queueIndex];
+            const task = this.queue[queueIndex] as QueuedTask;
             Object.assign(task, updates);
 
             // Re-sort if priority changed
@@ -281,13 +316,13 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if task was found and removed
      */
     removeTask(id: string): boolean {
-        const index = this.queue.findIndex(t => t.id === id);
+        const index = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (index === -1) {
             return false;
         }
 
         const [task] = this.queue.splice(index, 1);
-        this.emitChange('removed', task);
+        this.emitChange('removed', task as QueuedTask);
         this.emit('taskRemoved', task);
         return true;
     }
@@ -299,9 +334,10 @@ export class TaskQueueManager extends EventEmitter {
      */
     cancelTask(id: string): boolean {
         // Try to cancel from queue
-        const queueIndex = this.queue.findIndex(t => t.id === id);
+        const queueIndex = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (queueIndex !== -1) {
-            const [task] = this.queue.splice(queueIndex, 1);
+            const [item] = this.queue.splice(queueIndex, 1);
+            const task = item as QueuedTask;
             task.status = 'cancelled';
             task.completedAt = Date.now();
             this.addToHistory(task);
@@ -336,12 +372,13 @@ export class TaskQueueManager extends EventEmitter {
      * @returns The task if found and started
      */
     markStarted(id: string): QueuedTask | undefined {
-        const index = this.queue.findIndex(t => t.id === id);
+        const index = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (index === -1) {
             return undefined;
         }
 
-        const [task] = this.queue.splice(index, 1);
+        const [item] = this.queue.splice(index, 1);
+        const task = item as QueuedTask;
         task.status = 'running';
         task.startedAt = Date.now();
         this.running.set(id, task);
@@ -435,7 +472,7 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if the task was found in the queue and frozen
      */
     freezeTask(id: string): boolean {
-        const task = this.queue.find(t => t.id === id);
+        const task = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
         if (!task) return false;
         task.frozen = true;
         this.emitChange('frozen', task);
@@ -448,10 +485,55 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if the task was found in the queue and unfrozen
      */
     unfreezeTask(id: string): boolean {
-        const task = this.queue.find(t => t.id === id);
+        const task = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
         if (!task || !task.frozen) return false;
         task.frozen = false;
         this.emitChange('unfrozen', task);
+        return true;
+    }
+
+    // ========================================================================
+    // Pause Markers
+    // ========================================================================
+
+    /**
+     * Insert a pause marker at the given position in the queue.
+     * When the executor reaches the marker, it pauses and discards it.
+     *
+     * @param afterIndex 0-based index of the item after which the marker is inserted.
+     *   Pass -1 to insert at the very beginning.
+     *   Values >= queue.length insert at the end.
+     * @returns The id of the newly created marker.
+     */
+    insertPauseMarker(afterIndex: number): string {
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: generateTaskId(),
+            createdAt: Date.now(),
+        };
+
+        // Clamp insertion index
+        const insertAt = Math.max(0, Math.min(afterIndex + 1, this.queue.length));
+        this.queue.splice(insertAt, 0, marker);
+
+        this.emitChange('pause-marker-added');
+        this.emit('pause-marker-added', marker);
+        return marker.id;
+    }
+
+    /**
+     * Remove a pause marker by id.
+     * @returns true if the marker was found and removed
+     */
+    removePauseMarker(markerId: string): boolean {
+        const index = this.queue.findIndex(
+            item => isPauseMarker(item) && item.id === markerId
+        );
+        if (index === -1) return false;
+
+        this.queue.splice(index, 1);
+        this.emitChange('pause-marker-removed');
+        this.emit('pause-marker-removed', markerId);
         return true;
     }
 
@@ -465,15 +547,16 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if task was found and moved
      */
     moveToTop(id: string): boolean {
-        const index = this.queue.findIndex(t => t.id === id);
+        const index = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (index === -1 || index === 0) {
             return index === 0; // Already at top
         }
 
-        const [task] = this.queue.splice(index, 1);
+        const [item] = this.queue.splice(index, 1);
+        const task = item as QueuedTask;
         // Set to high priority and earliest timestamp to ensure it's first
         task.priority = 'high';
-        task.createdAt = this.queue.length > 0 ? this.queue[0].createdAt - 1 : Date.now();
+        task.createdAt = this.queue.length > 0 ? (this.queue[0] as QueuedTask).createdAt - 1 : Date.now();
         this.queue.unshift(task);
 
         this.emitChange('reordered', task);
@@ -486,7 +569,7 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if task was found and moved
      */
     moveUp(id: string): boolean {
-        const index = this.queue.findIndex(t => t.id === id);
+        const index = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (index <= 0) {
             return false;
         }
@@ -494,7 +577,7 @@ export class TaskQueueManager extends EventEmitter {
         // Swap with previous task
         [this.queue[index - 1], this.queue[index]] = [this.queue[index], this.queue[index - 1]];
 
-        this.emitChange('reordered', this.queue[index - 1]);
+        this.emitChange('reordered', this.queue[index - 1] as QueuedTask);
         return true;
     }
 
@@ -504,7 +587,7 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if task was found and moved
      */
     moveDown(id: string): boolean {
-        const index = this.queue.findIndex(t => t.id === id);
+        const index = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (index === -1 || index >= this.queue.length - 1) {
             return false;
         }
@@ -512,7 +595,7 @@ export class TaskQueueManager extends EventEmitter {
         // Swap with next task
         [this.queue[index], this.queue[index + 1]] = [this.queue[index + 1], this.queue[index]];
 
-        this.emitChange('reordered', this.queue[index + 1]);
+        this.emitChange('reordered', this.queue[index + 1] as QueuedTask);
         return true;
     }
 
@@ -524,13 +607,13 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if the task was found (even if already at target), false if not found
      */
     moveToPosition(id: string, targetIndex: number): boolean {
-        const currentIndex = this.queue.findIndex(t => t.id === id);
+        const currentIndex = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (currentIndex === -1) return false;
         const clamped = Math.max(0, Math.min(targetIndex, this.queue.length - 1));
         if (currentIndex === clamped) return true;
-        const [task] = this.queue.splice(currentIndex, 1);
-        this.queue.splice(clamped, 0, task);
-        this.emitChange('reordered', task);
+        const [item] = this.queue.splice(currentIndex, 1);
+        this.queue.splice(clamped, 0, item);
+        this.emitChange('reordered', item as QueuedTask);
         return true;
     }
 
@@ -661,7 +744,8 @@ export class TaskQueueManager extends EventEmitter {
      * Resolves immediately if already idle.
      */
     waitUntilIdle(): Promise<void> {
-        if (this.queue.length === 0 && this.running.size === 0) {
+        const taskCount = this.queue.filter(t => !isPauseMarker(t)).length;
+        if (taskCount === 0 && this.running.size === 0) {
             return Promise.resolve();
         }
         return new Promise<void>((resolve) => {
@@ -673,22 +757,25 @@ export class TaskQueueManager extends EventEmitter {
      * Get counts of queued and running tasks.
      */
     getTaskCounts(): { queued: number; running: number; total: number } {
+        const taskCount = this.queue.filter(t => !isPauseMarker(t)).length;
         return {
-            queued: this.queue.length,
+            queued: taskCount,
             running: this.running.size,
-            total: this.queue.length + this.running.size,
+            total: taskCount + this.running.size,
         };
     }
 
     /**
-     * Clear all queued tasks (does not affect running or history)
+     * Clear all queued tasks and markers (does not affect running or history)
      */
     clear(): void {
-        const clearedTasks = [...this.queue];
+        const clearedItems = [...this.queue];
         this.queue = [];
 
-        // Move all to history as cancelled
-        for (const task of clearedTasks) {
+        // Move tasks to history as cancelled; discard markers
+        for (const item of clearedItems) {
+            if (isPauseMarker(item)) continue;
+            const task = item as QueuedTask;
             task.status = 'cancelled';
             task.completedAt = Date.now();
             this.addToHistory(task);
@@ -797,7 +884,8 @@ export class TaskQueueManager extends EventEmitter {
      * Check if queue is idle and resolve pending waiters
      */
     private checkIdle(): void {
-        if (this.queue.length === 0 && this.running.size === 0 && this.idleResolvers.length > 0) {
+        const taskCount = this.queue.filter(t => !isPauseMarker(t)).length;
+        if (taskCount === 0 && this.running.size === 0 && this.idleResolvers.length > 0) {
             const resolvers = this.idleResolvers;
             this.idleResolvers = [];
             for (const resolve of resolvers) {
@@ -807,23 +895,22 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
-     * Insert a task into the queue maintaining priority order
+     * Insert a task into the queue maintaining priority order.
+     * Uses a linear scan because pause markers can interrupt the sorted order.
+     * Markers are transparent in priority comparison — the task is inserted before
+     * the first task with strictly lower priority, which may place it before or
+     * after existing markers.
      */
     private insertByPriority(task: QueuedTask): void {
-        // Find insertion point using binary search
-        let low = 0;
-        let high = this.queue.length;
-
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (comparePriority(task, this.queue[mid]) < 0) {
-                high = mid;
-            } else {
-                low = mid + 1;
+        let insertAt = this.queue.length;
+        for (let i = 0; i < this.queue.length; i++) {
+            const item = this.queue[i];
+            if (!isPauseMarker(item) && comparePriority(task, item as QueuedTask) < 0) {
+                insertAt = i;
+                break;
             }
         }
-
-        this.queue.splice(low, 0, task);
+        this.queue.splice(insertAt, 0, task);
     }
 
     /**

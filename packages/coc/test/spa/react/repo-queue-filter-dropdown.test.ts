@@ -120,9 +120,11 @@ describe('RepoQueueTab filter dropdown', () => {
             expect(source).toContain('running.filter(t => taskMatchesFilter(t, filterType))');
         });
 
-        it('derives filteredQueued via useMemo with taskMatchesFilter', () => {
+        it('derives filteredQueued via useMemo with taskMatchesFilter (always includes markers)', () => {
             expect(source).toMatch(/filteredQueued\s*=\s*useMemo/);
-            expect(source).toContain('queued.filter(t => taskMatchesFilter(t, filterType))');
+            // markers are always included; tasks are filtered
+            expect(source).toMatch(/queued\.filter\(t\s*=>/);
+            expect(source).toContain('taskMatchesFilter(t, filterType)');
         });
 
         it('derives filteredHistory via useMemo with taskMatchesFilter', () => {
@@ -167,8 +169,9 @@ describe('RepoQueueTab filter dropdown', () => {
             expect(source).toContain('({filteredRunning.length})');
         });
 
-        it('Queued Tasks count uses filteredQueued.length', () => {
-            expect(source).toContain('({filteredQueued.length})');
+        it('Queued Tasks count uses filteredQueued length (excluding pause markers)', () => {
+            // The count either uses filteredQueued.length or filters out pause-markers
+            expect(source).toMatch(/filteredQueued(?:\.filter[^)]*\))?\s*\.length/);
         });
 
         it('Completed Tasks count uses filteredHistory.length', () => {

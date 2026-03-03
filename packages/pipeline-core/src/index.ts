@@ -679,6 +679,10 @@ export {
 
     // Repo Queue Registry
     RepoQueueRegistry,
+
+    // Pause Marker types
+    PauseMarker,
+    QueueItem,
 } from './queue';
 
 // ============================================================================

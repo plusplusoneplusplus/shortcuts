@@ -12,6 +12,22 @@
 // ============================================================================
 
 /**
+ * A pause marker inserted into the queue.
+ * When the executor dequeues this item, it pauses the queue
+ * (same as clicking ⏸ manually) and discards the marker.
+ */
+export interface PauseMarker {
+    kind: 'pause-marker';
+    id: string;
+    createdAt: number;
+}
+
+/**
+ * An item in the task queue — either a regular task or a pause marker.
+ */
+export type QueueItem = QueuedTask | PauseMarker;
+
+/**
  * Priority level for queued tasks
  * Higher priority tasks are executed first
  */
@@ -156,7 +172,9 @@ export type QueueChangeType =
     | 'drain-started'
     | 'drain-cancelled'
     | 'frozen'
-    | 'unfrozen';
+    | 'unfrozen'
+    | 'pause-marker-added'
+    | 'pause-marker-removed';
 
 /**
  * Event emitted when the queue changes

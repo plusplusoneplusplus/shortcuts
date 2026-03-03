@@ -59,6 +59,10 @@ export {
     TaskPriority,
     QueueStatus,
 
+    // Pause marker
+    PauseMarker,
+    QueueItem,
+
     // Task configuration
     TaskExecutionConfig,
     DEFAULT_TASK_CONFIG,

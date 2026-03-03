@@ -2384,4 +2384,76 @@ describe('Queue Handler', () => {
             expect(lines.some(l => l.startsWith(`[Queue] move-down task=${id1}`))).toBe(true);
         });
     });
+
+    // ========================================================================
+    // Pause Marker
+    // ========================================================================
+
+    describe('POST /api/queue/pause-marker — Insert Pause Marker', () => {
+        it('returns 201 with markerId on success', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {}); // pause so tasks stay queued
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'T1' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'T2' }));
+
+            const res = await postJSON(`${srv.url}/api/queue/pause-marker`, { afterIndex: 1 });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.markerId).toBeDefined();
+            expect(typeof body.markerId).toBe('string');
+        });
+
+        it('inserted marker appears in GET /api/queue queued list', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'T1' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'T2' }));
+
+            const markerRes = await postJSON(`${srv.url}/api/queue/pause-marker`, { afterIndex: 1 });
+            const { markerId } = JSON.parse(markerRes.body);
+
+            const listRes = await request(`${srv.url}/api/queue`);
+            const list = JSON.parse(listRes.body);
+            const markerItem = list.queued.find((i: any) => i.kind === 'pause-marker');
+            expect(markerItem).toBeDefined();
+            expect(markerItem.id).toBe(markerId);
+        });
+
+        it('returns 400 when afterIndex is missing', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/pause-marker`, {});
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when afterIndex is not a number', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/pause-marker`, { afterIndex: 'bad' });
+            expect(res.status).toBe(400);
+        });
+    });
+
+    describe('DELETE /api/queue/pause-marker/:markerId — Remove Pause Marker', () => {
+        it('removes marker and returns 200', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask());
+
+            const markerRes = await postJSON(`${srv.url}/api/queue/pause-marker`, { afterIndex: 1 });
+            const { markerId } = JSON.parse(markerRes.body);
+
+            const delRes = await request(`${srv.url}/api/queue/pause-marker/${markerId}`, { method: 'DELETE' });
+            expect(delRes.status).toBe(200);
+
+            // Marker should be gone from queue
+            const listRes = await request(`${srv.url}/api/queue`);
+            const list = JSON.parse(listRes.body);
+            expect(list.queued.some((i: any) => i.kind === 'pause-marker')).toBe(false);
+        });
+
+        it('returns 404 for unknown markerId', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/pause-marker/no-such-id`, { method: 'DELETE' });
+            expect(res.status).toBe(404);
+        });
+    });
 });

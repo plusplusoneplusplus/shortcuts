@@ -48,6 +48,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [filterType, setFilterType] = useState<string>('all');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' } | null>(null);
+    const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { dispatch: appDispatch } = useApp();
@@ -99,7 +100,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     }, [workspaceId]);
 
     // Derive available filter options and filtered task lists
-    const allTasks = useMemo(() => [...running, ...queued, ...history], [running, queued, history]);
+    const allTasks = useMemo(() => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history], [running, queued, history]);
     const availableFilters = useMemo(() => {
         const opts: { value: string; label: string }[] = [{ value: 'all', label: 'All' }];
         const types = new Set(allTasks.map((t: any) => t.type as string));
@@ -112,7 +113,11 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     }, [allTasks]);
 
     const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, filterType)), [running, filterType]);
-    const filteredQueued = useMemo(() => queued.filter(t => taskMatchesFilter(t, filterType)), [queued, filterType]);
+    // Pause markers are always shown regardless of type filter
+    const filteredQueued = useMemo(
+        () => queued.filter(t => t.kind === 'pause-marker' || taskMatchesFilter(t, filterType)),
+        [queued, filterType]
+    );
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType)), [history, filterType]);
 
     // Apply per-repo WS updates directly without HTTP round-trip
@@ -206,6 +211,21 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
 
     const handleUnfreeze = async (taskId: string) => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/unfreeze', { method: 'POST' });
+        fetchQueue();
+    };
+
+    const handleInsertPauseMarker = async (afterIndex: number) => {
+        setInsertingPauseAt(null);
+        await fetch(getApiBase() + '/queue/pause-marker', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ afterIndex, repoId: workspaceId }),
+        });
+        fetchQueue();
+    };
+
+    const handleRemovePauseMarker = async (markerId: string) => {
+        await fetch(getApiBase() + '/queue/pause-marker/' + encodeURIComponent(markerId), { method: 'DELETE' });
         fetchQueue();
     };
 
@@ -365,36 +385,69 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             {filteredQueued.length > 0 && (
                 <div>
                     <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
-                        Queued Tasks <span className="text-[10px]">({filteredQueued.length})</span>
+                        Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
                     </div>
                     <div className="flex flex-col gap-1">
-                        {filteredQueued.map((task, index) => (
-                            <div
-                                key={task.id}
-                                draggable={!isMobile}
-                                onDragStart={isMobile ? undefined : createDragStartHandler(task.id, index)}
-                                onDragEnd={isMobile ? undefined : createDragEndHandler()}
-                                onDragOver={isMobile ? undefined : createDragOverHandler(index)}
-                                onDragEnter={isMobile ? undefined : createDragEnterHandler(index)}
-                                onDragLeave={isMobile ? undefined : createDragLeaveHandler(index)}
-                                onDrop={isMobile ? undefined : createDropHandler(index, handleMoveToPosition)}
-                                className={cn(
-                                    !isMobile && 'cursor-grab active:cursor-grabbing',
-                                    draggedTaskId === task.id && 'opacity-40',
-                                    dropTargetIndex === index && dropPosition === 'above' && 'border-t-2 border-[#007fd4]',
-                                    dropTargetIndex === index && dropPosition === 'below' && 'border-b-2 border-[#007fd4]',
-                                )}
-                            >
-                                <QueueTaskItem
-                                    task={task}
-                                    status="queued"
-                                    now={now}
-                                    selected={selectedTaskId === task.id}
-                                    onClick={() => selectTask(task.id, task)}
-                                    onContextMenu={e => handleTaskContextMenu(e, task.id, 'queued')}
-                                />
-                            </div>
-                        ))}
+                        {/* Insert-pause zone before first item */}
+                        {!isMobile && (
+                            <PauseInsertZone
+                                index={-1}
+                                active={insertingPauseAt === -1}
+                                onMouseEnter={() => setInsertingPauseAt(-1)}
+                                onMouseLeave={() => setInsertingPauseAt(null)}
+                                onClick={() => handleInsertPauseMarker(-1)}
+                            />
+                        )}
+                        {filteredQueued.map((item: any, index: number) => {
+                            const globalIndex = queued.findIndex((q: any) => q.id === item.id);
+                            if (item.kind === 'pause-marker') {
+                                return (
+                                    <PauseMarkerRow
+                                        key={item.id}
+                                        markerId={item.id}
+                                        onRemove={() => handleRemovePauseMarker(item.id)}
+                                    />
+                                );
+                            }
+                            return (
+                                <div key={item.id}>
+                                    <div
+                                        draggable={!isMobile}
+                                        onDragStart={isMobile ? undefined : createDragStartHandler(item.id, index)}
+                                        onDragEnd={isMobile ? undefined : createDragEndHandler()}
+                                        onDragOver={isMobile ? undefined : createDragOverHandler(index)}
+                                        onDragEnter={isMobile ? undefined : createDragEnterHandler(index)}
+                                        onDragLeave={isMobile ? undefined : createDragLeaveHandler(index)}
+                                        onDrop={isMobile ? undefined : createDropHandler(index, handleMoveToPosition)}
+                                        className={cn(
+                                            !isMobile && 'cursor-grab active:cursor-grabbing',
+                                            draggedTaskId === item.id && 'opacity-40',
+                                            dropTargetIndex === index && dropPosition === 'above' && 'border-t-2 border-[#007fd4]',
+                                            dropTargetIndex === index && dropPosition === 'below' && 'border-b-2 border-[#007fd4]',
+                                        )}
+                                    >
+                                        <QueueTaskItem
+                                            task={item}
+                                            status="queued"
+                                            now={now}
+                                            selected={selectedTaskId === item.id}
+                                            onClick={() => selectTask(item.id, item)}
+                                            onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
+                                        />
+                                    </div>
+                                    {/* Insert-pause zone after each task */}
+                                    {!isMobile && (
+                                        <PauseInsertZone
+                                            index={globalIndex}
+                                            active={insertingPauseAt === globalIndex}
+                                            onMouseEnter={() => setInsertingPauseAt(globalIndex)}
+                                            onMouseLeave={() => setInsertingPauseAt(null)}
+                                            onClick={() => handleInsertPauseMarker(globalIndex)}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -548,5 +601,57 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
                 <div className="text-[10px] text-[#848484] mt-0.5 truncate">{promptPreview}</div>
             )}
         </Card>
+    );
+}
+
+/** Inline separator rendered for a pause marker in the queue. */
+function PauseMarkerRow({ markerId, onRemove }: { markerId: string; onRemove: () => void }) {
+    return (
+        <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded border border-dashed border-yellow-400/60 dark:border-yellow-500/50 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400 text-xs"
+            data-testid="pause-marker-row"
+            title="Queue will pause when it reaches this point"
+        >
+            <span className="shrink-0 text-[11px]">⏸</span>
+            <span className="flex-1 text-[11px]">Queue pauses here</span>
+            <button
+                className="shrink-0 text-[10px] opacity-50 hover:opacity-100 transition-opacity leading-none"
+                onClick={onRemove}
+                title="Remove pause point"
+                data-testid="pause-marker-remove-btn"
+            >
+                ✕
+            </button>
+        </div>
+    );
+}
+
+/** Hover zone between tasks for inserting a pause marker. */
+function PauseInsertZone({ index, active, onMouseEnter, onMouseLeave, onClick }: {
+    index: number;
+    active: boolean;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+    onClick: () => void;
+}) {
+    return (
+        <div
+            className={cn(
+                'flex items-center justify-center overflow-hidden transition-all duration-150 ease-in-out cursor-pointer group',
+                active ? 'h-7 opacity-100' : 'h-1 opacity-0',
+            )}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+            onClick={onClick}
+            data-testid={`pause-insert-zone-${index}`}
+            title="Insert pause here"
+        >
+            {active && (
+                <div className="flex items-center gap-1 text-[10px] text-yellow-600 dark:text-yellow-400 border border-dashed border-yellow-400/60 rounded px-2 py-0.5 w-full justify-center">
+                    <span>⏸</span>
+                    <span>Insert pause here</span>
+                </div>
+            )}
+        </div>
     );
 }

@@ -298,13 +298,23 @@ export class QueueExecutor extends EventEmitter {
                 continue;
             }
 
-            // Try to get next task
-            const task = this.queueManager.peek();
-            if (!task) {
-                // No tasks, wait a bit
+            // Try to get next item
+            const item = this.queueManager.peek();
+            if (!item) {
+                // No items, wait a bit
                 await this.delay(100);
                 continue;
             }
+
+            // Handle pause marker — consume it and pause the queue
+            if ((item as any).kind === 'pause-marker') {
+                this.queueManager.dequeue();   // consume the marker
+                this.queueManager.pause();     // pause the queue (same as clicking ⏸)
+                this.emit('pause-marker-reached', item);
+                continue;
+            }
+
+            const task = item as import('./types').QueuedTask;
 
             // Check if we have capacity on the correct limiter
             const limiter = this.isExclusive(task) ? this.exclusiveLimiter : this.sharedLimiter;

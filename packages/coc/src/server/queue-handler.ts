@@ -9,7 +9,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/pipeline-core';
 import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -114,6 +114,17 @@ function serializeTask(task: QueuedTask): Record<string, unknown> {
         error: task.error,
         retryCount: task.retryCount,
     };
+}
+
+/**
+ * Serialize a queue item (task or pause marker) for JSON response.
+ */
+function serializeQueueItem(item: QueuedTask | PauseMarker): Record<string, unknown> {
+    if ((item as PauseMarker).kind === 'pause-marker') {
+        const marker = item as PauseMarker;
+        return { kind: 'pause-marker', id: marker.id, createdAt: marker.createdAt };
+    }
+    return serializeTask(item as QueuedTask);
 }
 
 // ============================================================================
@@ -525,7 +536,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId);
                 if (mgr) {
-                    queued = mgr.getQueued().map(serializeTask);
+                    queued = mgr.getQueueItems().map(serializeQueueItem);
                     running = mgr.getRunning().map(serializeTask);
                     stats = mgr.getStats();
                 } else {
@@ -537,14 +548,15 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 queued = [];
                 running = [];
                 for (const m of bridge.registry.getAllQueues().values()) {
-                    queued.push(...m.getQueued().map(serializeTask));
+                    queued.push(...m.getQueueItems().map(serializeQueueItem));
                     running.push(...m.getRunning().map(serializeTask));
                 }
                 stats = getAggregateStats();
             }
 
             if (typeFilter) {
-                queued = queued.filter(t => t.type === typeFilter);
+                // Keep pause markers regardless of type filter so they remain visible inline
+                queued = queued.filter(t => t.kind === 'pause-marker' || t.type === typeFilter);
                 running = running.filter(t => t.type === typeFilter);
             }
 
@@ -895,6 +907,74 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
     });
 
     // ------------------------------------------------------------------
+    // POST /api/queue/pause-marker — Insert a pause marker at a position
+    // Body: { afterIndex: number, repoId?: string }
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/pause-marker',
+        handler: async (req, res) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const afterIndex = typeof body?.afterIndex === 'number' ? body.afterIndex : -1;
+            const repoId = typeof body?.repoId === 'string' && body.repoId
+                ? body.repoId
+                : undefined;
+
+            let mgr: TaskQueueManager | undefined;
+            if (repoId) {
+                mgr = await getManagerByRepoIdentifier(repoId);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+            } else {
+                // Use the first available manager
+                const allQueues = bridge.registry.getAllQueues();
+                if (allQueues.size === 0) {
+                    return sendError(res, 400, 'No queue available — provide repoId');
+                }
+                mgr = allQueues.values().next().value as TaskQueueManager;
+            }
+
+            const markerId = mgr.insertPauseMarker(afterIndex);
+            process.stderr.write(`[Queue] pause-marker inserted markerId=${markerId} afterIndex=${afterIndex} repoId=${repoId || '-'}\n`);
+            sendJSON(res, 201, { markerId, afterIndex });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // DELETE /api/queue/pause-marker/:markerId — Remove a pause marker
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/queue\/pause-marker\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            const markerId = decodeURIComponent(match![1]);
+
+            // Search across all managers
+            let removed = false;
+            for (const m of bridge.registry.getAllQueues().values()) {
+                if (m.removePauseMarker(markerId)) {
+                    removed = true;
+                    break;
+                }
+            }
+
+            if (!removed) {
+                return sendError(res, 404, 'Pause marker not found');
+            }
+
+            process.stderr.write(`[Queue] pause-marker removed markerId=${markerId}\n`);
+            sendJSON(res, 200, { removed: true, markerId });
+        },
+    });
+
+    // ------------------------------------------------------------------
     // DELETE /api/queue — Clear all queued tasks
     // ------------------------------------------------------------------
     routes.push({
@@ -1219,7 +1299,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const id = decodeURIComponent(match![1]);
 
             // Skip known sub-routes
-            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk', 'repos'].includes(id)) {
+            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk', 'repos', 'pause-marker'].includes(id)) {
                 return sendError(res, 404, 'Task not found');
             }
 

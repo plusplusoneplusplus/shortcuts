@@ -1916,6 +1916,144 @@ describe('repoId field support', () => {
 });
 
 // ============================================================================
+// Pause Markers
+// ============================================================================
+
+describe('pause markers', () => {
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = createTaskQueueManager();
+    });
+    it('insertPauseMarker returns a unique string id', () => {
+        manager.enqueue(createTestTask());
+        manager.enqueue(createTestTask());
+        const markerId = manager.insertPauseMarker(0);
+        expect(typeof markerId).toBe('string');
+        expect(markerId.length).toBeGreaterThan(0);
+    });
+
+    it('insertPauseMarker inserts marker at given index (0-based task offset)', () => {
+        manager.enqueue(createTestTask({ displayName: 'T1' }));
+        manager.enqueue(createTestTask({ displayName: 'T2' }));
+        manager.insertPauseMarker(0); // after first task (index 0)
+        const items = manager.getQueueItems();
+        expect(items[0]).toMatchObject({ displayName: 'T1' });
+        expect(items[1]).toMatchObject({ kind: 'pause-marker' });
+        expect(items[2]).toMatchObject({ displayName: 'T2' });
+    });
+
+    it('insertPauseMarker at -1 inserts before all tasks', () => {
+        manager.enqueue(createTestTask({ displayName: 'T1' }));
+        manager.insertPauseMarker(-1);
+        const items = manager.getQueueItems();
+        expect(items[0]).toMatchObject({ kind: 'pause-marker' });
+        expect(items[1]).toMatchObject({ displayName: 'T1' });
+    });
+
+    it('removePauseMarker removes the marker by id', () => {
+        manager.enqueue(createTestTask());
+        const markerId = manager.insertPauseMarker(0);
+        expect(manager.getQueueItems().some(i => (i as any).kind === 'pause-marker')).toBe(true);
+
+        const removed = manager.removePauseMarker(markerId);
+        expect(removed).toBe(true);
+        expect(manager.getQueueItems().some(i => (i as any).kind === 'pause-marker')).toBe(false);
+    });
+
+    it('removePauseMarker returns false for unknown id', () => {
+        expect(manager.removePauseMarker('no-such-id')).toBe(false);
+    });
+
+    it('getQueued does not include pause markers', () => {
+        manager.enqueue(createTestTask());
+        manager.enqueue(createTestTask());
+        manager.insertPauseMarker(1);
+
+        const queued = manager.getQueued();
+        expect(queued).toHaveLength(2);
+        expect(queued.every(t => !('kind' in t))).toBe(true);
+    });
+
+    it('getQueueItems returns mixed array with markers', () => {
+        manager.enqueue(createTestTask());
+        manager.enqueue(createTestTask());
+        manager.insertPauseMarker(1);
+
+        const items = manager.getQueueItems();
+        expect(items).toHaveLength(3);
+        expect(items.filter(i => (i as any).kind === 'pause-marker')).toHaveLength(1);
+    });
+
+    it('dequeue returns marker when it is first non-skipped item', () => {
+        manager.insertPauseMarker(0); // marker at front
+        const item = manager.dequeue();
+        expect(item).toBeDefined();
+        expect((item as any).kind).toBe('pause-marker');
+    });
+
+    it('dequeue skips frozen tasks before a marker, then returns marker', () => {
+        const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+        manager.enqueue(createTestTask({ displayName: 'T2' }));
+        manager.freezeTask(id1);
+        manager.insertPauseMarker(0); // after T1, before T2: [T1(frozen), marker, T2]
+        // T1 is frozen, so dequeue should skip it and return the marker
+        const item = manager.dequeue();
+        expect((item as any).kind).toBe('pause-marker');
+    });
+
+    it('clear discards markers (not added to history)', () => {
+        manager.enqueue(createTestTask());
+        manager.insertPauseMarker(1);
+        manager.clear();
+        expect(manager.getQueueItems()).toHaveLength(0);
+        // markers do not appear in history
+        const history = manager.getHistory();
+        expect(history.some(t => (t as any).kind === 'pause-marker')).toBe(false);
+    });
+
+    it('emits pause-marker-added change event', () => {
+        const listener = vi.fn();
+        manager.on('change', listener);
+        manager.enqueue(createTestTask());
+        listener.mockClear();
+
+        manager.insertPauseMarker(1);
+
+        expect(listener).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'pause-marker-added' })
+        );
+    });
+
+    it('emits pause-marker-removed change event', () => {
+        manager.enqueue(createTestTask());
+        const markerId = manager.insertPauseMarker(1);
+
+        const listener = vi.fn();
+        manager.on('change', listener);
+
+        manager.removePauseMarker(markerId);
+
+        expect(listener).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'pause-marker-removed' })
+        );
+    });
+
+    it('peek returns marker when it is first non-skipped item', () => {
+        manager.insertPauseMarker(0);
+        const item = manager.peek();
+        expect((item as any)?.kind).toBe('pause-marker');
+    });
+
+    it('size does not count pause markers', () => {
+        manager.enqueue(createTestTask());
+        manager.enqueue(createTestTask());
+        manager.insertPauseMarker(1);
+        expect(manager.size()).toBe(2);
+    });
+});
+
+// ============================================================================
 // Test Helpers
 // ============================================================================
 
