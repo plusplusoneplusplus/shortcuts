@@ -11,6 +11,7 @@ interface GitPanelHeaderProps {
     behind: number;
     refreshing: boolean;
     onRefresh: () => void;
+    onBranchClick?: () => void;
     onFetch?: () => void;
     onPull?: () => void;
     onPush?: () => void;
@@ -21,7 +22,7 @@ interface GitPanelHeaderProps {
 
 const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .git-refresh-spin { animation: gitRefreshSpin 1s linear infinite; }`;
 
-export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onFetch, onPull, onPush, fetching, pulling, pushing }: GitPanelHeaderProps) {
+export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, fetching, pulling, pushing }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
 
     return (
@@ -32,16 +33,19 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             data-testid="git-panel-header"
         >
             {/* Branch pill */}
-            <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-medium bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate max-w-[360px]"
+            <button
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-medium bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate max-w-[360px] ${onBranchClick ? 'cursor-pointer hover:bg-[#d0d0d0] dark:hover:bg-[#505050] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
                 title={branch}
                 data-testid="git-branch-pill"
+                onClick={onBranchClick}
+                type="button"
+                disabled={!onBranchClick}
             >
                 <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
                     <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6A1.5 1.5 0 004.5 10v.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.993 2.993 0 016 6.5h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
                 </svg>
                 {branch}
-            </span>
+            </button>
 
             {/* Ahead/behind badge */}
             {hasAheadBehind && (

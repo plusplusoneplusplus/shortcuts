@@ -7,6 +7,7 @@ export { CommitTooltip } from './CommitTooltip';
 export type { CommitTooltipProps } from './CommitTooltip';
 export { BranchChanges } from './BranchChanges';
 export { BranchFileDiff } from './BranchFileDiff';
+export { BranchPickerModal } from './BranchPickerModal';
 export { GitPanelHeader } from './GitPanelHeader';
 export { WorkingTree } from './WorkingTree';
 export type { WorkingTreeChange } from './WorkingTree';

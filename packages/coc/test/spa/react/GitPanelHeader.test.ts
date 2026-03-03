@@ -119,6 +119,24 @@ describe('GitPanelHeader', () => {
             expect(source).toContain('<svg');
             expect(source).toContain('fillRule="evenodd"');
         });
+
+        it('branch pill is a button element', () => {
+            expect(source).toContain('<button');
+            expect(source).toContain('data-testid="git-branch-pill"');
+            expect(source).not.toContain('<span\n');
+        });
+
+        it('accepts optional onBranchClick prop', () => {
+            expect(source).toContain('onBranchClick?: () => void');
+        });
+
+        it('branch pill calls onBranchClick on click', () => {
+            expect(source).toContain('onClick={onBranchClick}');
+        });
+
+        it('branch pill has cursor-pointer style when clickable', () => {
+            expect(source).toContain('cursor-pointer');
+        });
     });
 
     describe('ahead/behind badge', () => {

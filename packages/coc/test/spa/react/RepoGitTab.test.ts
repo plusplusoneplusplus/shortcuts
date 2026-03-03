@@ -457,6 +457,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain("import { GitPanelHeader } from './GitPanelHeader'");
         });
 
+        it('imports BranchPickerModal', () => {
+            expect(source).toContain("import { BranchPickerModal } from './BranchPickerModal'");
+        });
+
         it('renders GitPanelHeader', () => {
             expect(source).toContain('<GitPanelHeader');
         });
@@ -707,6 +711,41 @@ describe('RepoGitTab', () => {
 
         it('shows enqueueToast conditionally', () => {
             expect(source).toContain('{enqueueToast && (');
+        });
+    });
+
+    describe('branch picker integration', () => {
+        it('tracks branchPickerOpen state', () => {
+            expect(source).toContain('branchPickerOpen');
+            expect(source).toContain('setBranchPickerOpen');
+        });
+
+        it('passes onBranchClick to GitPanelHeader', () => {
+            expect(source).toContain('onBranchClick=');
+            expect(source).toContain('setBranchPickerOpen(true)');
+        });
+
+        it('renders BranchPickerModal', () => {
+            expect(source).toContain('<BranchPickerModal');
+        });
+
+        it('passes workspaceId to BranchPickerModal', () => {
+            expect(source).toMatch(/BranchPickerModal[\s\S]*?workspaceId=\{workspaceId\}/);
+        });
+
+        it('passes isOpen to BranchPickerModal', () => {
+            expect(source).toContain('isOpen={branchPickerOpen}');
+        });
+
+        it('passes onClose to BranchPickerModal', () => {
+            expect(source).toContain('setBranchPickerOpen(false)');
+        });
+
+        it('onSwitched calls fetchBranchRange and fetchCommits to refresh', () => {
+            const switchedBlock = source.match(/onSwitched=\{[\s\S]*?\}\}/);
+            expect(switchedBlock).toBeTruthy();
+            expect(switchedBlock![0]).toContain('fetchBranchRange');
+            expect(switchedBlock![0]).toContain('fetchCommits');
         });
     });
 });

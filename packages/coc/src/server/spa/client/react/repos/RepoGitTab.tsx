@@ -21,6 +21,7 @@ import { BranchChanges } from './BranchChanges';
 import { BranchFileDiff } from './BranchFileDiff';
 import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './WorkingTree';
+import { BranchPickerModal } from './BranchPickerModal';
 import { useApp } from '../context/AppContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import type { GitCommitItem } from './CommitList';
@@ -62,6 +63,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [skills, setSkills] = useState<Array<{ name: string; description?: string }>>([]);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range'; commit?: GitCommitItem } | null>(null);
     const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
+    const [branchPickerOpen, setBranchPickerOpen] = useState(false);
 
     const fetchCommits = useCallback((refresh = false) => {
         const qs = refresh ? '&refresh=true' : '';
@@ -450,6 +452,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     behind={behind}
                     refreshing={refreshing}
                     onRefresh={refreshAll}
+                    onBranchClick={() => setBranchPickerOpen(true)}
                     onFetch={handleFetch}
                     onPull={handlePull}
                     onPush={handlePush}
@@ -503,6 +506,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 {enqueueToast}
             </div>
         )}
+        <BranchPickerModal
+            workspaceId={workspaceId}
+            currentBranch={branchName || 'HEAD'}
+            isOpen={branchPickerOpen}
+            onClose={() => setBranchPickerOpen(false)}
+            onSwitched={(newBranch) => {
+                setBranchName(newBranch);
+                setBranchPickerOpen(false);
+                fetchBranchRange(true);
+                fetchCommits(true);
+            }}
+        />
         </>
     );
 }
