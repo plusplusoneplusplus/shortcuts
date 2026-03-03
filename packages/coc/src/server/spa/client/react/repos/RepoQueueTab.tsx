@@ -591,7 +591,7 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
     onClick?: () => void;
     onContextMenu?: (e: React.MouseEvent) => void;
 }) {
-    const name = (task.displayName || task.type || 'Task').substring(0, 35);
+    const name = task.displayName || task.type || 'Task';
     const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
     let elapsed = '';
