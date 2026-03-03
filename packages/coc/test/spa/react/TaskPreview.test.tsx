@@ -87,6 +87,56 @@ describe('TaskPreview', () => {
         expect(closeBtn.closest('.mode-toggle')).toBeTruthy();
     });
 
+    it('renders Follow Prompt and Update Document buttons in the toolbar', async () => {
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
+        await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
+
+        const followBtn = screen.getByTestId('task-preview-follow-prompt');
+        const updateBtn = screen.getByTestId('task-preview-update-document');
+        expect(followBtn).toBeTruthy();
+        expect(updateBtn).toBeTruthy();
+        expect(followBtn.closest('.mode-toggle')).toBeTruthy();
+        expect(updateBtn.closest('.mode-toggle')).toBeTruthy();
+    });
+
+    it('opens FollowPromptDialog when Follow Prompt button is clicked', async () => {
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
+        await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(screen.getByTestId('task-preview-follow-prompt')); });
+        await waitFor(() => { expect(document.querySelector('#follow-prompt-submenu')).toBeTruthy(); });
+    });
+
+    it('opens UpdateDocumentDialog when Update Document button is clicked', async () => {
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
+        await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(screen.getByTestId('task-preview-update-document')); });
+        await waitFor(() => { expect(document.querySelector('#update-doc-overlay')).toBeTruthy(); });
+    });
+
+    it('closes FollowPromptDialog when onClose is called', async () => {
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
+        await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(screen.getByTestId('task-preview-follow-prompt')); });
+        await waitFor(() => { expect(document.querySelector('#follow-prompt-submenu')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(document.querySelector('#fp-close')!); });
+        await waitFor(() => { expect(document.querySelector('#follow-prompt-submenu')).toBeFalsy(); });
+    });
+
+    it('closes UpdateDocumentDialog when onClose is called', async () => {
+        render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
+        await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(screen.getByTestId('task-preview-update-document')); });
+        await waitFor(() => { expect(document.querySelector('#update-doc-overlay')).toBeTruthy(); });
+
+        await act(async () => { fireEvent.click(document.querySelector('#update-doc-cancel')!); });
+        await waitFor(() => { expect(document.querySelector('#update-doc-overlay')).toBeFalsy(); });
+    });
+
     it('does not render a separate header row with border', async () => {
         const { container } = render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
         await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
