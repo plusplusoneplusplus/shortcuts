@@ -27,6 +27,8 @@ export interface BranchRangeInfo {
 interface BranchChangesProps {
     workspaceId: string;
     branchRangeData?: BranchRangeInfo | null;
+    /** Pre-fetched file list from the parent's /git/branch-range response. When provided, the component skips its own /git/branch-range/files request. */
+    initialFiles?: BranchRangeFile[];
     onDefaultBranch?: boolean;
     onFileSelect?: (filePath: string) => void;
     selectedFile?: string | null;
@@ -66,7 +68,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const DIFF_LINE_LIMIT = 500;
 
-export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch, onFileSelect, selectedFile }: BranchChangesProps) {
+export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
     const [filesLoading, setFilesLoading] = useState(false);
@@ -91,6 +93,14 @@ export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch, o
 
     useEffect(() => {
         if (!expanded || files.length > 0 || !rangeInfo) return;
+
+        // Use pre-fetched files from parent if available — avoids a second
+        // HTTP request that can produce a 404 for workspace IDs with slashes.
+        if (initialFiles && initialFiles.length > 0) {
+            setFiles(initialFiles);
+            return;
+        }
+
         setFilesLoading(true);
         setFilesError(null);
         fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files`)
@@ -101,7 +111,7 @@ export function BranchChanges({ workspaceId, branchRangeData, onDefaultBranch, o
                 setFilesError(err.message || 'Failed to load files');
             })
             .finally(() => setFilesLoading(false));
-    }, [expanded, files.length, rangeInfo, workspaceId]);
+    }, [expanded, files.length, rangeInfo, workspaceId, initialFiles]);
 
     const toggleFileDiff = (filePath: string) => {
         if (expandedFile === filePath) {

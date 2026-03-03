@@ -104,7 +104,12 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const parsedUrl = url.parse(req.url || '/', true);
-        const pathname = decodeURIComponent(parsedUrl.pathname || '/');
+        // Keep raw (percent-encoded) pathname for API route matching so that
+        // workspace IDs containing '/' (encoded as %2F) don't corrupt the path
+        // segments used by [^/]+ capture groups. Handlers decode their own
+        // capture groups via decodeURIComponent().
+        const rawPathname = parsedUrl.pathname || '/';
+        const pathname = decodeURIComponent(rawPathname);
         const method = req.method?.toUpperCase() || 'GET';
 
         // CORS headers for every request
@@ -119,8 +124,10 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
             return;
         }
 
-        // API routes
-        if (pathname.startsWith('/api/')) {
+        // API routes — match against raw (encoded) pathname so that percent-
+        // encoded slashes in workspace IDs (e.g. %2F) are not decoded before
+        // matching and do not corrupt [^/]+ capture groups.
+        if (rawPathname.startsWith('/api/')) {
             for (const route of routes) {
                 const routeMethod = (route.method || 'GET').toUpperCase();
                 if (routeMethod !== method) {
@@ -128,7 +135,7 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
                 }
 
                 if (typeof route.pattern === 'string') {
-                    if (route.pattern === pathname) {
+                    if (route.pattern === rawPathname) {
                         Promise.resolve(route.handler(req, res)).catch(() => {
                             if (!res.headersSent) {
                                 send500(res);
@@ -137,7 +144,7 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
                         return;
                     }
                 } else {
-                    const match = pathname.match(route.pattern);
+                    const match = rawPathname.match(route.pattern);
                     if (match) {
                         Promise.resolve(route.handler(req, res, match)).catch(() => {
                             if (!res.headersSent) {

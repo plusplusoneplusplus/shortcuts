@@ -50,6 +50,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     // Branch-range state (lifted from BranchChanges)
     const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
+    const [branchRangeFiles, setBranchRangeFiles] = useState<any[]>([]);
     const [onDefaultBranch, setOnDefaultBranch] = useState(false);
     const [branchName, setBranchName] = useState<string>('');
     const [ahead, setAhead] = useState(0);
@@ -73,6 +74,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 if (data.onDefaultBranch) {
                     setOnDefaultBranch(true);
                     setBranchRangeData(null);
+                    setBranchRangeFiles([]);
                     setBranchName(data.branchName || data.defaultBranch || 'main');
                     setAhead(0);
                     setBehind(0);
@@ -89,6 +91,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         fileCount: Array.isArray(data.files) ? data.files.length : 0,
                     };
                     setBranchRangeData(rangeInfo);
+                    setBranchRangeFiles(Array.isArray(data.files) ? data.files : []);
                     setBranchName(data.branchName || data.headRef || '');
                     setAhead(data.commitCount || 0);
                     setBehind(data.behindCount || 0);
@@ -357,6 +360,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 <BranchChanges
                     workspaceId={workspaceId}
                     branchRangeData={branchRangeData}
+                    initialFiles={branchRangeFiles}
                     onDefaultBranch={onDefaultBranch}
                     onFileSelect={handleFileSelect}
                     selectedFile={selectedBranchFile}

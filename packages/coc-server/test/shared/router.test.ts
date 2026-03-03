@@ -184,6 +184,62 @@ describe('Route matching', () => {
         expect(body.ok).toBe(true);
     });
 
+    it('matches regex routes when capture group contains percent-encoded slashes', async () => {
+        // Simulates workspace IDs that are Unix file paths, e.g. "/home/user/project".
+        // When encoded as %2Fhome%2Fuser%2Fproject the router must NOT pre-decode
+        // the pathname before matching, otherwise [^/]+ fails to capture it.
+        // The handler is responsible for decoding its own capture groups.
+        const result = await createTestServer({
+            routes: [
+                {
+                    method: 'GET',
+                    pattern: /^\/api\/workspaces\/([^/]+)\/info$/,
+                    handler: (_req, res, match) => {
+                        sendJson(res, { id: decodeURIComponent(match![1]) });
+                    },
+                },
+            ],
+            spaHtml: '',
+        });
+        try {
+            const encodedId = encodeURIComponent('/home/user/project');
+            const res = await request(`${result.baseUrl}/api/workspaces/${encodedId}/info`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.id).toBe('/home/user/project');
+        } finally {
+            await closeServer(result.server);
+        }
+    });
+
+    it('matches regex routes when capture group contains percent-encoded Windows paths', async () => {
+        // Windows workspace IDs may look like "C:\Users\foo\project" which encode
+        // as C%3A%5CUsers%5Cfoo%5Cproject — these should not contain literal '/'
+        // so they match [^/]+ even after decoding, but ensure they still work.
+        const result = await createTestServer({
+            routes: [
+                {
+                    method: 'GET',
+                    pattern: /^\/api\/workspaces\/([^/]+)\/info$/,
+                    handler: (_req, res, match) => {
+                        sendJson(res, { id: decodeURIComponent(match![1]) });
+                    },
+                },
+            ],
+            spaHtml: '',
+        });
+        try {
+            const winId = 'C:\\Users\\foo\\project';
+            const encodedId = encodeURIComponent(winId);
+            const res = await request(`${result.baseUrl}/api/workspaces/${encodedId}/info`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.id).toBe(winId);
+        } finally {
+            await closeServer(result.server);
+        }
+    });
+
     it('catches async handler errors and sends 500', async () => {
         const result = await createTestServer({
             routes: [

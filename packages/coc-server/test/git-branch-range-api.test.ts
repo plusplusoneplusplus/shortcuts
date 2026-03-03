@@ -350,4 +350,51 @@ describe('Git Branch Range API endpoints', () => {
             expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/my file.ts');
         });
     });
+
+    // ========================================================================
+    // Workspace IDs containing slashes (Unix absolute paths)
+    // ========================================================================
+
+    describe('Workspace IDs with path separators', () => {
+        let unixServer: http.Server;
+        let unixPort: number;
+        const UNIX_WS_ID = '/home/user/my-project';
+        const UNIX_WS_ROOT = '/home/user/my-project';
+
+        beforeAll(async () => {
+            const unixStore = createMockProcessStore();
+            (unixStore.getWorkspaces as any).mockResolvedValue([
+                { id: UNIX_WS_ID, name: 'Unix Repo', rootPath: UNIX_WS_ROOT },
+            ]);
+
+            const routes: Route[] = [];
+            registerApiRoutes(routes, unixStore);
+            const handleRequest = createRouter({ routes, spaHtml: '<html></html>' });
+            unixServer = http.createServer(handleRequest);
+            await new Promise<void>((resolve) => unixServer.listen(0, '127.0.0.1', resolve));
+            unixPort = (unixServer.address() as any).port;
+        });
+
+        afterAll(async () => {
+            await new Promise<void>((resolve) => unixServer.close(() => resolve()));
+        });
+
+        it('resolves /git/branch-range for a workspace ID that is a Unix absolute path', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            const encodedId = encodeURIComponent(UNIX_WS_ID);
+            const res = await request(`http://127.0.0.1:${unixPort}/api/workspaces/${encodedId}/git/branch-range`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.commitCount).toBe(3);
+        });
+
+        it('resolves /git/branch-range/files for a workspace ID that is a Unix absolute path', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            const encodedId = encodeURIComponent(UNIX_WS_ID);
+            const res = await request(`http://127.0.0.1:${unixPort}/api/workspaces/${encodedId}/git/branch-range/files`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.files).toHaveLength(2);
+        });
+    });
 });
