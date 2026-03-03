@@ -8,7 +8,9 @@
  */
 
 import * as http from 'http';
+import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
@@ -21,6 +23,32 @@ import {
     send400,
     send500,
 } from './shared/router';
+
+// ============================================================================
+// Swagger UI HTML
+// ============================================================================
+
+const SWAGGER_UI_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CoC API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({
+      url: '/api/openapi.json',
+      dom_id: '#swagger-ui',
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+      layout: 'BaseLayout',
+      deepLinking: true,
+    });
+  </script>
+</body>
+</html>`;
 
 // ============================================================================
 // Router Options
@@ -62,8 +90,30 @@ export function createRequestHandler(
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
     const { spaHtml, staticDir, store, getWikiDir } = options;
 
-    // Prepend built-in health route
+    // Prepend built-in routes (OpenAPI spec, Swagger UI, health)
     const routes: Route[] = [
+        {
+            method: 'GET',
+            pattern: '/api/openapi.json',
+            handler: (_req, res) => {
+                const specPath = path.join(__dirname, 'openapi.yaml');
+                try {
+                    const raw = fs.readFileSync(specPath, 'utf8');
+                    const parsed = yaml.load(raw);
+                    sendJson(res, parsed);
+                } catch {
+                    send404(res, 'OpenAPI spec not found');
+                }
+            },
+        },
+        {
+            method: 'GET',
+            pattern: '/api/docs',
+            handler: (_req, res) => {
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(SWAGGER_UI_HTML);
+            },
+        },
         {
             method: 'GET',
             pattern: '/api/health',

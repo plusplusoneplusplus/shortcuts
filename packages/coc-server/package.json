@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "postbuild": "node -e \"require('fs').copyFileSync('src/openapi.yaml', 'dist/openapi.yaml')\"",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint src"
