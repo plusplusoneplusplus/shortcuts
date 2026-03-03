@@ -249,7 +249,7 @@ describe('ReposView — responsive layout', () => {
 
             // Height class is applied even during loading
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100vh-48px-56px)]');
+            expect(container.className).toContain('h-[calc(100vh-40px-56px)]');
         });
 
         it('selected repo shows full-screen detail without MobileRepoHeader bar', async () => {

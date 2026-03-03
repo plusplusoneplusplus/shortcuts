@@ -42,12 +42,12 @@ export function TopBar() {
 
     return (
         <header
-            className="h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
+            className="h-10 md:h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
             data-react
         >
             <div className="flex items-center gap-3 min-w-0">
                 <button
-                    className="h-8 w-8 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
+                    className="h-7 w-7 md:h-8 md:w-8 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
                     id="hamburger-btn"
                     aria-label="Toggle sidebar"
                     aria-pressed={state.reposSidebarCollapsed}
@@ -78,7 +78,7 @@ export function TopBar() {
             </div>
             <div className="flex items-center gap-1">
                 <span
-                    className="inline-flex items-center justify-center h-8 w-8"
+                    className="inline-flex items-center justify-center h-7 w-7 md:h-8 md:w-8"
                     title={wsStatusConfig[state.wsStatus ?? 'closed']?.label}
                     aria-label={`Connection: ${wsStatusConfig[state.wsStatus ?? 'closed']?.label}`}
                     data-testid="ws-status-indicator"
@@ -89,7 +89,7 @@ export function TopBar() {
                 </span>
                 <a
                     id="admin-toggle"
-                    className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
+                    className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
                     href="#admin"
                     aria-label="Admin"
                     title="Admin"
@@ -98,7 +98,7 @@ export function TopBar() {
                 </a>
                 <button
                     id="theme-toggle"
-                    className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
+                    className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
                     aria-label="Toggle theme"
                     onClick={toggleTheme}
                 >

@@ -209,7 +209,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             {/* Header */}
             <div className={cn(
                 'repo-detail-header flex gap-3 px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                isMobile ? 'flex-row items-center py-2' : 'items-center py-3'
+                isMobile ? 'flex-row items-center py-1' : 'items-center py-2'
             )}>
                 {/* Title row */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -226,7 +226,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         </button>
                     )}
                     <span
-                        className="inline-block w-3.5 h-3.5 rounded-full flex-shrink-0"
+                        className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
                         style={{ background: color }}
                     />
                     <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>

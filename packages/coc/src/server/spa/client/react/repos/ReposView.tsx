@@ -27,7 +27,7 @@ export function ReposView() {
     const isTablet = breakpoint === 'tablet';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
-        ? 'h-[calc(100vh-48px-56px)]'
+        ? 'h-[calc(100vh-40px-56px)]'
         : 'h-[calc(100vh-48px)]';
     const [repos, setRepos] = useState<RepoData[]>([]);
     const [loading, setLoading] = useState(true);
