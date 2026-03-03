@@ -649,4 +649,119 @@ suite('AIQueueService Tests', () => {
             assert.strictEqual(service.getExclusiveConcurrency(), 1);
         });
     });
+
+    suite('G5: persist and restore', () => {
+
+        test('persist saves queued tasks to memento', async () => {
+            const ctx = new MockExtensionContext();
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            service.queueTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/test/prompt.md' },
+                displayName: 'Persisted Task',
+            });
+
+            service.persist(ctx.globalState as any);
+
+            const raw = ctx.globalState.get<string>('shortcuts.queue.tasks');
+            assert.ok(raw, 'memento key should be set');
+            const tasks = JSON.parse(raw!);
+            assert.strictEqual(tasks.length, 1);
+            assert.strictEqual(tasks[0].displayName, 'Persisted Task');
+        });
+
+        test('persist saves only queued (not running) tasks', async () => {
+            const ctx = new MockExtensionContext();
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            service.queueTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/test/prompt.md' },
+                displayName: 'Queued Task',
+            });
+
+            service.persist(ctx.globalState as any);
+
+            const raw = ctx.globalState.get<string>('shortcuts.queue.tasks');
+            assert.ok(raw);
+            const tasks = JSON.parse(raw!);
+            // Only queued tasks should be persisted
+            assert.ok(tasks.every((t: any) => t.status === 'queued'));
+        });
+
+        test('restore re-enqueues tasks from memento and clears the key', async () => {
+            const ctx = new MockExtensionContext();
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            // Manually set memento with a serialized task
+            const task = {
+                id: 'restore-t1',
+                type: 'follow-prompt',
+                priority: 'normal',
+                status: 'queued',
+                createdAt: Date.now(),
+                payload: { promptFilePath: '/test/prompt.md' },
+                config: {},
+                displayName: 'Restored Task',
+            };
+            await ctx.globalState.update('shortcuts.queue.tasks', JSON.stringify([task]));
+
+            service.restore(ctx.globalState as any);
+
+            const queued = service.getQueuedTasks();
+            assert.strictEqual(queued.length, 1);
+            assert.strictEqual(queued[0].displayName, 'Restored Task');
+
+            // Key should be cleared
+            const remaining = ctx.globalState.get<string>('shortcuts.queue.tasks');
+            assert.strictEqual(remaining, undefined);
+        });
+
+        test('restore is a no-op when memento key is absent', () => {
+            const ctx = new MockExtensionContext();
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            // No-op — should not throw
+            service.restore(ctx.globalState as any);
+
+            assert.strictEqual(service.getQueuedTasks().length, 0);
+        });
+
+        test('restore ignores corrupt memento data', async () => {
+            const ctx = new MockExtensionContext();
+            const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            await ctx.globalState.update('shortcuts.queue.tasks', 'not-valid-json');
+
+            // Should not throw
+            service.restore(ctx.globalState as any);
+
+            assert.strictEqual(service.getQueuedTasks().length, 0);
+            // Key should be cleared even on error
+            const remaining = ctx.globalState.get<string>('shortcuts.queue.tasks');
+            assert.strictEqual(remaining, undefined);
+        });
+
+        test('persist then restore round-trip', async () => {
+            const ctx = new MockExtensionContext();
+            const service1 = initializeAIQueueService(processManager as unknown as AIProcessManager);
+
+            service1.queueTask({
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/test/task.md' },
+                displayName: 'Round-trip Task',
+            });
+
+            service1.persist(ctx.globalState as any);
+            service1.clearQueue();
+            assert.strictEqual(service1.getQueuedTasks().length, 0);
+
+            // Simulate restore
+            service1.restore(ctx.globalState as any);
+            const queued = service1.getQueuedTasks();
+            assert.strictEqual(queued.length, 1);
+            assert.strictEqual(queued[0].displayName, 'Round-trip Task');
+        });
+    });
 });

@@ -36,7 +36,7 @@ export interface PersistedQueueState {
 
 const CURRENT_VERSION = 3;
 const DEBOUNCE_MS = 300;
-const MAX_PERSISTED_HISTORY = 100;
+const MAX_PERSISTED_HISTORY_DEFAULT = 100;
 
 // ============================================================================
 // Helpers
@@ -95,18 +95,123 @@ export async function sanitizeTaskForPersistence(task: QueuedTask, dataDir: stri
 // QueuePersistence
 // ============================================================================
 
+// ============================================================================
+// RestartPolicy
+// ============================================================================
+
+/**
+ * What to do with tasks that were `running` when the server last stopped.
+ * - `'fail'` (default): mark the task as failed with a "server restarted" message
+ * - `'requeue'`: re-enqueue the task at high priority so it runs first
+ * - `'requeue-if-retriable'`: requeue only when retryCount < retryAttempts; otherwise fail
+ */
+export type RestartPolicy = 'fail' | 'requeue' | 'requeue-if-retriable';
+
+// ============================================================================
+// Standalone helpers (shared with MultiRepoQueuePersistence)
+// ============================================================================
+
+/** Atomic JSON write using temp-file + rename (shared by both persistence classes). */
+export function atomicWriteJson(filePath: string, state: PersistedQueueState): void {
+    const tmpPath = filePath + '.tmp';
+    try {
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
+        fs.renameSync(tmpPath, filePath);
+    } catch (err) {
+        process.stderr.write(`[QueuePersistence] Failed to write ${filePath}: ${err}\n`);
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    }
+}
+
+/**
+ * Migrate a legacy single-file `queue.json` (v1) into per-repo files (v3).
+ * Idempotent: if no `queue.json` exists, or it isn't v1, this is a no-op.
+ * Renames the old file to `queue.json.migrated` so it runs only once.
+ */
+export function migrateQueueFromOldFormat(dataDir: string, maxPersistedHistory = MAX_PERSISTED_HISTORY_DEFAULT): void {
+    const oldPath = path.join(dataDir, 'queue.json');
+    if (!fs.existsSync(oldPath)) { return; }
+
+    try {
+        const raw = fs.readFileSync(oldPath, 'utf-8');
+        const oldState = JSON.parse(raw);
+
+        if (oldState.version !== 1) { return; }
+
+        const tasksByRepo = new Map<string, { pending: QueuedTask[]; history: QueuedTask[] }>();
+
+        const oldPending: QueuedTask[] = Array.isArray(oldState.pending) ? oldState.pending : [];
+        const oldHistory: QueuedTask[] = Array.isArray(oldState.history) ? oldState.history : [];
+
+        for (const task of oldPending) {
+            const rootPath = getTaskRepoPath(task);
+            const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
+            entry.pending.push(task);
+            tasksByRepo.set(rootPath, entry);
+        }
+        for (const task of oldHistory) {
+            const rootPath = getTaskRepoPath(task);
+            const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
+            entry.history.push(task);
+            tasksByRepo.set(rootPath, entry);
+        }
+
+        for (const [rootPath, { pending, history }] of tasksByRepo) {
+            const newState: PersistedQueueState = {
+                version: CURRENT_VERSION,
+                savedAt: new Date().toISOString(),
+                repoRootPath: rootPath,
+                repoId: computeRepoId(rootPath),
+                pending,
+                history: history.slice(0, maxPersistedHistory),
+                isPaused: false,
+            };
+            atomicWriteJson(getRepoQueueFilePath(dataDir, rootPath), newState);
+        }
+
+        fs.renameSync(oldPath, oldPath + '.migrated');
+
+        process.stderr.write(
+            `[QueuePersistence] Migrated queue.json to ${tasksByRepo.size} per-repo file(s)\n`
+        );
+    } catch (err) {
+        process.stderr.write(`[QueuePersistence] Migration failed: ${err}\n`);
+    }
+}
+
+// ============================================================================
+// QueuePersistence
+// ============================================================================
+
+export interface QueuePersistenceOptions {
+    /** Policy for tasks that were running when the server last stopped (default: 'fail'). */
+    restartPolicy?: RestartPolicy;
+    /** Maximum number of history entries to persist per repo (default: 100). */
+    maxPersistedHistory?: number;
+}
+
 export class QueuePersistence {
     private readonly dataDir: string;
     private readonly queuesDir: string;
     private readonly queueManager: TaskQueueManager;
+    private readonly restartPolicy: RestartPolicy;
+    private readonly maxPersistedHistory: number;
     private debounceTimer: ReturnType<typeof setTimeout> | null = null;
     private dirty = false;
     private readonly changeListener: (event: QueueChangeEvent) => void;
+    /** Maps repoId → rootPath for paused-but-empty repos. */
+    private readonly repoRootByRepoId = new Map<string, string>();
 
-    constructor(queueManager: TaskQueueManager, dataDir: string) {
+    constructor(queueManager: TaskQueueManager, dataDir: string, options?: QueuePersistenceOptions) {
         this.queueManager = queueManager;
         this.dataDir = dataDir;
         this.queuesDir = path.join(dataDir, 'queues');
+        this.restartPolicy = options?.restartPolicy ?? 'fail';
+        this.maxPersistedHistory = options?.maxPersistedHistory ?? MAX_PERSISTED_HISTORY_DEFAULT;
 
         // Ensure queues directory exists
         if (!fs.existsSync(this.queuesDir)) {
@@ -114,7 +219,7 @@ export class QueuePersistence {
         }
 
         // Run migration if old format exists (idempotent)
-        this.migrateFromOldFormat();
+        migrateQueueFromOldFormat(this.dataDir, this.maxPersistedHistory);
 
         this.changeListener = () => {
             this.dirty = true;
@@ -207,13 +312,29 @@ export class QueuePersistence {
         if (Array.isArray(state.pending)) {
             for (const task of state.pending) {
                 if (task.status === 'running') {
-                    const failedTask: QueuedTask = {
-                        ...task,
-                        status: 'failed',
-                        error: 'Server restarted — task was running when server stopped',
-                        completedAt: Date.now(),
-                    };
-                    failedFromRunning.push(failedTask);
+                    const shouldRequeue = this.restartPolicy === 'requeue' ||
+                        (this.restartPolicy === 'requeue-if-retriable' &&
+                            (task.retryCount ?? 0) < (task.config?.retryAttempts ?? 0));
+
+                    if (shouldRequeue) {
+                        this.queueManager.enqueue({
+                            type: task.type,
+                            priority: 'high',
+                            payload: task.payload,
+                            config: task.config,
+                            displayName: task.displayName,
+                            repoId: task.repoId,
+                        });
+                        restoredPending++;
+                    } else {
+                        const failedTask: QueuedTask = {
+                            ...task,
+                            status: 'failed',
+                            error: 'Server restarted — task was running when server stopped',
+                            completedAt: Date.now(),
+                        };
+                        failedFromRunning.push(failedTask);
+                    }
                 } else if (task.status === 'queued') {
                     this.queueManager.enqueue({
                         type: task.type,
@@ -278,7 +399,7 @@ export class QueuePersistence {
         const running = this.queueManager.getRunning();
         const history = this.queueManager.getHistory();
 
-        // Group all tasks by repo root path
+        // Group all tasks by repo root path; track repoId → rootPath for pause state
         const tasksByRepo = new Map<string, {
             pending: QueuedTask[];
             history: QueuedTask[];
@@ -286,6 +407,8 @@ export class QueuePersistence {
 
         for (const task of [...queued, ...running]) {
             const rootPath = getTaskRepoPath(task);
+            const repoId = computeRepoId(rootPath);
+            this.repoRootByRepoId.set(repoId, rootPath);
             const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
             entry.pending.push(task);
             tasksByRepo.set(rootPath, entry);
@@ -293,12 +416,22 @@ export class QueuePersistence {
 
         for (const task of history) {
             const rootPath = getTaskRepoPath(task);
+            const repoId = computeRepoId(rootPath);
+            this.repoRootByRepoId.set(repoId, rootPath);
             const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
             entry.history.push(task);
             tasksByRepo.set(rootPath, entry);
         }
 
-        // Write a file for each repo with tasks
+        // G1: Preserve paused-but-empty repos so their pause state is not lost
+        for (const repoId of this.queueManager.getPausedRepos()) {
+            const rootPath = this.repoRootByRepoId.get(repoId);
+            if (rootPath && !tasksByRepo.has(rootPath)) {
+                tasksByRepo.set(rootPath, { pending: [], history: [] });
+            }
+        }
+
+        // Write a file for each repo with tasks (or non-default state)
         for (const [rootPath, { pending, history: hist }] of tasksByRepo) {
             const repoId = computeRepoId(rootPath);
             const sanitizedPending = await this.sanitizeTasks(pending);
@@ -309,11 +442,11 @@ export class QueuePersistence {
                 repoRootPath: rootPath,
                 repoId,
                 pending: sanitizedPending,
-                history: sanitizedHist.slice(0, MAX_PERSISTED_HISTORY),
+                history: sanitizedHist.slice(0, this.maxPersistedHistory),
                 isPaused: this.queueManager.isRepoPaused(repoId),
             };
             const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
-            this.atomicWrite(filePath, state);
+            atomicWriteJson(filePath, state);
         }
 
         // Clean up files for repos that no longer have tasks
@@ -323,21 +456,6 @@ export class QueuePersistence {
     // ========================================================================
     // Private — file operations
     // ========================================================================
-
-    private atomicWrite(filePath: string, state: PersistedQueueState): void {
-        const tmpPath = filePath + '.tmp';
-        try {
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
-            fs.renameSync(tmpPath, filePath);
-        } catch (err) {
-            process.stderr.write(`[QueuePersistence] Failed to write ${filePath}: ${err}\n`);
-            try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-        }
-    }
 
     private cleanupStaleFiles(activeRepos: Map<string, unknown>): void {
         if (!fs.existsSync(this.queuesDir)) { return; }
@@ -367,63 +485,4 @@ export class QueuePersistence {
         }
     }
 
-    // ========================================================================
-    // Private — migration
-    // ========================================================================
-
-    private migrateFromOldFormat(): void {
-        const oldPath = path.join(this.dataDir, 'queue.json');
-        if (!fs.existsSync(oldPath)) { return; }
-
-        try {
-            const raw = fs.readFileSync(oldPath, 'utf-8');
-            const oldState = JSON.parse(raw);
-
-            if (oldState.version !== 1) { return; }
-
-            // Group tasks by workingDirectory, preserving original pending/history split
-            const tasksByRepo = new Map<string, { pending: QueuedTask[]; history: QueuedTask[] }>();
-
-            const oldPending: QueuedTask[] = Array.isArray(oldState.pending) ? oldState.pending : [];
-            const oldHistory: QueuedTask[] = Array.isArray(oldState.history) ? oldState.history : [];
-
-            for (const task of oldPending) {
-                const rootPath = getTaskRepoPath(task);
-                const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
-                entry.pending.push(task);
-                tasksByRepo.set(rootPath, entry);
-            }
-            for (const task of oldHistory) {
-                const rootPath = getTaskRepoPath(task);
-                const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
-                entry.history.push(task);
-                tasksByRepo.set(rootPath, entry);
-            }
-
-            // Write per-repo queue files
-            for (const [rootPath, { pending, history }] of tasksByRepo) {
-                const newState: PersistedQueueState = {
-                    version: CURRENT_VERSION,
-                    savedAt: new Date().toISOString(),
-                    repoRootPath: rootPath,
-                    repoId: computeRepoId(rootPath),
-                    pending,
-                    history: history.slice(0, MAX_PERSISTED_HISTORY),
-                    isPaused: false,
-                };
-
-                const newPath = getRepoQueueFilePath(this.dataDir, rootPath);
-                this.atomicWrite(newPath, newState);
-            }
-
-            // Archive old file
-            fs.renameSync(oldPath, oldPath + '.migrated');
-
-            process.stderr.write(
-                `[QueuePersistence] Migrated queue.json to ${tasksByRepo.size} per-repo file(s)\n`
-            );
-        } catch (err) {
-            process.stderr.write(`[QueuePersistence] Migration failed: ${err}\n`);
-        }
-    }
 }

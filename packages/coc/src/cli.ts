@@ -123,6 +123,8 @@ export function createProgram(): Command {
         .option('--theme <theme>', 'UI theme: auto, light, dark')
         .option('--drain-timeout <seconds>', 'Max wait for queue drain on shutdown (default: infinite)', (v: string) => parseInt(v, 10))
         .option('--no-drain', 'Skip graceful queue draining on shutdown')
+        .option('--queue-restart-policy <policy>', 'Policy for tasks running at restart: fail, requeue, requeue-if-retriable')
+        .option('--queue-history-limit <number>', 'Max history entries to persist per repo', (v: string) => parseInt(v, 10))
         .option('--no-color', 'Disable colored output')
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();

@@ -1042,4 +1042,171 @@ describe('QueuePersistence', () => {
             expect(queueManager.isRepoPaused(repoId)).toBe(false);
         });
     });
+
+    // ========================================================================
+    // G1: Pause state preserved for empty queues
+    // ========================================================================
+
+    describe('G1: paused-but-empty repo file preservation', () => {
+        it('keeps the file when repo is paused but queue is empty', async () => {
+            persistence = new QueuePersistence(queueManager, dataDir);
+
+            // Enqueue then complete a task (so history is non-empty initially)
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/g1/repo' },
+                config: {},
+            });
+
+            const repoId = computeRepoId('/g1/repo');
+            queueManager.pauseRepo(repoId);
+
+            await flushSave();
+
+            const filePath = getRepoQueueFilePath(dataDir, '/g1/repo');
+            expect(fs.existsSync(filePath)).toBe(true);
+            const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            expect(state.isPaused).toBe(true);
+        });
+
+        it('round-trip: paused+empty repos survive restart', async () => {
+            persistence = new QueuePersistence(queueManager, dataDir);
+
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/g1/roundtrip' },
+                config: {},
+            });
+
+            const repoId = computeRepoId('/g1/roundtrip');
+            queueManager.pauseRepo(repoId);
+            await flushSave();
+            persistence.dispose();
+            persistence = undefined!;
+
+            // Second instance
+            const qm2 = createManager();
+            const p2 = new QueuePersistence(qm2, dataDir);
+            p2.restore();
+
+            expect(qm2.isRepoPaused(repoId)).toBe(true);
+            p2.dispose();
+        });
+    });
+
+    // ========================================================================
+    // G2: RestartPolicy
+    // ========================================================================
+
+    describe('G2: RestartPolicy', () => {
+        it('default (fail) marks running tasks as failed on restore', () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            const rootPath = '/g2/fail';
+            const state = makeRepoState(rootPath, [
+                makeTask('t1', 'running', rootPath),
+            ]);
+            const repoId = computeRepoId(rootPath);
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+
+            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence.restore();
+
+            expect(queueManager.getQueued()).toHaveLength(0);
+            const history = queueManager.getHistory();
+            expect(history.some(t => t.id === 't1' && t.status === 'failed')).toBe(true);
+        });
+
+        it("restartPolicy 'requeue' re-enqueues running tasks at high priority", () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            const rootPath = '/g2/requeue';
+            const state = makeRepoState(rootPath, [
+                makeTask('t1', 'running', rootPath),
+            ]);
+            const repoId = computeRepoId(rootPath);
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+
+            persistence = new QueuePersistence(queueManager, dataDir, { restartPolicy: 'requeue' });
+            persistence.restore();
+
+            const queued = queueManager.getQueued();
+            expect(queued).toHaveLength(1);
+            expect(queued[0].priority).toBe('high');
+        });
+
+        it("restartPolicy 'requeue-if-retriable' requeues when retries remain", () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            const rootPath = '/g2/retriable';
+            const task = { ...makeTask('t1', 'running', rootPath), retryCount: 0, config: { retryAttempts: 2 } };
+            const state = makeRepoState(rootPath, [task]);
+            const repoId = computeRepoId(rootPath);
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+
+            persistence = new QueuePersistence(queueManager, dataDir, { restartPolicy: 'requeue-if-retriable' });
+            persistence.restore();
+
+            expect(queueManager.getQueued()).toHaveLength(1);
+        });
+
+        it("restartPolicy 'requeue-if-retriable' fails task when no retries remain", () => {
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+
+            const rootPath = '/g2/no-retries';
+            const task = { ...makeTask('t1', 'running', rootPath), retryCount: 2, config: { retryAttempts: 2 } };
+            const state = makeRepoState(rootPath, [task]);
+            const repoId = computeRepoId(rootPath);
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+
+            persistence = new QueuePersistence(queueManager, dataDir, { restartPolicy: 'requeue-if-retriable' });
+            persistence.restore();
+
+            expect(queueManager.getQueued()).toHaveLength(0);
+            expect(queueManager.getHistory().some(t => t.id === 't1' && t.status === 'failed')).toBe(true);
+        });
+    });
+
+    // ========================================================================
+    // G6: Configurable history cap
+    // ========================================================================
+
+    describe('G6: maxPersistedHistory option', () => {
+        it('truncates history to configured limit on save', async () => {
+            persistence = new QueuePersistence(queueManager, dataDir, { maxPersistedHistory: 5 });
+
+            // Fill history with 10 completed tasks
+            const histTasks = Array.from({ length: 10 }, (_, i) => ({
+                id: `h${i}`,
+                type: 'custom' as const,
+                priority: 'normal' as const,
+                status: 'completed',
+                createdAt: Date.now(),
+                completedAt: Date.now(),
+                payload: { workingDirectory: '/g6/repo' },
+                config: {},
+            }));
+            queueManager.restoreHistory(histTasks as any);
+
+            // Need at least one pending task to trigger save
+            queueManager.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { workingDirectory: '/g6/repo' },
+                config: {},
+            });
+
+            await flushSave();
+
+            const filePath = getRepoQueueFilePath(dataDir, '/g6/repo');
+            const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            expect(state.history.length).toBeLessThanOrEqual(5);
+        });
+    });
 });

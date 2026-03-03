@@ -50,6 +50,11 @@ export interface CLIConfig {
         dataDir?: string;
         theme?: 'auto' | 'light' | 'dark';
     };
+    /** Queue defaults */
+    queue?: {
+        historyLimit?: number;
+        restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
+    };
 }
 
 /**
@@ -75,6 +80,10 @@ export interface ResolvedCLIConfig {
         host: string;
         dataDir: string;
         theme: 'auto' | 'light' | 'dark';
+    };
+    queue?: {
+        historyLimit?: number;
+        restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
     };
 }
 
@@ -244,6 +253,10 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
             dataDir: override.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
             theme: override.serve?.theme ?? base.serve?.theme ?? 'auto',
         },
+        queue: (override.queue || base.queue) ? {
+            historyLimit: override.queue?.historyLimit ?? base.queue?.historyLimit,
+            restartPolicy: override.queue?.restartPolicy ?? base.queue?.restartPolicy,
+        } : undefined,
     };
 }
 

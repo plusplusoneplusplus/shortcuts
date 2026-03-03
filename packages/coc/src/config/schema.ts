@@ -32,6 +32,10 @@ export const CLIConfigSchema = z.object({
         dataDir: z.string().optional(),
         theme: z.enum(['auto', 'light', 'dark']).optional(),
     }).strict().optional(),
+    queue: z.object({
+        historyLimit: z.number().int().positive().optional(),
+        restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']).optional(),
+    }).strict().optional(),
 }).strict();
 
 /**

@@ -56,6 +56,10 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
             dataDir,
             store,
             theme: options.theme ?? 'auto',
+            queue: (options.queueRestartPolicy || options.queueHistoryLimit) ? {
+                restartPolicy: options.queueRestartPolicy,
+                historyLimit: options.queueHistoryLimit,
+            } : undefined,
         });
 
         // Load process count for banner

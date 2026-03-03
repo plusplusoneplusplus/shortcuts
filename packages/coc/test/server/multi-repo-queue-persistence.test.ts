@@ -545,4 +545,180 @@ describe('MultiRepoQueuePersistence', () => {
             bridge2.dispose();
         });
     });
+
+    // --------------------------------------------------------------------
+    // G1: Pause state preserved for empty queues
+    // --------------------------------------------------------------------
+
+    describe('G1: paused-but-empty repo file preservation', () => {
+        it('keeps file when repo is paused but queue is otherwise empty', async () => {
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir);
+            persistence.restore();
+
+            const rootPath = '/g1/paused-empty';
+            const repoId = computeRepoId(rootPath);
+            bridge.getOrCreateBridge(rootPath);
+            const qm = registry.getQueueForRepo(rootPath);
+
+            // Pause the repo, leave queue empty
+            qm.pauseRepo(repoId);
+
+            await persistence.save(rootPath);
+
+            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            expect(fs.existsSync(filePath)).toBe(true);
+            const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            expect(state.isPaused).toBe(true);
+        });
+
+        it('deletes file when repo is neither paused nor has tasks', async () => {
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir);
+            persistence.restore();
+
+            const rootPath = '/g1/empty-not-paused';
+            bridge.getOrCreateBridge(rootPath);
+
+            // Write a file first
+            writeRepoFile(rootPath, makeRepoState(rootPath, [makeTask('t1', 'queued', rootPath)]));
+
+            await persistence.save(rootPath);
+
+            // File should be deleted (empty queue + not paused)
+            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // G2: RestartPolicy
+    // --------------------------------------------------------------------
+
+    describe('G2: RestartPolicy', () => {
+        it("default (fail) marks running tasks as failed", () => {
+            writeRepoFile('/g2/fail', makeRepoState('/g2/fail', [
+                makeTask('t1', 'running', '/g2/fail'),
+            ]));
+
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir);
+            persistence.restore();
+
+            const qm = registry.getQueueForRepo('/g2/fail');
+            expect(qm.getQueued()).toHaveLength(0);
+            expect(qm.getHistory().some(t => t.id === 't1' && t.status === 'failed')).toBe(true);
+        });
+
+        it("restartPolicy 'requeue' re-enqueues running tasks at high priority", () => {
+            writeRepoFile('/g2/requeue', makeRepoState('/g2/requeue', [
+                makeTask('t1', 'running', '/g2/requeue'),
+            ]));
+
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir, { restartPolicy: 'requeue' });
+            persistence.restore();
+
+            const qm = registry.getQueueForRepo('/g2/requeue');
+            const queued = qm.getQueued();
+            expect(queued).toHaveLength(1);
+            expect(queued[0].priority).toBe('high');
+        });
+
+        it("restartPolicy 'requeue-if-retriable' requeues when retries remain", () => {
+            const task = { ...makeTask('t1', 'running', '/g2/retriable'), retryCount: 0, config: { retryAttempts: 2 } };
+            writeRepoFile('/g2/retriable', makeRepoState('/g2/retriable', [task]));
+
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir, { restartPolicy: 'requeue-if-retriable' });
+            persistence.restore();
+
+            const qm = registry.getQueueForRepo('/g2/retriable');
+            expect(qm.getQueued()).toHaveLength(1);
+        });
+
+        it("restartPolicy 'requeue-if-retriable' fails task when no retries remain", () => {
+            const task = { ...makeTask('t1', 'running', '/g2/no-retries'), retryCount: 2, config: { retryAttempts: 2 } };
+            writeRepoFile('/g2/no-retries', makeRepoState('/g2/no-retries', [task]));
+
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir, { restartPolicy: 'requeue-if-retriable' });
+            persistence.restore();
+
+            const qm = registry.getQueueForRepo('/g2/no-retries');
+            expect(qm.getQueued()).toHaveLength(0);
+            expect(qm.getHistory().some(t => t.id === 't1' && t.status === 'failed')).toBe(true);
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // G3: Migration of legacy queue.json
+    // --------------------------------------------------------------------
+
+    describe('G3: migrate legacy queue.json on restore', () => {
+        function makeLegacyV1State(tasks: Array<{ id: string; status: string; workingDirectory?: string }>) {
+            return {
+                version: 1,
+                savedAt: new Date().toISOString(),
+                pending: tasks.filter(t => t.status === 'queued' || t.status === 'running').map(t => ({
+                    id: t.id, type: 'custom', priority: 'normal', status: t.status,
+                    createdAt: Date.now(), payload: { workingDirectory: t.workingDirectory }, config: {},
+                })),
+                history: tasks.filter(t => t.status === 'completed').map(t => ({
+                    id: t.id, type: 'custom', priority: 'normal', status: t.status,
+                    createdAt: Date.now(), completedAt: Date.now(), payload: { workingDirectory: t.workingDirectory }, config: {},
+                })),
+            };
+        }
+
+        it('migrates legacy queue.json to per-repo files on restore', () => {
+            const v1State = makeLegacyV1State([
+                { id: 't1', status: 'queued', workingDirectory: '/legacy/repo' },
+            ]);
+            fs.writeFileSync(path.join(dataDir, 'queue.json'), JSON.stringify(v1State));
+
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir);
+            persistence.restore();
+
+            // Legacy file should be renamed
+            expect(fs.existsSync(path.join(dataDir, 'queue.json.migrated'))).toBe(true);
+            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(false);
+
+            // Per-repo file should exist and have the task
+            const qm = registry.getQueueForRepo('/legacy/repo');
+            expect(qm.getQueued()).toHaveLength(1);
+        });
+
+        it('skips migration if no legacy file exists', () => {
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir);
+            persistence.restore();
+
+            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(false);
+            expect(fs.existsSync(path.join(dataDir, 'queue.json.migrated'))).toBe(false);
+        });
+    });
+
+    // --------------------------------------------------------------------
+    // G6: Configurable history cap
+    // --------------------------------------------------------------------
+
+    describe('G6: maxPersistedHistory option', () => {
+        it('truncates history to configured limit on save', async () => {
+            persistence = new MultiRepoQueuePersistence(bridge, dataDir, { maxPersistedHistory: 5 });
+            persistence.restore();
+
+            const rootPath = '/g6/history-cap';
+            bridge.getOrCreateBridge(rootPath);
+            const qm = registry.getQueueForRepo(rootPath);
+
+            // Add 10 history entries
+            const histTasks = Array.from({ length: 10 }, (_, i) =>
+                makeTask(`h${i}`, 'completed', rootPath) as QueuedTask
+            );
+            qm.restoreHistory(histTasks);
+
+            // Need at least one pending task so file is written
+            qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
+
+            await persistence.save(rootPath);
+
+            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            expect(state.history.length).toBeLessThanOrEqual(5);
+        });
+    });
 });

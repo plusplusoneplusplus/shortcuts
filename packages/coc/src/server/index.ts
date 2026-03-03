@@ -153,7 +153,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const registry = new RepoQueueRegistry({
         maxQueueSize: 0,  // unlimited
         keepHistory: true,
-        maxHistorySize: 100,
+        maxHistorySize: options.queue?.historyLimit ?? 100,
     });
 
     // Resolve config to derive default timeout for AI tasks
@@ -173,14 +173,16 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     });
 
     // Restore persisted queue state before executor starts processing
-    const queuePersistence = new MultiRepoQueuePersistence(bridge, dataDir);
+    const queuePersistence = new MultiRepoQueuePersistence(bridge, dataDir, {
+        restartPolicy: options.queue?.restartPolicy,
+        maxPersistedHistory: options.queue?.historyLimit,
+    });
     queuePersistence.restore();
 
-    // Create aggregate facade for queue routes (until queue-handler.ts is updated in 004)
+    // Create aggregate facade for queue routes
     const queueFacade = bridge.createAggregateFacade();
 
     // Initialize schedule manager with persistent storage
-    // TODO(004): update ScheduleManager to accept MultiRepoQueueExecutorBridge
     const schedulePersistence = new SchedulePersistence(dataDir);
     const scheduleManager = new ScheduleManager(schedulePersistence, queueFacade);
     scheduleManager.restore();
@@ -226,8 +228,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
-    // TODO(004): update AdminRouteOptions to accept MultiRepoQueueExecutorBridge
-    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence as any });
+    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence });
     registerScheduleRoutes(routes, scheduleManager);
 
     // Always register wiki routes (they are safe even with no wikis registered)

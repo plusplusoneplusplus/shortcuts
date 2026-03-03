@@ -13,30 +13,49 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
-import { PersistedQueueState, computeRepoId, getRepoQueueFilePath, sanitizeTaskForPersistence } from './queue-persistence';
+import {
+    PersistedQueueState,
+    RestartPolicy,
+    computeRepoId,
+    getRepoQueueFilePath,
+    sanitizeTaskForPersistence,
+    atomicWriteJson,
+    migrateQueueFromOldFormat,
+} from './queue-persistence';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline-core';
 
 const CURRENT_VERSION = 3;
 const DEBOUNCE_MS = 300;
-const MAX_PERSISTED_HISTORY = 100;
+const MAX_PERSISTED_HISTORY_DEFAULT = 100;
 
 // ============================================================================
 // MultiRepoQueuePersistence
 // ============================================================================
 
+export interface MultiRepoQueuePersistenceOptions {
+    /** Policy for tasks that were running when the server last stopped (default: 'fail'). */
+    restartPolicy?: RestartPolicy;
+    /** Maximum number of history entries to persist per repo (default: 100). */
+    maxPersistedHistory?: number;
+}
+
 export class MultiRepoQueuePersistence {
     private readonly bridge: MultiRepoQueueExecutorBridge;
     private readonly dataDir: string;
     private readonly queuesDir: string;
+    private readonly restartPolicy: RestartPolicy;
+    private readonly maxPersistedHistory: number;
     private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly dirtyRepos = new Set<string>();
     private readonly changeListeners = new Map<string, (event: QueueChangeEvent) => void>();
     private readonly bridgeChangeListener: (...args: any[]) => void;
 
-    constructor(bridge: MultiRepoQueueExecutorBridge, dataDir: string) {
+    constructor(bridge: MultiRepoQueueExecutorBridge, dataDir: string, options?: MultiRepoQueuePersistenceOptions) {
         this.bridge = bridge;
         this.dataDir = dataDir;
         this.queuesDir = path.join(dataDir, 'queues');
+        this.restartPolicy = options?.restartPolicy ?? 'fail';
+        this.maxPersistedHistory = options?.maxPersistedHistory ?? MAX_PERSISTED_HISTORY_DEFAULT;
 
         // Auto-subscribe to change events for any repo (including newly created ones)
         this.bridgeChangeListener = (event: { repoPath: string }) => {
@@ -60,6 +79,9 @@ export class MultiRepoQueuePersistence {
         if (!fs.existsSync(this.queuesDir)) {
             fs.mkdirSync(this.queuesDir, { recursive: true });
         }
+
+        // G3: migrate legacy queue.json before reading per-repo files
+        migrateQueueFromOldFormat(this.dataDir, this.maxPersistedHistory);
 
         const files = fs.readdirSync(this.queuesDir)
             .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
@@ -98,8 +120,11 @@ export class MultiRepoQueuePersistence {
         const running = queueManager.getRunning();
         const history = queueManager.getHistory();
 
-        // If everything is empty, delete the file to clean up stale state
-        if (queued.length === 0 && running.length === 0 && history.length === 0) {
+        const repoId = computeRepoId(rootPath);
+        const isPaused = queueManager.isRepoPaused(repoId);
+
+        // G1: Only delete the file if queue is truly empty AND not paused
+        if (queued.length === 0 && running.length === 0 && history.length === 0 && !isPaused) {
             const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
             try {
                 if (fs.existsSync(filePath)) {
@@ -111,7 +136,6 @@ export class MultiRepoQueuePersistence {
             return;
         }
 
-        const repoId = computeRepoId(rootPath);
         const sanitizedPending = await Promise.all(
             [...queued, ...running].map(t => sanitizeTaskForPersistence(t, this.dataDir))
         );
@@ -124,12 +148,12 @@ export class MultiRepoQueuePersistence {
             repoRootPath: rootPath,
             repoId,
             pending: sanitizedPending,
-            history: sanitizedHistory.slice(0, MAX_PERSISTED_HISTORY),
-            isPaused: queueManager.isRepoPaused(repoId),
+            history: sanitizedHistory.slice(0, this.maxPersistedHistory),
+            isPaused,
         };
 
         const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
-        this.atomicWrite(filePath, state);
+        atomicWriteJson(filePath, state);
     }
 
     /**
@@ -205,13 +229,29 @@ export class MultiRepoQueuePersistence {
         if (Array.isArray(state.pending)) {
             for (const task of state.pending) {
                 if (task.status === 'running') {
-                    const failedTask: QueuedTask = {
-                        ...task,
-                        status: 'failed',
-                        error: 'Server restarted — task was running when server stopped',
-                        completedAt: Date.now(),
-                    };
-                    failedFromRunning.push(failedTask);
+                    const shouldRequeue = this.restartPolicy === 'requeue' ||
+                        (this.restartPolicy === 'requeue-if-retriable' &&
+                            (task.retryCount ?? 0) < (task.config?.retryAttempts ?? 0));
+
+                    if (shouldRequeue) {
+                        queueManager.enqueue({
+                            type: task.type,
+                            priority: 'high',
+                            payload: task.payload,
+                            config: task.config,
+                            displayName: task.displayName,
+                            repoId: task.repoId,
+                        });
+                        restoredPending++;
+                    } else {
+                        const failedTask: QueuedTask = {
+                            ...task,
+                            status: 'failed',
+                            error: 'Server restarted — task was running when server stopped',
+                            completedAt: Date.now(),
+                        };
+                        failedFromRunning.push(failedTask);
+                    }
                 } else if (task.status === 'queued') {
                     queueManager.enqueue({
                         type: task.type,
@@ -277,25 +317,6 @@ export class MultiRepoQueuePersistence {
                 process.stderr.write(`[MultiRepoQueuePersistence] Debounced save failed: ${err}\n`)
             );
         }, DEBOUNCE_MS));
-    }
-
-    // ========================================================================
-    // Private — file operations
-    // ========================================================================
-
-    private atomicWrite(filePath: string, state: PersistedQueueState): void {
-        const tmpPath = filePath + '.tmp';
-        try {
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
-            fs.renameSync(tmpPath, filePath);
-        } catch (err) {
-            process.stderr.write(`[MultiRepoQueuePersistence] Failed to write ${filePath}: ${err}\n`);
-            try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-        }
     }
 
     // ========================================================================

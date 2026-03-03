@@ -28,6 +28,10 @@ export interface ServeCommandOptions {
     drainTimeout?: number;
     /** Disable graceful queue draining on shutdown entirely. */
     noDrain?: boolean;
+    /** Policy for tasks that were running when the server last stopped (default: 'fail'). */
+    queueRestartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
+    /** Maximum number of history entries to persist per repo (default: 100). */
+    queueHistoryLimit?: number;
 }
 
 /** Options for the wiki module within the execution server. */
@@ -60,6 +64,13 @@ export interface ExecutionServerOptions {
     aiService?: CopilotSDKService;
     /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */
     configPath?: string;
+    /** Queue-specific options. */
+    queue?: {
+        /** Policy for tasks that were running when the server last stopped (default: 'fail'). */
+        restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
+        /** Maximum number of history entries to persist per repo (default: 100). */
+        historyLimit?: number;
+    };
 }
 
 /** Options for graceful shutdown with queue draining. */

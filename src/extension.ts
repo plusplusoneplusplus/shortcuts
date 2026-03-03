@@ -2126,7 +2126,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Initialize AI Queue Service (needed for queued Ask AI / Follow Prompt modes)
         const aiQueueService = initializeAIQueueService(aiProcessManager);
+        aiQueueService.restore(context.globalState);
         context.subscriptions.push(aiQueueService);
+        context.subscriptions.push({ dispose: () => aiQueueService.persist(context.globalState) });
         registerQueueCommands(context);
         context.subscriptions.push(createQueueStatusBarItem(aiQueueService));
 

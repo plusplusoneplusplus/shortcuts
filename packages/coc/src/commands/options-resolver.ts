@@ -67,6 +67,8 @@ export function resolveServeOptions(
         noColor: opts.color === false,
         drainTimeout: opts.drainTimeout as number | undefined,
         noDrain: opts.drain === false,
+        queueRestartPolicy: (opts.queueRestartPolicy as ServeCommandOptions['queueRestartPolicy'] | undefined) ?? config.queue?.restartPolicy,
+        queueHistoryLimit: (opts.queueHistoryLimit as number | undefined) ?? config.queue?.historyLimit,
     };
 }
 

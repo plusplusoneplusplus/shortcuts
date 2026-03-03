@@ -539,6 +539,49 @@ export class AIQueueService implements vscode.Disposable {
     }
 
     /**
+     * Persist queued (not running) tasks to VS Code globalState so they survive extension restart.
+     */
+    persist(memento: vscode.Memento): void {
+        const queued = this.queueManager.getQueued().filter(t => t.status === 'queued');
+        memento.update('shortcuts.queue.tasks', JSON.stringify(queued)).then(
+            () => {},
+            () => {}
+        );
+    }
+
+    /**
+     * Restore previously persisted tasks from VS Code globalState.
+     * Queued tasks are re-enqueued; clears the persisted state afterwards.
+     */
+    restore(memento: vscode.Memento): void {
+        const raw = memento.get<string>('shortcuts.queue.tasks');
+        if (!raw) { return; }
+
+        let tasks: QueuedTask[];
+        try {
+            tasks = JSON.parse(raw);
+        } catch {
+            memento.update('shortcuts.queue.tasks', undefined).then(() => {}, () => {});
+            return;
+        }
+
+        for (const task of tasks) {
+            if (task.status === 'queued') {
+                this.queueManager.enqueue({
+                    type: task.type,
+                    priority: task.priority,
+                    payload: task.payload,
+                    config: task.config,
+                    displayName: task.displayName,
+                    repoId: task.repoId,
+                });
+            }
+        }
+
+        memento.update('shortcuts.queue.tasks', undefined).then(() => {}, () => {});
+    }
+
+    /**
      * Cancel a queued or running task
      */
     cancelTask(taskId: string): boolean {

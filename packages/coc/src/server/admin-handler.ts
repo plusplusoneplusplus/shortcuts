@@ -20,7 +20,6 @@ import { importData } from './data-importer';
 import { validateExportPayload } from '@plusplusoneplusplus/coc-server';
 import type { CoCExportPayload, ImportMode } from '@plusplusoneplusplus/coc-server';
 import type { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
-import type { QueuePersistence } from './queue-persistence';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
 import type { CLIConfig } from '../config';
 
@@ -103,7 +102,7 @@ export interface AdminRouteOptions {
     /** Lazy getter for the queue manager (for import reset). */
     getQueueManager?: () => TaskQueueManager | undefined;
     /** Lazy getter for queue persistence (for import restore). */
-    getQueuePersistence?: () => QueuePersistence | undefined;
+    getQueuePersistence?: () => { restore(): void } | undefined;
     /** Exit code to use for restart (injected to avoid circular import). Defaults to 75. */
     restartExitCode?: number;
 }
