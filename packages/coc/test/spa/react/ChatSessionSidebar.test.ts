@@ -510,4 +510,114 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('overflow-y-auto overflow-x-hidden');
         });
     });
+
+    describe('archive support — props', () => {
+        it('accepts optional archiveSet prop', () => {
+            expect(source).toContain('archiveSet?: Set<string>');
+        });
+
+        it('accepts optional onToggleArchive callback', () => {
+            expect(source).toContain('onToggleArchive?: (sessionId: string) => void');
+        });
+
+        it('accepts optional showArchived prop', () => {
+            expect(source).toContain('showArchived?: boolean');
+        });
+
+        it('accepts optional onToggleShowArchived callback', () => {
+            expect(source).toContain('onToggleShowArchived?: () => void');
+        });
+
+        it('destructures archiveSet with default empty Set', () => {
+            expect(source).toContain('archiveSet = new Set()');
+        });
+
+        it('destructures onToggleArchive from props', () => {
+            expect(source).toContain('onToggleArchive,');
+        });
+
+        it('destructures showArchived with default false', () => {
+            expect(source).toContain('showArchived = false');
+        });
+    });
+
+    describe('archive support — session filtering', () => {
+        it('excludes archived sessions from the unpinned list', () => {
+            expect(source).toContain('archiveSet.has(s.id)');
+        });
+
+        it('builds archivedSessions list', () => {
+            expect(source).toContain('archivedSessions');
+        });
+    });
+
+    describe('archive support — context menu', () => {
+        it('context menu includes Archive Chat label', () => {
+            expect(source).toContain("'Archive Chat'");
+        });
+
+        it('context menu includes Unarchive Chat label', () => {
+            expect(source).toContain("'Unarchive Chat'");
+        });
+
+        it('context menu uses archive emoji', () => {
+            expect(source).toContain("'🗄️'");
+        });
+
+        it('context menu calls onToggleArchive', () => {
+            expect(source).toContain('onToggleArchive(contextMenu.sessionId)');
+        });
+
+        it('context menu renders when onToggleArchive provided even without onTogglePin', () => {
+            expect(source).toContain('onTogglePin || onToggleArchive');
+        });
+    });
+
+    describe('archive support — show archived toggle', () => {
+        it('renders show-archived toggle row when onToggleShowArchived provided', () => {
+            expect(source).toContain('data-testid="show-archived-toggle-row"');
+        });
+
+        it('renders show-archived checkbox with data-testid', () => {
+            expect(source).toContain('data-testid="show-archived-checkbox"');
+        });
+
+        it('checkbox reflects showArchived state', () => {
+            expect(source).toContain('checked={showArchived}');
+        });
+
+        it('checkbox calls onToggleShowArchived on change', () => {
+            expect(source).toContain('onChange={onToggleShowArchived}');
+        });
+
+        it('toggle label says "Show Archived"', () => {
+            expect(source).toContain('Show Archived');
+        });
+    });
+
+    describe('archive support — archived section', () => {
+        it('renders archived section header with data-testid', () => {
+            expect(source).toContain('data-testid="archived-section-header"');
+        });
+
+        it('renders archived separator with data-testid', () => {
+            expect(source).toContain('data-testid="archived-separator"');
+        });
+
+        it('renders no-archived-chats empty state with data-testid', () => {
+            expect(source).toContain('data-testid="no-archived-chats"');
+        });
+
+        it('shows "No archived chats" message', () => {
+            expect(source).toContain('No archived chats');
+        });
+
+        it('shows archived section only when showArchived is true', () => {
+            expect(source).toContain('{showArchived && (');
+        });
+
+        it('renders archived sessions when section is visible', () => {
+            expect(source).toContain('archivedSessions.map(session => renderCard(session, false))');
+        });
+    });
 });

@@ -26,6 +26,10 @@ export interface ChatSessionSidebarProps {
     pinnedIds?: string[];
     onTogglePin?: (taskId: string) => void;
     isUnread?: (sessionId: string, turnCount?: number) => boolean;
+    archiveSet?: Set<string>;
+    onToggleArchive?: (sessionId: string) => void;
+    showArchived?: boolean;
+    onToggleShowArchived?: () => void;
 }
 
 export function ChatSessionSidebar({
@@ -39,6 +43,10 @@ export function ChatSessionSidebar({
     pinnedIds = [],
     onTogglePin,
     isUnread,
+    archiveSet = new Set(),
+    onToggleArchive,
+    showArchived = false,
+    onToggleShowArchived,
 }: ChatSessionSidebarProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
     const [newChatDropdownOpen, setNewChatDropdownOpen] = useState(false);
@@ -98,7 +106,8 @@ export function ChatSessionSidebar({
     const pinnedSessions = pinnedIds
         .map(id => sessions.find(s => s.id === id))
         .filter((s): s is ChatSessionItem => s != null);
-    const unpinnedSessions = sessions.filter(s => !pinSet.has(s.id));
+    const unpinnedSessions = sessions.filter(s => !pinSet.has(s.id) && !archiveSet.has(s.id));
+    const archivedSessions = sessions.filter(s => archiveSet.has(s.id));
 
     const handleContextMenu = useCallback((e: React.MouseEvent, sessionId: string) => {
         e.preventDefault();
@@ -107,12 +116,17 @@ export function ChatSessionSidebar({
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
-    const contextMenuItems: ContextMenuItem[] = contextMenu && onTogglePin ? [
-        {
+    const contextMenuItems: ContextMenuItem[] = contextMenu ? [
+        ...(onTogglePin ? [{
             label: pinSet.has(contextMenu.sessionId) ? 'Unpin Chat' : 'Pin Chat',
             icon: '📌',
             onClick: () => onTogglePin(contextMenu.sessionId),
-        },
+        }] : []),
+        ...(onToggleArchive ? [{
+            label: archiveSet.has(contextMenu.sessionId) ? 'Unarchive Chat' : 'Archive Chat',
+            icon: '🗄️',
+            onClick: () => onToggleArchive(contextMenu.sessionId),
+        }] : []),
     ] : [];
 
     const renderCard = (session: ChatSessionItem, isPinned: boolean) => {
@@ -125,7 +139,7 @@ export function ChatSessionSidebar({
                 activeTaskId === session.id && 'ring-2 ring-[#0078d4]'
             )}
             onClick={() => handleCardClickWithLongPress(session.id)}
-            onContextMenu={onTogglePin ? (e: React.MouseEvent) => handleContextMenu(e, session.id) : undefined}
+            onContextMenu={(onTogglePin || onToggleArchive) ? (e: React.MouseEvent) => handleContextMenu(e, session.id) : undefined}
             onTouchStart={(e: React.TouchEvent) => handleCardTouchStart(e, session.id)}
             onTouchEnd={handleCardTouchEnd}
             onTouchMove={handleCardTouchMove}
@@ -191,43 +205,59 @@ export function ChatSessionSidebar({
     return (
         <div className={cn('flex flex-col overflow-hidden', className)} data-testid="chat-session-sidebar">
             {/* Header with New Chat button */}
-            <div className="p-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-center justify-between">
-                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chats</span>
-                <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="new-chat-split-btn">
-                    <Button variant="primary" size="sm" onClick={() => onNewChat(false)} data-testid="new-chat-btn" className="rounded-r-none">
-                        New Chat
-                    </Button>
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => setNewChatDropdownOpen(prev => !prev)}
-                        data-testid="new-chat-dropdown-toggle"
-                        className="rounded-l-none border-l border-white/30 px-1.5"
-                    >
-                        ▾
-                    </Button>
-                    {newChatDropdownOpen && (
-                        <div
-                            className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
-                            data-testid="new-chat-dropdown-menu"
+            <div className="p-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chats</span>
+                    <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="new-chat-split-btn">
+                        <Button variant="primary" size="sm" onClick={() => onNewChat(false)} data-testid="new-chat-btn" className="rounded-r-none">
+                            New Chat
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => setNewChatDropdownOpen(prev => !prev)}
+                            data-testid="new-chat-dropdown-toggle"
+                            className="rounded-l-none border-l border-white/30 px-1.5"
                         >
-                            <button
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                data-testid="new-chat-option-normal"
-                                onClick={() => { setNewChatDropdownOpen(false); onNewChat(false); }}
+                            ▾
+                        </Button>
+                        {newChatDropdownOpen && (
+                            <div
+                                className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
+                                data-testid="new-chat-dropdown-menu"
                             >
-                                New Chat
-                            </button>
-                            <button
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                data-testid="new-chat-option-readonly"
-                                onClick={() => { setNewChatDropdownOpen(false); onNewChat(true); }}
-                            >
-                                New Chat (Read-Only)
-                            </button>
-                        </div>
-                    )}
+                                <button
+                                    className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                    data-testid="new-chat-option-normal"
+                                    onClick={() => { setNewChatDropdownOpen(false); onNewChat(false); }}
+                                >
+                                    New Chat
+                                </button>
+                                <button
+                                    className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                    data-testid="new-chat-option-readonly"
+                                    onClick={() => { setNewChatDropdownOpen(false); onNewChat(true); }}
+                                >
+                                    New Chat (Read-Only)
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
+                {onToggleShowArchived && (
+                    <div className="flex items-center justify-end mt-1.5" data-testid="show-archived-toggle-row">
+                        <label className="flex items-center gap-1.5 text-[10px] text-[#848484] cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={showArchived}
+                                onChange={onToggleShowArchived}
+                                data-testid="show-archived-checkbox"
+                                className="cursor-pointer"
+                            />
+                            Show Archived
+                        </label>
+                    </div>
+                )}
             </div>
 
             {/* Session list */}
@@ -252,12 +282,27 @@ export function ChatSessionSidebar({
                             </>
                         )}
                         {unpinnedSessions.map(session => renderCard(session, false))}
+                        {showArchived && (
+                            <>
+                                <div className="border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] my-1.5" data-testid="archived-separator" />
+                                <div className="text-[10px] text-[#848484] font-medium px-1 pb-0.5" data-testid="archived-section-header">
+                                    🗄️ Archived
+                                </div>
+                                {archivedSessions.length === 0 ? (
+                                    <div className="text-[10px] text-[#848484] px-1 py-2 italic" data-testid="no-archived-chats">
+                                        No archived chats
+                                    </div>
+                                ) : (
+                                    archivedSessions.map(session => renderCard(session, false))
+                                )}
+                            </>
+                        )}
                     </>
                 )}
             </div>
 
-            {/* Context menu for pin/unpin */}
-            {contextMenu && onTogglePin && (
+            {/* Context menu for pin/unpin/archive */}
+            {contextMenu && (onTogglePin || onToggleArchive) && (
                 <ContextMenu
                     position={{ x: contextMenu.x, y: contextMenu.y }}
                     items={contextMenuItems}

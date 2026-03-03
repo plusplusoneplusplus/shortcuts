@@ -20,6 +20,7 @@ import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
 import { useChatSessions } from '../chat/useChatSessions';
 import { useChatReadState } from '../chat/useChatReadState';
 import { usePinnedChats } from '../chat/usePinnedChats';
+import { useArchivedChats } from '../chat/useArchivedChats';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useVisualViewport } from '../hooks/useVisualViewport';
 import { cn } from '../shared/cn';
@@ -71,6 +72,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const sessionsHook = useChatSessions(workspaceId);
     const readState = useChatReadState(workspaceId);
     const { pinnedIds, togglePin } = usePinnedChats(workspaceId);
+    const { archiveSet, toggleArchive } = useArchivedChats(workspaceId, togglePin);
+    const [showArchived, setShowArchived] = useState(false);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { model: savedModel, setModel: persistModel } = usePreferences();
     const { isMobile } = useBreakpoint();
@@ -944,6 +947,10 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             isUnread={readState.isUnread}
             pinnedIds={pinnedIds}
             onTogglePin={togglePin}
+            archiveSet={archiveSet}
+            onToggleArchive={toggleArchive}
+            showArchived={showArchived}
+            onToggleShowArchived={() => setShowArchived(prev => !prev)}
         />
     );
 

@@ -274,6 +274,23 @@ describe('readPreferences / writePreferences', () => {
         const prefs = readPreferences(tmpDir);
         expect(prefs.pinnedChats).toEqual({ ws1: ['valid'] });
     });
+
+    it('round-trips archivedChats through write and read', () => {
+        const original = { archivedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } };
+        writePreferences(tmpDir, original);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded).toEqual(original);
+    });
+
+    it('strips invalid archivedChats entries on read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({ archivedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.archivedChats).toEqual({ ws1: ['valid'] });
+    });
 });
 
 describe('validatePreferences', () => {
@@ -518,6 +535,39 @@ describe('validatePreferences', () => {
     it('accepts pinnedChats alongside other fields', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id1'] } });
         expect(result).toEqual({ lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id1'] } });
+    });
+
+    // -- archivedChats field --
+
+    it('accepts valid archivedChats record', () => {
+        const result = validatePreferences({ archivedChats: { ws1: ['a', 'b'], ws2: ['c'] } });
+        expect(result.archivedChats).toEqual({ ws1: ['a', 'b'], ws2: ['c'] });
+    });
+
+    it('rejects non-object archivedChats', () => {
+        expect(validatePreferences({ archivedChats: 'not-object' })).toEqual({});
+        expect(validatePreferences({ archivedChats: 42 })).toEqual({});
+        expect(validatePreferences({ archivedChats: null })).toEqual({});
+        expect(validatePreferences({ archivedChats: true })).toEqual({});
+    });
+
+    it('rejects array archivedChats', () => {
+        expect(validatePreferences({ archivedChats: ['a', 'b'] })).toEqual({});
+    });
+
+    it('filters out non-string IDs from archivedChats arrays', () => {
+        const result = validatePreferences({ archivedChats: { ws1: ['valid', 42, '', null, 'also-valid'] } });
+        expect(result.archivedChats).toEqual({ ws1: ['valid', 'also-valid'] });
+    });
+
+    it('omits archivedChats when empty object', () => {
+        const result = validatePreferences({ archivedChats: {} });
+        expect(result.archivedChats).toBeUndefined();
+    });
+
+    it('accepts archivedChats alongside pinnedChats', () => {
+        const result = validatePreferences({ pinnedChats: { ws1: ['p1'] }, archivedChats: { ws1: ['a1'] } });
+        expect(result).toEqual({ pinnedChats: { ws1: ['p1'] }, archivedChats: { ws1: ['a1'] } });
     });
 });
 
@@ -967,5 +1017,73 @@ describe('Preferences REST API', () => {
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).pinnedChats).toEqual(pinnedChats);
+    });
+
+    // -- archivedChats persistence via API --
+
+    it('PATCH persists archivedChats', async () => {
+        const archivedChats = { ws1: ['id-a', 'id-b'] };
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.archivedChats).toEqual(archivedChats);
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body).archivedChats).toEqual(archivedChats);
+    });
+
+    it('PATCH merges archivedChats with existing fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+        const archivedChats = { ws1: ['id-a'] };
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-5.2');
+        expect(body.archivedChats).toEqual(archivedChats);
+    });
+
+    it('PATCH with archivedChats:{} clears existing archives', async () => {
+        await patchJSON(`${baseUrl}/api/preferences`, { archivedChats: { ws1: ['id-a'] } });
+
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats: {} });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.archivedChats).toBeUndefined();
+
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body).archivedChats).toBeUndefined();
+    });
+
+    it('PATCH with archivedChats:{} does not affect other preference fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', archivedChats: { ws1: ['id-a'] } });
+
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats: {} });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-5.2');
+        expect(body.archivedChats).toBeUndefined();
+    });
+
+    it('archivedChats and pinnedChats persist independently', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, {
+            pinnedChats: { ws1: ['p1'] },
+            archivedChats: { ws1: ['a1'] },
+        });
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        const body = JSON.parse(res.body);
+        expect(body.pinnedChats).toEqual({ ws1: ['p1'] });
+        expect(body.archivedChats).toEqual({ ws1: ['a1'] });
+    });
+
+    it('archivedChats survive server restart', async () => {
+        const archivedChats = { ws1: ['id-a', 'id-b'], ws2: ['id-c'] };
+        await putJSON(`${baseUrl}/api/preferences`, { archivedChats });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).archivedChats).toEqual(archivedChats);
     });
 });

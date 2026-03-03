@@ -63,6 +63,23 @@ describe('validatePreferences', () => {
     it('drops pinnedChats when empty object', () => {
         expect(validatePreferences({ pinnedChats: {} })).toEqual({});
     });
+
+    it('validates archivedChats', () => {
+        const input = { archivedChats: { ws1: ['id1', 'id2'] } };
+        expect(validatePreferences(input)).toEqual({ archivedChats: { ws1: ['id1', 'id2'] } });
+    });
+
+    it('drops archivedChats when empty object', () => {
+        expect(validatePreferences({ archivedChats: {} })).toEqual({});
+    });
+
+    it('validates both pinnedChats and archivedChats together', () => {
+        const input = { pinnedChats: { ws1: ['p1'] }, archivedChats: { ws1: ['a1'] } };
+        expect(validatePreferences(input)).toEqual({
+            pinnedChats: { ws1: ['p1'] },
+            archivedChats: { ws1: ['a1'] },
+        });
+    });
 });
 
 describe('readPreferences / writePreferences', () => {

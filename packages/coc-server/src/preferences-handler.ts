@@ -31,6 +31,8 @@ export interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
     pinnedChats?: Record<string, string[]>;
+    /** Archived chat session IDs per workspace. */
+    archivedChats?: Record<string, string[]>;
     /** Whether the repos sidebar (left panel) is collapsed. */
     reposSidebarCollapsed?: boolean;
 }
@@ -122,6 +124,21 @@ export function validatePreferences(raw: unknown): UserPreferences {
         }
     }
 
+    if (typeof obj.archivedChats === 'object' && obj.archivedChats !== null && !Array.isArray(obj.archivedChats)) {
+        const validatedArchived: Record<string, string[]> = {};
+        for (const [key, value] of Object.entries(obj.archivedChats as Record<string, unknown>)) {
+            if (typeof key === 'string' && Array.isArray(value)) {
+                const ids = value.filter((id: unknown) => typeof id === 'string' && id.length > 0);
+                if (ids.length > 0) {
+                    validatedArchived[key] = ids;
+                }
+            }
+        }
+        if (Object.keys(validatedArchived).length > 0) {
+            result.archivedChats = validatedArchived;
+        }
+    }
+
     if (typeof obj.reposSidebarCollapsed === 'boolean') {
         result.reposSidebarCollapsed = obj.reposSidebarCollapsed;
     }
@@ -202,6 +219,15 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
                 Object.keys(body.pinnedChats as object).length === 0
             ) {
                 delete merged.pinnedChats;
+            }
+            if (
+                typeof body === 'object' && body !== null &&
+                'archivedChats' in body &&
+                typeof body.archivedChats === 'object' && body.archivedChats !== null &&
+                !Array.isArray(body.archivedChats) &&
+                Object.keys(body.archivedChats as object).length === 0
+            ) {
+                delete merged.archivedChats;
             }
             writePreferences(dataDir, merged);
             sendJSON(res, 200, merged);
