@@ -1,7 +1,7 @@
 /**
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { cn, ImageGallery, Spinner } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
@@ -14,6 +14,8 @@ import { copyToClipboard } from '../utils/format';
 import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import type { ToolGroupCategory } from './toolGroupUtils';
+import { groupConsecutiveToolChunks } from './toolGroupUtils';
+import { ToolCallGroupView } from './ToolCallGroupView';
 
 const chatMarked = new Marked({
     gfm: true,
@@ -504,7 +506,17 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
-    const { showReportIntent } = useDisplaySettings();
+    const { showReportIntent, toolCompactness } = useDisplaySettings();
+
+    const displayChunks = useMemo(() => {
+        if (!assistantRender) return [];
+        if (toolCompactness < 1) return assistantRender.chunks;
+        return groupConsecutiveToolChunks(
+            assistantRender.chunks,
+            assistantRender.toolById,
+            new Set(assistantRender.toolParentById.keys()),
+        );
+    }, [assistantRender, toolCompactness]);
 
     // Lazy image fetching state
     const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -708,7 +720,7 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                                 accKey = '';
                             }
                         };
-                        for (const chunk of assistantRender.chunks) {
+                        for (const chunk of displayChunks) {
                             if (chunk.kind === 'content' && chunk.html) {
                                 // Content emitted while a sub-task is active should render under that task.
                                 if (chunk.parentToolId && assistantRender.toolById.has(chunk.parentToolId)) continue;
@@ -722,6 +734,21 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                                     flushContent();
                                     nodes.push(toolNode);
                                 }
+                            } else if (chunk.kind === 'tool-group' && chunk.toolIds) {
+                                flushContent();
+                                const toolCalls = chunk.toolIds
+                                    .map(id => assistantRender.toolById.get(id))
+                                    .filter((tc): tc is NonNullable<typeof tc> => tc != null);
+                                nodes.push(
+                                    <ToolCallGroupView
+                                        key={chunk.key}
+                                        category={chunk.category}
+                                        toolCalls={toolCalls}
+                                        isStreaming={!!turn.streaming}
+                                        compactness={toolCompactness}
+                                        renderToolTree={renderToolTree}
+                                    />
+                                );
                             }
                         }
                         flushContent();

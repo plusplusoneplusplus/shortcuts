@@ -17,6 +17,23 @@
     display: none;
 }
 
+/* Compact tool group header — Minimal mode (compactness === 2) */
+.tool-group-header--minimal {
+    max-height: 1.5rem;
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+}
+
+.tool-group-header--minimal:hover,
+.tool-group-header--minimal:focus-within {
+    max-height: 8rem;
+}
+
+.dark .tool-group-header--minimal {
+    /* inherits same geometry; dark palette is handled by Tailwind utility classes
+       on the element itself inside ToolCallGroupView */
+}
+
 /* File path links rendered from markdown conversation content */
 .file-path-link {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
