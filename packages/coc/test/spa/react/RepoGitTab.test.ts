@@ -599,4 +599,114 @@ describe('RepoGitTab', () => {
             expect(source).toContain('[workspaceId, dispatch]');
         });
     });
+
+    describe('skill review context menu', () => {
+        it('imports ContextMenu component', () => {
+            expect(source).toContain("import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu'");
+        });
+
+        it('imports getApiBase utility', () => {
+            expect(source).toContain("import { getApiBase } from '../utils/config'");
+        });
+
+        it('imports useMemo from react', () => {
+            expect(source).toContain('useMemo');
+        });
+
+        it('fetches skills from /workspaces/:id/skills endpoint', () => {
+            expect(source).toContain('/skills');
+            expect(source).toContain('data.skills');
+        });
+
+        it('tracks skills state', () => {
+            expect(source).toContain('const [skills, setSkills]');
+        });
+
+        it('tracks contextMenu state with type discriminator', () => {
+            expect(source).toContain("type: 'commit' | 'branch-range'");
+        });
+
+        it('tracks enqueueToast state', () => {
+            expect(source).toContain('enqueueToast');
+            expect(source).toContain('setEnqueueToast');
+        });
+
+        it('defines handleCommitContextMenu callback', () => {
+            expect(source).toContain('const handleCommitContextMenu = useCallback');
+        });
+
+        it('defines handleBranchContextMenu callback', () => {
+            expect(source).toContain('const handleBranchContextMenu = useCallback');
+        });
+
+        it('defines closeContextMenu callback', () => {
+            expect(source).toContain('const closeContextMenu = useCallback(() => setContextMenu(null)');
+        });
+
+        it('defines handleEnqueueSkill async callback', () => {
+            expect(source).toContain('const handleEnqueueSkill = useCallback(async');
+        });
+
+        it('handleEnqueueSkill fetches commit diff for commit type', () => {
+            expect(source).toContain('/git/commits/');
+            expect(source).toContain('/diff');
+        });
+
+        it('handleEnqueueSkill fetches branch-range diff for branch-range type', () => {
+            expect(source).toContain('/git/branch-range/diff');
+        });
+
+        it('handleEnqueueSkill enqueues follow-prompt task', () => {
+            expect(source).toContain("type: 'follow-prompt'");
+            expect(source).toContain("priority: 'normal'");
+            expect(source).toContain('skillName');
+            expect(source).toContain('promptContent');
+        });
+
+        it('handleEnqueueSkill POSTs to /queue/tasks via getApiBase', () => {
+            expect(source).toContain("getApiBase() + '/queue/tasks'");
+        });
+
+        it('handleEnqueueSkill truncates large diffs at MAX_LINES', () => {
+            expect(source).toContain('MAX_LINES');
+            expect(source).toContain('Diff truncated');
+        });
+
+        it('defines contextMenuItems via useMemo', () => {
+            expect(source).toContain('const contextMenuItems = useMemo<ContextMenuItem[]>');
+        });
+
+        it('contextMenuItems includes Copy Hash for commit type', () => {
+            expect(source).toContain('Copy Hash');
+        });
+
+        it('contextMenuItems includes View Diff for commit type', () => {
+            expect(source).toContain('View Diff');
+        });
+
+        it('contextMenuItems includes Use Skill submenu when skills available', () => {
+            expect(source).toContain('Use Skill');
+        });
+
+        it('passes onCommitContextMenu to CommitList', () => {
+            expect(source).toContain('onCommitContextMenu={handleCommitContextMenu}');
+        });
+
+        it('passes onBranchContextMenu to BranchChanges', () => {
+            expect(source).toContain('onBranchContextMenu={handleBranchContextMenu}');
+        });
+
+        it('renders ContextMenu when contextMenu state is set', () => {
+            expect(source).toContain('<ContextMenu');
+            expect(source).toContain('onClose={closeContextMenu}');
+        });
+
+        it('renders enqueue toast notification', () => {
+            expect(source).toContain('data-testid="enqueue-toast"');
+        });
+
+        it('shows enqueueToast conditionally', () => {
+            expect(source).toContain('{enqueueToast && (');
+        });
+    });
 });

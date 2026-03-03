@@ -11,8 +11,9 @@
  * GitPanelHeader so both can display branch/ahead/behind information.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchApi } from '../hooks/useApi';
+import { getApiBase } from '../utils/config';
 import { Spinner } from '../shared';
 import { CommitList } from './CommitList';
 import { CommitDetail } from './CommitDetail';
@@ -21,6 +22,7 @@ import { BranchFileDiff } from './BranchFileDiff';
 import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './WorkingTree';
 import { useApp } from '../context/AppContext';
+import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 
@@ -55,6 +57,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [branchName, setBranchName] = useState<string>('');
     const [ahead, setAhead] = useState(0);
     const [behind, setBehind] = useState(0);
+
+    // Skills + context menu state
+    const [skills, setSkills] = useState<Array<{ name: string; description?: string }>>([]);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range'; commit?: GitCommitItem } | null>(null);
+    const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
 
     const fetchCommits = useCallback((refresh = false) => {
         const qs = refresh ? '&refresh=true' : '';
@@ -118,6 +125,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             .catch(err => setError(err.message || 'Failed to load commits'))
             .finally(() => setLoading(false));
     }, [workspaceId, fetchCommits, fetchBranchRange]);
+
+    // Fetch skills once per workspace
+    useEffect(() => {
+        setSkills([]);
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/skills`)
+            .then(data => {
+                if (data?.skills && Array.isArray(data.skills)) {
+                    setSkills(data.skills);
+                }
+            })
+            .catch(() => {});
+    }, [workspaceId]);
 
     // Refresh all data (non-blocking, keeps current content visible)
     const refreshAll = useCallback(() => {
@@ -222,6 +241,110 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setRightPanelView({ type: 'commit-file', hash, filePath });
     }, []);
 
+    const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+    const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
+        const commit = commits.find(c => c.hash === commitHash);
+        if (!commit) return;
+        setContextMenu({ x: e.clientX, y: e.clientY, type: 'commit', commit });
+    }, [commits]);
+
+    const handleBranchContextMenu = useCallback((e: React.MouseEvent) => {
+        setContextMenu({ x: e.clientX, y: e.clientY, type: 'branch-range' });
+    }, []);
+
+    const handleEnqueueSkill = useCallback(async (skillName: string) => {
+        if (!contextMenu) return;
+        const snapshot = { ...contextMenu };
+        closeContextMenu();
+
+        const MAX_LINES = 3000;
+        const truncateDiff = (diff: string) => {
+            const lines = diff.split('\n');
+            if (lines.length <= MAX_LINES) return diff;
+            return lines.slice(0, MAX_LINES).join('\n') +
+                `\n[Diff truncated — showing first ${MAX_LINES} lines of ${lines.length} total]`;
+        };
+
+        try {
+            let promptContent: string;
+            if (snapshot.type === 'commit' && snapshot.commit) {
+                const { commit } = snapshot;
+                const diffData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${commit.hash}/diff`);
+                const diff = truncateDiff(diffData.diff || '');
+                promptContent = `Review the following git changes.\n\nCommit: ${commit.hash} — ${commit.subject}\nAuthor: ${commit.author}\n\n<diff>\n${diff}\n</diff>`;
+            } else {
+                const diffData = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/diff`);
+                const diff = truncateDiff(diffData.diff || '');
+                const commitCount = branchRangeData?.commitCount ?? 0;
+                const base = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
+                promptContent = `Review the following branch changes (${commitCount} commit${commitCount !== 1 ? 's' : ''} ahead of ${base}).\n\n<diff>\n${diff}\n</diff>`;
+            }
+
+            const ws = state.workspaces.find((w: any) => w.id === workspaceId);
+            const shortId = snapshot.type === 'commit' && snapshot.commit
+                ? snapshot.commit.shortHash
+                : branchName || 'branch';
+
+            await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'follow-prompt',
+                    priority: 'normal',
+                    displayName: `Skill: ${skillName} — ${shortId}`,
+                    payload: {
+                        skillName,
+                        promptContent,
+                        workingDirectory: ws?.rootPath || '',
+                    },
+                }),
+            });
+
+            setEnqueueToast(`Skill "${skillName}" enqueued`);
+            setTimeout(() => setEnqueueToast(null), 3000);
+        } catch (err: any) {
+            setEnqueueToast(`Failed to enqueue: ${err.message || 'Unknown error'}`);
+            setTimeout(() => setEnqueueToast(null), 5000);
+        }
+    }, [contextMenu, workspaceId, branchRangeData, branchName, state.workspaces, closeContextMenu]);
+
+    const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
+        if (!contextMenu) return [];
+        const items: ContextMenuItem[] = [];
+
+        if (contextMenu.type === 'commit' && contextMenu.commit) {
+            const { commit } = contextMenu;
+            items.push({
+                label: 'Copy Hash',
+                icon: '📋',
+                onClick: () => { navigator.clipboard.writeText(commit.hash); },
+            });
+            items.push({
+                label: 'View Diff',
+                icon: '🔍',
+                onClick: () => { handleSelect(commit); },
+            });
+        }
+
+        if (skills.length > 0) {
+            if (items.length > 0) {
+                items.push({ label: '', separator: true, onClick: () => {} });
+            }
+            items.push({
+                label: 'Use Skill',
+                icon: '⚡',
+                onClick: () => {},
+                children: skills.map(skill => ({
+                    label: skill.name,
+                    onClick: () => handleEnqueueSkill(skill.name),
+                })),
+            });
+        }
+
+        return items;
+    }, [contextMenu, skills, handleEnqueueSkill, handleSelect]);
+
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'r' || e.key === 'R') {
@@ -282,6 +405,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             selectedHash={selectedCommit?.hash}
             onSelect={handleSelect}
             onFileSelect={handleCommitFileSelect}
+            onCommitContextMenu={handleCommitContextMenu}
             workspaceId={workspaceId}
         />
     );
@@ -312,6 +436,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     );
 
     return (
+        <>
         <div className="repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden" data-testid="repo-git-tab">
             {/* Left panel — commit list */}
             <aside
@@ -350,6 +475,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     onDefaultBranch={onDefaultBranch}
                     onFileSelect={handleFileSelect}
                     selectedFile={selectedBranchFile}
+                    onBranchContextMenu={handleBranchContextMenu}
                 />
                 <WorkingTree
                     workspaceId={workspaceId}
@@ -362,5 +488,21 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 {detailPanel}
             </main>
         </div>
+        {contextMenu && contextMenuItems.length > 0 && (
+            <ContextMenu
+                position={{ x: contextMenu.x, y: contextMenu.y }}
+                items={contextMenuItems}
+                onClose={closeContextMenu}
+            />
+        )}
+        {enqueueToast && (
+            <div
+                className="fixed bottom-4 right-4 z-[10010] px-4 py-2.5 rounded-md shadow-lg text-xs text-white bg-[#0078d4] dark:bg-[#1a6bbf] max-w-xs"
+                data-testid="enqueue-toast"
+            >
+                {enqueueToast}
+            </div>
+        )}
+        </>
     );
 }

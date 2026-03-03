@@ -80,6 +80,10 @@ describe('CommitList', () => {
         it('accepts optional emptyMessage prop', () => {
             expect(source).toContain('emptyMessage?: string');
         });
+
+        it('accepts optional onCommitContextMenu callback', () => {
+            expect(source).toContain('onCommitContextMenu?: (e: React.MouseEvent, commitHash: string) => void');
+        });
     });
 
     describe('GitCommitItem interface', () => {
@@ -406,6 +410,24 @@ describe('CommitList', () => {
 
         it('uses dimmed text styling when empty', () => {
             expect(source).toContain("isDimmed ? 'text-[#848484]'");
+        });
+    });
+
+    describe('context menu support', () => {
+        it('attaches onContextMenu handler to commit rows', () => {
+            expect(source).toContain('onContextMenu=');
+        });
+
+        it('calls onCommitContextMenu with commit hash', () => {
+            expect(source).toContain('onCommitContextMenu?.(e, commit.hash)');
+        });
+
+        it('prevents default on context menu event', () => {
+            expect(source).toContain('e.preventDefault()');
+        });
+
+        it('stops propagation on context menu event', () => {
+            expect(source).toContain('e.stopPropagation()');
         });
     });
 });

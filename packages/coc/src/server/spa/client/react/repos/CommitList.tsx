@@ -49,6 +49,7 @@ interface CommitListProps {
     selectedHash?: string | null;
     onSelect?: (commit: GitCommitItem) => void;
     onFileSelect?: (hash: string, filePath: string) => void;
+    onCommitContextMenu?: (e: React.MouseEvent, commitHash: string) => void;
     workspaceId?: string;
     loading?: boolean;
     defaultCollapsed?: boolean;
@@ -57,7 +58,7 @@ interface CommitListProps {
     unpushedCount?: number;
 }
 
-export function CommitList({ title, commits, selectedHash, onSelect, onFileSelect, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     // Expanded file list state: hash -> files (cached)
@@ -211,6 +212,7 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
                                     onClick={() => handleCommitClick(commit)}
                                     onMouseEnter={(e) => handleRowMouseEnter(commit, e)}
                                     onMouseLeave={handleRowMouseLeave}
+                                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
                                     data-testid={`commit-row-${commit.shortHash}`}
                                 >
                                     <span className="text-[10px] mt-0.5 flex-shrink-0">{isUnpushed ? '●' : '○'}</span>

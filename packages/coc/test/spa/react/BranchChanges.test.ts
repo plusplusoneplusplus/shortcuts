@@ -540,5 +540,27 @@ describe('BranchChanges', () => {
             expect(commitListPanelIndex).toBeGreaterThan(-1);
             expect(branchChangesIndex).toBeLessThan(commitListPanelIndex);
         });
+
+        it('RepoGitTab passes onBranchContextMenu to BranchChanges', () => {
+            expect(gitTabSource).toContain('onBranchContextMenu={handleBranchContextMenu}');
+        });
+    });
+
+    describe('context menu support', () => {
+        it('accepts optional onBranchContextMenu prop', () => {
+            expect(source).toContain('onBranchContextMenu?: (e: React.MouseEvent) => void');
+        });
+
+        it('destructures onBranchContextMenu in function signature', () => {
+            expect(source).toContain('onBranchContextMenu');
+        });
+
+        it('attaches onContextMenu handler to branch-changes header button', () => {
+            expect(source).toContain('onContextMenu=');
+        });
+
+        it('calls onBranchContextMenu prop from header onContextMenu', () => {
+            expect(source).toContain('onBranchContextMenu?.(e)');
+        });
     });
 });
