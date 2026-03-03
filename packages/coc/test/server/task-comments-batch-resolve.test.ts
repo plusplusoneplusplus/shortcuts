@@ -3,11 +3,9 @@
  *
  * Tests for buildBatchResolvePrompt(), the per-comment resolve command
  * (commandId: 'resolve'), and the POST .../batch-resolve endpoint.
- *
- * Uses vi.mock for the ai-invoker module (dynamic import in handler).
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -19,22 +17,6 @@ import {
     type TaskComment,
 } from '../../src/server/task-comments-handler';
 
-// Mock the ai-invoker module used by handlers via dynamic import
-let mockAIResponse = { success: true, response: 'revised document content' };
-let mockAIThrow = false;
-let capturedPrompt = '';
-
-vi.mock('../../src/ai-invoker', () => ({
-    createCLIAIInvoker: () => {
-        return async (prompt: string) => {
-            capturedPrompt = prompt;
-            if (mockAIThrow) {
-                throw new Error('AI unavailable');
-            }
-            return mockAIResponse;
-        };
-    },
-}));
 
 // ============================================================================
 // HTTP Helpers
@@ -194,9 +176,6 @@ describe('batch-resolve endpoints', () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-batch-resolve-'));
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
         baseUrl = server.url;
-        mockAIResponse = { success: true, response: 'revised document content' };
-        mockAIThrow = false;
-        capturedPrompt = '';
     });
 
     afterEach(async () => {

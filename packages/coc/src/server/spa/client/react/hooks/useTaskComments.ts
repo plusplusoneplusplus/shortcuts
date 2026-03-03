@@ -297,25 +297,15 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                 });
                 if (!aiRes.ok) throw new Error('Batch resolve failed');
 
-                let revisedContent: string;
-                let commentIds: string[];
-
-                if (aiRes.status === 202) {
-                    // Async queue path: poll for result
-                    const { taskId } = await aiRes.json();
-                    const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
-                    revisedContent = result.revisedContent;
-                    commentIds = result.commentIds;
-                } else {
-                    // Sync fallback path
-                    const data = await aiRes.json();
-                    revisedContent = data.revisedContent;
-                    commentIds = data.commentIds;
-                }
+                // Async queue path: poll for result
+                const { taskId } = await aiRes.json();
+                const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
+                const revisedContent: string = result.revisedContent;
+                const commentIds: string[] = result.commentIds;
 
                 // Step 2 — write revised file only if the server returned content
-                // (the async queue path uses AI tools to edit the file directly,
-                //  so revisedContent is absent; the sync fallback returns actual content)
+                // (the queue path uses AI tools to edit the file directly,
+                //  so revisedContent may be absent)
                 if (revisedContent) {
                     const patchRes = await fetch(
                         getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
@@ -351,21 +341,11 @@ export function useTaskComments(wsId: string, taskPath: string): UseTaskComments
                 });
                 if (!aiRes.ok) throw new Error('AI resolve failed');
 
-                let revisedContent: string;
-                let commentIds: string[] = [];
-
-                if (aiRes.status === 202) {
-                    // Async queue path: poll for result
-                    const { taskId } = await aiRes.json();
-                    const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
-                    revisedContent = result.revisedContent;
-                    commentIds = result.commentIds ?? [];
-                } else {
-                    // Sync fallback path
-                    const data = await aiRes.json();
-                    revisedContent = data.revisedContent;
-                    commentIds = data.commentIds ?? [];
-                }
+                // Async queue path: poll for result
+                const { taskId } = await aiRes.json();
+                const result = await pollTaskResult<{ revisedContent: string; commentIds: string[] }>(taskId);
+                const revisedContent: string = result.revisedContent;
+                const commentIds: string[] = result.commentIds ?? [];
 
                 // Step 2 — write revised file only if content was returned
                 if (revisedContent) {
