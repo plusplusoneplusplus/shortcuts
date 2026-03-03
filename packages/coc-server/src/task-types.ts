@@ -10,6 +10,12 @@
  */
 
 // ============================================================================
+// Target Type
+// ============================================================================
+
+export type TargetType = 'prompt' | 'script';
+
+// ============================================================================
 // Task Type Union
 // ============================================================================
 
@@ -22,6 +28,7 @@ export type TaskType =
     | 'readonly-chat'
     | 'task-generation'
     | 'run-pipeline'
+    | 'run-script'
     | 'custom';
 
 // ============================================================================
@@ -100,6 +107,13 @@ export interface RunPipelinePayload {
     workspaceId?: string;
 }
 
+export interface RunScriptPayload {
+    readonly kind: 'run-script';
+    script: string;
+    workingDirectory?: string;
+    scheduleId?: string;
+}
+
 export interface CustomTaskPayload {
     repoId?: string;
     data: Record<string, unknown>;
@@ -116,6 +130,7 @@ export type TaskPayload =
     | ChatPayload
     | TaskGenerationPayload
     | RunPipelinePayload
+    | RunScriptPayload
     | CustomTaskPayload;
 
 // ============================================================================
@@ -156,4 +171,8 @@ export function isTaskGenerationPayload(payload: Record<string, unknown>): paylo
 
 export function isRunPipelinePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunPipelinePayload {
     return (payload as any).kind === 'run-pipeline';
+}
+
+export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {
+    return (payload as any).kind === 'run-script';
 }

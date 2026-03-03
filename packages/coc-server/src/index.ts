@@ -108,12 +108,14 @@ export { handleProcessStream } from './sse-handler';
 // Task types (domain-specific payload types and guards)
 export {
     type TaskType,
+    type TargetType,
     type FollowPromptPayload,
     type ResolveCommentsPayload,
     type AIClarificationPayload,
     type ChatPayload,
     type TaskGenerationPayload,
     type RunPipelinePayload,
+    type RunScriptPayload,
     type CustomTaskPayload,
     type TaskPayload,
     isFollowPromptPayload,
@@ -124,6 +126,7 @@ export {
     isCustomTaskPayload,
     isTaskGenerationPayload,
     isRunPipelinePayload,
+    isRunScriptPayload,
 } from './task-types';
 
 // Suggest follow-ups tool

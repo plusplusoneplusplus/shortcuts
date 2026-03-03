@@ -14,6 +14,7 @@ import {
     isCustomTaskPayload,
     isTaskGenerationPayload,
     isRunPipelinePayload,
+    isRunScriptPayload,
 } from '../src/task-types';
 import type {
     FollowPromptPayload,
@@ -22,6 +23,7 @@ import type {
     ChatPayload,
     TaskGenerationPayload,
     RunPipelinePayload,
+    RunScriptPayload,
     CustomTaskPayload,
 } from '../src/task-types';
 
@@ -177,6 +179,42 @@ describe('isRunPipelinePayload', () => {
             prompt: 'x',
         };
         expect(isRunPipelinePayload(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
+// isRunScriptPayload
+// ============================================================================
+
+describe('isRunScriptPayload', () => {
+    it('returns true for payload with kind: run-script', () => {
+        const payload: Record<string, unknown> = { kind: 'run-script', script: 'echo hello' };
+        expect(isRunScriptPayload(payload)).toBe(true);
+    });
+
+    it('returns true with optional fields present', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'run-script',
+            script: 'node -e "process.exit(0)"',
+            workingDirectory: '/tmp',
+            scheduleId: 'sch_abc123',
+        };
+        expect(isRunScriptPayload(payload)).toBe(true);
+    });
+
+    it('returns false for kind: chat', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(isRunScriptPayload(payload)).toBe(false);
+    });
+
+    it('returns false for payload with no kind field', () => {
+        const payload: Record<string, unknown> = { script: 'echo hello' };
+        expect(isRunScriptPayload(payload)).toBe(false);
+    });
+
+    it('returns false for kind: run-pipeline', () => {
+        const payload: Record<string, unknown> = { kind: 'run-pipeline', pipelinePath: '/p', workingDirectory: '/tmp' };
+        expect(isRunScriptPayload(payload)).toBe(false);
     });
 });
 

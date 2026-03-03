@@ -435,4 +435,70 @@ describe('ScheduleManager', () => {
             expect(history.length).toBeLessThanOrEqual(10);
         });
     });
+
+    describe('targetType field', () => {
+        it('targetType is undefined when not provided (treated as prompt)', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'No TargetType',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            expect(schedule.targetType).toBeUndefined();
+        });
+
+        it('accepts targetType: prompt explicitly', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Explicit Prompt',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                targetType: 'prompt',
+            });
+
+            expect(schedule.targetType).toBe('prompt');
+        });
+
+        it('accepts targetType: script', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Script Schedule',
+                target: 'echo hello',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                targetType: 'script',
+            });
+
+            expect(schedule.targetType).toBe('script');
+        });
+
+        it('persists and restores targetType correctly', () => {
+            manager.addSchedule(REPO_ID, {
+                name: 'Script Persisted',
+                target: 'echo hi',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                targetType: 'script',
+            });
+
+            manager.dispose();
+
+            const newManager = new ScheduleManager(persistence);
+            newManager.restore();
+
+            const schedules = newManager.getSchedules(REPO_ID);
+            expect(schedules).toHaveLength(1);
+            expect(schedules[0].targetType).toBe('script');
+
+            newManager.dispose();
+        });
+    });
 });

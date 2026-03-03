@@ -11,6 +11,7 @@
 import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
 import type { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import type { TargetType } from '@plusplusoneplusplus/coc-server';
 import { SchedulePersistence } from './schedule-persistence';
 
 // ============================================================================
@@ -29,6 +30,7 @@ export interface ScheduleEntry {
     onFailure: ScheduleOnFailure;
     status: ScheduleStatus;
     createdAt: string;
+    targetType?: TargetType;   // defaults to 'prompt' when absent
 }
 
 export interface ScheduleRunRecord {
