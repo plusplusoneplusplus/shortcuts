@@ -15,6 +15,7 @@ import { RepoQueueTab } from './RepoQueueTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoChatTab } from './RepoChatTab';
 import { RepoGitTab } from './RepoGitTab';
+import { RepoWikiTab } from './RepoWikiTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
@@ -455,6 +456,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
                         {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
+                        {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} />}
                     </div>
                 )}
             </div>
