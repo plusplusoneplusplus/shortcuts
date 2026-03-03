@@ -7,6 +7,7 @@
  */
 
 import { postMessage } from './vscode-bridge';
+import { getPreviewActionFilePath, clearPreviewActionFilePath } from './preview-action-state';
 
 /** Current dialog state */
 interface DialogState {
@@ -109,6 +110,9 @@ function closeDialog(): void {
         dialog.style.display = 'none';
     }
 
+    // Clear any pending preview action file path
+    clearPreviewActionFilePath();
+
     // Reset dialog state
     dialogState = {
         isOpen: false
@@ -122,18 +126,20 @@ function closeDialog(): void {
  * @param additionalContext - Optional additional context from user
  */
 function submitRefreshPlan(additionalContext: string): void {
+    const targetDocumentPath = getPreviewActionFilePath() ?? undefined;
     // Send message to extension
     try {
         postMessage({
             type: 'refreshPlan',
-            additionalContext: additionalContext || undefined
+            additionalContext: additionalContext || undefined,
+            ...(targetDocumentPath && { targetDocumentPath })
         } as any);
         console.log('[RefreshPlanDialog] Sent refresh plan request', additionalContext ? `with context: ${additionalContext.substring(0, 50)}...` : 'without additional context');
     } catch (e) {
         console.error('[RefreshPlanDialog] Failed to send message:', e);
     }
 
-    // Close the dialog
+    // Close the dialog (also clears preview action state)
     closeDialog();
 }
 

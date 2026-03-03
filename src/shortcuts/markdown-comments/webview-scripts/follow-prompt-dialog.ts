@@ -7,6 +7,7 @@
 
 import { postMessage } from './vscode-bridge';
 import { AIModelOption, FollowPromptDialogOptions } from './types';
+import { getPreviewActionFilePath, clearPreviewActionFilePath } from './preview-action-state';
 
 /** Current dialog state */
 interface DialogState {
@@ -162,6 +163,10 @@ function closeDialog(options: FollowPromptDialogOptions | null): void {
         dialog.style.display = 'none';
     }
 
+    const targetDocumentPath = getPreviewActionFilePath() ?? undefined;
+    // Clear preview action state before sending (consumed once)
+    clearPreviewActionFilePath();
+
     if (options) {
         // Send result to extension
         try {
@@ -169,7 +174,8 @@ function closeDialog(options: FollowPromptDialogOptions | null): void {
                 type: 'followPromptDialogResult',
                 promptFilePath: dialogState.promptFilePath,
                 skillName: dialogState.skillName,
-                options
+                options,
+                ...(targetDocumentPath && { targetDocumentPath })
             } as any);
         } catch (e) {
             console.error('[FollowPromptDialog] Failed to send message:', e);
@@ -211,6 +217,7 @@ function getDialogOptions(): FollowPromptDialogOptions {
 function copyPromptToClipboard(): void {
     const contextInput = document.getElementById('fpAdditionalContext') as HTMLTextAreaElement;
     const copyBtn = document.getElementById('fpCopyPromptBtn');
+    const targetDocumentPath = getPreviewActionFilePath() ?? undefined;
     
     // Send message to extension to copy prompt
     try {
@@ -218,7 +225,8 @@ function copyPromptToClipboard(): void {
             type: 'copyFollowPrompt',
             promptFilePath: dialogState.promptFilePath,
             skillName: dialogState.skillName,
-            additionalContext: contextInput?.value?.trim() || undefined
+            additionalContext: contextInput?.value?.trim() || undefined,
+            ...(targetDocumentPath && { targetDocumentPath })
         } as any);
         
         // Show visual feedback on the button

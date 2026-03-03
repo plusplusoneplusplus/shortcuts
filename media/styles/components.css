@@ -968,6 +968,78 @@ body.vscode-light .hljs-type {
     padding: 0;
 }
 
+/* File Preview Dialog — mode toggle */
+.file-preview-mode-toggle {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.file-preview-mode-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    background: var(--vscode-button-secondaryBackground, #3a3d41);
+    color: var(--vscode-button-secondaryForeground, #cccccc);
+    border: 1px solid var(--vscode-widget-border, #454545);
+    border-radius: 3px;
+}
+
+.file-preview-mode-btn.active {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #ffffff);
+    border-color: var(--vscode-button-background, #0e639c);
+}
+
+.file-preview-mode-btn:hover:not(.active) {
+    background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+/* File Preview Dialog — rendered markdown */
+.file-preview-dialog-rendered {
+    overflow: auto;
+    max-height: calc(85vh - 200px);
+    background: var(--vscode-editor-background, #1e1e1e);
+    border: 1px solid var(--vscode-widget-border, #454545);
+    border-radius: 4px;
+    padding: 8px 0;
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+    font-size: 12px;
+}
+
+/* File Preview Dialog — AI action dropdown */
+.file-preview-ai-dropdown {
+    position: relative;
+    display: inline-block;
+    margin-right: 4px;
+}
+
+.file-preview-ai-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    background: var(--vscode-menu-background, #252526);
+    border: 1px solid var(--vscode-widget-border, #454545);
+    border-radius: 4px;
+    min-width: 170px;
+    z-index: 10001;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.file-preview-ai-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--vscode-menu-foreground, #cccccc);
+    white-space: nowrap;
+}
+
+.file-preview-ai-item:hover {
+    background: var(--vscode-menu-selectionBackground, #094771);
+    color: var(--vscode-menu-selectionForeground, #ffffff);
+}
+
 .form-group textarea:focus {
     outline: none;
     border-color: var(--vscode-focusBorder, #007acc);

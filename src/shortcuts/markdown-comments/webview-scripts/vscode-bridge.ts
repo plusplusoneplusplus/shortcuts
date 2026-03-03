@@ -68,9 +68,10 @@ export function requestSendToCLIInteractive(format: string = 'markdown'): void {
 /**
  * Request the extension to start a CLI chat session about the current file
  * Opens an interactive AI CLI session with a file-path-based prompt
+ * @param targetDocumentPath - Optional override for the document path (used from file-preview dialog)
  */
-export function requestChatInCLI(): void {
-    postMessage({ type: 'chatInCLI' });
+export function requestChatInCLI(targetDocumentPath?: string): void {
+    postMessage({ type: 'chatInCLI', ...(targetDocumentPath && { targetDocumentPath }) } as any);
 }
 
 /**
@@ -257,9 +258,10 @@ export function requestSkills(): void {
 
 /**
  * Request to search all prompt files using Quick Pick
+ * @param targetDocumentPath - Optional override for the document path (used from file-preview dialog)
  */
-export function requestPromptSearch(): void {
-    postMessage({ type: 'promptSearch' });
+export function requestPromptSearch(targetDocumentPath?: string): void {
+    postMessage({ type: 'promptSearch', ...(targetDocumentPath && { targetDocumentPath }) } as any);
 }
 
 /**

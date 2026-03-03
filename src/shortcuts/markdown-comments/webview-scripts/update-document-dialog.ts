@@ -7,6 +7,7 @@
  */
 
 import { postMessage } from './vscode-bridge';
+import { getPreviewActionFilePath, clearPreviewActionFilePath } from './preview-action-state';
 
 /** Current dialog state */
 interface DialogState {
@@ -112,6 +113,9 @@ function closeDialog(): void {
         dialog.style.display = 'none';
     }
 
+    // Clear any pending preview action file path
+    clearPreviewActionFilePath();
+
     // Reset dialog state
     dialogState = {
         isOpen: false
@@ -124,18 +128,20 @@ function closeDialog(): void {
  * Submit the instruction to the extension
  */
 function submitInstruction(instruction: string): void {
+    const targetDocumentPath = getPreviewActionFilePath() ?? undefined;
     // Send message to extension
     try {
         postMessage({
             type: 'updateDocument',
-            instruction
+            instruction,
+            ...(targetDocumentPath && { targetDocumentPath })
         } as any);
         console.log('[UpdateDocumentDialog] Sent instruction:', instruction.substring(0, 50) + '...');
     } catch (e) {
         console.error('[UpdateDocumentDialog] Failed to send message:', e);
     }
 
-    // Close the dialog
+    // Close the dialog (also clears preview action state)
     closeDialog();
 }
 

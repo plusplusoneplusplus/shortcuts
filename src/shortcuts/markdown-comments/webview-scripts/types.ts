@@ -174,14 +174,14 @@ export type WebviewMessage =
     | { type: 'requestSkills' }
     | { type: 'executeWorkPlan'; promptFilePath: string }
     | { type: 'executeWorkPlanWithSkill'; skillName: string }
-    | { type: 'promptSearch' }
+    | { type: 'promptSearch'; targetDocumentPath?: string }
     | { type: 'showFollowPromptDialog'; promptFilePath: string; promptName: string; skillName?: string }
-    | { type: 'followPromptDialogResult'; promptFilePath: string; skillName?: string; options: FollowPromptDialogOptions }
-    | { type: 'copyFollowPrompt'; promptFilePath: string; skillName?: string; additionalContext?: string }
-    | { type: 'updateDocument'; instruction: string }
+    | { type: 'followPromptDialogResult'; promptFilePath: string; skillName?: string; options: FollowPromptDialogOptions; targetDocumentPath?: string }
+    | { type: 'copyFollowPrompt'; promptFilePath: string; skillName?: string; additionalContext?: string; targetDocumentPath?: string }
+    | { type: 'updateDocument'; instruction: string; targetDocumentPath?: string }
     | { type: 'requestRefreshPlanDialog' }
-    | { type: 'refreshPlan'; additionalContext?: string }
-    | { type: 'chatInCLI' }
+    | { type: 'refreshPlan'; additionalContext?: string; targetDocumentPath?: string }
+    | { type: 'chatInCLI'; targetDocumentPath?: string }
     | { type: 'copyWithContext'; selectedText: string; filePath: string }
     | { type: 'readFilePreview'; path: string; requestId: string; full?: boolean };
 

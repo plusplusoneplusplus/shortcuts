@@ -9,7 +9,9 @@
  * file content from the extension host.
  */
 
-import { openFile, requestFilePreview } from './vscode-bridge';
+import { openFile, requestFilePreview, requestUpdateDocument, requestRefreshPlan, requestChatInCLI, requestPromptSearch } from './vscode-bridge';
+import { setPreviewActionFilePath } from './preview-action-state';
+import { applyMarkdownHighlighting } from '../webview-logic/markdown-renderer';
 import type { ExtensionMessage } from './types';
 
 // --- Constants ---
@@ -41,6 +43,10 @@ let hoverTimer: ReturnType<typeof setTimeout> | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let activeRequestId = 0;
 let currentHoverTarget: HTMLElement | null = null;
+/** Current view mode for the dialog (only relevant for .md files) */
+let dialogViewMode: 'preview' | 'source' = 'preview';
+/** File path currently shown in the dialog */
+let dialogCurrentPath: string = '';
 
 const cache = new Map<string, CacheEntry>();
 const pendingRequests = new Map<string, PendingRequest>();
@@ -290,8 +296,66 @@ function renderDialogLoading(dialog: HTMLDivElement, filePath: string): void {
     setupDialogCloseHandlers(dialog, filePath);
 }
 
+/**
+ * Render markdown content using the same line-by-line highlighting used in the main editor.
+ * Returns an HTML string with `.line-row` / `.line-content` structure.
+ */
+function renderMarkdownPreview(content: string): string {
+    const lines = content.split('\n');
+    let html = '';
+    let inCodeBlock = false;
+    let codeBlockLang: string | null = null;
+
+    lines.forEach((line, index) => {
+        const lineNum = index + 1;
+        let lineHtml: string;
+        if (line.length === 0) {
+            lineHtml = '<br>';
+        } else {
+            const result = applyMarkdownHighlighting(line, lineNum, inCodeBlock, codeBlockLang);
+            lineHtml = result.html;
+            inCodeBlock = result.inCodeBlock;
+            codeBlockLang = result.codeBlockLang;
+        }
+        html += `<div class="line-row">` +
+            `<div class="line-number">${lineNum}</div>` +
+            `<div class="line-content" data-line="${lineNum}">${lineHtml}</div>` +
+            `</div>`;
+    });
+
+    return html;
+}
+
+/**
+ * Build the AI action dropdown HTML (shown for .md files only).
+ */
+function buildAIActionDropdownHtml(): string {
+    return `<div class="file-preview-ai-dropdown" id="filePreviewAIDropdown">
+        <button class="btn btn-secondary file-preview-ai-btn" id="filePreviewAIBtn">🤖 AI Action ▼</button>
+        <div class="file-preview-ai-menu" id="filePreviewAIMenu" style="display:none;">
+            <div class="file-preview-ai-item" data-action="follow-prompt">🚀 Follow Prompt</div>
+            <div class="file-preview-ai-item" data-action="update-doc">📝 Update Document</div>
+            <div class="file-preview-ai-item" data-action="refresh-plan">🔄 Refresh Plan</div>
+            <div class="file-preview-ai-item" data-action="chat-in-cli">💬 Chat In CLI</div>
+        </div>
+    </div>`;
+}
+
+/**
+ * Build the mode toggle HTML for .md files (Preview / Source).
+ */
+function buildModeToggleHtml(currentMode: 'preview' | 'source'): string {
+    const previewActive = currentMode === 'preview' ? ' active' : '';
+    const sourceActive = currentMode === 'source' ? ' active' : '';
+    return `<div class="file-preview-mode-toggle">` +
+        `<button class="file-preview-mode-btn${previewActive}" data-mode="preview">Preview</button>` +
+        `<button class="file-preview-mode-btn${sourceActive}" data-mode="source">Source</button>` +
+        `</div>`;
+}
+
 function renderDialogContent(dialog: HTMLDivElement, filePath: string, entry: CacheEntry): void {
     const fileName = filePath.split('/').pop() || filePath;
+    const isMarkdown = /\.md$/i.test(filePath);
 
     if (entry.error) {
         dialog.innerHTML = `
@@ -313,46 +377,59 @@ function renderDialogContent(dialog: HTMLDivElement, filePath: string, entry: Ca
 
     const lines = (entry.content || '').split('\n');
     const displayLines = lines.slice(0, 500);
+    const truncated = entry.lineCount > 500
+        ? `<div class="file-preview-truncated">Showing 500 of ${entry.lineCount} lines. Open in editor to see full file.</div>`
+        : '';
 
-    let bodyHtml: string;
-    if (entry.language && typeof hljs !== 'undefined') {
-        try {
-            const raw = displayLines.join('\n');
-            const result = hljs.getLanguage(entry.language)
-                ? hljs.highlight(raw, { language: entry.language })
-                : hljs.highlightAuto(raw);
-            const hlLines = result.value.split('\n');
-            bodyHtml = hlLines.map((line, i) =>
-                `<span class="file-preview-line-num">${i + 1}</span>${line}`
-            ).join('\n');
-        } catch {
+    // Build body content based on view mode
+    let bodyContent: string;
+    if (isMarkdown && dialogViewMode === 'preview') {
+        const renderedContent = renderMarkdownPreview(displayLines.join('\n'));
+        bodyContent = `<div class="file-preview-dialog-rendered editor-wrapper">${renderedContent}</div>`;
+    } else {
+        // Source mode: syntax-highlighted code
+        let bodyHtml: string;
+        if (entry.language && typeof hljs !== 'undefined') {
+            try {
+                const raw = displayLines.join('\n');
+                const result = hljs.getLanguage(entry.language)
+                    ? hljs.highlight(raw, { language: entry.language })
+                    : hljs.highlightAuto(raw);
+                const hlLines = result.value.split('\n');
+                bodyHtml = hlLines.map((line, i) =>
+                    `<span class="file-preview-line-num">${i + 1}</span>${line}`
+                ).join('\n');
+            } catch {
+                bodyHtml = displayLines.map((line, i) =>
+                    `<span class="file-preview-line-num">${i + 1}</span>${escapeHtml(line)}`
+                ).join('\n');
+            }
+        } else {
             bodyHtml = displayLines.map((line, i) =>
                 `<span class="file-preview-line-num">${i + 1}</span>${escapeHtml(line)}`
             ).join('\n');
         }
-    } else {
-        bodyHtml = displayLines.map((line, i) =>
-            `<span class="file-preview-line-num">${i + 1}</span>${escapeHtml(line)}`
-        ).join('\n');
+        bodyContent = `<pre class="file-preview-dialog-code"><code>${bodyHtml}</code></pre>`;
     }
 
-    const truncated = entry.lineCount > 500
-        ? `<div class="file-preview-truncated">Showing 500 of ${entry.lineCount} lines. Open in editor to see full file.</div>`
-        : '';
+    const modeToggle = isMarkdown ? buildModeToggleHtml(dialogViewMode) : '';
+    const aiActionDropdown = isMarkdown ? buildAIActionDropdownHtml() : '';
 
     dialog.innerHTML = `
         <div class="modal-dialog file-preview-dialog">
             <div class="modal-header">
                 <h3>📄 ${escapeHtml(fileName)}</h3>
+                ${modeToggle}
                 <button class="modal-close-btn file-preview-dialog-close">×</button>
             </div>
             <div class="modal-body">
                 <div class="file-preview-dialog-path">${escapeHtml(filePath)}</div>
-                <pre class="file-preview-dialog-code"><code>${bodyHtml}</code></pre>
+                ${bodyContent}
                 ${truncated}
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary file-preview-dialog-close">Close</button>
+                ${aiActionDropdown}
                 <button class="btn btn-primary file-preview-dialog-open">Open in Editor</button>
             </div>
         </div>
@@ -375,6 +452,60 @@ function setupDialogCloseHandlers(dialog: HTMLDivElement, filePath: string): voi
         });
     });
 
+    // Preview / Source mode toggle (for .md files)
+    dialog.querySelectorAll('.file-preview-mode-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const mode = (btn as HTMLElement).getAttribute('data-mode') as 'preview' | 'source';
+            if (mode && mode !== dialogViewMode) {
+                dialogViewMode = mode;
+                // Re-fetch and re-render with new mode (content is already cached)
+                const entry = await fetchPreview(filePath, true);
+                renderDialogContent(dialog, filePath, entry);
+            }
+        });
+    });
+
+    // AI Action dropdown toggle
+    const aiBtn = dialog.querySelector('#filePreviewAIBtn');
+    const aiMenu = dialog.querySelector('#filePreviewAIMenu') as HTMLElement | null;
+    if (aiBtn && aiMenu) {
+        aiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isVisible = aiMenu.style.display !== 'none';
+            aiMenu.style.display = isVisible ? 'none' : 'block';
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', () => {
+            aiMenu.style.display = 'none';
+        }, { once: false, capture: true });
+    }
+
+    // AI action items
+    dialog.querySelectorAll('.file-preview-ai-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = (item as HTMLElement).getAttribute('data-action');
+            setPreviewActionFilePath(filePath);
+            closeDialog();
+
+            switch (action) {
+                case 'follow-prompt':
+                    requestPromptSearch(filePath);
+                    break;
+                case 'update-doc':
+                    requestUpdateDocument();
+                    break;
+                case 'refresh-plan':
+                    requestRefreshPlan();
+                    break;
+                case 'chat-in-cli':
+                    requestChatInCLI(filePath);
+                    break;
+            }
+        });
+    });
+
     // Click outside to close
     dialog.addEventListener('click', (e) => {
         if (e.target === dialog) closeDialog();
@@ -385,9 +516,17 @@ function closeDialog(): void {
     const dialog = getOrCreateDialog();
     dialog.style.display = 'none';
     dialog.innerHTML = '';
+    dialogCurrentPath = '';
 }
 
 async function showDialog(filePath: string): Promise<void> {
+    const isMarkdown = /\.md$/i.test(filePath);
+    // Default to preview mode for markdown files
+    if (isMarkdown && dialogCurrentPath !== filePath) {
+        dialogViewMode = 'preview';
+    }
+    dialogCurrentPath = filePath;
+
     const dialog = getOrCreateDialog();
     renderDialogLoading(dialog, filePath);
 

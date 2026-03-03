@@ -86,6 +86,8 @@ export interface WebviewMessage {
     filePath?: string;
     requestId?: string;
     full?: boolean;
+    /** Optional override for the document path. Used when AI actions are triggered from the file-preview dialog. */
+    targetDocumentPath?: string;
 }
 
 /** Storage key prefix for collapsed sections (per file) */
@@ -162,7 +164,7 @@ export class EditorMessageRouter {
             case 'requestSkills':
                 return this.handleRequestSkills();
             case 'promptSearch':
-                return this.handlePromptSearch(ctx);
+                return this.handlePromptSearch(message, ctx);
             case 'executeWorkPlan':
                 return this.handleExecuteWorkPlan(message, ctx);
             case 'executeWorkPlanWithSkill':
@@ -469,8 +471,8 @@ export class EditorMessageRouter {
         return {};
     }
 
-    private async handleChatInCLI(_message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
-        const filePath = ctx.documentPath;
+    private async handleChatInCLI(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
+        const filePath = message.targetDocumentPath || ctx.documentPath;
         const prompt = [
             `The user has opened the file: ${filePath}`,
             ``,
@@ -1065,7 +1067,7 @@ export class EditorMessageRouter {
         return {};
     }
 
-    private async handlePromptSearch(ctx: MessageContext): Promise<DispatchResult> {
+    private async handlePromptSearch(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
         const workspaceRoot = getWorkspaceRoot();
         const promptFiles = await getPromptFiles(workspaceRoot || undefined);
 
@@ -1088,7 +1090,8 @@ export class EditorMessageRouter {
         });
 
         if (selected) {
-            await this.handleExecuteWorkPlanLegacy(ctx.documentPath, (selected as { absolutePath: string }).absolutePath);
+            const documentPath = message.targetDocumentPath || ctx.documentPath;
+            await this.handleExecuteWorkPlanLegacy(documentPath, (selected as { absolutePath: string }).absolutePath);
         }
         return {};
     }
@@ -1124,8 +1127,9 @@ export class EditorMessageRouter {
 
     private async handleFollowPromptDialogResult(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
         if (message.promptFilePath && message.options) {
+            const documentPath = message.targetDocumentPath || ctx.documentPath;
             await this.executeFollowPrompt(
-                ctx.documentPath,
+                documentPath,
                 message.promptFilePath,
                 message.options,
                 message.skillName
@@ -1136,8 +1140,9 @@ export class EditorMessageRouter {
 
     private async handleCopyFollowPrompt(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
         if (message.promptFilePath) {
+            const documentPath = message.targetDocumentPath || ctx.documentPath;
             await this.copyFollowPromptToClipboard(
-                ctx.documentPath,
+                documentPath,
                 message.promptFilePath,
                 message.additionalContext
             );
@@ -1164,19 +1169,21 @@ export class EditorMessageRouter {
             return {};
         }
 
+        const documentPath = message.targetDocumentPath || ctx.documentPath;
+
         try {
-            const fileName = path.basename(ctx.documentPath);
+            const fileName = path.basename(documentPath);
             const prompt = `The user wants to update the following markdown document:
 
 File: ${fileName}
-Path: ${ctx.documentPath}
+Path: ${documentPath}
 
 ## User Instruction
 ${message.instruction}
 
 ## Output Requirements
 
-**CRITICAL:** Read the file and then edit it in-place at: ${ctx.documentPath}
+**CRITICAL:** Read the file and then edit it in-place at: ${documentPath}
 
 - Make only the changes described in the instruction
 - Preserve markdown format and any frontmatter
@@ -1185,7 +1192,7 @@ ${message.instruction}
 
             const sessionManager = getInteractiveSessionManager();
             const tool = this.host.getConfig<'copilot' | 'claude'>('workspaceShortcuts.workPlan', 'defaultTool', 'copilot');
-            const workingDirectory = this.resolveWorkPlanWorkingDirectory(ctx.documentPath);
+            const workingDirectory = this.resolveWorkPlanWorkingDirectory(documentPath);
 
             const sessionId = await sessionManager.startSession({
                 workingDirectory,
@@ -1194,7 +1201,7 @@ ${message.instruction}
             });
 
             if (sessionId) {
-                await this.host.showInfo(`Interactive session started for: ${path.basename(ctx.documentPath)}`);
+                await this.host.showInfo(`Interactive session started for: ${path.basename(documentPath)}`);
             } else {
                 this.host.showError('Failed to start interactive session. Please check that the AI CLI tool is installed.');
             }
@@ -1206,14 +1213,15 @@ ${message.instruction}
     }
 
     private async handleRefreshPlan(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
+        const documentPath = message.targetDocumentPath || ctx.documentPath;
         try {
-            const planContent = await this.host.readFile(ctx.documentPath);
+            const planContent = await this.host.readFile(documentPath);
             if (!planContent) {
-                this.host.showError(`Failed to read plan file: ${ctx.documentPath}`);
+                this.host.showError(`Failed to read plan file: ${documentPath}`);
                 return {};
             }
 
-            const fileName = path.basename(ctx.documentPath);
+            const fileName = path.basename(documentPath);
 
             let prompt = `You are tasked with refreshing and regenerating a plan document based on the latest codebase state.
 
@@ -1245,7 +1253,7 @@ Please take this additional context into account when refreshing the plan.`;
 
 ## Output Requirements
 
-**CRITICAL:** Edit the file in-place at: ${ctx.documentPath}
+**CRITICAL:** Edit the file in-place at: ${documentPath}
 
 - Preserve markdown format and any frontmatter
 - Do NOT create new files or write to session state/temp directories
@@ -1253,7 +1261,7 @@ Please take this additional context into account when refreshing the plan.`;
 
             const sessionManager = getInteractiveSessionManager();
             const tool = this.host.getConfig<'copilot' | 'claude'>('workspaceShortcuts.workPlan', 'defaultTool', 'copilot');
-            const workingDirectory = this.resolveWorkPlanWorkingDirectory(ctx.documentPath);
+            const workingDirectory = this.resolveWorkPlanWorkingDirectory(documentPath);
 
             const sessionId = await sessionManager.startSession({
                 workingDirectory,
