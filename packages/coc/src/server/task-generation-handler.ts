@@ -30,8 +30,9 @@ import {
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
     generateTaskId,
+    AUTO_FOLDER_SENTINEL,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { SelectedContext, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
@@ -101,17 +102,33 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 return sendError(res, 400, 'Missing required field: prompt');
             }
 
-            // Resolve target folder
+            // Resolve target folder (handle auto-folder sentinel)
             const tasksBase = path.resolve(ws.rootPath, '.vscode/tasks');
-            const resolvedTarget = targetFolder
-                ? path.resolve(tasksBase, targetFolder)
-                : tasksBase;
+            const isAutoFolder = targetFolder === AUTO_FOLDER_SENTINEL;
+            const resolvedTarget = (isAutoFolder || !targetFolder)
+                ? tasksBase
+                : path.resolve(tasksBase, targetFolder);
 
             // Ensure target folder exists
             try {
                 fs.mkdirSync(resolvedTarget, { recursive: true });
             } catch {
                 return sendError(res, 500, 'Failed to create target folder');
+            }
+
+            // Build autoFolderContext when auto-folder mode is requested
+            let autoFolderContext: AutoFolderContext | undefined;
+            if (isAutoFolder) {
+                const entries = await fs.promises.readdir(tasksBase, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
+                const subfolders = entries.filter(e => e.isDirectory()).map(e => e.name);
+                const deepFolders: string[] = [];
+                for (const sub of subfolders) {
+                    const nested = await fs.promises.readdir(path.join(tasksBase, sub), { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
+                    for (const n of nested) {
+                        if (n.isDirectory()) deepFolders.push(`${sub}/${n.name}`);
+                    }
+                }
+                autoFolderContext = { tasksRoot: tasksBase, existingFolders: [...subfolders, ...deepFolders] };
             }
 
             // Build the AI prompt based on mode
@@ -137,7 +154,9 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                     );
                 }
             } else if (name && name.trim()) {
-                aiPrompt = buildCreateTaskPromptWithName(name, prompt, resolvedTarget);
+                aiPrompt = buildCreateTaskPromptWithName(name, prompt, resolvedTarget, autoFolderContext);
+            } else if (isAutoFolder) {
+                aiPrompt = buildCreateTaskPromptWithName(undefined, prompt, resolvedTarget, autoFolderContext);
             } else {
                 aiPrompt = buildCreateTaskPrompt(prompt, resolvedTarget);
             }
@@ -186,8 +205,9 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                     return;
                 }
 
-                // Try to find the created file
-                const filePath = parseCreatedFilePath(result.response, resolvedTarget);
+                // Try to find the created file (search from tasksBase when auto-folder)
+                const searchRoot = isAutoFolder ? tasksBase : resolvedTarget;
+                const filePath = parseCreatedFilePath(result.response, searchRoot);
 
                 sendEvent(res, 'progress', { phase: 'complete', message: 'Task generated' });
                 sendEvent(res, 'done', {

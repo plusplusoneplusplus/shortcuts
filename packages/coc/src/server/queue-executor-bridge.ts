@@ -30,9 +30,10 @@ import {
     isTaskGenerationPayload,
     saveImagesToTempFiles,
 } from '@plusplusoneplusplus/coc-server';
-import type { AIProcess, Attachment, ConversationTurn, CopilotSDKService, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
     approveAllPermissions,
+    AUTO_FOLDER_SENTINEL,
     buildCreateFromFeaturePrompt,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
@@ -939,10 +940,26 @@ export class CLITaskExecutor implements TaskExecutor {
         const payload = task.payload as unknown as TaskGenerationPayload;
 
         const tasksBase = path.resolve(payload.workingDirectory, '.vscode/tasks');
-        const resolvedTarget = payload.targetFolder
-            ? path.resolve(tasksBase, payload.targetFolder)
-            : tasksBase;
+        const isAutoFolder = payload.targetFolder === AUTO_FOLDER_SENTINEL;
+        const resolvedTarget = (isAutoFolder || !payload.targetFolder)
+            ? tasksBase
+            : path.resolve(tasksBase, payload.targetFolder);
         fs.mkdirSync(resolvedTarget, { recursive: true });
+
+        // Build autoFolderContext when auto-folder mode is requested
+        let autoFolderContext: AutoFolderContext | undefined;
+        if (isAutoFolder) {
+            const entries = await fs.promises.readdir(tasksBase, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
+            const subfolders = entries.filter(e => e.isDirectory()).map(e => e.name);
+            const deepFolders: string[] = [];
+            for (const sub of subfolders) {
+                const nested = await fs.promises.readdir(path.join(tasksBase, sub), { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
+                for (const n of nested) {
+                    if (n.isDirectory()) deepFolders.push(`${sub}/${n.name}`);
+                }
+            }
+            autoFolderContext = { tasksRoot: tasksBase, existingFolders: [...subfolders, ...deepFolders] };
+        }
 
         let aiPrompt: string;
         if (payload.mode === 'from-feature') {
@@ -957,7 +974,9 @@ export class CLITaskExecutor implements TaskExecutor {
                 ? buildDeepModePrompt(selectedContext, payload.prompt, payload.name, resolvedTarget, payload.workingDirectory)
                 : buildCreateFromFeaturePrompt(selectedContext, payload.prompt, payload.name, resolvedTarget);
         } else if (payload.name?.trim()) {
-            aiPrompt = buildCreateTaskPromptWithName(payload.name, payload.prompt, resolvedTarget);
+            aiPrompt = buildCreateTaskPromptWithName(payload.name, payload.prompt, resolvedTarget, autoFolderContext);
+        } else if (isAutoFolder) {
+            aiPrompt = buildCreateTaskPromptWithName(undefined, payload.prompt, resolvedTarget, autoFolderContext);
         } else {
             aiPrompt = buildCreateTaskPrompt(payload.prompt, resolvedTarget);
         }

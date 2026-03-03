@@ -744,6 +744,8 @@ export {
     TaskManager,
     TaskManagerOptions,
     // Task prompt builders
+    AUTO_FOLDER_SENTINEL,
+    AutoFolderContext,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,

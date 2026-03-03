@@ -17,6 +17,9 @@ import { getApiBase } from '../utils/config';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+const AUTO_FOLDER_SENTINEL = '__auto__';
+const FOLDER_STORAGE_KEY = 'coc.generateTask.lastFolder';
+
 function flattenFolders(folder: TaskFolder, acc: string[] = []): string[] {
     acc.push(folder.relativePath);
     for (const child of folder.children) flattenFolders(child, acc);
@@ -103,7 +106,9 @@ export function GenerateTaskDialog({
     // --- form state ---
     const [prompt, setPrompt] = useState('');
     const [name, setName] = useState('');
-    const [targetFolder, setTargetFolder] = useState(initialFolder);
+    const [targetFolder, setTargetFolder] = useState(
+        initialFolder || localStorage.getItem(FOLDER_STORAGE_KEY) || AUTO_FOLDER_SENTINEL
+    );
     const [model, setModel] = useState('');
     const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal');
     const [depth, setDepth] = useState<'deep' | 'normal'>('deep');
@@ -327,9 +332,13 @@ export function GenerateTaskDialog({
                         id="gen-task-folder"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                         value={targetFolder}
-                        onChange={e => setTargetFolder(e.target.value)}
+                        onChange={e => {
+                            setTargetFolder(e.target.value);
+                            localStorage.setItem(FOLDER_STORAGE_KEY, e.target.value);
+                        }}
                         disabled={isSubmitting || isQueued}
                     >
+                        <option value={AUTO_FOLDER_SENTINEL}>✨ Auto (AI decides)</option>
                         <option value="">Root</option>
                         {folders
                             .filter(f => f !== '')
@@ -339,6 +348,9 @@ export function GenerateTaskDialog({
                                 </option>
                             ))}
                     </select>
+                    {targetFolder === AUTO_FOLDER_SENTINEL && (
+                        <p className="text-[10px] text-[#848484] mt-0.5">✨ AI will choose an existing folder or create a new one based on the task.</p>
+                    )}
                 </div>
 
                 {/* Include folder context (optional) */}

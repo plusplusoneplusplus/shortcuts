@@ -173,7 +173,7 @@ describe('GenerateTaskDialog', () => {
         expect(enqueueSpy).toHaveBeenCalledWith({
             prompt: 'hello',
             name: undefined,
-            targetFolder: undefined,
+            targetFolder: '__auto__',
             model: undefined,
             mode: undefined,
             depth: 'normal',

@@ -17,8 +17,9 @@ import {
     gatherFeatureContext,
     parseCreatedFilePath,
     cleanAIResponse,
+    AUTO_FOLDER_SENTINEL,
 } from '../../src/tasks/task-prompt-builder';
-import type { SelectedContext } from '../../src/tasks/task-prompt-builder';
+import type { SelectedContext, AutoFolderContext } from '../../src/tasks/task-prompt-builder';
 
 // ============================================================================
 // Helpers
@@ -93,6 +94,62 @@ describe('buildCreateTaskPromptWithName', () => {
         const prompt = buildCreateTaskPromptWithName('my-task', 'desc', 'C:\\Users\\dev\\.vscode\\tasks');
         expect(prompt).toContain('C:/Users/dev/.vscode/tasks/my-task.plan.md');
         expect(prompt).not.toContain('dev\\.vscode');
+    });
+
+    describe('with autoFolderContext', () => {
+        const tasksRoot = '/workspace/.vscode/tasks';
+        const existingFolders = ['coc', 'coc/chat', 'deep-wiki'];
+
+        it('should include FOLDER SELECTION section with existing folders when name is provided', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName('retry-logic', 'Add retry', tasksRoot, ctx);
+            expect(prompt).toContain('FOLDER SELECTION (Auto mode)');
+            expect(prompt).toContain('coc, coc/chat, deep-wiki');
+            expect(prompt).toContain(`${tasksRoot}/<chosen-folder>/retry-logic.plan.md`);
+            expect(prompt).toContain('Pick the most relevant existing folder');
+        });
+
+        it('should include FOLDER SELECTION section without name', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName(undefined, 'Some task', tasksRoot, ctx);
+            expect(prompt).toContain('FOLDER SELECTION (Auto mode)');
+            expect(prompt).toContain('coc, coc/chat, deep-wiki');
+            expect(prompt).toContain('<descriptive-name>.plan.md');
+        });
+
+        it('should omit fixed-path IMPORTANT block when autoFolderContext is provided', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName('my-task', 'desc', tasksRoot, ctx);
+            expect(prompt).not.toContain('You MUST save the file to this EXACT directory');
+            expect(prompt).not.toContain('Do NOT save to any other location');
+        });
+
+        it('should handle empty existingFolders gracefully', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders: [] };
+            const prompt = buildCreateTaskPromptWithName(undefined, 'desc', tasksRoot, ctx);
+            expect(prompt).toContain('(none yet)');
+            expect(prompt).toContain('create a new one');
+        });
+
+        it('should normalize Windows tasksRoot to forward slashes', () => {
+            const ctx: AutoFolderContext = {
+                tasksRoot: 'C:\\Users\\dev\\.vscode\\tasks',
+                existingFolders: ['coc'],
+            };
+            const prompt = buildCreateTaskPromptWithName('t', 'desc', ctx.tasksRoot, ctx);
+            expect(prompt).toContain('C:/Users/dev/.vscode/tasks');
+            expect(prompt).not.toContain('dev\\.vscode');
+        });
+    });
+});
+
+// ============================================================================
+// AUTO_FOLDER_SENTINEL constant
+// ============================================================================
+
+describe('AUTO_FOLDER_SENTINEL', () => {
+    it('should equal "__auto__"', () => {
+        expect(AUTO_FOLDER_SENTINEL).toBe('__auto__');
     });
 });
 

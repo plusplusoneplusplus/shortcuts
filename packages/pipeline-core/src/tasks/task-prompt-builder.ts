@@ -40,6 +40,19 @@ export interface SelectedContext {
     relatedFiles?: string[];
 }
 
+/** Sentinel value indicating the AI should choose the target subfolder automatically. */
+export const AUTO_FOLDER_SENTINEL = '__auto__';
+
+/**
+ * Context passed to prompt builders when the AI should auto-select the target subfolder.
+ */
+export interface AutoFolderContext {
+    /** Absolute path to the .vscode/tasks root. */
+    tasksRoot: string;
+    /** Existing subfolder paths relative to tasksRoot (e.g. ["coc", "coc/chat", "deep-wiki"]). */
+    existingFolders: string[];
+}
+
 /**
  * Options controlling task generation prompt construction.
  */
@@ -109,17 +122,64 @@ ${important}`;
 /**
  * Build prompt for creating a task with a specific name.
  * If name is empty/undefined, prompts AI to generate a filename.
+ * If autoFolderContext is provided, replaces the fixed save-path block with
+ * folder-selection instructions so the AI picks or creates the best subfolder.
  */
 export function buildCreateTaskPromptWithName(
     name: string | undefined,
     description: string,
-    targetPath: string
+    targetPath: string,
+    autoFolderContext?: AutoFolderContext
 ): string {
     targetPath = toForwardSlashes(targetPath);
     const descriptionPart = description
         ? `\n\nDescription: ${description}`
         : '';
 
+    // --- Auto-folder mode ---
+    if (autoFolderContext) {
+        const tasksRoot = toForwardSlashes(autoFolderContext.tasksRoot);
+        const folderList = autoFolderContext.existingFolders.length > 0
+            ? autoFolderContext.existingFolders.join(', ')
+            : '(none yet)';
+        const filenameLine = name && name.trim()
+            ? `- Save the file as: ${tasksRoot}/<chosen-folder>/${name}.plan.md`
+            : `- Save the file as: ${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md (kebab-case, ends with .plan.md)`;
+        const autoSection = `**FOLDER SELECTION (Auto mode)**
+Tasks root: ${tasksRoot}
+Existing feature folders: ${folderList}
+- Pick the most relevant existing folder, OR create a new one (kebab-case, max 3 words).
+- Create the folder if it does not exist.
+${filenameLine}
+- Do NOT save to the tasks root directly.`;
+
+        if (name && name.trim()) {
+            return `Create a task document for: ${name}${descriptionPart}
+
+Generate a comprehensive markdown task document with:
+- Clear title and description
+- Acceptance criteria
+- Subtasks (if applicable)
+- Notes section
+
+${autoSection}`;
+        } else {
+            return `Create a task document based on this description:${descriptionPart || '\n\n(General task)'}
+
+Generate a comprehensive markdown task document with:
+- Clear title and description
+- Acceptance criteria
+- Subtasks (if applicable)
+- Notes section
+
+Choose an appropriate filename based on the task content.
+The filename should be in kebab-case, descriptive, and end with .plan.md (e.g., "oauth2-authentication.plan.md").
+
+${autoSection}`;
+        }
+    }
+
+    // --- Fixed-path mode ---
     if (name && name.trim()) {
         const filenameLines = [
             `- Full file path: ${targetPath}/${name}.plan.md`,
