@@ -170,6 +170,20 @@ export class CLITaskExecutor implements TaskExecutor {
         // Check if cancelled before starting
         if (this.cancelledTasks.has(task.id)) {
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} was cancelled before starting`);
+            // For follow-ups, revert the original process from 'running' back to 'completed'
+            // since api-handler.ts set it to 'running' before enqueueing
+            if (isChatFollowUpPayload(task.payload)) {
+                const payload = task.payload as unknown as ChatFollowUpPayload;
+                task.processId = payload.processId;
+                try {
+                    await this.store.updateProcess(payload.processId, { status: 'completed' });
+                } catch {
+                    // Non-fatal: process may already be cleaned up
+                }
+                if (payload.imageTempDir) {
+                    cleanupTempDir(payload.imageTempDir);
+                }
+            }
             return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
         }
 
