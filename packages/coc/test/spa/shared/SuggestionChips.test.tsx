@@ -79,4 +79,13 @@ describe('SuggestionChips', () => {
         const container = screen.getByTestId('suggestion-chips');
         expect(container.style.animation).toContain('suggestionFadeIn');
     });
+
+    it('uses flex-wrap layout so chips reflow on narrow screens', () => {
+        render(
+            <SuggestionChips suggestions={['Chip A', 'Chip B', 'Chip C']} onSelect={vi.fn()} />
+        );
+        const container = screen.getByTestId('suggestion-chips');
+        expect(container.className).toContain('flex-wrap');
+        expect(container.className).not.toContain('flex-col');
+    });
 });

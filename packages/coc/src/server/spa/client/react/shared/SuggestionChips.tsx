@@ -21,7 +21,7 @@ export function SuggestionChips({ suggestions, onSelect, disabled }: SuggestionC
         <>
             <style>{keyframesStyle}</style>
             <div
-                className={`flex flex-col gap-1.5 w-full${disabled ? ' pointer-events-none opacity-50' : ''}`}
+                className={`flex flex-wrap gap-1.5 w-full${disabled ? ' pointer-events-none opacity-50' : ''}`}
                 style={fadeInStyle}
                 data-testid="suggestion-chips"
             >

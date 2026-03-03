@@ -904,7 +904,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                 <div className="flex items-center justify-between gap-2" data-testid="chat-followup-controls-row">
                                     {(task?.config?.model || task?.metadata?.model) && (
                                         <span
-                                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
+                                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] max-w-[40%] truncate"
                                             data-testid="chat-model-badge"
                                             title="Model used for this chat session"
                                         >

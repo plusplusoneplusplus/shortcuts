@@ -89,6 +89,13 @@ describe('ImagePreviews', () => {
         expect(btn.className).not.toMatch(/^opacity-0\b/);
     });
 
+    it('remove button has minimum 32px tap target (w-8 h-8)', () => {
+        render(<ImagePreviews images={[IMG_A]} onRemove={vi.fn()} />);
+        const btn = screen.getByTestId('remove-image-0');
+        expect(btn.className).toContain('w-8');
+        expect(btn.className).toContain('h-8');
+    });
+
     it('closing the lightbox returns to thumbnail view', () => {
         render(<ImagePreviews images={[IMG_A]} onRemove={vi.fn()} />);
 
