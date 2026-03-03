@@ -205,10 +205,22 @@ export function ChatSessionSidebar({
     return (
         <div className={cn('flex flex-col overflow-hidden', className)} data-testid="chat-session-sidebar">
             {/* Header with New Chat button */}
-            <div className="p-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chats</span>
-                    <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="new-chat-split-btn">
+            <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] flex-shrink-0">Chats</span>
+                    {onToggleShowArchived && (
+                        <label className="flex items-center gap-1 text-[10px] text-[#848484] cursor-pointer select-none ml-auto mr-1 flex-shrink-0" data-testid="show-archived-toggle-row">
+                            <input
+                                type="checkbox"
+                                checked={showArchived}
+                                onChange={onToggleShowArchived}
+                                data-testid="show-archived-checkbox"
+                                className="cursor-pointer"
+                            />
+                            Show Archived
+                        </label>
+                    )}
+                    <div className={cn('relative inline-flex flex-shrink-0', onToggleShowArchived ? '' : 'ml-auto')} ref={newChatDropdownRef} data-testid="new-chat-split-btn">
                         <Button variant="primary" size="sm" onClick={() => onNewChat(false)} data-testid="new-chat-btn" className="rounded-r-none">
                             New Chat
                         </Button>
@@ -244,20 +256,6 @@ export function ChatSessionSidebar({
                         )}
                     </div>
                 </div>
-                {onToggleShowArchived && (
-                    <div className="flex items-center justify-end mt-1.5" data-testid="show-archived-toggle-row">
-                        <label className="flex items-center gap-1.5 text-[10px] text-[#848484] cursor-pointer select-none">
-                            <input
-                                type="checkbox"
-                                checked={showArchived}
-                                onChange={onToggleShowArchived}
-                                data-testid="show-archived-checkbox"
-                                className="cursor-pointer"
-                            />
-                            Show Archived
-                        </label>
-                    </div>
-                )}
             </div>
 
             {/* Session list */}
