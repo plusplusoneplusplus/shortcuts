@@ -19,6 +19,7 @@ import { AddRepoDialog } from './AddRepoDialog';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
+import { useGlobalToast } from '../context/ToastContext';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 import type { RepoData } from './repoGrouping';
 import type { RepoSubTab } from '../types/dashboard';
@@ -42,6 +43,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { addToast } = useGlobalToast();
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
     const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -60,7 +62,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
-    const [newChatTrigger, setNewChatTrigger] = useState<{ count: number; readOnly: boolean; useProjectRoot: boolean }>({ count: 0, readOnly: false, useProjectRoot: false });
+    const [newChatTrigger, setNewChatTrigger] = useState<{ count: number; readOnly: boolean }>({ count: 0, readOnly: false });
     const newChatTriggerProcessedRef = useRef(0);
     const tabStripRef = useRef<HTMLDivElement>(null);
     const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -172,10 +174,26 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return () => document.removeEventListener('mousedown', handler);
     }, [newChatDropdownOpen]);
 
-    const handleNewChatFromTopBar = useCallback((readOnly = false, useProjectRoot = false) => {
-        setNewChatTrigger(prev => ({ count: prev.count + 1, readOnly, useProjectRoot }));
+    const handleNewChatFromTopBar = useCallback((readOnly = false) => {
+        setNewChatTrigger(prev => ({ count: prev.count + 1, readOnly }));
         switchSubTab('chat');
     }, []);
+
+    const handleLaunchInTerminal = useCallback(async () => {
+        try {
+            const response = await fetch(getApiBase() + '/chat/launch-terminal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workingDirectory: ws.rootPath }),
+            });
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error ?? `Launch failed (${response.status})`);
+            }
+        } catch (err: any) {
+            addToast(err?.message ?? 'Failed to launch chat terminal', 'error');
+        }
+    }, [ws.rootPath, addToast]);
 
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
@@ -256,10 +274,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     </button>
                                     <button
                                         className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                        data-testid="repo-new-chat-option-project-root"
-                                        onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(false, true); }}
+                                        data-testid="repo-new-chat-option-terminal"
+                                        onClick={() => { setNewChatDropdownOpen(false); void handleLaunchInTerminal(); }}
                                     >
-                                        New Chat (Project Root)
+                                        New Chat (Terminal)
                                     </button>
                                 </div>
                             )}

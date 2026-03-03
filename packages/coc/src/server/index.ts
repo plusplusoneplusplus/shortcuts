@@ -23,7 +23,7 @@ import { registerPreferencesRoutes } from './preferences-handler';
 import { registerAdminRoutes } from './admin-handler';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerWikiRoutes } from './wiki';
-import { registerProcessResumeRoutes } from './process-resume-handler';
+import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerPipelineRoutes, registerPipelineWriteRoutes } from './pipelines-handler';
 import { PipelineWatcher } from './pipeline-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
@@ -212,6 +212,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge);
     registerProcessResumeRoutes(routes, store);
+    registerFreshChatTerminalRoutes(routes);
     // Queue routes now receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store);
     registerTaskRoutes(routes, store);
@@ -532,7 +533,7 @@ export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions,
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from '@plusplusoneplusplus/coc-server';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from '@plusplusoneplusplus/coc-server';
-export { registerProcessResumeRoutes } from './process-resume-handler';
+export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 export { registerQueueRoutes } from './queue-handler';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 export { registerTaskGenerationRoutes } from './task-generation-handler';

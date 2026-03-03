@@ -9,7 +9,7 @@ import { spawn, type SpawnOptions } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { sendError, sendJSON } from '@plusplusoneplusplus/coc-server';
+import { sendError, sendJSON, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 
 export interface LaunchResumeInput {
@@ -215,6 +215,122 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
             ? `No supported terminal launcher found (${lastError.message}).`
             : 'No supported terminal launcher found.',
     };
+}
+
+export interface LaunchFreshChatInput {
+    workingDirectory: string;
+}
+
+export type FreshChatTerminalLauncher = (input: LaunchFreshChatInput) => Promise<LaunchResumeResult>;
+
+function buildFreshChatCommand(
+    workingDirectory: string,
+    platform: NodeJS.Platform = process.platform
+): string {
+    if (platform === 'win32') {
+        return `cd /d ${quoteWindows(workingDirectory)} && copilot --yolo`;
+    }
+    return `cd ${quotePosix(workingDirectory)} && copilot --yolo`;
+}
+
+export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Promise<LaunchResumeResult> {
+    const platform = process.platform;
+    const command = buildFreshChatCommand(input.workingDirectory, platform);
+
+    if (platform === 'darwin') {
+        const scriptBody = escapeAppleScriptString(command);
+        await spawnDetached('osascript', [
+            '-e',
+            'tell application "Terminal" to activate',
+            '-e',
+            `tell application "Terminal" to do script "${scriptBody}"`,
+        ]);
+        return { launched: true, command, terminal: 'Terminal' };
+    }
+
+    if (platform === 'win32') {
+        const freshCmd = `copilot --yolo`;
+        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} cmd.exe /k ${freshCmd}`;
+        await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
+        return { launched: true, command, terminal: 'cmd' };
+    }
+
+    // Linux / Unix-like environments.
+    const posixCommand = buildFreshChatCommand(input.workingDirectory, 'linux');
+    if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+        return {
+            launched: false,
+            command: posixCommand,
+            reason: 'No GUI display detected for terminal auto-launch.',
+        };
+    }
+
+    const linuxLaunchers: Array<{ terminal: string; command: string; args: string[] }> = [
+        { terminal: 'x-terminal-emulator', command: 'x-terminal-emulator', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'gnome-terminal', command: 'gnome-terminal', args: ['--', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'konsole', command: 'konsole', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'xfce4-terminal', command: 'xfce4-terminal', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'xterm', command: 'xterm', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'alacritty', command: 'alacritty', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'kitty', command: 'kitty', args: ['/bin/sh', '-lc', posixCommand] },
+        { terminal: 'tilix', command: 'tilix', args: ['-e', '/bin/sh', '-lc', posixCommand] },
+        { terminal: 'terminator', command: 'terminator', args: ['-x', '/bin/sh', '-lc', posixCommand] },
+    ];
+
+    let lastError: unknown;
+    for (const launcher of linuxLaunchers) {
+        try {
+            await spawnDetached(launcher.command, launcher.args);
+            return { launched: true, command: posixCommand, terminal: launcher.terminal };
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    return {
+        launched: false,
+        command: posixCommand,
+        reason: lastError instanceof Error
+            ? `No supported terminal launcher found (${lastError.message}).`
+            : 'No supported terminal launcher found.',
+    };
+}
+
+/**
+ * POST /api/chat/launch-terminal
+ * Spawn a fresh Copilot CLI session in an interactive terminal.
+ * Body: { workingDirectory?: string }
+ */
+export function registerFreshChatTerminalRoutes(
+    routes: Route[],
+    launcher: FreshChatTerminalLauncher = launchFreshChatInTerminal
+): void {
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/chat\/launch-terminal$/,
+        handler: async (req, res) => {
+            let body: { workingDirectory?: unknown } = {};
+            try {
+                body = (await parseBody(req)) as { workingDirectory?: unknown };
+            } catch {
+                // Empty body is fine — workingDirectory falls back to cwd
+            }
+            const workingDirectory = toNonEmptyString(body?.workingDirectory) ?? process.cwd();
+            try {
+                const result = await launcher({ workingDirectory });
+                process.stderr.write(`[Chat] launch-terminal workingDirectory=${workingDirectory} launched=${result.launched}\n`);
+                return sendJSON(res, 200, {
+                    workingDirectory,
+                    launched: result.launched,
+                    terminal: result.terminal,
+                    reason: result.reason,
+                    command: result.command,
+                });
+            } catch (error: any) {
+                return sendError(res, 500, error?.message || 'Failed to launch chat terminal');
+            }
+        },
+    });
 }
 
 /**

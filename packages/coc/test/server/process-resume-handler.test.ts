@@ -14,7 +14,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
 import { createRequestHandler, generateDashboardHtml, registerApiRoutes } from '../../src/server/index';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import { registerProcessResumeRoutes, launchResumeCommandInTerminal } from '../../src/server/process-resume-handler';
+import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes, launchResumeCommandInTerminal, launchFreshChatInTerminal } from '../../src/server/process-resume-handler';
 import { spawn } from 'child_process';
 
 vi.mock('child_process', async (importOriginal) => {
@@ -321,6 +321,173 @@ describe('launchResumeCommandInTerminal – Windows spawn arguments', () => {
 
         const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
         expect(startLine).not.toContain('&&');
+    });
+});
+
+describe('POST /api/chat/launch-terminal', () => {
+    let server: http.Server | undefined;
+    let dataDir: string;
+    let baseUrl: string;
+
+    const mockFreshLauncher = vi.fn();
+
+    beforeEach(async () => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fresh-chat-test-'));
+        mockFreshLauncher.mockReset();
+
+        const routes: Route[] = [];
+        registerFreshChatTerminalRoutes(routes, mockFreshLauncher);
+
+        const handler = createRequestHandler({
+            routes,
+            spaHtml: generateDashboardHtml(),
+            store: undefined as any,
+        });
+        server = http.createServer(handler);
+
+        await new Promise<void>((resolve, reject) => {
+            server!.on('error', reject);
+            server!.listen(0, 'localhost', () => resolve());
+        });
+
+        const address = server.address() as { port: number };
+        baseUrl = `http://localhost:${address.port}`;
+    });
+
+    afterEach(async () => {
+        if (server) {
+            await new Promise<void>((resolve) => server!.close(() => resolve()));
+            server = undefined;
+        }
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('launches fresh chat in terminal with provided workingDirectory', async () => {
+        mockFreshLauncher.mockResolvedValue({
+            launched: true,
+            command: "cd '/some/path' && copilot --yolo",
+            terminal: 'Terminal',
+        });
+
+        const res = await request(`${baseUrl}/api/chat/launch-terminal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workingDirectory: '/some/path' }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.launched).toBe(true);
+        expect(body.workingDirectory).toBe('/some/path');
+        expect(body.terminal).toBe('Terminal');
+        expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: '/some/path' });
+    });
+
+    it('falls back to process.cwd() when workingDirectory is missing', async () => {
+        mockFreshLauncher.mockResolvedValue({
+            launched: true,
+            command: 'copilot --yolo',
+            terminal: 'Terminal',
+        });
+
+        const res = await request(`${baseUrl}/api/chat/launch-terminal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.launched).toBe(true);
+        expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: process.cwd() });
+    });
+
+    it('returns launched:false when launcher reports failure', async () => {
+        mockFreshLauncher.mockResolvedValue({
+            launched: false,
+            command: 'copilot --yolo',
+            reason: 'No GUI display detected for terminal auto-launch.',
+        });
+
+        const res = await request(`${baseUrl}/api/chat/launch-terminal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workingDirectory: '/tmp' }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.launched).toBe(false);
+        expect(body.reason).toBe('No GUI display detected for terminal auto-launch.');
+    });
+
+    it('returns 500 when launcher throws', async () => {
+        mockFreshLauncher.mockRejectedValue(new Error('spawn failed'));
+
+        const res = await request(`${baseUrl}/api/chat/launch-terminal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workingDirectory: '/tmp' }),
+        });
+
+        expect(res.status).toBe(500);
+        expect(JSON.parse(res.body).error).toContain('spawn failed');
+    });
+});
+
+describe('launchFreshChatInTerminal – Windows spawn arguments', () => {
+    let originalPlatform: PropertyDescriptor | undefined;
+    const spawnMock = vi.mocked(spawn);
+
+    beforeEach(() => {
+        originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+
+        spawnMock.mockImplementation((() => {
+            const ee = new (require('events').EventEmitter)();
+            ee.unref = vi.fn();
+            process.nextTick(() => ee.emit('spawn'));
+            return ee;
+        }) as any);
+    });
+
+    afterEach(() => {
+        spawnMock.mockRestore();
+        if (originalPlatform) {
+            Object.defineProperty(process, 'platform', originalPlatform);
+        }
+    });
+
+    it('uses start /D without --resume for fresh chat', async () => {
+        const result = await launchFreshChatInTerminal({
+            workingDirectory: 'C:\\Users\\test\\project',
+        });
+
+        expect(result.launched).toBe(true);
+        expect(result.terminal).toBe('cmd');
+
+        expect(spawnMock).toHaveBeenCalledTimes(1);
+        const [cmd, args, opts] = spawnMock.mock.calls[0];
+        expect(cmd).toBe('cmd.exe');
+
+        expect(args).toHaveLength(1);
+        const startLine = (args as string[])[0];
+        expect(startLine).toContain('/c start ""');
+        expect(startLine).toContain('/D "C:\\Users\\test\\project"');
+        expect(startLine).toContain('cmd.exe /k copilot --yolo');
+        expect(startLine).not.toContain('--resume');
+
+        expect((opts as any).windowsVerbatimArguments).toBe(true);
+        expect((opts as any).detached).toBe(true);
+    });
+
+    it('does not include --resume in the spawn arguments', async () => {
+        await launchFreshChatInTerminal({
+            workingDirectory: 'C:\\test',
+        });
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).not.toContain('--resume');
     });
 });
 

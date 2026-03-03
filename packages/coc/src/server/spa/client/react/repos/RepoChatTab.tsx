@@ -34,7 +34,7 @@ interface RepoChatTabProps {
     workspaceId: string;
     workspacePath?: string;
     initialSessionId?: string | null;
-    newChatTrigger?: { count: number; readOnly: boolean; useProjectRoot?: boolean };
+    newChatTrigger?: { count: number; readOnly: boolean };
     newChatTriggerProcessedRef?: React.MutableRefObject<number>;
 }
 
@@ -92,7 +92,6 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const [model, setModel] = useState('');
     const [models, setModels] = useState<string[]>([]);
     const [readOnly, setReadOnly] = useState(false);
-    const [useProjectRoot, setUseProjectRoot] = useState(false);
     const [skills, setSkills] = useState<SkillItem[]>([]);
 
     const initialImagePaste = useImagePaste();
@@ -439,7 +438,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setMobileSidebarOpen(false);
     }, [isStreaming, loadSession, workspaceId, sessionsHook.sessions, readState]);
 
-    const handleNewChat = useCallback((initialReadOnly = false, initialUseProjectRoot = false) => {
+    const handleNewChat = useCallback((initialReadOnly = false) => {
         if (isStreaming) stopStreaming();
         currentChatTaskIdRef.current = null;
         setSelectedTaskId(null);
@@ -451,7 +450,6 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setSuggestions([]);
         setInputValue('');
         setReadOnly(initialReadOnly);
-        setUseProjectRoot(initialUseProjectRoot);
         initialImagePaste.clearImages();
         followUpImagePaste.clearImages();
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat';
@@ -463,7 +461,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     useEffect(() => {
         if (newChatTrigger && newChatTrigger.count !== prevTriggerRef.current) {
             prevTriggerRef.current = newChatTrigger.count;
-            handleNewChat(newChatTrigger.readOnly, newChatTrigger.useProjectRoot ?? false);
+            handleNewChat(newChatTrigger.readOnly);
         }
     }, [newChatTrigger, handleNewChat]);
 
@@ -947,7 +945,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             sessions={sessionsHook.sessions}
             activeTaskId={selectedTaskId}
             onSelectSession={handleSelectSession}
-            onNewChat={(readOnly, projectRoot) => handleNewChat(readOnly, projectRoot)}
+            onNewChat={(readOnly) => handleNewChat(readOnly)}
             onCancelSession={(taskId) => void handleCancelChat(taskId)}
             loading={sessionsHook.loading}
             isUnread={readState.isUnread}

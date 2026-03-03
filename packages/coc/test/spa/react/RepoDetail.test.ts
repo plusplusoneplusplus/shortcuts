@@ -403,7 +403,7 @@ describe('RepoDetail New Chat button in header', () => {
     });
 
     it('newChatTrigger state is an object with count and readOnly', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false, useProjectRoot: false }');
+        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false }');
     });
 
     it('passes newChatTrigger prop to RepoChatTab', () => {
@@ -424,30 +424,32 @@ describe('RepoDetail New Chat button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-dropdown-toggle"');
     });
 
-    it('renders dropdown menu with normal and read-only options', () => {
+    it('renders dropdown menu with normal, read-only, and terminal options', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-dropdown-menu"');
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-normal"');
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-readonly"');
     });
 
-    it('renders project-root option in dropdown', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-project-root"');
-        expect(REPO_DETAIL_SOURCE).toContain('New Chat (Project Root)');
+    it('renders terminal option in dropdown (replaces project-root)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-terminal"');
+        expect(REPO_DETAIL_SOURCE).toContain('New Chat (Terminal)');
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-option-project-root"');
+        expect(REPO_DETAIL_SOURCE).not.toContain('New Chat (Project Root)');
     });
 
-    it('project-root option calls handleNewChatFromTopBar(false, true)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar(false, true)');
+    it('terminal option calls handleLaunchInTerminal', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('handleLaunchInTerminal');
     });
 
-    it('handleNewChatFromTopBar accepts useProjectRoot parameter', () => {
+    it('handleNewChatFromTopBar does not accept useProjectRoot parameter', () => {
         const fnStart = REPO_DETAIL_SOURCE.indexOf('const handleNewChatFromTopBar');
         const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
-        expect(fnBody).toContain('useProjectRoot');
+        expect(fnBody).not.toContain('useProjectRoot');
     });
 
-    it('newChatTrigger state includes useProjectRoot', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('useProjectRoot: false');
-        expect(REPO_DETAIL_SOURCE).toContain('useProjectRoot');
+    it('newChatTrigger state does not include useProjectRoot', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('useProjectRoot: false');
+        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false }');
     });
 
     it('read-only option calls handleNewChatFromTopBar(true)', () => {
