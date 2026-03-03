@@ -13,6 +13,7 @@ import { QueueTaskDetail } from '../queue/QueueTaskDetail';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 
 interface RepoQueueTabProps {
     workspaceId: string;
@@ -51,6 +52,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { dispatch: appDispatch } = useApp();
     const selectedTaskId = queueState.selectedTaskId;
+    const { isMobile, isTablet } = useBreakpoint();
+    const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
     // Live-update from per-repo WebSocket events via repoQueueMap
     const repoQueue = queueState.repoQueueMap[workspaceId];
@@ -139,6 +142,11 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         }
     }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId]);
 
+    // Reset mobile detail view when selection is cleared
+    useEffect(() => {
+        if (!selectedTaskId) setMobileShowDetail(false);
+    }, [selectedTaskId]);
+
     const selectTask = useCallback((id: string, task?: any) => {
         if (task?.type === 'chat') {
             // Navigate to Chat tab and select the session
@@ -150,7 +158,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         }
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/queue/' + encodeURIComponent(id);
-    }, [queueDispatch, appDispatch, workspaceId]);
+        if (isMobile) setMobileShowDetail(true);
+    }, [queueDispatch, appDispatch, workspaceId, isMobile]);
 
     // Scroll selected task card into view (e.g. after deep-link navigation)
     useEffect(() => {
@@ -288,154 +297,184 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         );
     }
 
-    return (
-        <div className="flex h-full overflow-hidden" data-testid="repo-queue-split-panel">
-            {/* Left panel — task list */}
-            <div className="w-80 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden">
-                <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
-                    {/* Pause banner */}
-                    {isPaused && (
-                        <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
-                            <span className="flex-1">⏸ Queue is paused — new tasks will not start.</span>
-                            <Button variant="ghost" size="sm" disabled={isPauseResumeLoading} onClick={handlePauseResume} data-testid="queue-banner-resume-btn">
-                                ▶ Resume
-                            </Button>
-                        </div>
-                    )}
-                    {/* Toolbar: Queue label, filter dropdown, pause/resume */}
-                    <div className={cn('flex items-center gap-2 mb-3')}>
-                        <span className="text-sm font-medium">Queue</span>
-                        {isPaused && <Badge status="warning">Paused</Badge>}
-                        {availableFilters.length > 2 && (
-                            <select
-                                className="text-xs bg-transparent border border-[#e0e0e0] dark:border-[#3c3c3c] rounded px-1.5 py-0.5 text-[#848484] outline-none"
-                                value={filterType}
-                                onChange={e => setFilterType(e.target.value)}
-                                data-testid="queue-filter-dropdown"
-                            >
-                                {availableFilters.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        )}
-                        <div className="flex-1" />
-                        {(isPaused || running.length > 0 || queued.length > 0) && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled={isPauseResumeLoading}
-                                onClick={handlePauseResume}
-                                title={isPaused ? 'Resume queue' : 'Pause queue'}
-                                data-testid="repo-pause-resume-btn"
-                            >
-                                {isPaused ? '▶' : '⏸'}
-                            </Button>
-                        )}
+    const taskListContent = (
+        <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+            {/* Pause banner */}
+            {isPaused && (
+                <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
+                    <span className="flex-1">⏸ Queue is paused — new tasks will not start.</span>
+                    <Button variant="ghost" size="sm" disabled={isPauseResumeLoading} onClick={handlePauseResume} data-testid="queue-banner-resume-btn">
+                        ▶ Resume
+                    </Button>
+                </div>
+            )}
+            {/* Toolbar: Queue label, filter dropdown, pause/resume */}
+            <div className={cn('flex items-center gap-2 mb-3')}>
+                <span className="text-sm font-medium">Queue</span>
+                {isPaused && <Badge status="warning">Paused</Badge>}
+                {availableFilters.length > 2 && (
+                    <select
+                        className="text-xs bg-transparent border border-[#e0e0e0] dark:border-[#3c3c3c] rounded px-1.5 py-0.5 text-[#848484] outline-none"
+                        value={filterType}
+                        onChange={e => setFilterType(e.target.value)}
+                        data-testid="queue-filter-dropdown"
+                    >
+                        {availableFilters.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
+                )}
+                <div className="flex-1" />
+                {(isPaused || running.length > 0 || queued.length > 0) && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isPauseResumeLoading}
+                        onClick={handlePauseResume}
+                        title={isPaused ? 'Resume queue' : 'Pause queue'}
+                        data-testid="repo-pause-resume-btn"
+                    >
+                        {isPaused ? '▶' : '⏸'}
+                    </Button>
+                )}
+            </div>
+
+            {/* Running */}
+            {filteredRunning.length > 0 && (
+                <div>
+                    <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
+                        Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
                     </div>
+                    <div className="flex flex-col gap-1">
+                        {filteredRunning.map(task => (
+                            <QueueTaskItem
+                                key={task.id}
+                                task={task}
+                                status="running"
+                                now={now}
+                                selected={selectedTaskId === task.id}
+                                onClick={() => selectTask(task.id, task)}
+                                onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
 
-                    {/* Running */}
-                    {filteredRunning.length > 0 && (
-                        <div>
-                            <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
-                                Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                {filteredRunning.map(task => (
-                                    <QueueTaskItem
-                                        key={task.id}
-                                        task={task}
-                                        status="running"
-                                        now={now}
-                                        selected={selectedTaskId === task.id}
-                                        onClick={() => selectTask(task.id, task)}
-                                        onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Queued */}
-                    {filteredQueued.length > 0 && (
-                        <div>
-                            <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
-                                Queued Tasks <span className="text-[10px]">({filteredQueued.length})</span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                {filteredQueued.map((task, index) => (
-                                    <div
-                                        key={task.id}
-                                        draggable
-                                        onDragStart={createDragStartHandler(task.id, index)}
-                                        onDragEnd={createDragEndHandler()}
-                                        onDragOver={createDragOverHandler(index)}
-                                        onDragEnter={createDragEnterHandler(index)}
-                                        onDragLeave={createDragLeaveHandler(index)}
-                                        onDrop={createDropHandler(index, handleMoveToPosition)}
-                                        className={cn(
-                                            'cursor-grab active:cursor-grabbing',
-                                            draggedTaskId === task.id && 'opacity-40',
-                                            dropTargetIndex === index && dropPosition === 'above' && 'border-t-2 border-[#007fd4]',
-                                            dropTargetIndex === index && dropPosition === 'below' && 'border-b-2 border-[#007fd4]',
-                                        )}
-                                    >
-                                        <QueueTaskItem
-                                            task={task}
-                                            status="queued"
-                                            now={now}
-                                            selected={selectedTaskId === task.id}
-                                            onClick={() => selectTask(task.id, task)}
-                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'queued')}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* History */}
-                    {filteredHistory.length > 0 && (
-                        <div>
-                            <button
-                                className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
-                                onClick={() => setShowHistory(!showHistory)}
+            {/* Queued */}
+            {filteredQueued.length > 0 && (
+                <div>
+                    <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
+                        Queued Tasks <span className="text-[10px]">({filteredQueued.length})</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        {filteredQueued.map((task, index) => (
+                            <div
+                                key={task.id}
+                                draggable={!isMobile}
+                                onDragStart={isMobile ? undefined : createDragStartHandler(task.id, index)}
+                                onDragEnd={isMobile ? undefined : createDragEndHandler()}
+                                onDragOver={isMobile ? undefined : createDragOverHandler(index)}
+                                onDragEnter={isMobile ? undefined : createDragEnterHandler(index)}
+                                onDragLeave={isMobile ? undefined : createDragLeaveHandler(index)}
+                                onDrop={isMobile ? undefined : createDropHandler(index, handleMoveToPosition)}
+                                className={cn(
+                                    !isMobile && 'cursor-grab active:cursor-grabbing',
+                                    draggedTaskId === task.id && 'opacity-40',
+                                    dropTargetIndex === index && dropPosition === 'above' && 'border-t-2 border-[#007fd4]',
+                                    dropTargetIndex === index && dropPosition === 'below' && 'border-b-2 border-[#007fd4]',
+                                )}
                             >
-                                {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
-                            </button>
-                            {showHistory && (
-                                <div className="flex flex-col gap-1 mt-1">
-                                    {filteredHistory.map(task => (
-                                        <Card
-                                            key={task.id}
-                                            className={cn(
-                                                "p-2 cursor-pointer",
-                                                selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
-                                            )}
-                                            onClick={() => selectTask(task.id, task)}
-                                            data-task-id={task.id}
-                                        >
-                                            <div className="flex items-center justify-between text-xs">
-                                                <span>
-                                                    {task.type === 'chat' ? '💬' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '🚫'}{' '}
-                                                    {(task.displayName || task.type || 'Task').substring(0, 35)}
-                                                </span>
-                                                <span className="text-[10px] text-[#848484]">
-                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
-                                                </span>
-                                            </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] text-[#848484] mt-0.5 truncate">{p}</div> : null; })()}
-                                        {task.error && (
-                                                <div className="text-[10px] text-red-500 mt-0.5 truncate">
-                                                    {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
-                                                </div>
-                                            )}
-                                        </Card>
-                                    ))}
-                                </div>
-                            )}
+                                <QueueTaskItem
+                                    task={task}
+                                    status="queued"
+                                    now={now}
+                                    selected={selectedTaskId === task.id}
+                                    onClick={() => selectTask(task.id, task)}
+                                    onContextMenu={e => handleTaskContextMenu(e, task.id, 'queued')}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* History */}
+            {filteredHistory.length > 0 && (
+                <div>
+                    <button
+                        className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                        onClick={() => setShowHistory(!showHistory)}
+                    >
+                        {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
+                    </button>
+                    {showHistory && (
+                        <div className="flex flex-col gap-1 mt-1">
+                            {filteredHistory.map(task => (
+                                <Card
+                                    key={task.id}
+                                    className={cn(
+                                        "p-2 cursor-pointer",
+                                        selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                    )}
+                                    onClick={() => selectTask(task.id, task)}
+                                    data-task-id={task.id}
+                                >
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span>
+                                            {task.type === 'chat' ? '💬' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '🚫'}{' '}
+                                            {(task.displayName || task.type || 'Task').substring(0, 35)}
+                                        </span>
+                                        <span className="text-[10px] text-[#848484]">
+                                            {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                        </span>
+                                    </div>
+                                    {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] text-[#848484] mt-0.5 truncate">{p}</div> : null; })()}
+                                    {task.error && (
+                                        <div className="text-[10px] text-red-500 mt-0.5 truncate">
+                                            {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
+                                        </div>
+                                    )}
+                                </Card>
+                            ))}
                         </div>
                     )}
                 </div>
+            )}
+        </div>
+    );
+
+    if (isMobile) {
+        return (
+            <div className="flex flex-col h-full overflow-hidden" data-testid="repo-queue-split-panel">
+                {mobileShowDetail && selectedTaskId ? (
+                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="repo-queue-detail-panel">
+                        <QueueTaskDetail onBack={() => setMobileShowDetail(false)} />
+                    </div>
+                ) : (
+                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="repo-queue-mobile-list">
+                        {taskListContent}
+                    </div>
+                )}
+                {contextMenu && (
+                    <ContextMenu
+                        position={{ x: contextMenu.x, y: contextMenu.y }}
+                        items={contextMenuItems}
+                        onClose={closeContextMenu}
+                    />
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex h-full overflow-hidden" data-testid="repo-queue-split-panel">
+            {/* Left panel — task list */}
+            <div className={cn(
+                'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden',
+                isTablet ? 'w-64' : 'w-80',
+            )}>
+                {taskListContent}
             </div>
 
             {/* Right panel — detail or placeholder */}

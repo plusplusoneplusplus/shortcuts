@@ -68,7 +68,7 @@ function getConversationTurns(data: any): ClientConversationTurn[] {
     return [];
 }
 
-export function QueueTaskDetail() {
+export function QueueTaskDetail({ onBack }: { onBack?: () => void } = {}) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
     const { selectedTaskId } = queueState;
@@ -548,6 +548,15 @@ export function QueueTaskDetail() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <div className="flex items-center gap-2">
+                    {onBack && (
+                        <button
+                            className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
+                            onClick={onBack}
+                            data-testid="queue-detail-back-btn"
+                        >
+                            ← Back
+                        </button>
+                    )}
                     {task && (
                         <Badge status={task.status}>
                             {statusIcon(task.status)} {statusLabel(task.status)}

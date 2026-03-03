@@ -37,8 +37,9 @@ describe('RepoQueueTab split-panel layout', () => {
             expect(source).toContain('data-testid="repo-queue-split-panel"');
         });
 
-        it('has a left panel with w-80 flex-shrink-0 and border-r', () => {
-            expect(source).toContain('w-80 flex-shrink-0 border-r');
+        it('has a left panel with flex-shrink-0 and border-r (width conditional on tablet)', () => {
+            expect(source).toContain('flex-shrink-0 border-r border-[#e0e0e0]');
+            expect(source).toContain("isTablet ? 'w-64' : 'w-80'");
         });
 
         it('has a right panel with flex-1 min-w-0', () => {
