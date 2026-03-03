@@ -39,6 +39,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'queue', label: 'Queue' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'chat', label: 'Chat' },
+    { key: 'wiki', label: 'Wiki' },
 ];
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {

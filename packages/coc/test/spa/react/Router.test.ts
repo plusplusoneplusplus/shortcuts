@@ -106,12 +106,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('git')).toBe(true);
     });
 
+    it('includes "wiki"', () => {
+        expect(VALID_REPO_SUB_TABS.has('wiki')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 7 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(7);
+    it('has exactly 8 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(8);
     });
 });
 
@@ -1063,5 +1067,156 @@ describe('handleHash git dispatch simulation', () => {
         const dispatches = simulateGitHash('#repos/r1/git/abc1234');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
         expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
+    });
+});
+
+// ─── wiki repo sub-tab deep-link ─────────────────────────────────
+
+describe('wiki repo sub-tab deep-link', () => {
+    function parseRepoDeepLink(rawHash: string): { repoId: string | null; subTab: string | null } {
+        const hash = rawHash.replace(/^#/, '');
+        const parts = hash.split('/');
+        if (parts[0] !== 'repos') return { repoId: null, subTab: null };
+        const repoId = parts.length >= 2 && parts[1] ? decodeURIComponent(parts[1]) : null;
+        const subTab = parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2]) ? parts[2] : null;
+        return { repoId, subTab };
+    }
+
+    it('parses #repos/my-repo/wiki correctly', () => {
+        const result = parseRepoDeepLink('#repos/my-repo/wiki');
+        expect(result.repoId).toBe('my-repo');
+        expect(result.subTab).toBe('wiki');
+    });
+
+    it('tabFromHash returns "repos" for #repos/ws-abc/wiki', () => {
+        expect(tabFromHash('#repos/ws-abc/wiki')).toBe('repos');
+    });
+
+    it('handles URL-encoded repo IDs with wiki sub-tab', () => {
+        const result = parseRepoDeepLink('#repos/my%20repo/wiki');
+        expect(result.repoId).toBe('my repo');
+        expect(result.subTab).toBe('wiki');
+    });
+});
+
+// ─── handleHash wiki repo sub-tab dispatch simulation ───────────
+
+describe('handleHash wiki repo sub-tab dispatch simulation', () => {
+    function simulateWikiRepoHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SET_REPO_SUB_TAB with wiki for #repos/r1/wiki', () => {
+        const dispatches = simulateWikiRepoHash('#repos/r1/wiki');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+    });
+
+    it('dispatches SET_SELECTED_REPO alongside wiki sub-tab', () => {
+        const dispatches = simulateWikiRepoHash('#repos/r1/wiki');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+    });
+
+    it('does not dispatch SET_REPO_SUB_TAB for #repos/r1 (no sub-tab)', () => {
+        const dispatches = simulateWikiRepoHash('#repos/r1');
+        expect(dispatches.find(d => d.type === 'SET_REPO_SUB_TAB')).toBeUndefined();
+    });
+});
+
+// ─── W keyboard shortcut simulation ─────────────────────────────
+// Mirrors the W-key useEffect handler logic from Router.tsx
+
+describe('W keyboard shortcut simulation', () => {
+    type MockEvent = {
+        key: string;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        altKey?: boolean;
+        target?: { tagName?: string; isContentEditable?: boolean };
+    };
+    type MockState = { activeTab: string; selectedRepoId: string | null };
+
+    function simulateWKeyHandler(
+        e: MockEvent,
+        state: MockState,
+    ): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const target = e.target ?? { tagName: 'BODY', isContentEditable: false };
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return dispatches;
+        if (e.ctrlKey || e.metaKey || e.altKey) return dispatches;
+        if (state.activeTab !== 'repos' || !state.selectedRepoId) return dispatches;
+        if (e.key === 'w' || e.key === 'W') {
+            dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+        }
+        return dispatches;
+    }
+
+    const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
+
+    it('dispatches SET_REPO_SUB_TAB wiki for key W', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W' }, repoState);
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+    });
+
+    it('dispatches SET_REPO_SUB_TAB wiki for lowercase key w', () => {
+        const dispatches = simulateWKeyHandler({ key: 'w' }, repoState);
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+    });
+
+    it('does not dispatch when activeTab is not repos', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W' }, { activeTab: 'wiki', selectedRepoId: 'my-repo' });
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when selectedRepoId is null', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W' }, { activeTab: 'repos', selectedRepoId: null });
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is INPUT', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W', target: { tagName: 'INPUT' } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is TEXTAREA', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W', target: { tagName: 'TEXTAREA' } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is contentEditable', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W', target: { tagName: 'DIV', isContentEditable: true } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when ctrlKey is pressed', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W', ctrlKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when metaKey is pressed', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W', metaKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when altKey is pressed', () => {
+        const dispatches = simulateWKeyHandler({ key: 'W', altKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch for unrelated keys', () => {
+        const dispatches = simulateWKeyHandler({ key: 'c' }, repoState);
+        expect(dispatches).toHaveLength(0);
     });
 });

@@ -29,13 +29,23 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 7 entries', () => {
-        expect(SUB_TABS).toHaveLength(7);
+    it('has exactly 8 entries', () => {
+        expect(SUB_TABS).toHaveLength(8);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
+        expect(keys).toEqual(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'wiki']);
+    });
+
+    it('includes a "wiki" entry', () => {
+        const wikiTab = SUB_TABS.find(t => t.key === 'wiki');
+        expect(wikiTab).toBeDefined();
+        expect(wikiTab!.label).toBe('Wiki');
+    });
+
+    it('has wiki as the last tab', () => {
+        expect(SUB_TABS[SUB_TABS.length - 1].key).toBe('wiki');
     });
 });
 

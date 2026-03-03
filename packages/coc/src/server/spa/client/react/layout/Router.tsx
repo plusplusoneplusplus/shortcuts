@@ -111,7 +111,7 @@ export function parseGitCommitDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'wiki']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -224,6 +224,22 @@ export function Router() {
             if (e.key === 'c' || e.key === 'C') {
                 dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chat' });
                 location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/chat';
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [dispatch, state.activeTab, state.selectedRepoId]);
+
+    // Keyboard shortcut: W → jump to Wiki sub-tab (only when Repos tab is active + a repo is selected)
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
+            if (e.key === 'w' || e.key === 'W') {
+                dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+                location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/wiki';
             }
         };
         document.addEventListener('keydown', handler);
