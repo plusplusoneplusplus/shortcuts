@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import type { BreakpointState } from '../../../../src/server/spa/client/react/hooks/useBreakpoint';
+import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
 
 // ── Mutable mock state ─────────────────────────────────────────────────
 
@@ -374,7 +375,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
 
     it('sub-tab strip has overflow-x-auto and scrollbar-hide classes', () => {
         const repo = makeRepo();
-        render(<RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} />);
+        render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const strip = screen.getByTestId('repo-sub-tab-strip');
         expect(strip.className).toContain('overflow-x-auto');
@@ -383,7 +384,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
 
     it('tab buttons have whitespace-nowrap and shrink-0 classes', () => {
         const repo = makeRepo();
-        render(<RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} />);
+        render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
         expect(tabs.length).toBe(7);
@@ -399,7 +400,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
 
         const repo = makeRepo();
         mockAppState.activeRepoSubTab = 'chat';
-        render(<RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} />);
+        render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         expect(scrollIntoViewMock).toHaveBeenCalledWith({
             behavior: 'smooth',

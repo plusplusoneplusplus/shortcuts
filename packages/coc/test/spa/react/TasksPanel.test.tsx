@@ -578,6 +578,7 @@ describe('TasksPanel — folder click clears preview', () => {
     };
 
     beforeEach(() => {
+        window.location.hash = '';
         fetchSpy = vi.fn();
         global.fetch = fetchSpy;
     });
@@ -1056,6 +1057,7 @@ describe('TasksPanel — preserves navigation on refresh', () => {
     };
 
     beforeEach(() => {
+        window.location.hash = '';
         fetchSpy = vi.fn();
         global.fetch = fetchSpy;
     });
@@ -1100,8 +1102,10 @@ describe('TasksPanel — preserves navigation on refresh', () => {
             expect(fetchCount).toBeGreaterThanOrEqual(2);
         });
 
-        // Miller columns should still be at depth 3 (root + coc + backlog)
-        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        // Miller columns should still be at depth 3 (root + coc + backlog).
+        // With MAX_VISIBLE_COLUMNS=2, only the last 2 columns are rendered (columns 1 and 2);
+        // column 0 is replaced by the overflow indicator.
+        expect(screen.getByTestId('column-overflow-indicator')).toBeTruthy();
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         expect(screen.getByTestId('miller-column-2')).toBeTruthy();
     });

@@ -802,6 +802,8 @@ export {
     GitLogService,
     GitRangeService,
     BranchService,
+    WorkingTreeService,
+    parsePorcelain,
 } from './git';
 
 // ============================================================================
