@@ -17,7 +17,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ResolveCommentsPayload, RunPipelinePayload, RunScriptPayload, TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
+import type { ChatFollowUpPayload, ResolveCommentsPayload, RunPipelinePayload, RunScriptPayload, TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
@@ -171,6 +171,34 @@ export class CLITaskExecutor implements TaskExecutor {
         if (this.cancelledTasks.has(task.id)) {
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} was cancelled before starting`);
             return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
+        }
+
+        // ── Chat follow-up: skip ghost process creation — reuse the original process ──
+        if (isChatFollowUpPayload(task.payload)) {
+            const followUpPayload = task.payload as unknown as ChatFollowUpPayload;
+            task.processId = followUpPayload.processId;
+
+            // Rehydrate externalized images if needed
+            const rawPayload = task.payload as any;
+            if (rawPayload?.imagesFilePath && (!Array.isArray(rawPayload.images) || rawPayload.images.length === 0)) {
+                rawPayload.images = await ImageBlobStore.loadImages(rawPayload.imagesFilePath);
+            }
+
+            try {
+                await this.executeFollowUp(followUpPayload.processId, followUpPayload.content, followUpPayload.attachments);
+                const duration = Date.now() - startTime;
+                logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
+                return { success: true, durationMs: duration };
+            } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                const duration = Date.now() - startTime;
+                logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} failed in ${duration}ms: ${errorMsg}`);
+                return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
+            } finally {
+                if (followUpPayload.imageTempDir) {
+                    cleanupTempDir(followUpPayload.imageTempDir);
+                }
+            }
         }
 
         // Create a process in the store for tracking
