@@ -827,42 +827,57 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 data-testid="tasks-miller-scroll-container"
             >
                 <div className="flex h-full min-h-0 min-w-full">
-                    {(!isMobile || !openFilePath) && (
-                        <div className="flex-shrink-0 h-full min-h-0">
-                            {searchQuery ? (
-                                <TaskSearchResults
-                                    results={searchResults}
-                                    query={searchQuery}
-                                    commentCounts={commentCounts}
-                                    wsId={wsId}
-                                    onFileClick={(path) => setOpenFilePath(path)}
-                                    onContextMenu={handleFileContextMenu}
-                                />
-                            ) : (
-                                <TaskTree
-                                    tree={tree}
-                                    commentCounts={commentCounts}
-                                    wsId={wsId}
-                                    initialFolderPath={initialParams.initialFolderPath}
-                                    initialFilePath={initialParams.initialFilePath}
-                                    navigateToFilePath={navigateToFilePath}
-                                    onNavigated={() => setNavigateToFilePath(null)}
-                                    onColumnsChange={handleColumnsChange}
-                                    onFolderContextMenu={handleFolderContextMenu}
-                                    onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
-                                    onFileContextMenu={handleFileContextMenu}
-                                    onDrop={handleDragDrop}
-                                />
-                            )}
-                        </div>
-                    )}
+                    <div
+                        className="flex-shrink-0 h-full min-h-0"
+                        style={isMobile && openFilePath ? { display: 'none' } : undefined}
+                    >
+                        {searchQuery ? (
+                            <TaskSearchResults
+                                results={searchResults}
+                                query={searchQuery}
+                                commentCounts={commentCounts}
+                                wsId={wsId}
+                                onFileClick={(path) => setOpenFilePath(path)}
+                                onContextMenu={handleFileContextMenu}
+                            />
+                        ) : (
+                            <TaskTree
+                                tree={tree}
+                                commentCounts={commentCounts}
+                                wsId={wsId}
+                                initialFolderPath={initialParams.initialFolderPath}
+                                initialFilePath={initialParams.initialFilePath}
+                                navigateToFilePath={navigateToFilePath}
+                                onNavigated={() => setNavigateToFilePath(null)}
+                                onColumnsChange={handleColumnsChange}
+                                onFolderContextMenu={handleFolderContextMenu}
+                                onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
+                                onFileContextMenu={handleFileContextMenu}
+                                onDrop={handleDragDrop}
+                            />
+                        )}
+                    </div>
 
                     {openFilePath && (
                         <div className={`h-full min-h-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] ${isMobile ? 'flex-1 min-w-0' : 'flex-1 min-w-[48rem]'}`}>
                             {isMobile && (
                                 <div className="flex items-center h-9 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                                     <button
-                                        onClick={() => setOpenFilePath(null)}
+                                        onClick={() => {
+                                            if (openFilePath) {
+                                                const parentFolder = openFilePath.includes('/')
+                                                    ? openFilePath.split('/').slice(0, -1).join('/')
+                                                    : '';
+                                                const encoded = parentFolder
+                                                    ? parentFolder.split('/').map(encodeURIComponent).join('/')
+                                                    : '';
+                                                history.replaceState(
+                                                    null, '',
+                                                    `#repos/${encodeURIComponent(wsId)}/tasks${encoded ? '/' + encoded : ''}`
+                                                );
+                                            }
+                                            setOpenFilePath(null);
+                                        }}
                                         className="flex items-center gap-1 text-xs text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
                                         data-testid="task-preview-back-btn"
                                     >
