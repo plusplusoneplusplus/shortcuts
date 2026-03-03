@@ -21,6 +21,18 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
     const d = new Date(dateStr);
     const now = Date.now();
     const diff = now - d.getTime();
+
+    // Future dates
+    if (diff < 0) {
+        const absMins = Math.floor(-diff / 60000);
+        if (absMins < 1) return 'just now';
+        if (absMins < 60) return 'in ' + absMins + 'm';
+        const absHours = Math.floor(absMins / 60);
+        if (absHours < 24) return 'in ' + absHours + 'h';
+        return 'in ' + Math.floor(absHours / 24) + 'd';
+    }
+
+    // Past dates
     if (diff < 60000) return 'just now';
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return mins + 'm ago';
