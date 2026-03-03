@@ -247,6 +247,14 @@ describe('CreateScheduleForm template UI', () => {
         expect(dirInput.value).toBe('./lib');
     });
 
+    it('Create button has type="submit" so it triggers form submission', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+
+        const createBtn = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement;
+        expect(createBtn.type).toBe('submit');
+    });
+
     it('submitting with template sends params in the request body', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
@@ -257,9 +265,9 @@ describe('CreateScheduleForm template UI', () => {
         fireEvent.click(screen.getByText('+ New'));
         fireEvent.click(screen.getByTestId('template-auto-commit'));
 
-        // Submit the form directly (Button defaults to type="button")
-        const form = screen.getByTestId('template-picker').closest('form')!;
-        fireEvent.submit(form);
+        // Submit by clicking the Create button (type="submit")
+        const createBtn = screen.getByRole('button', { name: 'Create' });
+        fireEvent.click(createBtn);
 
         // Wait for the POST call (form submits asynchronously)
         await waitFor(() => {
@@ -560,9 +568,9 @@ describe('Pipeline dropdown selector (target field)', () => {
         const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: 'pipelines/daily-report/pipeline.yaml' } });
 
-        // Submit the form
-        const form = screen.getByTestId('template-picker').closest('form')!;
-        fireEvent.submit(form);
+        // Submit by clicking the Create button (type="submit")
+        const createBtn = screen.getByRole('button', { name: 'Create' });
+        fireEvent.click(createBtn);
 
         // Verify POST body contains params.pipeline
         await waitFor(() => {
