@@ -745,7 +745,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
 
                 <div className="flex justify-end gap-1.5">
                     <Button variant="secondary" size="sm" onClick={onCancel}>Cancel</Button>
-                    <Button variant="primary" size="sm" disabled={submitting}>
+                    <Button variant="primary" size="sm" type="submit" disabled={submitting}>
                         {submitting ? 'Creating...' : 'Create'}
                     </Button>
                 </div>
