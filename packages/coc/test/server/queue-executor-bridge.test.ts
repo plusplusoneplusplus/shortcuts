@@ -443,6 +443,53 @@ describe('CLITaskExecutor', () => {
             }));
         });
 
+        it('should append planFilePath to prompt for custom task when planFilePath is present', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-4b',
+                type: 'custom',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    data: {
+                        prompt: 'Update the document',
+                        planFilePath: '/project/.vscode/tasks/coc/add-retry-logic.plan.md',
+                    },
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'Update the document\n\nFile: /project/.vscode/tasks/coc/add-retry-logic.plan.md',
+            }));
+        });
+
+        it('should NOT append planFilePath when it is empty', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-4c',
+                type: 'custom',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { data: { prompt: 'Analyze performance', planFilePath: '' } },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: 'Analyze performance',
+            }));
+        });
+
         it('should use displayName for custom task without data.prompt', async () => {
             const executor = new CLITaskExecutor(store);
 

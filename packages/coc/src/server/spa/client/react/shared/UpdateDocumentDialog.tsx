@@ -38,7 +38,8 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
 
     const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
-    const [prompt, setPrompt] = useState(`Update the document "${taskName}" based on the current state of the codebase. Review the task file and update its status, notes, and checklist items to reflect the latest changes.`);
+    const [resolvedPath, setResolvedPath] = useState(taskPath);
+    const [prompt, setPrompt] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
@@ -51,6 +52,24 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
             .catch(() => {});
         return () => { cancelled = true; };
     }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
+        const workingDirectory = ws?.rootPath || '';
+        getTasksFolderPath(selectedWsId).then(tasksFolder => {
+            if (cancelled) return;
+            const full = workingDirectory
+                ? toForwardSlashes(workingDirectory + '/' + tasksFolder + '/' + taskPath)
+                : taskPath;
+            setResolvedPath(full);
+        });
+        return () => { cancelled = true; };
+    }, [selectedWsId, taskPath, state.workspaces]);
+
+    useEffect(() => {
+        setPrompt(`Update the document at "${resolvedPath}" based on the current state of the codebase. Review the task file and update its status, notes, and checklist items to reflect the latest changes.`);
+    }, [resolvedPath]);
 
     const handleSubmit = useCallback(async () => {
         if (!prompt.trim()) return;

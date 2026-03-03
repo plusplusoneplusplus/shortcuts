@@ -81,16 +81,27 @@ describe('UpdateDocumentDialog', () => {
         });
     });
 
-    it('has a pre-filled prompt textarea', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve([]),
+    it('has a pre-filled prompt textarea containing the resolved file path', async () => {
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: '/project' }];
+
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
         });
+
         await act(async () => {
-            renderDialog();
+            renderDialogWithWorkspace(workspaces);
         });
-        const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
-        expect(textarea.value).toContain('task');
+
+        await waitFor(() => {
+            const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+            expect(textarea.value).toContain('/project/.vscode/tasks/test/task.md');
+        });
     });
 
     it('submits to /api/queue/tasks on Submit click', async () => {

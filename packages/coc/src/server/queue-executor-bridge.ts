@@ -678,7 +678,11 @@ export class CLITaskExecutor implements TaskExecutor {
         if (isCustomTaskPayload(task.payload)) {
             const data = task.payload.data;
             if (typeof data.prompt === 'string' && data.prompt.trim()) {
-                return data.prompt;
+                let prompt = data.prompt;
+                if (typeof data.planFilePath === 'string' && data.planFilePath.trim()) {
+                    prompt = `${prompt}\n\nFile: ${data.planFilePath}`;
+                }
+                return prompt;
             }
         }
 
