@@ -135,6 +135,13 @@ describe('WorkingTree', () => {
         });
     });
 
+    describe('basename helper', () => {
+        it('strips trailing slash from directory paths', () => {
+            // The basename function should handle paths like "packages/foo/" without returning ""
+            expect(source).toContain(".replace(/\\/$/, '')");
+        });
+    });
+
     describe('loading and error states', () => {
         it('shows loading indicator', () => {
             expect(source).toContain('data-testid="working-tree-loading"');

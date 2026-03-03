@@ -63,7 +63,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function basename(filePath: string): string {
-    return filePath.replace(/\\/g, '/').split('/').pop() ?? filePath;
+    return filePath.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? filePath;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
