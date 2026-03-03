@@ -707,31 +707,61 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             </div>
             <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
             {error && <div className="text-xs text-red-500">{error}</div>}
-            <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1 text-xs text-[#848484] cursor-pointer" data-testid="chat-readonly-toggle">
-                    <input
-                        type="checkbox"
-                        checked={readOnly}
-                        onChange={e => setReadOnly(e.target.checked)}
-                        className="accent-blue-500"
-                    />
-                    Read-only
-                </label>
-                <select
-                    value={model}
-                    onChange={e => handleModelChange(e.target.value)}
-                    className="px-2 py-1.5 text-sm rounded border bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                    data-testid="chat-model-select"
-                >
-                    <option value="">Default</option>
-                    {models.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                    ))}
-                </select>
-                <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
-                    {sending ? '...' : 'Start Chat'}
-                </Button>
-            </div>
+            {isMobile ? (
+                <div className="space-y-2 w-full max-w-md" data-testid="chat-start-controls">
+                    <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1 text-xs text-[#848484] cursor-pointer" data-testid="chat-readonly-toggle">
+                            <input
+                                type="checkbox"
+                                checked={readOnly}
+                                onChange={e => setReadOnly(e.target.checked)}
+                                className="accent-blue-500"
+                            />
+                            Read-only
+                        </label>
+                        <select
+                            value={model}
+                            onChange={e => handleModelChange(e.target.value)}
+                            className="flex-1 px-2 py-1.5 text-sm rounded border bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            data-testid="chat-model-select"
+                        >
+                            <option value="">Default</option>
+                            {models.map(m => (
+                                <option key={m} value={m}>{m}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()} className="w-full justify-center">
+                        {sending ? '...' : 'Start Chat'}
+                    </Button>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2" data-testid="chat-start-controls">
+                    <label className="flex items-center gap-1 text-xs text-[#848484] cursor-pointer" data-testid="chat-readonly-toggle">
+                        <input
+                            type="checkbox"
+                            checked={readOnly}
+                            onChange={e => setReadOnly(e.target.checked)}
+                            className="accent-blue-500"
+                        />
+                        Read-only
+                    </label>
+                    <select
+                        value={model}
+                        onChange={e => handleModelChange(e.target.value)}
+                        className="px-2 py-1.5 text-sm rounded border bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        data-testid="chat-model-select"
+                    >
+                        <option value="">Default</option>
+                        {models.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
+                    </select>
+                    <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
+                        {sending ? '...' : 'Start Chat'}
+                    </Button>
+                </div>
+            )}
         </div>
     );
 
@@ -835,8 +865,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             />
                         )}
                         <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
-                        <div className="flex items-end gap-2 relative">
-                            <div className="flex-1 relative">
+                        <div className={isMobile ? "space-y-2" : "flex items-end gap-2 relative"}>
+                            <div className={isMobile ? "w-full relative" : "flex-1 relative"}>
                                 <textarea
                                     rows={1}
                                     value={inputValue}
@@ -870,18 +900,37 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                     highlightIndex={slashCommands.highlightIndex}
                                 />
                             </div>
-                            {(task?.config?.model || task?.metadata?.model) && (
-                                <span
-                                    className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
-                                    data-testid="chat-model-badge"
-                                    title="Model used for this chat session"
-                                >
-                                    {task.config?.model || task.metadata?.model}
-                                </span>
+                            {isMobile ? (
+                                <div className="flex items-center justify-between gap-2" data-testid="chat-followup-controls-row">
+                                    {(task?.config?.model || task?.metadata?.model) && (
+                                        <span
+                                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
+                                            data-testid="chat-model-badge"
+                                            title="Model used for this chat session"
+                                        >
+                                            {task.config?.model || task.metadata?.model}
+                                        </span>
+                                    )}
+                                    <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()} className="ml-auto">
+                                        {sending ? '...' : 'Send'}
+                                    </Button>
+                                </div>
+                            ) : (
+                                <>
+                                    {(task?.config?.model || task?.metadata?.model) && (
+                                        <span
+                                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
+                                            data-testid="chat-model-badge"
+                                            title="Model used for this chat session"
+                                        >
+                                            {task.config?.model || task.metadata?.model}
+                                        </span>
+                                    )}
+                                    <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
+                                        {sending ? '...' : 'Send'}
+                                    </Button>
+                                </>
                             )}
-                            <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
-                                {sending ? '...' : 'Send'}
-                            </Button>
                         </div>
                     </>
                 )}

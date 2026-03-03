@@ -80,6 +80,15 @@ describe('ImagePreviews', () => {
         expect(screen.queryByTestId('image-lightbox')).toBeNull();
     });
 
+    it('remove button is visible by default (touch-friendly: opacity-100)', () => {
+        render(<ImagePreviews images={[IMG_A]} onRemove={vi.fn()} />);
+        const btn = screen.getByTestId('remove-image-0');
+        // Button should start visible (opacity-100) for touch devices;
+        // desktop hover-only hide is handled via Tailwind md: prefix classes
+        expect(btn.className).toContain('opacity-100');
+        expect(btn.className).not.toMatch(/^opacity-0\b/);
+    });
+
     it('closing the lightbox returns to thumbnail view', () => {
         render(<ImagePreviews images={[IMG_A]} onRemove={vi.fn()} />);
 

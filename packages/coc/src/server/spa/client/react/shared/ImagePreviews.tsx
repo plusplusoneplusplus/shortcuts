@@ -39,7 +39,7 @@ export function ImagePreviews({ images, onRemove, showHint, className, ...props 
                             onClick={(e) => { e.stopPropagation(); onRemove(index); }}
                             title="Remove image"
                             data-testid={`remove-image-${index}`}
-                            className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border-none"
+                            className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer border-none"
                         >
                             ×
                         </button>

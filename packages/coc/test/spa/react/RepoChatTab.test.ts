@@ -1498,4 +1498,50 @@ describe('RepoChatTab', () => {
             expect(headerSection).toContain('"flex items-center gap-2"');
         });
     });
+
+    describe('mobile layout — follow-up input bar', () => {
+        it('uses isMobile to conditionally choose layout class', () => {
+            // On mobile: space-y-2 stacked layout; on desktop: flex items-end gap-2
+            expect(source).toContain('isMobile ? "space-y-2"');
+            expect(source).toContain('"flex items-end gap-2 relative"');
+        });
+
+        it('on mobile, textarea wrapper uses w-full relative', () => {
+            expect(source).toContain('isMobile ? "w-full relative" : "flex-1 relative"');
+        });
+
+        it('on mobile, model badge and Send button are in a separate controls row', () => {
+            expect(source).toContain('data-testid="chat-followup-controls-row"');
+        });
+
+        it('mobile controls row uses flex justify-between', () => {
+            expect(source).toContain('"flex items-center justify-between gap-2"');
+        });
+
+        it('on mobile, Send button uses ml-auto to push to right', () => {
+            // In the mobile branch the Send button has ml-auto class
+            const inputArea = source.substring(source.indexOf('{/* Input area */}'));
+            expect(inputArea).toContain('className="ml-auto"');
+        });
+    });
+
+    describe('mobile layout — new-chat start form', () => {
+        it('uses isMobile to conditionally choose start-form layout', () => {
+            expect(source).toContain('data-testid="chat-start-controls"');
+        });
+
+        it('on mobile, Start Chat button has w-full justify-center classes', () => {
+            expect(source).toContain('className="w-full justify-center"');
+        });
+
+        it('on mobile, model select uses flex-1 to fill available width', () => {
+            // The mobile branch select has flex-1 class
+            expect(source).toContain('"flex-1 px-2 py-1.5 text-sm rounded border');
+        });
+
+        it('on desktop, model select keeps original classes without flex-1', () => {
+            // Desktop branch select starts with px-2
+            expect(source).toContain('"px-2 py-1.5 text-sm rounded border');
+        });
+    });
 });
