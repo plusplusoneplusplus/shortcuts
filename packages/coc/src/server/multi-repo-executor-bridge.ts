@@ -15,6 +15,7 @@ import {
     RepoQueueRegistry,
     QueueExecutor,
     TaskQueueManager,
+    getCopilotSDKService,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, QueueChangeEvent, CreateTaskInput, QueuedTask, QueueStats, Attachment } from '@plusplusoneplusplus/pipeline-core';
 import {
@@ -175,6 +176,20 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
             }
         }
         return false;
+    }
+
+    /**
+     * Check whether the AI service is available.
+     * Uses the injected aiService if provided, otherwise falls back to getCopilotSDKService().
+     */
+    async isAIAvailable(): Promise<boolean> {
+        const aiService = this.defaultOptions.aiService ?? getCopilotSDKService();
+        try {
+            const result = await aiService.isAvailable();
+            return result?.available ?? false;
+        } catch {
+            return false;
+        }
     }
 
     /**
