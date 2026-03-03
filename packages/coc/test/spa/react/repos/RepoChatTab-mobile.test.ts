@@ -117,3 +117,26 @@ describe('RepoChatTab mobile: right panel full-width', () => {
         expect(REPO_CHAT_TAB_SOURCE).toContain('data-testid="chat-split-panel"');
     });
 });
+
+describe('RepoChatTab: pinned chats wiring', () => {
+    it('imports usePinnedChats', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain("import { usePinnedChats } from '../chat/usePinnedChats'");
+    });
+
+    it('calls usePinnedChats with workspaceId', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('usePinnedChats(workspaceId)');
+    });
+
+    it('destructures pinnedIds and togglePin from usePinnedChats', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('pinnedIds');
+        expect(REPO_CHAT_TAB_SOURCE).toContain('togglePin');
+    });
+
+    it('passes pinnedIds to ChatSessionSidebar', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('pinnedIds={pinnedIds}');
+    });
+
+    it('passes onTogglePin to ChatSessionSidebar', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('onTogglePin={togglePin}');
+    });
+});

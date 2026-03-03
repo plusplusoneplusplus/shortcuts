@@ -12,6 +12,7 @@ import { statusIcon, formatRelativeTime } from '../utils/format';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../tasks/comments/ContextMenu';
 import type { ChatSessionItem } from '../types/dashboard';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 
 export interface ChatSessionSidebarProps {
     className?: string;
@@ -42,6 +43,44 @@ export function ChatSessionSidebar({
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
     const [newChatDropdownOpen, setNewChatDropdownOpen] = useState(false);
     const newChatDropdownRef = useRef<HTMLDivElement>(null);
+    const { isMobile } = useBreakpoint();
+
+    // Long-press refs for mobile context menu trigger
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const longPressFired = useRef(false);
+
+    const handleCardTouchStart = useCallback((e: React.TouchEvent, sessionId: string) => {
+        longPressFired.current = false;
+        const touch = e.touches[0];
+        const x = touch.clientX;
+        const y = touch.clientY;
+        longPressTimer.current = setTimeout(() => {
+            longPressFired.current = true;
+            setContextMenu({ x, y, sessionId });
+        }, 500);
+    }, []);
+
+    const handleCardTouchEnd = useCallback(() => {
+        if (longPressTimer.current !== null) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }, []);
+
+    const handleCardTouchMove = useCallback(() => {
+        if (longPressTimer.current !== null) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }, []);
+
+    const handleCardClickWithLongPress = useCallback((sessionId: string) => {
+        if (longPressFired.current) {
+            longPressFired.current = false;
+            return;
+        }
+        onSelectSession(sessionId);
+    }, [onSelectSession]);
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -82,14 +121,17 @@ export function ChatSessionSidebar({
         <Card
             key={session.id}
             className={cn(
-                'p-2 cursor-pointer group',
+                'p-3 md:p-2 cursor-pointer group',
                 activeTaskId === session.id && 'ring-2 ring-[#0078d4]'
             )}
-            onClick={() => onSelectSession(session.id)}
+            onClick={() => handleCardClickWithLongPress(session.id)}
             onContextMenu={onTogglePin ? (e: React.MouseEvent) => handleContextMenu(e, session.id) : undefined}
+            onTouchStart={(e: React.TouchEvent) => handleCardTouchStart(e, session.id)}
+            onTouchEnd={handleCardTouchEnd}
+            onTouchMove={handleCardTouchMove}
             data-testid="chat-session-card"
         >
-            <div className="flex items-start gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+            <div className="flex items-start gap-1.5 text-sm md:text-xs text-[#1e1e1e] dark:text-[#cccccc]">
                 {isPinned ? (
                     <button
                         className="flex-shrink-0 text-[#0078d4] cursor-pointer"
@@ -110,7 +152,10 @@ export function ChatSessionSidebar({
                 </span>
                 {!isPinned && onTogglePin && (
                     <button
-                        className="flex-shrink-0 ml-auto opacity-0 group-hover:opacity-100 text-[#848484] hover:text-[#0078d4] cursor-pointer transition-opacity"
+                        className={cn(
+                            'flex-shrink-0 ml-auto transition-opacity text-[#848484] hover:text-[#0078d4] cursor-pointer',
+                            isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        )}
                         title="Pin chat"
                         data-testid="pin-icon-hover"
                         onClick={(e) => { e.stopPropagation(); onTogglePin(session.id); }}
@@ -193,7 +238,7 @@ export function ChatSessionSidebar({
             </div>
 
             {/* Session list */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-1.5">
                 {loading ? (
                     <div className="flex justify-center py-4"><Spinner /></div>
                 ) : sessions.length === 0 ? (

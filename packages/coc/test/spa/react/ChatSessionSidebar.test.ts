@@ -111,7 +111,9 @@ describe('ChatSessionSidebar', () => {
         });
 
         it('calls onSelectSession with session id on click', () => {
-            expect(source).toContain('onSelectSession(session.id)');
+            // Navigation goes through handleCardClickWithLongPress to suppress long-press clicks
+            expect(source).toContain('handleCardClickWithLongPress(session.id)');
+            expect(source).toContain('onSelectSession(sessionId)');
         });
     });
 
@@ -161,6 +163,10 @@ describe('ChatSessionSidebar', () => {
 
         it('imports ChatSessionItem type', () => {
             expect(source).toContain("import type { ChatSessionItem } from '../types/dashboard'");
+        });
+
+        it('imports useBreakpoint hook', () => {
+            expect(source).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
         });
     });
 
@@ -431,6 +437,74 @@ describe('ChatSessionSidebar', () => {
             // isUnread is optional with ?:, default undefined means showUnread is always false
             expect(source).toContain('isUnread?: (sessionId: string, turnCount?: number) => boolean');
             expect(source).toContain('!!(isUnread &&');
+        });
+    });
+
+    describe('mobile improvements — long-press context menu', () => {
+        it('declares longPressTimer ref', () => {
+            expect(source).toContain('longPressTimer');
+        });
+
+        it('declares longPressFired ref', () => {
+            expect(source).toContain('longPressFired');
+        });
+
+        it('implements handleCardTouchStart', () => {
+            expect(source).toContain('handleCardTouchStart');
+        });
+
+        it('implements handleCardTouchEnd', () => {
+            expect(source).toContain('handleCardTouchEnd');
+        });
+
+        it('implements handleCardTouchMove', () => {
+            expect(source).toContain('handleCardTouchMove');
+        });
+
+        it('implements handleCardClickWithLongPress to suppress click after long-press', () => {
+            expect(source).toContain('handleCardClickWithLongPress');
+            expect(source).toContain('longPressFired.current');
+        });
+
+        it('long-press timer fires after 500ms', () => {
+            expect(source).toContain('500');
+            expect(source).toContain('setTimeout');
+        });
+
+        it('attaches touch handlers to each card', () => {
+            expect(source).toContain('onTouchStart={(e: React.TouchEvent) => handleCardTouchStart(e, session.id)}');
+            expect(source).toContain('onTouchEnd={handleCardTouchEnd}');
+            expect(source).toContain('onTouchMove={handleCardTouchMove}');
+        });
+
+        it('uses handleCardClickWithLongPress for card click', () => {
+            expect(source).toContain('handleCardClickWithLongPress(session.id)');
+        });
+    });
+
+    describe('mobile improvements — touch targets', () => {
+        it('uses p-3 md:p-2 for larger touch targets on mobile', () => {
+            expect(source).toContain('p-3 md:p-2');
+        });
+
+        it('uses text-sm md:text-xs for larger text on mobile', () => {
+            expect(source).toContain('text-sm md:text-xs');
+        });
+    });
+
+    describe('mobile improvements — pin button visibility', () => {
+        it('uses useBreakpoint to detect mobile', () => {
+            expect(source).toContain('const { isMobile } = useBreakpoint()');
+        });
+
+        it('pin button uses isMobile to conditionally show opacity', () => {
+            expect(source).toContain('isMobile ? \'opacity-100\' : \'opacity-0 group-hover:opacity-100\'');
+        });
+    });
+
+    describe('mobile improvements — overflow fix', () => {
+        it('session list container has overflow-x-hidden', () => {
+            expect(source).toContain('overflow-y-auto overflow-x-hidden');
         });
     });
 });
