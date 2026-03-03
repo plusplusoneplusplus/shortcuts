@@ -18,6 +18,7 @@ interface Schedule {
     id: string;
     name: string;
     target: string;
+    targetType?: 'prompt' | 'script';
     cron: string;
     cronDescription: string;
     params: Record<string, string>;
@@ -37,6 +38,9 @@ interface RunRecord {
     error?: string;
     durationMs?: number;
     processId?: string;
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
 }
 
 export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
@@ -166,6 +170,12 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                         </span>
                         <span className="flex-1 text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
                             {schedule.name}
+                            {schedule.targetType === 'script' && (
+                                <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#0078d4] font-medium align-middle">[Script]</span>
+                            )}
+                            {(!schedule.targetType || schedule.targetType === 'prompt') && (
+                                <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#848484] font-medium align-middle">[Prompt]</span>
+                            )}
                         </span>
                         <span className="text-[10px] text-[#848484] font-mono flex-shrink-0">
                             {schedule.cronDescription}
@@ -206,20 +216,38 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                                     <div className="text-[10px] uppercase text-[#848484] font-medium mb-1">Run History</div>
                                     <div className="flex flex-col gap-0.5">
                                         {history.map(run => (
-                                            <div key={run.id} className="flex items-center gap-2 text-[10px] text-[#616161] dark:text-[#999] py-0.5">
-                                                <span>
-                                                    {run.status === 'completed' ? '✔' : run.status === 'failed' ? '✖' : run.status === 'running' ? '🔄' : '⚠'}
-                                                </span>
-                                                <span className="flex-1">{formatRelativeTime(run.startedAt)}</span>
-                                                {run.durationMs != null && (
-                                                    <span>{Math.round(run.durationMs / 1000)}s</span>
+                                            <div key={run.id} className="text-[10px] text-[#616161] dark:text-[#999] py-0.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span>
+                                                        {run.status === 'completed' ? '✔' : run.status === 'failed' ? '✖' : run.status === 'running' ? '🔄' : '⚠'}
+                                                    </span>
+                                                    <span className="flex-1">{formatRelativeTime(run.startedAt)}</span>
+                                                    {run.durationMs != null && (
+                                                        <span>{Math.round(run.durationMs / 1000)}s</span>
+                                                    )}
+                                                    {run.exitCode != null && (
+                                                        <span className={run.exitCode === 0 ? 'text-green-600' : 'text-red-500'}>
+                                                            Exit: {run.exitCode}
+                                                        </span>
+                                                    )}
+                                                    <span className={cn(
+                                                        run.status === 'completed' ? 'text-green-600' :
+                                                        run.status === 'failed' ? 'text-red-500' : ''
+                                                    )}>
+                                                        {run.status}
+                                                    </span>
+                                                </div>
+                                                {(run.stdout || run.stderr) && (
+                                                    <details className="mt-0.5 ml-4">
+                                                        <summary className="cursor-pointer text-[#0078d4] hover:underline select-none">
+                                                            output
+                                                        </summary>
+                                                        <div className="mt-0.5 p-1.5 rounded bg-[#f3f3f3] dark:bg-[#1e1e1e] font-mono text-[9px] whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                                                            {run.stdout && <div>{run.stdout}</div>}
+                                                            {run.stderr && <div className="text-red-400">{run.stderr}</div>}
+                                                        </div>
+                                                    </details>
                                                 )}
-                                                <span className={cn(
-                                                    run.status === 'completed' ? 'text-green-600' :
-                                                    run.status === 'failed' ? 'text-red-500' : ''
-                                                )}>
-                                                    {run.status}
-                                                </span>
                                             </div>
                                         ))}
                                     </div>
@@ -258,6 +286,7 @@ interface ScheduleTemplate {
     emoji: string;
     name: string;
     target: string;
+    targetType?: 'prompt' | 'script';
     cronExpr: string;
     intervalValue: string;
     intervalUnit: string;
@@ -327,6 +356,22 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         ],
         hint: 'Target file must exist at .vscode/schedules/clean-outputs.md',
     },
+    {
+        id: 'run-script',
+        label: 'Run Script',
+        emoji: '🖥️',
+        name: 'Script Runner',
+        target: '',
+        targetType: 'script',
+        cronExpr: '0 * * * *',
+        intervalValue: '1',
+        intervalUnit: 'hours',
+        mode: 'cron',
+        params: [
+            { key: 'workingDirectory', placeholder: '.' },
+        ],
+        hint: 'Enter a shell command or path to a script to execute on the schedule.',
+    },
 ];
 
 function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
@@ -336,6 +381,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
 }) {
     const [name, setName] = useState('');
     const [target, setTarget] = useState('');
+    const [targetType, setTargetType] = useState<'prompt' | 'script'>('prompt');
     const [mode, setMode] = useState<'cron' | 'interval'>('interval');
     const [cron, setCron] = useState('0 9 * * *');
     const [intervalValue, setIntervalValue] = useState('1');
@@ -371,6 +417,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
             setSelectedTemplate(null);
             setName('');
             setTarget('');
+            setTargetType('prompt');
             setMode('interval');
             setCron('0 9 * * *');
             setIntervalValue('1');
@@ -385,6 +432,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
         setManualPipeline(false);
         setName(tpl.name);
         setTarget(templateId === 'run-pipeline' ? '' : tpl.target);
+        setTargetType(tpl.targetType || 'prompt');
         setMode(tpl.mode);
         setCron(tpl.cronExpr);
         setIntervalValue(tpl.intervalValue);
@@ -424,6 +472,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                 body: JSON.stringify({
                     name: name.trim(),
                     target: target.trim(),
+                    targetType,
                     cron: cronExpr,
                     params,
                     onFailure,
@@ -473,6 +522,23 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                     value={name}
                     onChange={e => setName(e.target.value)}
                 />
+
+                {/* Target type picker */}
+                <div className="flex items-center gap-2" data-testid="target-type-picker">
+                    <span className="text-[10px] text-[#616161] dark:text-[#999]">Type:</span>
+                    <button
+                        type="button"
+                        className={cn('text-[10px] px-2 py-1 rounded', targetType === 'prompt' ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
+                        onClick={() => setTargetType('prompt')}
+                        data-testid="target-type-prompt"
+                    >Prompt</button>
+                    <button
+                        type="button"
+                        className={cn('text-[10px] px-2 py-1 rounded', targetType === 'script' ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
+                        onClick={() => setTargetType('script')}
+                        data-testid="target-type-script"
+                    >Script</button>
+                </div>
 
                 {/* Target field — pipeline selector for run-pipeline, plain input otherwise */}
                 {selectedTemplate === 'run-pipeline' && !manualPipeline ? (
@@ -526,9 +592,21 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                 ) : (
                     <input
                         className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                        placeholder="Target (e.g., pipelines/daily-report/pipeline.yaml)"
+                        placeholder={targetType === 'script' ? 'Command / Script (e.g., echo "hello world")' : 'Target (e.g., pipelines/daily-report/pipeline.yaml)'}
                         value={target}
                         onChange={e => setTarget(e.target.value)}
+                        data-testid="target-input"
+                    />
+                )}
+
+                {/* Working directory — only for script type */}
+                {targetType === 'script' && selectedTemplate !== 'run-script' && (
+                    <input
+                        className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                        placeholder="Working directory (optional)"
+                        value={params['workingDirectory'] ?? ''}
+                        onChange={e => setParams(prev => ({ ...prev, workingDirectory: e.target.value }))}
+                        data-testid="working-directory-input"
                     />
                 )}
 

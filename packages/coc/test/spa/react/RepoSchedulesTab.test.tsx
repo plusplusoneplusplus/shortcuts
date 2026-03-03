@@ -63,8 +63,8 @@ async function renderSchedulesTab() {
 // ============================================================================
 
 describe('SCHEDULE_TEMPLATES', () => {
-    it('exports 4 templates', () => {
-        expect(SCHEDULE_TEMPLATES).toHaveLength(4);
+    it('exports 5 templates', () => {
+        expect(SCHEDULE_TEMPLATES).toHaveLength(5);
     });
 
     it('every template has required fields', () => {
@@ -73,7 +73,10 @@ describe('SCHEDULE_TEMPLATES', () => {
             expect(tpl.label).toBeTruthy();
             expect(tpl.emoji).toBeTruthy();
             expect(tpl.name).toBeTruthy();
-            expect(tpl.target).toBeTruthy();
+            // Script templates intentionally have an empty target (user fills it in)
+            if (tpl.targetType !== 'script') {
+                expect(tpl.target).toBeTruthy();
+            }
             expect(tpl.cronExpr).toBeTruthy();
             expect(tpl.hint).toBeTruthy();
             expect(['cron', 'interval']).toContain(tpl.mode);
@@ -110,6 +113,7 @@ describe('SCHEDULE_TEMPLATES', () => {
         expect(ids).toContain('run-pipeline');
         expect(ids).toContain('pull-sync');
         expect(ids).toContain('clean-outputs');
+        expect(ids).toContain('run-script');
     });
 });
 
