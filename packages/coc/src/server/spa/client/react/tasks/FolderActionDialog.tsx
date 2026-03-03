@@ -9,8 +9,9 @@ import { Button } from '../shared/Button';
 
 const DOC_TYPES = ['', 'plan', 'spec', 'test', 'notes', 'todo', 'design', 'impl', 'review'] as const;
 
-/** Characters that are invalid in file/folder names across all platforms. */
-const INVALID_NAME_CHARS = /[/\\:*?"<>|]/g;
+/** Characters that are invalid in file/folder names across all platforms.
+ *  Double quotes are intentionally excluded — they are sanitized to single quotes by the backend. */
+const INVALID_NAME_CHARS = /[/\\:*?<>|]/g;
 
 function getInvalidChars(name: string): string[] {
     return [...new Set(name.match(INVALID_NAME_CHARS) ?? [])];

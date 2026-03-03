@@ -369,7 +369,6 @@ describe('Tasks Handler Write', () => {
             ['colon', 'my:task'],
             ['asterisk', 'my*task'],
             ['question mark', 'my?task'],
-            ['double quote', 'my"task'],
             ['angle brackets', 'my<task>'],
             ['pipe', 'my|task'],
         ])('should return 400 when newName contains %s', async (_label, invalidName) => {
@@ -395,6 +394,23 @@ describe('Tasks Handler Write', () => {
                 newName: 'my task v2.0 - final',
             });
             expect(res.status).toBe(200);
+        });
+
+        it('should sanitize double quotes by replacing them with single quotes', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'task.md': '# Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'PATCH', {
+                path: 'task.md',
+                newName: 'Fix "Create" Button Does Nothing',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.name).toBe("Fix 'Create' Button Does Nothing");
+            expect(body.path).toBe("Fix 'Create' Button Does Nothing.md");
+            expect(fs.existsSync(path.join(tasksDir(), "Fix 'Create' Button Does Nothing.md"))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDir(), 'task.md'))).toBe(false);
         });
     });
 

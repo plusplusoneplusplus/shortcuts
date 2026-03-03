@@ -604,10 +604,14 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                 }
 
                 // Reject names containing characters invalid in file/folder names
-                const INVALID_NAME_CHARS = /[/\\:*?"<>|]/;
+                // Note: double quotes are sanitized to single quotes rather than rejected
+                const INVALID_NAME_CHARS = /[/\\:*?<>|]/;
                 if (INVALID_NAME_CHARS.test(newName.trim())) {
-                    return sendError(res, 400, 'New name contains invalid characters: / \\ : * ? " < > |');
+                    return sendError(res, 400, 'New name contains invalid characters: / \\ : * ? < > |');
                 }
+
+                // Replace double quotes (invalid on Windows) with single quotes
+                const sanitizedName = newName.trim().replace(/"/g, "'");
 
                 try {
                     const stat = await fs.promises.stat(resolvedPath);
@@ -615,7 +619,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
 
                     if (stat.isDirectory()) {
                         // Rename directory
-                        const newPath = path.join(dir, newName.trim());
+                        const newPath = path.join(dir, sanitizedName);
                         if (!resolveAndValidatePath(tasksFolder, path.relative(tasksFolder, newPath))) {
                             return sendError(res, 403, 'Access denied: path is outside tasks folder');
                         }
@@ -626,7 +630,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
 
                         await fs.promises.rename(resolvedPath, newPath);
                         const relPath = path.relative(tasksFolder, newPath);
-                        sendJSON(res, 200, { path: relPath, name: newName.trim() });
+                        sendJSON(res, 200, { path: relPath, name: sanitizedName });
                     } else {
                         // Check if this is part of a document group
                         const basename = path.basename(resolvedPath);
@@ -647,7 +651,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
 
                             // Check for collision on new name
                             const newGroupFiles = entries.filter(e =>
-                                e.startsWith(newName.trim() + '.') && e.endsWith('.md')
+                                e.startsWith(sanitizedName + '.') && e.endsWith('.md')
                             );
                             if (newGroupFiles.length > 0) {
                                 return sendError(res, 409, 'A document group with that name already exists');
@@ -656,17 +660,17 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
                             // Rename all files in the group
                             for (const file of groupFiles) {
                                 const suffix = file.slice(baseGroupName.length); // e.g., ".plan.md"
-                                const newFileName = newName.trim() + suffix;
+                                const newFileName = sanitizedName + suffix;
                                 const oldFilePath = path.join(dir, file);
                                 const newFilePath = path.join(dir, newFileName);
                                 await fs.promises.rename(oldFilePath, newFilePath);
                             }
 
-                            const relPath = path.relative(tasksFolder, path.join(dir, newName.trim() + docTypeParts.slice(1).map(p => '.' + p).join('') + ext));
-                            sendJSON(res, 200, { path: relPath, name: newName.trim() });
+                            const relPath = path.relative(tasksFolder, path.join(dir, sanitizedName + docTypeParts.slice(1).map(p => '.' + p).join('') + ext));
+                            sendJSON(res, 200, { path: relPath, name: sanitizedName });
                         } else {
                             // Single file rename
-                            const newFileName = newName.trim() + ext;
+                            const newFileName = sanitizedName + ext;
                             const newPath = path.join(dir, newFileName);
                             if (!resolveAndValidatePath(tasksFolder, path.relative(tasksFolder, newPath))) {
                                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
@@ -678,7 +682,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
 
                             await fs.promises.rename(resolvedPath, newPath);
                             const relPath = path.relative(tasksFolder, newPath);
-                            sendJSON(res, 200, { path: relPath, name: newName.trim() });
+                            sendJSON(res, 200, { path: relPath, name: sanitizedName });
                         }
                     }
                 } catch (err: any) {
