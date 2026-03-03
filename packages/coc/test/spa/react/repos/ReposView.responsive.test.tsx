@@ -251,7 +251,7 @@ describe('ReposView — responsive layout', () => {
             expect(container.className).toContain('h-[calc(100vh-48px-56px)]');
         });
 
-        it('selected repo shows full-screen detail with back button', async () => {
+        it('selected repo shows full-screen detail without MobileRepoHeader bar', async () => {
             setBreakpoint('mobile');
             mockAppState.selectedRepoId = 'repo-1';
             render(<ReposView />);
@@ -262,7 +262,7 @@ describe('ReposView — responsive layout', () => {
             // When no repos match, mobile falls back to grid (no selection match)
         });
 
-        it('back button clears selection and navigates to #repos', async () => {
+        it('mobile detail view renders RepoDetail directly without MobileRepoHeader', async () => {
             setBreakpoint('mobile');
             mockAppState.selectedRepoId = 'repo-1';
             location.hash = '#repo/repo-1';
@@ -284,11 +284,9 @@ describe('ReposView — responsive layout', () => {
 
             render(<ReposView />);
 
-            const backBtn = await screen.findByTestId('mobile-back-button');
-            fireEvent.click(backBtn);
-
-            expect(mockAppDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: null });
-            expect(location.hash).toBe('#repos');
+            // RepoDetail is rendered; no MobileRepoHeader back bar (BottomNav handles back)
+            await screen.findByTestId('repo-detail');
+            expect(screen.queryByTestId('mobile-back-button')).toBeNull();
         });
 
         it('does not render MiniReposSidebar even if reposSidebarCollapsed is true', async () => {

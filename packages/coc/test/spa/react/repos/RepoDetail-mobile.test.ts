@@ -29,8 +29,8 @@ describe('RepoDetail mobile: imports', () => {
 });
 
 describe('RepoDetail mobile: header layout', () => {
-    it('uses flex-col layout on mobile for stacked title + buttons', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'flex-col' : 'items-center'");
+    it('uses single-row flex layout on mobile (flex-row items-center)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'flex-row items-center py-2'");
     });
 
     it('title row has truncate class to prevent overflow', () => {

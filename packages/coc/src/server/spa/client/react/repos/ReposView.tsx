@@ -18,23 +18,6 @@ import { countTasks } from './repoGrouping';
 import { fetchPipelines } from './pipeline-api';
 import type { RepoData } from './repoGrouping';
 
-function MobileRepoHeader({ onBack }: { onBack: () => void }) {
-    return (
-        <div className="flex items-center h-11 px-3 gap-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] shrink-0">
-            <button
-                onClick={onBack}
-                className="flex items-center justify-center w-8 h-8 rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
-                aria-label="Back to repository list"
-                data-testid="mobile-back-button"
-            >
-                ←
-            </button>
-            <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
-                Repositories
-            </span>
-        </div>
-    );
-}
 
 export function ReposView() {
     const { state, dispatch } = useApp();
@@ -198,7 +181,6 @@ export function ReposView() {
                 // ── Mobile: master-detail ──
                 hasSelection && selectedRepo ? (
                     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-                        <MobileRepoHeader onBack={handleBack} />
                         <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                             <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                         </main>

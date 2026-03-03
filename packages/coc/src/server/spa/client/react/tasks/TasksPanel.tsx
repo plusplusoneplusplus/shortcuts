@@ -13,6 +13,7 @@ import type { DragItem } from '../hooks/useTaskDragDrop';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useGlobalToast } from '../context/ToastContext';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { TaskTree } from './TaskTree';
 import { TaskPreview } from './TaskPreview';
 import { TaskSearchResults } from './TaskSearchResults';
@@ -78,6 +79,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const { isMobile } = useBreakpoint();
+    const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false);
 
     // ── Search state ───────────────────────────────────────────────────
     const [searchQuery, setSearchQuery] = useState('');
@@ -124,6 +127,21 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     // ── Search results (derived) ────────────────────────────────────────
     const allItems = useMemo(() => tree ? flattenTaskTree(tree) : [], [tree]);
     const searchResults = useMemo(() => filterTaskItems(allItems, searchQuery), [allItems, searchQuery]);
+
+    // ── Close toolbar overflow when clicking outside ──────────────────
+    useEffect(() => {
+        if (!toolbarOverflowOpen) return;
+        const handler = (e: MouseEvent) => {
+            const target = e.target as Node;
+            const btn = document.querySelector('[data-testid="tasks-toolbar-overflow-btn"]');
+            const menu = document.querySelector('[data-testid="tasks-toolbar-overflow-menu"]');
+            if (btn && !btn.contains(target) && menu && !menu.contains(target)) {
+                setToolbarOverflowOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [toolbarOverflowOpen]);
 
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
@@ -716,7 +734,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
 
     return (
         <div className="flex flex-col h-full">
-            <div className="repo-tasks-toolbar flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <div className={`repo-tasks-toolbar flex items-center gap-2 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isMobile ? 'py-1.5' : 'py-2'}`}>
                 <Button
                     variant="primary"
                     size="sm"
@@ -726,16 +744,18 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 >
                     + New Task
                 </Button>
-                <Button
-                    variant="secondary"
-                    size="sm"
-                    id="repo-tasks-folder-btn"
-                    data-testid="repo-tasks-folder-btn"
-                    onClick={() => setFolderDialog({ action: 'create-subfolder', folder: tree!, submitting: false })}
-                >
-                    + New Folder
-                </Button>
-                <div className="relative flex items-center max-w-[14rem]">
+                {!isMobile && (
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        id="repo-tasks-folder-btn"
+                        data-testid="repo-tasks-folder-btn"
+                        onClick={() => setFolderDialog({ action: 'create-subfolder', folder: tree!, submitting: false })}
+                    >
+                        + New Folder
+                    </Button>
+                )}
+                <div className={`relative flex items-center ${isMobile ? 'flex-1' : 'max-w-[14rem]'}`}>
                     <span className="absolute left-2 text-[#999] dark:text-[#888] pointer-events-none text-sm" aria-hidden="true">
                         🔍
                     </span>
@@ -760,17 +780,46 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                         </button>
                     )}
                 </div>
-                <div className="flex-1 min-w-0">
-                    <TaskActions
-                        wsId={wsId}
-                        openFilePath={openFilePath}
-                        selectedFilePaths={Array.from(selectedFilePaths)}
-                        tasksFolderPath=".vscode/tasks"
-                        selectedFolderPath={selectedFolderPath}
-                        onClearSelection={clearSelection}
-                        noBorder
-                    />
-                </div>
+                {!isMobile && (
+                    <div className="flex-1 min-w-0">
+                        <TaskActions
+                            wsId={wsId}
+                            openFilePath={openFilePath}
+                            selectedFilePaths={Array.from(selectedFilePaths)}
+                            tasksFolderPath=".vscode/tasks"
+                            selectedFolderPath={selectedFolderPath}
+                            onClearSelection={clearSelection}
+                            noBorder
+                        />
+                    </div>
+                )}
+                {isMobile && (
+                    <div className="relative">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setToolbarOverflowOpen(prev => !prev)}
+                            data-testid="tasks-toolbar-overflow-btn"
+                            title="More actions"
+                        >
+                            ⋯
+                        </Button>
+                        {toolbarOverflowOpen && (
+                            <div
+                                className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
+                                data-testid="tasks-toolbar-overflow-menu"
+                            >
+                                <button
+                                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                    data-testid="tasks-toolbar-overflow-new-folder"
+                                    onClick={() => { setToolbarOverflowOpen(false); setFolderDialog({ action: 'create-subfolder', folder: tree!, submitting: false }); }}
+                                >
+                                    + New Folder
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
             <div
                 ref={scrollRef}
@@ -778,36 +827,49 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 data-testid="tasks-miller-scroll-container"
             >
                 <div className="flex h-full min-h-0 min-w-full">
-                    <div className="flex-shrink-0 h-full min-h-0">
-                        {searchQuery ? (
-                            <TaskSearchResults
-                                results={searchResults}
-                                query={searchQuery}
-                                commentCounts={commentCounts}
-                                wsId={wsId}
-                                onFileClick={(path) => setOpenFilePath(path)}
-                                onContextMenu={handleFileContextMenu}
-                            />
-                        ) : (
-                            <TaskTree
-                                tree={tree}
-                                commentCounts={commentCounts}
-                                wsId={wsId}
-                                initialFolderPath={initialParams.initialFolderPath}
-                                initialFilePath={initialParams.initialFilePath}
-                                navigateToFilePath={navigateToFilePath}
-                                onNavigated={() => setNavigateToFilePath(null)}
-                                onColumnsChange={handleColumnsChange}
-                                onFolderContextMenu={handleFolderContextMenu}
-                                onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
-                                onFileContextMenu={handleFileContextMenu}
-                                onDrop={handleDragDrop}
-                            />
-                        )}
-                    </div>
+                    {(!isMobile || !openFilePath) && (
+                        <div className="flex-shrink-0 h-full min-h-0">
+                            {searchQuery ? (
+                                <TaskSearchResults
+                                    results={searchResults}
+                                    query={searchQuery}
+                                    commentCounts={commentCounts}
+                                    wsId={wsId}
+                                    onFileClick={(path) => setOpenFilePath(path)}
+                                    onContextMenu={handleFileContextMenu}
+                                />
+                            ) : (
+                                <TaskTree
+                                    tree={tree}
+                                    commentCounts={commentCounts}
+                                    wsId={wsId}
+                                    initialFolderPath={initialParams.initialFolderPath}
+                                    initialFilePath={initialParams.initialFilePath}
+                                    navigateToFilePath={navigateToFilePath}
+                                    onNavigated={() => setNavigateToFilePath(null)}
+                                    onColumnsChange={handleColumnsChange}
+                                    onFolderContextMenu={handleFolderContextMenu}
+                                    onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
+                                    onFileContextMenu={handleFileContextMenu}
+                                    onDrop={handleDragDrop}
+                                />
+                            )}
+                        </div>
+                    )}
 
                     {openFilePath && (
-                        <div className="h-full min-h-0 flex-1 min-w-[48rem] border-r border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <div className={`h-full min-h-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] ${isMobile ? 'flex-1 min-w-0' : 'flex-1 min-w-[48rem]'}`}>
+                            {isMobile && (
+                                <div className="flex items-center h-9 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
+                                    <button
+                                        onClick={() => setOpenFilePath(null)}
+                                        className="flex items-center gap-1 text-xs text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                                        data-testid="task-preview-back-btn"
+                                    >
+                                        ← Tasks
+                                    </button>
+                                </div>
+                            )}
                             <TaskPreview wsId={wsId} filePath={openFilePath} initialViewMode={initialParams.initialViewMode} />
                         </div>
                     )}

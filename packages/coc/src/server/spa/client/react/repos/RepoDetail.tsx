@@ -189,11 +189,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header */}
             <div className={cn(
-                'repo-detail-header flex gap-3 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                isMobile ? 'flex-col' : 'items-center'
+                'repo-detail-header flex gap-3 px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+                isMobile ? 'flex-row items-center py-2' : 'items-center py-3'
             )}>
                 {/* Title row */}
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                     <span
                         className="inline-block w-3.5 h-3.5 rounded-full flex-shrink-0"
                         style={{ background: color }}
@@ -224,7 +224,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 data-testid="repo-new-chat-btn"
                                 className="rounded-r-none"
                             >
-                                + New Chat
+                                {isMobile ? '+' : '+ New Chat'}
                             </Button>
                             <Button
                                 variant="primary"
@@ -355,7 +355,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 <div
                     ref={tabStripRef}
                     className={cn(
-                        'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4',
+                        'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+                        isMobile ? 'px-2' : 'px-4',
                         'overflow-x-auto scrollbar-hide'
                     )}
                     style={{ WebkitOverflowScrolling: 'touch' }}
@@ -366,7 +367,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         key={t.key}
                         data-subtab={t.key}
                         className={cn(
-                            'repo-sub-tab px-3 py-2 text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
+                            'repo-sub-tab text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
+                            isMobile ? 'px-2 py-1.5' : 'px-3 py-2',
                             activeSubTab === t.key
                                 ? 'active text-[#0078d4] dark:text-[#3794ff]'
                                 : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
