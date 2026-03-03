@@ -283,6 +283,124 @@ describe('SSE replay', () => {
         expect(res._ended).toBe(true);
     });
 
+    // Test 7b: requestFlush is called for running processes
+    it('calls requestFlush before snapshot for running processes', async () => {
+        const initialTurns = [makeTurn('assistant', 'initial', 0)];
+        const flushedTurns = [
+            makeTurn('assistant', 'initial', 0),
+            makeTurn('assistant', 'buffered content', 1),
+        ];
+
+        const process = createProcessFixture({
+            id: 'p7b',
+            status: 'running',
+            conversationTurns: initialTurns,
+        });
+        store.processes.set('p7b', process);
+
+        store.requestFlush = vi.fn(async (id: string) => {
+            const p = store.processes.get(id);
+            if (p) {
+                store.processes.set(id, { ...p, conversationTurns: flushedTurns });
+            }
+        });
+        store.onProcessOutput = vi.fn(() => () => {});
+
+        const req = createMockReq();
+        const res = createMockRes();
+
+        await handleProcessStream(req as any, res as any, 'p7b', store);
+
+        expect(store.requestFlush).toHaveBeenCalledWith('p7b');
+
+        const frames = parseSSEFrames(res._chunks);
+        const snapshots = frames.filter(f => f.event === 'conversation-snapshot');
+        expect(snapshots).toHaveLength(1);
+        expect((snapshots[0].data as any).turns).toHaveLength(2);
+        expect((snapshots[0].data as any).turns[1].content).toBe('buffered content');
+    });
+
+    // Test 8b: requestFlush is NOT called for completed processes
+    it('does not call requestFlush for completed processes', async () => {
+        const process = createProcessFixture({
+            id: 'p8b',
+            status: 'completed',
+            conversationTurns: [makeTurn('assistant', 'done', 0)],
+        });
+        store.processes.set('p8b', process);
+
+        store.requestFlush = vi.fn(async () => {});
+
+        const req = createMockReq();
+        const res = createMockRes();
+
+        await handleProcessStream(req as any, res as any, 'p8b', store);
+
+        expect(store.requestFlush).not.toHaveBeenCalled();
+    });
+
+    // Test 9b: Snapshot preserves turn structure (multi-turn conversation)
+    it('snapshot preserves complete turn structure across reconnect', async () => {
+        const turns: ConversationTurn[] = [
+            makeTurn('user', 'Q1', 0),
+            makeTurn('assistant', 'A1', 1),
+            makeTurn('user', 'Q2', 2),
+            makeTurn('assistant', 'A2', 3),
+            makeTurn('user', 'Q3', 4),
+            makeTurn('assistant', 'A3 partial...', 5, true),
+        ];
+
+        store.onProcessOutput = vi.fn(() => () => {});
+        const process = createProcessFixture({ id: 'p9b', status: 'running', conversationTurns: turns });
+        store.processes.set('p9b', process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req as any, res as any, 'p9b', store);
+
+        const snapshots = parseSSEFrames(res._chunks).filter(f => f.event === 'conversation-snapshot');
+        expect(snapshots).toHaveLength(1);
+        const snapshotTurns = (snapshots[0].data as any).turns;
+        expect(snapshotTurns).toHaveLength(6);
+        expect(snapshotTurns.map((t: any) => t.role)).toEqual([
+            'user', 'assistant', 'user', 'assistant', 'user', 'assistant',
+        ]);
+        expect(snapshotTurns[5].streaming).toBe(true);
+    });
+
+    // Test 10b: Suggestions event is forwarded to SSE stream
+    it('forwards suggestions event to SSE stream', async () => {
+        let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;
+        store.onProcessOutput = vi.fn((_id: string, cb: (event: ProcessOutputEvent) => void) => {
+            outputCallback = cb;
+            return () => { outputCallback = undefined; };
+        });
+
+        const process = createProcessFixture({
+            id: 'p10b',
+            status: 'running',
+            conversationTurns: [makeTurn('user', 'Hello', 0)],
+        });
+        store.processes.set('p10b', process);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req as any, res as any, 'p10b', store);
+        await vi.waitFor(() => expect(store.onProcessOutput).toHaveBeenCalled());
+
+        outputCallback!({
+            type: 'suggestions',
+            suggestions: ['Try this', 'Or that'],
+            turnIndex: 2,
+        } as any);
+
+        const frames = parseSSEFrames(res._chunks);
+        const suggFrames = frames.filter(f => f.event === 'suggestions');
+        expect(suggFrames).toHaveLength(1);
+        expect((suggFrames[0].data as any).suggestions).toEqual(['Try this', 'Or that']);
+        expect((suggFrames[0].data as any).turnIndex).toBe(2);
+    });
+
     // Test 7: No writes after disconnect
     it('stops writing chunks to response after client disconnects', async () => {
         let outputCallback: ((e: ProcessOutputEvent) => void) | undefined;
