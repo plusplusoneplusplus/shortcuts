@@ -59,6 +59,10 @@ describe('validatePreferences', () => {
         const input = { pinnedChats: { ws1: ['id1', 'id2'] } };
         expect(validatePreferences(input)).toEqual({ pinnedChats: { ws1: ['id1', 'id2'] } });
     });
+
+    it('drops pinnedChats when empty object', () => {
+        expect(validatePreferences({ pinnedChats: {} })).toEqual({});
+    });
 });
 
 describe('readPreferences / writePreferences', () => {

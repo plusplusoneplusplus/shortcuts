@@ -221,6 +221,18 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             const existing = readPreferences(dataDir);
             const patch = validatePreferences(body);
             const merged: UserPreferences = { ...existing, ...patch };
+            // Explicitly clear pinnedChats when the body sends an empty object
+            // (all pins removed — validatePreferences drops empty objects so the
+            // spread alone would leave the old value intact).
+            if (
+                typeof body === 'object' && body !== null &&
+                'pinnedChats' in body &&
+                typeof body.pinnedChats === 'object' && body.pinnedChats !== null &&
+                !Array.isArray(body.pinnedChats) &&
+                Object.keys(body.pinnedChats as object).length === 0
+            ) {
+                delete merged.pinnedChats;
+            }
             writePreferences(dataDir, merged);
             sendJSON(res, 200, merged);
         },

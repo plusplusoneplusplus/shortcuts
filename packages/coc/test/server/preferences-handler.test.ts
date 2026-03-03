@@ -932,6 +932,31 @@ describe('Preferences REST API', () => {
         expect(body.pinnedChats).toBeUndefined();
     });
 
+    it('PATCH with pinnedChats:{} clears existing pins (unpin last chat)', async () => {
+        // Simulate pinning a chat
+        await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: { ws1: ['id-a'] } });
+
+        // Simulate unpinning the last chat — frontend sends { pinnedChats: {} }
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: {} });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.pinnedChats).toBeUndefined();
+
+        // Verify it persisted (survives a GET)
+        const get = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(get.body).pinnedChats).toBeUndefined();
+    });
+
+    it('PATCH with pinnedChats:{} does not affect other preference fields', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id-a'] } });
+
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: {} });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.lastModel).toBe('gpt-5.2');
+        expect(body.pinnedChats).toBeUndefined();
+    });
+
     it('pinnedChats survive server restart', async () => {
         const pinnedChats = { ws1: ['id-a', 'id-b'], ws2: ['id-c'] };
         await putJSON(`${baseUrl}/api/preferences`, { pinnedChats });
