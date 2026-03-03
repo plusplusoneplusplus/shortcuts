@@ -117,24 +117,24 @@ describe('MCP Config API endpoints', () => {
             expect(res.status).toBe(404);
         });
 
-        it('returns enabled: null when enabledMcpServers is undefined', async () => {
+        it('returns enabledMcpServers: null when enabledMcpServers is undefined', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.enabled).toBeNull();
+            expect(data.enabledMcpServers).toBeNull();
         });
 
-        it('returns enabled array when workspace has enabledMcpServers set', async () => {
+        it('returns enabledMcpServers array when workspace has enabledMcpServers set', async () => {
             (mockStore.getWorkspaces as any).mockResolvedValue([
                 { id: WORKSPACE_ID, name: 'My Project', rootPath: '/projects/my', enabledMcpServers: ['github'] },
             ]);
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.enabled).toEqual(['github']);
+            expect(data.enabledMcpServers).toEqual(['github']);
         });
 
-        it('returns available servers from loadDefaultMcpConfig', async () => {
+        it('returns availableServers array from loadDefaultMcpConfig', async () => {
             mockLoadDefaultMcpConfig.mockReturnValue({
                 mcpServers: {
                     github: { type: 'stdio', command: 'npx', args: ['@modelcontextprotocol/server-github'] },
@@ -144,17 +144,37 @@ describe('MCP Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.available).toHaveProperty('github');
-            expect(data.available).toHaveProperty('filesystem');
-            expect(data.available.github.command).toBe('npx');
+            expect(Array.isArray(data.availableServers)).toBe(true);
+            const names = data.availableServers.map((s: any) => s.name);
+            expect(names).toContain('github');
+            expect(names).toContain('filesystem');
+            const github = data.availableServers.find((s: any) => s.name === 'github');
+            expect(github.type).toBe('stdio');
         });
 
-        it('returns available: {} when loadDefaultMcpConfig returns empty map', async () => {
+        it('returns availableServers: [] when loadDefaultMcpConfig returns empty map', async () => {
             mockLoadDefaultMcpConfig.mockReturnValue({ mcpServers: {} });
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.available).toEqual({});
+            expect(data.availableServers).toEqual([]);
+        });
+
+        it('includes url for SSE servers and omits headers', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                mcpServers: {
+                    'mcp-server': { type: 'sse', url: 'http://0.0.0.0:8000/sse', headers: { Authorization: 'Bearer secret' }, tools: ['*'] },
+                },
+            });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers).toHaveLength(1);
+            const server = data.availableServers[0];
+            expect(server.name).toBe('mcp-server');
+            expect(server.type).toBe('sse');
+            expect(server.url).toBe('http://0.0.0.0:8000/sse');
+            expect(server.headers).toBeUndefined();
         });
     });
 
@@ -166,12 +186,12 @@ describe('MCP Config API endpoints', () => {
         it('returns 404 when workspace not found', async () => {
             const res = await request(`${base()}/api/workspaces/unknown-ws/mcp-config`, {
                 method: 'PUT',
-                body: JSON.stringify({ enabled: ['github'] }),
+                body: JSON.stringify({ enabledMcpServers: ['github'] }),
             });
             expect(res.status).toBe(404);
         });
 
-        it('returns 400 with MISSING_FIELDS when enabled field is absent', async () => {
+        it('returns 400 with MISSING_FIELDS when enabledMcpServers field is absent', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
                 method: 'PUT',
                 body: JSON.stringify({ other: 'field' }),
@@ -181,20 +201,20 @@ describe('MCP Config API endpoints', () => {
             expect(data.code).toBe('MISSING_FIELDS');
         });
 
-        it('returns 400 with BAD_REQUEST when enabled is non-array non-null', async () => {
+        it('returns 400 with BAD_REQUEST when enabledMcpServers is non-array non-null', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
                 method: 'PUT',
-                body: JSON.stringify({ enabled: 'github' }),
+                body: JSON.stringify({ enabledMcpServers: 'github' }),
             });
             expect(res.status).toBe(400);
             const data = res.json();
             expect(data.code).toBe('BAD_REQUEST');
         });
 
-        it('saves enabled array and returns 200 with updated workspace', async () => {
+        it('saves enabledMcpServers array and returns 200 with updated workspace', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
                 method: 'PUT',
-                body: JSON.stringify({ enabled: ['github'] }),
+                body: JSON.stringify({ enabledMcpServers: ['github'] }),
             });
             expect(res.status).toBe(200);
             expect(mockStore.updateWorkspace).toHaveBeenCalledWith(WORKSPACE_ID, { enabledMcpServers: ['github'] });
@@ -203,10 +223,10 @@ describe('MCP Config API endpoints', () => {
             expect(data.workspace.enabledMcpServers).toEqual(['github']);
         });
 
-        it('saves enabled: null and returns 200', async () => {
+        it('saves enabledMcpServers: null and returns 200', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
                 method: 'PUT',
-                body: JSON.stringify({ enabled: null }),
+                body: JSON.stringify({ enabledMcpServers: null }),
             });
             expect(res.status).toBe(200);
             expect(mockStore.updateWorkspace).toHaveBeenCalledWith(WORKSPACE_ID, { enabledMcpServers: null });
@@ -214,10 +234,10 @@ describe('MCP Config API endpoints', () => {
             expect(data.workspace).toBeDefined();
         });
 
-        it('saves enabled: [] (empty array) and returns 200', async () => {
+        it('saves enabledMcpServers: [] (empty array) and returns 200', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
                 method: 'PUT',
-                body: JSON.stringify({ enabled: [] }),
+                body: JSON.stringify({ enabledMcpServers: [] }),
             });
             expect(res.status).toBe(200);
             expect(mockStore.updateWorkspace).toHaveBeenCalledWith(WORKSPACE_ID, { enabledMcpServers: [] });
@@ -233,10 +253,10 @@ describe('MCP Config API endpoints', () => {
             expect(data.code).toBe('INVALID_JSON');
         });
 
-        it('returns 400 when enabled array contains non-string items', async () => {
+        it('returns 400 when enabledMcpServers array contains non-string items', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
                 method: 'PUT',
-                body: JSON.stringify({ enabled: ['github', 42] }),
+                body: JSON.stringify({ enabledMcpServers: ['github', 42] }),
             });
             expect(res.status).toBe(400);
             const data = res.json();

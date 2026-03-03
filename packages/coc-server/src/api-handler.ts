@@ -320,9 +320,14 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (!ws) {
                 return handleAPIError(res, notFound('Workspace'));
             }
-            const { mcpServers: available } = loadDefaultMcpConfig();
-            const enabled: string[] | null = ws.enabledMcpServers ?? null;
-            sendJSON(res, 200, { available, enabled });
+            const { mcpServers } = loadDefaultMcpConfig();
+            const availableServers = Object.entries(mcpServers).map(([name, config]) => ({
+                name,
+                type: config.type ?? 'stdio',
+                ...('url' in config && config.url ? { url: config.url } : {}),
+            }));
+            const enabledMcpServers: string[] | null = ws.enabledMcpServers ?? null;
+            sendJSON(res, 200, { availableServers, enabledMcpServers });
         },
     });
 
@@ -343,16 +348,16 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             } catch {
                 return handleAPIError(res, invalidJSON());
             }
-            if (!Object.prototype.hasOwnProperty.call(body, 'enabled')) {
-                return handleAPIError(res, missingFields(['enabled']));
+            if (!Object.prototype.hasOwnProperty.call(body, 'enabledMcpServers')) {
+                return handleAPIError(res, missingFields(['enabledMcpServers']));
             }
-            if (body.enabled !== null && !Array.isArray(body.enabled)) {
-                return handleAPIError(res, badRequest('`enabled` must be an array of strings or null'));
+            if (body.enabledMcpServers !== null && !Array.isArray(body.enabledMcpServers)) {
+                return handleAPIError(res, badRequest('`enabledMcpServers` must be an array of strings or null'));
             }
-            if (Array.isArray(body.enabled) && body.enabled.some((e: any) => typeof e !== 'string')) {
-                return handleAPIError(res, badRequest('`enabled` items must be strings'));
+            if (Array.isArray(body.enabledMcpServers) && body.enabledMcpServers.some((e: any) => typeof e !== 'string')) {
+                return handleAPIError(res, badRequest('`enabledMcpServers` items must be strings'));
             }
-            const updated = await store.updateWorkspace(id, { enabledMcpServers: body.enabled });
+            const updated = await store.updateWorkspace(id, { enabledMcpServers: body.enabledMcpServers });
             if (!updated) {
                 return handleAPIError(res, notFound('Workspace'));
             }
