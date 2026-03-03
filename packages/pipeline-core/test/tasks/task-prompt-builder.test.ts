@@ -100,19 +100,21 @@ describe('buildCreateTaskPromptWithName', () => {
         const tasksRoot = '/workspace/.vscode/tasks';
         const existingFolders = ['coc', 'coc/chat', 'deep-wiki'];
 
-        it('should include FOLDER SELECTION section with existing folders when name is provided', () => {
+        it('should include save-location and folder options when name is provided', () => {
             const ctx: AutoFolderContext = { tasksRoot, existingFolders };
             const prompt = buildCreateTaskPromptWithName('retry-logic', 'Add retry', tasksRoot, ctx);
-            expect(prompt).toContain('FOLDER SELECTION (Auto mode)');
+            expect(prompt).toContain('Save location:');
+            expect(prompt).toContain('Folder options:');
             expect(prompt).toContain('coc, coc/chat, deep-wiki');
             expect(prompt).toContain(`${tasksRoot}/<chosen-folder>/retry-logic.plan.md`);
-            expect(prompt).toContain('Pick the most relevant existing folder');
+            expect(prompt).toContain('Rules:');
         });
 
-        it('should include FOLDER SELECTION section without name', () => {
+        it('should include save-location and folder options without name', () => {
             const ctx: AutoFolderContext = { tasksRoot, existingFolders };
             const prompt = buildCreateTaskPromptWithName(undefined, 'Some task', tasksRoot, ctx);
-            expect(prompt).toContain('FOLDER SELECTION (Auto mode)');
+            expect(prompt).toContain('Save location:');
+            expect(prompt).toContain('Folder options:');
             expect(prompt).toContain('coc, coc/chat, deep-wiki');
             expect(prompt).toContain('<descriptive-name>.plan.md');
         });

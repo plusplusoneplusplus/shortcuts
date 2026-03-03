@@ -120,15 +120,10 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             let autoFolderContext: AutoFolderContext | undefined;
             if (isAutoFolder) {
                 const entries = await fs.promises.readdir(tasksBase, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
-                const subfolders = entries.filter(e => e.isDirectory()).map(e => e.name);
-                const deepFolders: string[] = [];
-                for (const sub of subfolders) {
-                    const nested = await fs.promises.readdir(path.join(tasksBase, sub), { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
-                    for (const n of nested) {
-                        if (n.isDirectory()) deepFolders.push(`${sub}/${n.name}`);
-                    }
-                }
-                autoFolderContext = { tasksRoot: tasksBase, existingFolders: [...subfolders, ...deepFolders] };
+                const subfolders = entries
+                    .filter(e => e.isDirectory() && e.name !== 'archive')
+                    .map(e => e.name);
+                autoFolderContext = { tasksRoot: tasksBase, existingFolders: subfolders };
             }
 
             // Build the AI prompt based on mode

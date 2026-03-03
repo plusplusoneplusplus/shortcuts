@@ -142,40 +142,23 @@ export function buildCreateTaskPromptWithName(
         const folderList = autoFolderContext.existingFolders.length > 0
             ? autoFolderContext.existingFolders.join(', ')
             : '(none yet)';
-        const filenameLine = name && name.trim()
-            ? `- Save the file as: ${tasksRoot}/<chosen-folder>/${name}.plan.md`
-            : `- Save the file as: ${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md (kebab-case, ends with .plan.md)`;
-        const autoSection = `**FOLDER SELECTION (Auto mode)**
-Tasks root: ${tasksRoot}
-Existing feature folders: ${folderList}
-- Pick the most relevant existing folder, OR create a new one (kebab-case, max 3 words).
-- Create the folder if it does not exist.
-${filenameLine}
-- Do NOT save to the tasks root directly.`;
 
         if (name && name.trim()) {
-            return `Create a task document for: ${name}${descriptionPart}
+            const descLine = description ? `\n${description}` : '';
+            return `Save location: ${tasksRoot}/<chosen-folder>/${name}.plan.md
+Folder options: ${folderList}
+Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
 
-Generate a comprehensive markdown task document with:
-- Clear title and description
-- Acceptance criteria
-- Subtasks (if applicable)
-- Notes section
-
-${autoSection}`;
+Create a task plan document for: ${name}${descLine}
+Include title, acceptance criteria, subtasks (if any), and notes.`;
         } else {
-            return `Create a task document based on this description:${descriptionPart || '\n\n(General task)'}
+            const desc = description || '(General task)';
+            return `Save location: ${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md
+Folder options: ${folderList}
+Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
 
-Generate a comprehensive markdown task document with:
-- Clear title and description
-- Acceptance criteria
-- Subtasks (if applicable)
-- Notes section
-
-Choose an appropriate filename based on the task content.
-The filename should be in kebab-case, descriptive, and end with .plan.md (e.g., "oauth2-authentication.plan.md").
-
-${autoSection}`;
+Create a task plan document for: ${desc}
+Include title, acceptance criteria, subtasks (if any), and notes.`;
         }
     }
 
