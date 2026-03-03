@@ -139,8 +139,10 @@ export function buildCreateTaskPromptWithName(
     // --- Auto-folder mode ---
     if (autoFolderContext) {
         const tasksRoot = toForwardSlashes(autoFolderContext.tasksRoot);
-        const folderList = autoFolderContext.existingFolders.length > 0
-            ? autoFolderContext.existingFolders.join(', ')
+        const filtered = autoFolderContext.existingFolders
+            .filter(f => f !== 'archive' && !f.startsWith('archive/'));
+        const folderList = filtered.length > 0
+            ? filtered.join(', ')
             : '(none yet)';
 
         if (name && name.trim()) {

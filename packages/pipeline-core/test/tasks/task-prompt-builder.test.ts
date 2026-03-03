@@ -126,6 +126,39 @@ describe('buildCreateTaskPromptWithName', () => {
             expect(prompt).not.toContain('Do NOT save to any other location');
         });
 
+        it('should exclude "archive" folder from folder options', () => {
+            const ctx: AutoFolderContext = {
+                tasksRoot,
+                existingFolders: ['coc', 'archive', 'deep-wiki'],
+            };
+            const prompt = buildCreateTaskPromptWithName('my-task', 'desc', tasksRoot, ctx);
+            expect(prompt).not.toContain('archive');
+            expect(prompt).toContain('coc');
+            expect(prompt).toContain('deep-wiki');
+        });
+
+        it('should exclude "archive/*" sub-folders from folder options', () => {
+            const ctx: AutoFolderContext = {
+                tasksRoot,
+                existingFolders: ['coc', 'archive/coc', 'archive/coc-sdk', 'deep-wiki'],
+            };
+            const prompt = buildCreateTaskPromptWithName(undefined, 'desc', tasksRoot, ctx);
+            expect(prompt).not.toContain('archive/coc');
+            expect(prompt).not.toContain('archive/coc-sdk');
+            expect(prompt).toContain('coc');
+            expect(prompt).toContain('deep-wiki');
+        });
+
+        it('should show (none yet) when only archive folders remain after filtering', () => {
+            const ctx: AutoFolderContext = {
+                tasksRoot,
+                existingFolders: ['archive', 'archive/coc'],
+            };
+            const prompt = buildCreateTaskPromptWithName(undefined, 'desc', tasksRoot, ctx);
+            expect(prompt).toContain('(none yet)');
+            expect(prompt).not.toContain('archive');
+        });
+
         it('should handle empty existingFolders gracefully', () => {
             const ctx: AutoFolderContext = { tasksRoot, existingFolders: [] };
             const prompt = buildCreateTaskPromptWithName(undefined, 'desc', tasksRoot, ctx);
