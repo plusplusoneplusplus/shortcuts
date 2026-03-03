@@ -58,9 +58,9 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
                 {truncPath}
             </div>
 
-            {/* Stats row */}
+            {/* Stats row — single line */}
             <div className="flex items-center gap-2 mt-1 text-[10px] text-[#848484]">
-                <span>{branch}{taskCount > 0 ? ` · ${taskCount} task${taskCount !== 1 ? 's' : ''}` : ''}</span>
+                <span>{inGroup ? (taskCount > 0 ? `· ${taskCount}` : '') : `${branch}${taskCount > 0 ? ` · ${taskCount}` : ''}`}</span>
                 <span>Pipelines: {pipelineCount}</span>
                 {(queueStats.running > 0 || queueStats.queued > 0) && (
                     <span className="queue-status" data-testid="repo-card-queue-status">

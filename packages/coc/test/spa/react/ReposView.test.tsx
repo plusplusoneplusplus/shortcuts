@@ -242,7 +242,7 @@ describe('RepoCard', () => {
 
     it('shows task count in stats', () => {
         render(<Wrap><RepoCard repo={repo} isSelected={false} onClick={() => {}} /></Wrap>);
-        expect(screen.getByText(/3 tasks/)).toBeDefined();
+        expect(screen.getByText(/· 3/)).toBeDefined();
     });
 
     it('calls onClick when clicked', () => {
