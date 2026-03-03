@@ -42,6 +42,7 @@ export function AdminPanel() {
 
     // Display settings
     const [showReportIntent, setShowReportIntent] = useState(false);
+    const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2>(0);
     const [displaySaving, setDisplaySaving] = useState(false);
 
     // Chat settings
@@ -102,6 +103,7 @@ export function AdminPanel() {
                 output: resolved.output ?? 'table',
             });
             setShowReportIntent(resolved.showReportIntent ?? false);
+            setToolCompactness((resolved.toolCompactness ?? 0) as 0 | 1 | 2);
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
         } catch (err: any) {
@@ -186,7 +188,31 @@ export function AdminPanel() {
         }
     }, [showReportIntent, addToast]);
 
-    const handleSaveChatSettings = useCallback(async () => {
+    const handleChangeToolCompactness = useCallback(async (newValue: 0 | 1 | 2) => {
+        const prevValue = toolCompactness;
+        setToolCompactness(newValue);
+        setDisplaySaving(true);
+        try {
+            const res = await fetch(getApiBase() + '/admin/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ toolCompactness: newValue }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Save failed');
+            }
+            addToast('Settings saved', 'success');
+            invalidateDisplaySettings();
+        } catch (err: any) {
+            setToolCompactness(prevValue);
+            addToast(err.message || 'Could not persist setting. Config may be read-only.', 'error');
+        } finally {
+            setDisplaySaving(false);
+        }
+    }, [toolCompactness, addToast]);
+
+    const handleSaveChatSettings= useCallback(async () => {
         const count = Number(chatFollowUpCount);
         if (isNaN(count) || !Number.isInteger(count) || count < 1 || count > 5) {
             addToast('Follow-up count must be an integer between 1 and 5', 'error');
@@ -525,6 +551,47 @@ export function AdminPanel() {
                 </div>
                 <div className="mt-1">
                     <SourceBadge source={sources['showReportIntent']} />
+                </div>
+                {/* Tool call compactness */}
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <div>
+                        <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Tool call verbosity</div>
+                        <div className="text-xs text-[#616161] dark:text-[#999]">
+                            How much detail to show for tool calls in the conversation view.
+                        </div>
+                    </div>
+                    <div
+                        className="flex rounded-md overflow-hidden border border-[#e0e0e0] dark:border-[#3c3c3c] ml-4 shrink-0"
+                        role="group"
+                        aria-label="Tool call verbosity"
+                    >
+                        {([
+                            [0, 'Full'],
+                            [1, 'Compact'],
+                            [2, 'Minimal'],
+                        ] as const).map(([level, label]) => (
+                            <button
+                                key={level}
+                                type="button"
+                                disabled={displaySaving}
+                                onClick={() => void handleChangeToolCompactness(level)}
+                                data-testid={`tool-compactness-${label.toLowerCase()}`}
+                                className={[
+                                    'px-3 py-1 text-xs font-medium min-h-[44px] md:min-h-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-50 disabled:cursor-not-allowed',
+                                    'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
+                                    toolCompactness === level
+                                        ? 'bg-[#0078d4] text-white'
+                                        : 'bg-transparent text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                ].join(' ')}
+                                aria-pressed={toolCompactness === level}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="mt-1">
+                    <SourceBadge source={sources['toolCompactness']} />
                 </div>
             </Card>
 

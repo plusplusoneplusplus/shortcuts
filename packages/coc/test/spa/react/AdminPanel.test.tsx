@@ -339,4 +339,98 @@ describe('AdminPanel', () => {
         );
         expect(putCalls.length).toBe(1);
     });
+
+    describe('tool compactness segmented control', () => {
+        function mockConfig(toolCompactness: number, sources: Record<string, string> = {}) {
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: { toolCompactness },
+                            sources,
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+        }
+
+        it('renders segmented control with correct aria-pressed for initial value', async () => {
+            mockConfig(1);
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect(screen.getByTestId('tool-compactness-full')).toBeDefined();
+            });
+            const full = screen.getByTestId('tool-compactness-full') as HTMLButtonElement;
+            const compact = screen.getByTestId('tool-compactness-compact') as HTMLButtonElement;
+            const minimal = screen.getByTestId('tool-compactness-minimal') as HTMLButtonElement;
+            expect(full.getAttribute('aria-pressed')).toBe('false');
+            expect(compact.getAttribute('aria-pressed')).toBe('true');
+            expect(minimal.getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('clicking a segment fires PUT with the new value', async () => {
+            let capturedBody: any = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ resolved: { toolCompactness: 1 }, sources: {} }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('tool-compactness-minimal')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('tool-compactness-minimal'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody.toolCompactness).toBe(2);
+            expect((screen.getByTestId('tool-compactness-minimal') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+        });
+
+        it('reverts to previous value on server error', async () => {
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'Save failed' }) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ resolved: { toolCompactness: 1 }, sources: {} }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('tool-compactness-compact')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('tool-compactness-full'));
+            });
+
+            await waitFor(() => {
+                // Should revert back to compact (value 1)
+                expect((screen.getByTestId('tool-compactness-compact') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+                expect((screen.getByTestId('tool-compactness-full') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('false');
+            });
+        });
+
+        it('renders SourceBadge for toolCompactness source', async () => {
+            mockConfig(0, { toolCompactness: 'file' });
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('tool-compactness-full')).toBeDefined());
+            expect(screen.getByText('file')).toBeDefined();
+        });
+    });
 });
