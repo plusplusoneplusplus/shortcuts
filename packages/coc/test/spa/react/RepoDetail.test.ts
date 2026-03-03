@@ -477,6 +477,54 @@ describe('RepoDetail New Chat button in header', () => {
     });
 });
 
+describe('RepoDetail Wiki badge wiring', () => {
+    it('renders wiki generating badge with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="wiki-generating-badge"');
+    });
+
+    it('wiki generating badge uses animate-pulse', () => {
+        const line = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('wiki-generating-badge'));
+        expect(line || REPO_DETAIL_SOURCE).toContain('animate-pulse');
+    });
+
+    it('wiki generating badge uses green bg-[#16825d]', () => {
+        const lines = REPO_DETAIL_SOURCE.split('\n');
+        const badgeLine = lines.findIndex(l => l.includes('wiki-generating-badge'));
+        const context = lines.slice(Math.max(0, badgeLine - 5), badgeLine + 1).join('\n');
+        expect(context).toContain('bg-[#16825d]');
+    });
+
+    it('wiki generating badge is gated on wikiGeneratingCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'wiki' && wikiGeneratingCount > 0");
+    });
+
+    it('renders wiki warning badge with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="wiki-warning-badge"');
+    });
+
+    it('wiki warning badge uses amber bg-[#f59e0b]', () => {
+        const lines = REPO_DETAIL_SOURCE.split('\n');
+        const badgeLine = lines.findIndex(l => l.includes('wiki-warning-badge'));
+        const context = lines.slice(Math.max(0, badgeLine - 5), badgeLine + 1).join('\n');
+        expect(context).toContain('bg-[#f59e0b]');
+    });
+
+    it('wiki warning badge is suppressed when generating', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('wikiWarningCount > 0 && wikiGeneratingCount === 0');
+    });
+
+    it('no wiki badge conditions include loaded status', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain("w.status === 'loaded'");
+        expect(REPO_DETAIL_SOURCE).toContain("w.status === 'generating'");
+        expect(REPO_DETAIL_SOURCE).toContain("w.status === 'error'");
+        expect(REPO_DETAIL_SOURCE).toContain("w.status === 'pending'");
+    });
+
+    it('filters wikis by ws.rootPath for badge counts', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('w.repoPath === ws.rootPath');
+    });
+});
+
 describe('RepoDetail switchSubTab git deep-link', () => {
     it('dispatches SET_GIT_COMMIT_HASH with null when switching away from git', () => {
         expect(REPO_DETAIL_SOURCE).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null })");

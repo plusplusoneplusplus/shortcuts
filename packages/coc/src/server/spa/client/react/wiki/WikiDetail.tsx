@@ -149,10 +149,27 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
         setActiveTab('browse');
     }, [dispatch, wikiId, onHashChange, embedded]);
 
+    // Auto-switch to admin tab when generation starts on a non-admin tab
+    useEffect(() => {
+        if (wikiStatus === 'generating' && activeTab !== 'admin') {
+            changeTab('admin');
+        }
+    }, [wikiStatus, activeTab, changeTab]);
+
     const selectedComponentId = state.selectedWikiComponentId;
 
     // Tab content
     const renderContent = () => {
+        const isGenerating = wikiStatus === 'generating';
+
+        if (isGenerating && activeTab !== 'admin') {
+            return (
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm" data-testid="wiki-generating-placeholder">
+                    Generation in progress… Switch to Admin to manage.
+                </div>
+            );
+        }
+
         if (loadingGraph) {
             return (
                 <div className="flex items-center justify-center h-full">
@@ -246,21 +263,27 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
                 <div className="flex-1" />
                 {/* Tab bar */}
                 <div className="flex gap-0.5 overflow-x-auto flex-nowrap" id="wiki-project-tabs">
-                    {WIKI_TABS.map(t => (
+                    {WIKI_TABS.map(tab => {
+                        const isGenerating = wikiStatus === 'generating';
+                        const isDisabled = isGenerating && tab !== 'admin';
+                        return (
                         <button
-                            key={t}
+                            key={tab}
+                            disabled={isDisabled}
                             className={cn(
                                 'wiki-project-tab px-2.5 py-1 text-xs rounded transition-colors flex-shrink-0 whitespace-nowrap',
-                                activeTab === t
+                                activeTab === tab
                                     ? 'bg-[#0078d4] text-white active'
-                                    : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                                    : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                isDisabled && 'opacity-50 cursor-not-allowed hover:text-gray-400',
                             )}
-                            data-wiki-project-tab={t}
-                            onClick={() => changeTab(t)}
+                            data-wiki-project-tab={tab}
+                            onClick={() => !isGenerating || tab === 'admin' ? changeTab(tab) : undefined}
                         >
-                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
                         </button>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
             )}
@@ -273,21 +296,27 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
                 </Badge>
                 <div className="flex-1" />
                 <div className="flex gap-0.5" id="wiki-project-tabs">
-                    {WIKI_TABS.map(t => (
+                    {WIKI_TABS.map(tab => {
+                        const isGenerating = wikiStatus === 'generating';
+                        const isDisabled = isGenerating && tab !== 'admin';
+                        return (
                         <button
-                            key={t}
+                            key={tab}
+                            disabled={isDisabled}
                             className={cn(
                                 'wiki-project-tab px-2.5 py-1 text-xs rounded transition-colors flex-shrink-0 whitespace-nowrap',
-                                activeTab === t
+                                activeTab === tab
                                     ? 'bg-[#0078d4] text-white active'
-                                    : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                                    : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                isDisabled && 'opacity-50 cursor-not-allowed hover:text-gray-400',
                             )}
-                            data-wiki-project-tab={t}
-                            onClick={() => changeTab(t)}
+                            data-wiki-project-tab={tab}
+                            onClick={() => !isGenerating || tab === 'admin' ? changeTab(tab) : undefined}
                         >
-                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
                         </button>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
             )}

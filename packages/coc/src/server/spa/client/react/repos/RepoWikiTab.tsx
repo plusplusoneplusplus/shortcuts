@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
+import { getApiBase } from '../utils/config';
 import { WikiDetail } from '../wiki/WikiDetail';
 import type { WikiProjectTab, WikiAdminTab } from '../types/dashboard';
 
@@ -26,6 +27,10 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
 
     const [selectedWikiId, setSelectedWikiId] = useState<string | null>(initialWikiId ?? null);
     const activeWikiId = selectedWikiId || repoWikis[0]?.id || null;
+    const selectedWiki = useMemo(() =>
+        repoWikis.find((w: any) => w.id === activeWikiId) || repoWikis[0] || null,
+        [repoWikis, activeWikiId]
+    );
 
     // Sync deep-link initial wiki ID from props
     useEffect(() => {
@@ -66,6 +71,18 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
         }
     }, [workspacePath]);
 
+    const handleRetryGeneration = useCallback(async (wikiId: string) => {
+        try {
+            await fetchApi(`${getApiBase()}/api/dw/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wikiId }),
+            });
+        } catch (err) {
+            console.error('Failed to retry wiki generation:', err);
+        }
+    }, []);
+
     if (repoWikis.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-center">
@@ -92,14 +109,44 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
     // State 2: exactly one wiki — render inline
     if (repoWikis.length === 1) {
         return (
-            <WikiDetail
-                wikiId={repoWikis[0].id}
-                embedded
-                initialTab={initialTab}
-                initialAdminTab={initialAdminTab}
-                initialComponentId={initialComponentId}
-                onHashChange={handleWikiHashChange}
-            />
+            <div className="flex flex-col h-full min-h-0">
+                {selectedWiki && selectedWiki.status === 'generating' && (
+                    <div
+                        className="flex items-center gap-2 px-4 py-2 bg-[#16825d]/10 border border-[#16825d]/30 rounded text-sm"
+                        data-testid="wiki-generating-banner"
+                    >
+                        <span className="animate-spin text-[#16825d]">⟳</span>
+                        <span>Wiki generation in progress…</span>
+                    </div>
+                )}
+                {selectedWiki && selectedWiki.status === 'error' && (
+                    <div
+                        className="flex items-center justify-between px-4 py-2 bg-red-500/10 border border-red-500/30 rounded text-sm"
+                        data-testid="wiki-error-banner"
+                    >
+                        <span className="text-red-400">
+                            ⚠ Wiki generation failed{selectedWiki.error ? `: ${selectedWiki.error}` : '.'}
+                        </span>
+                        <button
+                            className="text-xs text-blue-400 hover:underline"
+                            data-testid="wiki-retry-btn"
+                            onClick={() => handleRetryGeneration(selectedWiki.id)}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+                <div className="flex-1 min-h-0">
+                    <WikiDetail
+                        wikiId={repoWikis[0].id}
+                        embedded
+                        initialTab={initialTab}
+                        initialAdminTab={initialAdminTab}
+                        initialComponentId={initialComponentId}
+                        onHashChange={handleWikiHashChange}
+                    />
+                </div>
+            </div>
         );
     }
 
@@ -130,6 +177,32 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
             </div>
             {/* Wiki detail */}
             <div className="flex-1 min-h-0">
+                {selectedWiki && selectedWiki.status === 'generating' && (
+                    <div
+                        className="flex items-center gap-2 px-4 py-2 bg-[#16825d]/10 border border-[#16825d]/30 rounded text-sm"
+                        data-testid="wiki-generating-banner"
+                    >
+                        <span className="animate-spin text-[#16825d]">⟳</span>
+                        <span>Wiki generation in progress…</span>
+                    </div>
+                )}
+                {selectedWiki && selectedWiki.status === 'error' && (
+                    <div
+                        className="flex items-center justify-between px-4 py-2 bg-red-500/10 border border-red-500/30 rounded text-sm"
+                        data-testid="wiki-error-banner"
+                    >
+                        <span className="text-red-400">
+                            ⚠ Wiki generation failed{selectedWiki.error ? `: ${selectedWiki.error}` : '.'}
+                        </span>
+                        <button
+                            className="text-xs text-blue-400 hover:underline"
+                            data-testid="wiki-retry-btn"
+                            onClick={() => handleRetryGeneration(selectedWiki.id)}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
                 {activeWikiId && (
                     <WikiDetail
                         wikiId={activeWikiId}

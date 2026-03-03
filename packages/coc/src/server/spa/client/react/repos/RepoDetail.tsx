@@ -61,6 +61,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const taskCount = repo.taskCount || 0;
     const { running: queueRunningCount, queued: queueQueuedCount, chatPending: chatPendingCount } = useRepoQueueStats(ws.id);
 
+    const repoWikis = useMemo(() =>
+        state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
+        [state.wikis, ws.rootPath]
+    );
+    const wikiGeneratingCount = repoWikis.filter((w: any) => w.status === 'generating').length;
+    const wikiWarningCount = repoWikis.filter((w: any) => w.status === 'error' || w.status === 'pending').length;
+
     const isRepoPaused = useMemo(() => {
         return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
@@ -421,6 +428,16 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         )}
                         {t.key === 'chat' && chatPendingCount > 0 && (
                             <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="chat-pending-badge" title="Pending chats">{chatPendingCount}</span>
+                        )}
+                        {t.key === 'wiki' && wikiGeneratingCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
+                        )}
+                        {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
+                            <span
+                                className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
+                                data-testid="wiki-warning-badge"
+                                title="Needs attention"
+                            />
                         )}
                         {activeSubTab === t.key && (
                             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
