@@ -19,6 +19,8 @@ export interface CommentSidebarProps {
     loading: boolean;
     className?: string;
     compact?: boolean;
+    /** When true, fills the full available width (used for mobile drawer). */
+    fullWidth?: boolean;
     showHeader?: boolean;
     showFilters?: boolean;
     onResolve: (id: string) => void;
@@ -43,6 +45,7 @@ export function CommentSidebar({
     loading,
     className,
     compact = false,
+    fullWidth = false,
     showHeader = true,
     showFilters = true,
     onResolve,
@@ -90,8 +93,10 @@ export function CommentSidebar({
     return (
         <div
             className={cn(
-                'flex flex-col w-[280px] min-w-[220px] border-l border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden',
-                compact && 'w-[240px] min-w-[200px]',
+                'flex flex-col border-l border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden',
+                !fullWidth && 'w-[280px] min-w-[220px]',
+                !fullWidth && compact && 'w-[240px] min-w-[200px]',
+                fullWidth && 'w-full min-w-0',
                 className,
             )}
             data-testid="comment-sidebar"

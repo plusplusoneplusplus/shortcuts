@@ -1348,6 +1348,59 @@
     }
 }
 
+/* ── Mobile overrides (≤767px) ── */
+
+@media (max-width: 767px) {
+    /* Task 2: Enlarge toolbar touch targets */
+    .mode-toggle {
+        padding: 6px 8px;
+        gap: 8px;
+    }
+
+    .mode-btn {
+        min-height: 44px;
+        font-size: 14px;
+        padding: 8px 16px;
+    }
+
+    .save-btn {
+        min-height: 44px;
+        font-size: 14px;
+        padding: 8px 16px;
+    }
+
+    /* Task 5: Fix horizontal overflow for code blocks and tables */
+    .markdown-body .code-block-container {
+        max-width: 100%;
+    }
+
+    .markdown-body .code-block-content {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .markdown-body .md-table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: calc(100vw - 32px);
+    }
+
+    /* Task 6: Improve markdown body readability on mobile */
+    .markdown-body {
+        font-size: 15px;
+        line-height: 1.6;
+    }
+
+    .markdown-body img {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .markdown-body .md-h1 { font-size: 1.5em; }
+    .markdown-body .md-h2 { font-size: 1.3em; }
+    .markdown-body .md-h3 { font-size: 1.15em; }
+}
+
 /* Build-time comment highlights injected by renderMarkdownToHtml */
 .commented-text {
     background-color: rgba(255, 235, 59, 0.3);

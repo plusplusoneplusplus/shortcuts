@@ -16,6 +16,7 @@ import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
+import { ResponsiveSidebar } from './ResponsiveSidebar';
 import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../task-comments-types';
 import {
     createAnchorData,
@@ -26,6 +27,7 @@ import { extractDocumentContext } from '../utils/document-context';
 import { getApiBase } from '../utils/config';
 import { useGlobalToast } from '../context/ToastContext';
 import { selectionToSourcePosition } from '../utils/selection-position';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 
 export interface MarkdownReviewEditorProps {
     wsId: string;
@@ -106,6 +108,12 @@ export function MarkdownReviewEditor({
     } | null>(null);
     const [activePopoverComment, setActivePopoverComment] = useState<TaskComment | null>(null);
     const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
+
+    // Mobile state
+    const { isMobile } = useBreakpoint();
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+    const [mobileActionBarVisible, setMobileActionBarVisible] = useState(false);
+    const [mobileActionBarPos, setMobileActionBarPos] = useState({ top: 0, left: 0 });
 
     // Comments hook
     const {
@@ -292,12 +300,76 @@ export function MarkdownReviewEditor({
         return () => document.removeEventListener('mouseup', handleMouseUp);
     }, [viewMode, rawContent]);
 
+    // Touch selection handler for mobile (touchend fires after the browser finalizes selection)
+    useEffect(() => {
+        const handleTouchEnd = () => {
+            setTimeout(() => {
+                const sel = window.getSelection();
+                if (
+                    viewMode !== 'source' &&
+                    sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH
+                ) {
+                    if (previewRef.current?.contains(sel.anchorNode)) {
+                        const range = sel.getRangeAt(0);
+                        const text = sel.toString().trim();
+
+                        const sourcePos = selectionToSourcePosition(rawContent, previewRef.current, range);
+                        if (sourcePos) {
+                            setSavedSelection({
+                                text,
+                                range: range.cloneRange(),
+                                ...sourcePos,
+                            });
+                            const rect = range.getBoundingClientRect();
+                            setMobileActionBarPos({
+                                top: Math.max(8, rect.top - 52),
+                                left: Math.max(8, Math.min(rect.left, window.innerWidth - 180)),
+                            });
+                            setMobileActionBarVisible(true);
+                            return;
+                        }
+
+                        const previewText = previewRef.current.textContent || '';
+                        const startOffset = getTextOffset(previewRef.current, range.startContainer, range.startOffset);
+                        const endOffset = getTextOffset(previewRef.current, range.endContainer, range.endOffset);
+                        const startPos = offsetToPosition(previewText, startOffset);
+                        const endPos = offsetToPosition(previewText, endOffset);
+                        setSavedSelection({
+                            text,
+                            range: range.cloneRange(),
+                            startLine: startPos.line,
+                            startColumn: startPos.column,
+                            endLine: endPos.line,
+                            endColumn: endPos.column,
+                        });
+                        const rect = range.getBoundingClientRect();
+                        setMobileActionBarPos({
+                            top: Math.max(8, rect.top - 52),
+                            left: Math.max(8, Math.min(rect.left, window.innerWidth - 180)),
+                        });
+                        setMobileActionBarVisible(true);
+                        return;
+                    }
+                }
+                setSavedSelection(null);
+                setMobileActionBarVisible(false);
+            }, 100);
+        };
+
+        document.addEventListener('touchend', handleTouchEnd);
+        return () => document.removeEventListener('touchend', handleTouchEnd);
+    }, [viewMode, rawContent]);
+
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
         if (viewMode === 'source') return;
         e.preventDefault();
         setContextMenuPos({ x: e.clientX, y: e.clientY });
         setContextMenuVisible(true);
     }, [viewMode]);
+
+    const dismissMobileActionBar = useCallback(() => {
+        setMobileActionBarVisible(false);
+    }, []);
 
     const handleAddCommentFromMenu = useCallback(() => {
         if (!savedSelection) return;
@@ -314,6 +386,7 @@ export function MarkdownReviewEditor({
         });
 
         setContextMenuVisible(false);
+        setMobileActionBarVisible(false);
         setPopupVisible(true);
     }, [savedSelection]);
 
@@ -581,7 +654,8 @@ export function MarkdownReviewEditor({
                     )}
                 </div>
 
-                {showCommentListPanel && (
+                {/* Desktop inline sidebar */}
+                {!isMobile && showCommentListPanel && (
                     <CommentSidebar
                         taskId={filePath}
                         filePath={filePath}
@@ -609,6 +683,53 @@ export function MarkdownReviewEditor({
                     />
                 )}
             </div>
+
+            {/* Mobile sidebar drawer */}
+            {isMobile && showCommentListPanel && (
+                <ResponsiveSidebar
+                    isOpen={mobileSidebarOpen}
+                    onClose={() => setMobileSidebarOpen(false)}
+                >
+                    <CommentSidebar
+                        taskId={filePath}
+                        filePath={filePath}
+                        comments={comments}
+                        loading={commentsLoading}
+                        compact
+                        fullWidth
+                        onResolve={(id) => resolveComment(id)}
+                        onUnresolve={(id) => unresolveComment(id)}
+                        onDelete={(id) => deleteComment(id)}
+                        onEdit={(id, text) => updateComment(id, { comment: text })}
+                        onAskAI={(id, commandId, customQuestion) => {
+                            const comment = comments.find(c => c.id === id);
+                            const context = extractDocumentContext(rawContent, comment);
+                            askAI(id, { commandId, customQuestion, documentContext: context });
+                        }}
+                        onCommentClick={(comment) => { handleCommentClick(comment); setMobileSidebarOpen(false); }}
+                        aiLoadingIds={aiLoadingIds}
+                        aiErrors={aiErrors}
+                        onClearAiError={clearAiError}
+                        onResolveAllWithAI={handleResolveAllWithAI}
+                        onCopyPrompt={handleCopyPrompt}
+                        resolving={resolving}
+                        onFixWithAI={handleFixWithAI}
+                        resolvingCommentId={resolvingCommentId}
+                    />
+                </ResponsiveSidebar>
+            )}
+
+            {/* Mobile: floating Comments toggle button */}
+            {isMobile && showCommentListPanel && (
+                <button
+                    className="fixed bottom-20 right-4 z-[9000] flex items-center gap-1.5 bg-[#0078d4] text-white text-sm font-medium px-3 py-2 rounded-full shadow-lg"
+                    onClick={() => setMobileSidebarOpen(o => !o)}
+                    aria-label={`Comments (${comments.length})`}
+                    data-testid="mobile-comments-toggle"
+                >
+                    💬 <span>{comments.length}</span>
+                </button>
+            )}
 
             {contextMenuVisible && (
                 <ContextMenu
@@ -642,6 +763,36 @@ export function MarkdownReviewEditor({
                     ]}
                     onClose={() => setContextMenuVisible(false)}
                 />
+            )}
+
+            {/* Mobile selection action bar */}
+            {mobileActionBarVisible && savedSelection && (
+                <div
+                    className="fixed z-[10004] flex items-center gap-1 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-lg rounded-lg px-2 py-1.5"
+                    style={{ top: mobileActionBarPos.top, left: mobileActionBarPos.left }}
+                    data-testid="mobile-selection-action-bar"
+                >
+                    <button
+                        className="flex items-center gap-1 px-2 py-1 text-sm text-[#1e1e1e] dark:text-[#cccccc] rounded hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 whitespace-nowrap"
+                        onClick={handleAddCommentFromMenu}
+                    >
+                        💬 Comment
+                    </button>
+                    <div className="w-px h-4 bg-[#e0e0e0] dark:bg-[#3c3c3c]" />
+                    <button
+                        className="flex items-center gap-1 px-2 py-1 text-sm text-[#1e1e1e] dark:text-[#cccccc] rounded hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 whitespace-nowrap"
+                        onClick={() => { dismissMobileActionBar(); handleAskAIFromSelection(DASHBOARD_AI_COMMANDS[0]?.id ?? ''); }}
+                    >
+                        🤖 Ask AI
+                    </button>
+                    <button
+                        className="ml-1 p-1 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                        onClick={dismissMobileActionBar}
+                        aria-label="Dismiss"
+                    >
+                        ✕
+                    </button>
+                </div>
             )}
 
             {popupVisible && (
