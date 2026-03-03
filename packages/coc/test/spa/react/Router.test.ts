@@ -110,12 +110,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('wiki')).toBe(true);
     });
 
+    it('includes "copilot"', () => {
+        expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 8 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(8);
+    it('has exactly 9 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(9);
     });
 });
 

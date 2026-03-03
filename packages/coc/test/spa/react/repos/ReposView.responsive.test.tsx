@@ -140,6 +140,14 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
     RepoGitTab: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/repos/RepoWikiTab', () => ({
+    RepoWikiTab: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/RepoCopilotTab', () => ({
+    RepoCopilotTab: () => null,
+}));
+
 // ── Import components under test AFTER mocks ───────────────────────────
 
 import { ReposView } from '../../../../src/server/spa/client/react/repos/ReposView';
@@ -358,6 +366,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
             reposSidebarCollapsed: false,
             activeRepoSubTab: 'info',
             workspaces: [],
+            wikis: [],
             selectedChatSessionId: null,
         };
         const mod = await vi.importActual<any>(
@@ -387,7 +396,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(8);
+        expect(tabs.length).toBe(9);
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');
