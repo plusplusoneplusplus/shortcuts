@@ -877,8 +877,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             />
                         )}
                         <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
-                        <div className={isMobile ? "space-y-2" : "flex items-end gap-2 relative"}>
-                            <div className={isMobile ? "w-full relative" : "flex-1 relative"}>
+                        <div className="flex items-end gap-2 relative">
+                            <div className="flex-1 relative">
                                 <textarea
                                     rows={1}
                                     value={inputValue}
@@ -912,19 +912,9 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                     highlightIndex={slashCommands.highlightIndex}
                                 />
                             </div>
-                            {isMobile ? (
-                                <div className="flex items-center justify-between gap-2" data-testid="chat-followup-controls-row">
-                                    <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()} className="ml-auto">
-                                        {sending ? '...' : 'Send'}
-                                    </Button>
-                                </div>
-                            ) : (
-                                <>
-                                    <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
-                                        {sending ? '...' : 'Send'}
-                                    </Button>
-                                </>
-                            )}
+                            <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
+                                {sending ? '...' : 'Send'}
+                            </Button>
                         </div>
                     </>
                 )}

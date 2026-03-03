@@ -1505,28 +1505,28 @@ describe('RepoChatTab', () => {
     });
 
     describe('mobile layout — follow-up input bar', () => {
-        it('uses isMobile to conditionally choose layout class', () => {
-            // On mobile: space-y-2 stacked layout; on desktop: flex items-end gap-2
-            expect(source).toContain('isMobile ? "space-y-2"');
+        it('always uses flex items-end gap-2 relative for the follow-up wrapper', () => {
+            // Unified horizontal layout for both mobile and desktop
             expect(source).toContain('"flex items-end gap-2 relative"');
+            expect(source).not.toContain('isMobile ? "space-y-2"');
         });
 
-        it('on mobile, textarea wrapper uses w-full relative', () => {
-            expect(source).toContain('isMobile ? "w-full relative" : "flex-1 relative"');
+        it('textarea wrapper always uses flex-1 relative', () => {
+            expect(source).toContain('"flex-1 relative"');
+            expect(source).not.toContain('isMobile ? "w-full relative"');
         });
 
-        it('on mobile, model badge and Send button are in a separate controls row', () => {
-            expect(source).toContain('data-testid="chat-followup-controls-row"');
+        it('Send button is rendered inline without a separate controls row', () => {
+            expect(source).not.toContain('data-testid="chat-followup-controls-row"');
         });
 
-        it('mobile controls row uses flex justify-between', () => {
-            expect(source).toContain('"flex items-center justify-between gap-2"');
+        it('no mobile-specific justify-between wrapper around Send button', () => {
+            expect(source).not.toContain('"flex items-center justify-between gap-2"');
         });
 
-        it('on mobile, Send button uses ml-auto to push to right', () => {
-            // In the mobile branch the Send button has ml-auto class
+        it('Send button does not need ml-auto in the follow-up input area', () => {
             const inputArea = source.substring(source.indexOf('{/* Input area */}'));
-            expect(inputArea).toContain('className="ml-auto"');
+            expect(inputArea).not.toContain('className="ml-auto"');
         });
     });
 
