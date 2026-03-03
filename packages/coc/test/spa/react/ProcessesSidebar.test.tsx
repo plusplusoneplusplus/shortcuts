@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
-import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 
@@ -35,17 +35,27 @@ function QueueSeeder({ stats, queued = [], running = [], history = [] }: {
     return null;
 }
 
-function Wrap({ children, stats, queued, running, history }: {
+function ProcessSeeder({ processes }: { processes: any[] }) {
+    const { dispatch } = useApp();
+    useEffect(() => {
+        dispatch({ type: 'SET_PROCESSES', processes });
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return null;
+}
+
+function Wrap({ children, stats, queued, running, history, processes }: {
     children: ReactNode;
     stats?: ReturnType<typeof makeStats>;
     queued?: any[];
     running?: any[];
     history?: any[];
+    processes?: any[];
 }) {
     return (
         <AppProvider>
             <QueueProvider>
                 {stats && <QueueSeeder stats={stats} queued={queued} running={running} history={history} />}
+                {processes && <ProcessSeeder processes={processes} />}
                 {children}
             </QueueProvider>
         </AppProvider>
@@ -377,6 +387,82 @@ describe('ProcessesSidebar pause/resume controls', () => {
         // Resolve to clean up
         await act(async () => {
             resolveDelete!({ ok: true, json: () => Promise.resolve({}) });
+        });
+    });
+});
+
+// ── AI Title Tests ─────────────────────────────────────────────────────
+
+describe('ProcessesSidebar — AI title display for legacy processes', () => {
+    it('shows AI title instead of promptPreview when p.title is set', async () => {
+        const process = {
+            id: 'proc-1',
+            status: 'completed',
+            title: 'AI Generated Summary',
+            promptPreview: 'raw prompt text',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('AI Generated Summary')).toBeDefined();
+        });
+        expect(screen.queryByText('raw prompt text')).toBeNull();
+    });
+
+    it('shows AI indicator ✦ when p.title is set', async () => {
+        const process = {
+            id: 'proc-2',
+            status: 'completed',
+            title: 'An AI Title',
+            promptPreview: 'fallback',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('✦')).toBeDefined();
+        });
+    });
+
+    it('shows promptPreview (no ✦) when p.title is absent', async () => {
+        const process = {
+            id: 'proc-3',
+            status: 'completed',
+            title: undefined,
+            promptPreview: 'fallback preview text',
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('fallback preview text')).toBeDefined();
+        });
+        expect(screen.queryByText('✦')).toBeNull();
+    });
+
+    it('truncates promptPreview at 80 chars when no title', async () => {
+        const longPreview = 'x'.repeat(100);
+        const process = {
+            id: 'proc-4',
+            status: 'completed',
+            title: undefined,
+            promptPreview: longPreview,
+        };
+        render(
+            <Wrap processes={[process]}>
+                <ProcessesSidebar />
+            </Wrap>
+        );
+        await waitFor(() => {
+            const truncated = screen.getByText('x'.repeat(80) + '…');
+            expect(truncated).toBeDefined();
         });
     });
 });

@@ -310,6 +310,12 @@ export function ProcessDetail() {
                             </a>
                         </div>
                     )}
+                    {process.title && (
+                        <div className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">
+                            {process.title}
+                            <span className="ml-1 text-[11px] font-normal text-[#848484]">✦ AI title</span>
+                        </div>
+                    )}
                     <div
                         className="text-sm text-[#1e1e1e] dark:text-[#cccccc] break-words"
                         dangerouslySetInnerHTML={{

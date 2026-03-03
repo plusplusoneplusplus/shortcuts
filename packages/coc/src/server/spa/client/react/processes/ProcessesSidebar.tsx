@@ -92,7 +92,7 @@ export function ProcessesSidebar() {
                 if (state.statusFilter !== '__all' && p.status !== state.statusFilter) return false;
                 if (state.searchQuery) {
                     const q = state.searchQuery.toLowerCase();
-                    const title = (p.promptPreview || p.id || '').toLowerCase();
+                    const title = (p.title || p.promptPreview || p.id || '').toLowerCase();
                     if (title.indexOf(q) === -1) return false;
                 }
                 return true;
@@ -258,9 +258,10 @@ export function ProcessesSidebar() {
                             : p.duration != null
                                 ? formatDuration(p.duration)
                                 : '';
-                        const preview = p.promptPreview
+                        const hasAITitle = Boolean(p.title);
+                        const preview = p.title || (p.promptPreview
                             ? (p.promptPreview.length > 80 ? p.promptPreview.slice(0, 80) + '…' : p.promptPreview)
-                            : p.id;
+                            : p.id);
                         const wsId = getProcessWorkspaceId(p);
                         const wsName = resolveWorkspaceName(wsId, getProcessWorkspaceName(p), state.workspaces);
 
@@ -304,6 +305,7 @@ export function ProcessesSidebar() {
                                 )}
                                 <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2 break-words">
                                     {preview}
+                                    {hasAITitle && <span className="ml-1 text-[10px] text-[#848484]">✦</span>}
                                 </div>
                             </Card>
                         );

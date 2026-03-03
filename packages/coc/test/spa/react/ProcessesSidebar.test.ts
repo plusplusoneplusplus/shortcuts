@@ -130,6 +130,44 @@ describe('filterQueueTask — compound filters', () => {
     });
 });
 
+describe('legacy process search — title field preference', () => {
+    // These tests verify the inline filter logic in filteredLegacy:
+    // the search should prefer p.title over p.promptPreview
+    // We test the same logic pattern used in the component.
+    function legacyFilter(p: any, searchQuery: string): boolean {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        const title = (p.title || p.promptPreview || p.id || '').toLowerCase();
+        return title.indexOf(q) !== -1;
+    }
+
+    it('matches on p.title when title is set', () => {
+        expect(legacyFilter({ title: 'AI Generated Summary', promptPreview: 'raw prompt' }, 'summary')).toBe(true);
+    });
+
+    it('does not fall back to promptPreview when title is set and query only matches promptPreview', () => {
+        // The search only uses title (p.title OR promptPreview OR id), so if title is present
+        // it is used exclusively (the title field takes precedence in the OR chain)
+        expect(legacyFilter({ title: 'AI Title', promptPreview: 'unique-preview-text' }, 'unique-preview')).toBe(false);
+    });
+
+    it('falls back to promptPreview when title is absent', () => {
+        expect(legacyFilter({ title: undefined, promptPreview: 'unique preview text' }, 'unique preview')).toBe(true);
+    });
+
+    it('falls back to id when both title and promptPreview are absent', () => {
+        expect(legacyFilter({ title: undefined, promptPreview: undefined, id: 'proc-abc-123' }, 'abc-123')).toBe(true);
+    });
+
+    it('returns false when query matches neither title, promptPreview, nor id', () => {
+        expect(legacyFilter({ title: 'AI Title', promptPreview: 'a prompt', id: 'xyz' }, 'zzz-no-match')).toBe(false);
+    });
+
+    it('search is case-insensitive for AI title', () => {
+        expect(legacyFilter({ title: 'Summarize The Codebase' }, 'SUMMARIZE')).toBe(true);
+    });
+});
+
 describe('filterQueueTask — edge cases', () => {
     it('task with all fields undefined returns true when all filters are at defaults', () => {
         const task = { id: undefined, displayName: undefined, prompt: undefined, type: undefined, status: undefined };
