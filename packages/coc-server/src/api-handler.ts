@@ -22,6 +22,7 @@ import { handleProcessStream } from './sse-handler';
 import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, APIError } from './errors';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
 import { gitCache } from './git-cache';
+import { registerSkillRoutes } from './skill-handler';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -1500,6 +1501,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             });
         },
     });
+
+    // Register skill management routes
+    registerSkillRoutes(routes, store);
 }
 
 // ============================================================================

@@ -15,6 +15,7 @@ import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipe
 import { resolveConfig } from './config';
 import type { ResolvedCLIConfig } from './config';
 import { setColorEnabled, setVerbosity } from './logger';
+import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete } from './commands/skills';
 
 // ============================================================================
 // Exit Codes
@@ -159,6 +160,70 @@ export function createProgram(): Command {
 
             const { executeWipeData } = await import('./commands/wipe-data');
             const exitCode = await executeWipeData(options);
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
+    // coc skills
+    // ========================================================================
+
+    const skills = program
+        .command('skills')
+        .description('Manage Agent Skills in .github/skills/');
+
+    skills
+        .command('list')
+        .description('List installed skills')
+        .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('--no-color', 'Disable colored output')
+        .action(async (opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts, resolveConfig());
+            const exitCode = await executeSkillList({ workspace: opts.workspace as string | undefined });
+            process.exit(exitCode);
+        });
+
+    skills
+        .command('install-bundled [names...]')
+        .description('Install bundled skills')
+        .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('--replace', 'Replace existing skills', false)
+        .option('--no-color', 'Disable colored output')
+        .action(async (names: string[], opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts, resolveConfig());
+            const exitCode = await executeSkillInstallBundled(names, {
+                workspace: opts.workspace as string | undefined,
+                replace: opts.replace as boolean | undefined,
+            });
+            process.exit(exitCode);
+        });
+
+    skills
+        .command('install <github-url>')
+        .description('Install skills from a GitHub URL')
+        .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('--replace', 'Replace existing skills', false)
+        .option('--select <names>', 'Comma-separated list of skill names to install')
+        .option('--no-color', 'Disable colored output')
+        .action(async (githubUrl: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts, resolveConfig());
+            const exitCode = await executeSkillInstall(githubUrl, {
+                workspace: opts.workspace as string | undefined,
+                replace: opts.replace as boolean | undefined,
+                select: opts.select as string | undefined,
+            });
+            process.exit(exitCode);
+        });
+
+    skills
+        .command('delete <name>')
+        .description('Delete an installed skill')
+        .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('--no-color', 'Disable colored output')
+        .action(async (name: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts, resolveConfig());
+            const exitCode = await executeSkillDelete(name, {
+                workspace: opts.workspace as string | undefined,
+            });
             process.exit(exitCode);
         });
 

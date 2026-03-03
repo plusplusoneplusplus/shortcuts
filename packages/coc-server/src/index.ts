@@ -147,3 +147,6 @@ export {
     missingFields,
     internalError,
 } from './errors';
+
+// Skill management
+export { registerSkillRoutes } from './skill-handler';

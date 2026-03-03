@@ -1004,3 +1004,30 @@ export { MemoryAggregator } from './memory';
 export type { AggregatorOptions } from './memory';
 export { withMemory } from './memory';
 export type { WithMemoryOptions } from './memory';
+
+// ============================================================================
+// Skills
+// ============================================================================
+
+export {
+    SkillSourceType,
+    DEFAULT_SKILLS_SETTINGS,
+    detectSource,
+    scanForSkills,
+    installSkills,
+    getBundledSkillsPath,
+    getBundledSkills,
+    installBundledSkills,
+} from './skills';
+
+export type {
+    DiscoveredSkill,
+    ParsedSource,
+    ScanResult,
+    InstallResult,
+    InstallDetail,
+    SkillsSettings,
+    BundledSkill,
+} from './skills';
+
+export { SourceDetectionErrors } from './skills';
