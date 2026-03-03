@@ -562,7 +562,7 @@ export class BranchService {
      */
     async mergeBranch(repoRoot: string, branchName: string): Promise<GitOperationResult> {
         try {
-            await this.execGitAsync(`git merge "${branchName}"`, { cwd: repoRoot, timeout: 60000 });
+            await this.execGitAsync(`git merge "${branchName}"`, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -583,7 +583,7 @@ export class BranchService {
                     cmd = `git push -u origin "${branchName}"`;
                 }
             }
-            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 60000 });
+            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -598,7 +598,7 @@ export class BranchService {
     async pull(repoRoot: string, rebase: boolean = false): Promise<GitOperationResult> {
         try {
             const cmd = rebase ? 'git pull --rebase' : 'git pull';
-            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 60000 });
+            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -613,7 +613,7 @@ export class BranchService {
     async fetch(repoRoot: string, remote?: string): Promise<GitOperationResult> {
         try {
             const cmd = remote ? `git fetch "${remote}"` : 'git fetch --all';
-            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 60000 });
+            await this.execGitAsync(cmd, { cwd: repoRoot, timeout: 600000 });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';

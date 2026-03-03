@@ -429,7 +429,7 @@ describe('BranchService', () => {
     // ── mergeBranch ──────────────────────────────────────────────
 
     describe('mergeBranch', () => {
-        it('runs git merge "branchName" with 60-second timeout', async () => {
+        it('runs git merge "branchName" with 10-minute timeout', async () => {
             mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
 
             const result = await service.mergeBranch('/repo', 'feature');
@@ -437,7 +437,7 @@ describe('BranchService', () => {
             expect(result).toEqual({ success: true });
             expect(mockedExecAsync).toHaveBeenCalledWith(
                 'git merge "feature"',
-                expect.objectContaining({ cwd: '/repo', timeout: 60000 })
+                expect.objectContaining({ cwd: '/repo', timeout: 600000 })
             );
         });
 
@@ -462,7 +462,7 @@ describe('BranchService', () => {
             expect(result).toEqual({ success: true });
             expect(mockedExecAsync).toHaveBeenCalledWith(
                 'git push',
-                expect.objectContaining({ cwd: '/repo', timeout: 60000 })
+                expect.objectContaining({ cwd: '/repo', timeout: 600000 })
             );
         });
 
@@ -501,7 +501,7 @@ describe('BranchService', () => {
             expect(result).toEqual({ success: true });
             expect(mockedExecAsync).toHaveBeenCalledWith(
                 'git pull',
-                expect.objectContaining({ cwd: '/repo', timeout: 60000 })
+                expect.objectContaining({ cwd: '/repo', timeout: 600000 })
             );
         });
 
@@ -536,7 +536,7 @@ describe('BranchService', () => {
             expect(result).toEqual({ success: true });
             expect(mockedExecAsync).toHaveBeenCalledWith(
                 'git fetch --all',
-                expect.objectContaining({ cwd: '/repo', timeout: 60000 })
+                expect.objectContaining({ cwd: '/repo', timeout: 600000 })
             );
         });
 
