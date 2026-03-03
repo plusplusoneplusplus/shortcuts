@@ -414,6 +414,12 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         scrollToEnd(scrollRef.current);
     };
 
+    const handleNavigateBack = () => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollLeft = 0;
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full gap-2 text-sm text-[#848484]">
@@ -823,7 +829,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
             </div>
             <div
                 ref={scrollRef}
-                className="miller-columns flex-1 overflow-x-auto overflow-y-hidden min-h-0 min-w-0"
+                className="miller-columns flex-1 overflow-x-scroll overflow-y-hidden min-h-0 min-w-0"
+                style={{ WebkitOverflowScrolling: 'touch' } as any}
                 data-testid="tasks-miller-scroll-container"
             >
                 <div className="flex h-full min-h-0 min-w-full">
@@ -850,6 +857,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                                 navigateToFilePath={navigateToFilePath}
                                 onNavigated={() => setNavigateToFilePath(null)}
                                 onColumnsChange={handleColumnsChange}
+                                onNavigateBack={handleNavigateBack}
                                 onFolderContextMenu={handleFolderContextMenu}
                                 onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
                                 onFileContextMenu={handleFileContextMenu}

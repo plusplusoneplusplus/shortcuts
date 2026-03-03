@@ -24,6 +24,7 @@ interface TaskTreeProps {
     onFolderEmptySpaceContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
     onDrop?: (items: DragItem[], targetFolderPath: string) => void;
+    onNavigateBack?: () => void;
 }
 
 function getNodePath(node: TaskNode): string | null {
@@ -79,6 +80,7 @@ export function TaskTree({
     onFolderEmptySpaceContextMenu,
     onFileContextMenu,
     onDrop: onDropCallback,
+    onNavigateBack,
 }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
@@ -197,6 +199,24 @@ export function TaskTree({
         }));
     };
 
+    const handleNavigateBack = () => {
+        if (activeFolderKeys.length === 0) return;
+        const newKeys = activeFolderKeys.slice(0, -1);
+        setActiveFolderKeys(newKeys);
+        activeFolderKeysRef.current = newKeys;
+        setColumns(rebuildColumnsFromKeys(tree, newKeys));
+        if (newKeys.length > 0) {
+            const folderPath = newKeys[newKeys.length - 1]!;
+            const encoded = folderPath.split(/[\\/]/).map(encodeURIComponent).join('/');
+            history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks/${encoded}`);
+            setSelectedFolderPath(folderPath);
+        } else {
+            history.replaceState(null, '', `#repos/${encodeURIComponent(wsId)}/tasks`);
+            setSelectedFolderPath(null);
+        }
+        onNavigateBack?.();
+    };
+
     const getColumnFolder = (colIndex: number): TaskFolder | null => {
         if (colIndex === 0) return tree;
         const parentKey = activeFolderKeys[colIndex - 1];
@@ -244,13 +264,15 @@ export function TaskTree({
             data-testid="task-tree"
         >
             {visibleStartIndex > 0 && (
-                <div
+                <button
                     data-testid="column-overflow-indicator"
-                    className="flex-shrink-0 flex items-start pt-2 px-1 text-xs text-[#848484] dark:text-[#666] border-r border-[#e0e0e0] dark:border-[#3c3c3c] select-none"
+                    className="flex-shrink-0 flex items-start pt-2 px-1 text-xs text-[#848484] dark:text-[#666] border-r border-[#e0e0e0] dark:border-[#3c3c3c] select-none cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a]"
                     title={`${visibleStartIndex} hidden column${visibleStartIndex > 1 ? 's' : ''}`}
+                    onClick={handleNavigateBack}
+                    aria-label="Go back"
                 >
                     ‹ {visibleStartIndex}
-                </div>
+                </button>
             )}
             {visibleColumns.map((colNodes, relIndex) => {
                 const colIndex = visibleStartIndex + relIndex;

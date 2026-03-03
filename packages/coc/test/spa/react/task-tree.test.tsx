@@ -483,4 +483,100 @@ describe('TaskTree', () => {
 
         expect(events).toHaveLength(0);
     });
+
+    it('clicking overflow indicator calls onNavigateBack and collapses one column', () => {
+        const onNavigateBack = vi.fn();
+        vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        renderTaskTree(mockTree, { onNavigateBack });
+
+        // Navigate feature1 → sub to get 3 columns (overflow indicator appears)
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        fireEvent.click(screen.getByTestId('task-tree-item-sub'));
+
+        const indicator = screen.getByTestId('column-overflow-indicator');
+        expect(indicator.tagName.toLowerCase()).toBe('button');
+        fireEvent.click(indicator);
+
+        expect(onNavigateBack).toHaveBeenCalledTimes(1);
+        // Should now show cols 0 and 1 with no overflow indicator
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+        expect(screen.queryByTestId('miller-column-2')).toBeNull();
+        expect(screen.queryByTestId('column-overflow-indicator')).toBeNull();
+    });
+
+    it('clicking overflow indicator without onNavigateBack prop still navigates back', () => {
+        vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        renderTaskTree(mockTree); // no onNavigateBack passed
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        fireEvent.click(screen.getByTestId('task-tree-item-sub'));
+
+        expect(screen.getByTestId('column-overflow-indicator')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('column-overflow-indicator'));
+
+        // Should navigate back without errors
+        expect(screen.queryByTestId('column-overflow-indicator')).toBeNull();
+        expect(screen.getByTestId('miller-column-0')).toBeTruthy();
+        expect(screen.getByTestId('miller-column-1')).toBeTruthy();
+    });
+
+    it('back navigation updates URL hash to parent folder', () => {
+        const replaceSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+
+        render(
+            <Wrap>
+                <TaskTree tree={mockTree} commentCounts={{}} wsId="ws1" />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        fireEvent.click(screen.getByTestId('task-tree-item-sub'));
+
+        replaceSpy.mockClear();
+        fireEvent.click(screen.getByTestId('column-overflow-indicator'));
+
+        // After back nav from 'feature1/sub' → should navigate to 'feature1'
+        expect(replaceSpy).toHaveBeenCalledWith(null, '', '#repos/ws1/tasks/feature1');
+    });
+
+    it('back navigation to root updates URL hash to tasks base', () => {
+        const replaceSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        // Tree with only one level of nesting so 2 folders = 3 cols
+        const shallow = makeTree({
+            children: [
+                makeTree({
+                    name: 'alpha',
+                    relativePath: 'alpha',
+                    children: [
+                        makeTree({ name: 'beta', relativePath: 'alpha/beta' }),
+                    ],
+                }),
+            ],
+        });
+
+        render(
+            <Wrap>
+                <TaskTree tree={shallow} commentCounts={{}} wsId="ws1" />
+                <OpenFilePathReader />
+            </Wrap>
+        );
+
+        fireEvent.click(screen.getByTestId('task-tree-item-alpha'));
+        fireEvent.click(screen.getByTestId('task-tree-item-beta'));
+
+        // 3 columns → overflow indicator shows 1 hidden column
+        const indicator = screen.getByTestId('column-overflow-indicator');
+        expect(indicator.textContent?.trim()).toContain('1');
+
+        replaceSpy.mockClear();
+        fireEvent.click(indicator);
+
+        // After going back from alpha/beta → should navigate to alpha
+        expect(replaceSpy).toHaveBeenCalledWith(null, '', '#repos/ws1/tasks/alpha');
+
+        // Now only 2 columns, no overflow indicator
+        expect(screen.queryByTestId('column-overflow-indicator')).toBeNull();
+    });
 });
