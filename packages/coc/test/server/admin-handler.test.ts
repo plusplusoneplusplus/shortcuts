@@ -798,6 +798,91 @@ describe('Admin Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.error).toContain('chat.followUpSuggestions.count');
         });
+
+        it('should accept toolCompactness 0', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ toolCompactness: 0 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.toolCompactness).toBe(0);
+            expect(body.sources.toolCompactness).toBe('file');
+        });
+
+        it('should accept toolCompactness 2', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ toolCompactness: 2 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.toolCompactness).toBe(2);
+        });
+
+        it('should reject toolCompactness 3', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ toolCompactness: 3 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('toolCompactness');
+        });
+
+        it('should reject non-integer toolCompactness (1.5)', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ toolCompactness: 1.5 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('toolCompactness');
+        });
+
+        it('should persist toolCompactness and not lose other config', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            // First PUT: set model
+            await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'gpt-4' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Second PUT: set toolCompactness
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ toolCompactness: 1 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.toolCompactness).toBe(1);
+            expect(body.resolved.model).toBe('gpt-4');
+        });
     });
 
     // ========================================================================

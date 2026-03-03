@@ -36,6 +36,8 @@ export interface CLIConfig {
     persist?: boolean;
     /** Show report_intent tool calls in conversation views (default: false) */
     showReportIntent?: boolean;
+    /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal */
+    toolCompactness?: 0 | 1 | 2;
     /** Chat settings */
     chat?: {
         followUpSuggestions?: {
@@ -69,6 +71,7 @@ export interface ResolvedCLIConfig {
     timeout?: number;
     persist: boolean;
     showReportIntent: boolean;
+    toolCompactness: 0 | 1 | 2;
     chat: {
         followUpSuggestions: {
             enabled: boolean;
@@ -104,6 +107,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     approvePermissions: false,
     persist: true,
     showReportIntent: false,
+    toolCompactness: 0,
     chat: {
         followUpSuggestions: {
             enabled: true,
@@ -128,7 +132,7 @@ export type ConfigFieldSource = 'default' | 'file';
  */
 export const CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
-    'timeout', 'persist', 'showReportIntent',
+    'timeout', 'persist', 'showReportIntent', 'toolCompactness',
     'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
     'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
 ] as const;
@@ -198,7 +202,7 @@ function validateConfig(config: unknown): CLIConfig | undefined {
     if (typeof config !== 'object' || config === null) {
         return undefined;
     }
-    return validateConfigWithSchema(config);
+    return validateConfigWithSchema(config) as CLIConfig;
 }
 
 /**
@@ -241,6 +245,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         timeout: override.timeout ?? base.timeout,
         persist: override.persist ?? base.persist,
         showReportIntent: override.showReportIntent ?? base.showReportIntent,
+        toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2,
         chat: {
             followUpSuggestions: {
                 enabled: override.chat?.followUpSuggestions?.enabled ?? base.chat.followUpSuggestions.enabled,

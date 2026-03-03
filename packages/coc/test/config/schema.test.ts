@@ -191,6 +191,45 @@ describe('CLIConfigSchema', () => {
     });
 
     // ========================================================================
+    // toolCompactness
+    // ========================================================================
+
+    it('validates toolCompactness 0', () => {
+        const result = CLIConfigSchema.parse({ toolCompactness: 0 });
+        expect(result.toolCompactness).toBe(0);
+    });
+
+    it('validates toolCompactness 1', () => {
+        const result = CLIConfigSchema.parse({ toolCompactness: 1 });
+        expect(result.toolCompactness).toBe(1);
+    });
+
+    it('validates toolCompactness 2', () => {
+        const result = CLIConfigSchema.parse({ toolCompactness: 2 });
+        expect(result.toolCompactness).toBe(2);
+    });
+
+    it('rejects toolCompactness 3', () => {
+        expect(() => CLIConfigSchema.parse({ toolCompactness: 3 }))
+            .toThrow();
+    });
+
+    it('rejects toolCompactness -1', () => {
+        expect(() => CLIConfigSchema.parse({ toolCompactness: -1 }))
+            .toThrow();
+    });
+
+    it('rejects non-integer toolCompactness (1.5)', () => {
+        expect(() => CLIConfigSchema.parse({ toolCompactness: 1.5 }))
+            .toThrow();
+    });
+
+    it('rejects string toolCompactness', () => {
+        expect(() => CLIConfigSchema.parse({ toolCompactness: '1' }))
+            .toThrow();
+    });
+
+    // ========================================================================
     // chat.followUpSuggestions
     // ========================================================================
 

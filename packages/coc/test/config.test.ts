@@ -49,6 +49,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.approvePermissions).toBe(false);
             expect(DEFAULT_CONFIG.persist).toBe(true);
             expect(DEFAULT_CONFIG.showReportIntent).toBe(false);
+            expect(DEFAULT_CONFIG.toolCompactness).toBe(0);
             expect(DEFAULT_CONFIG.model).toBeUndefined();
             expect(DEFAULT_CONFIG.mcpConfig).toBeUndefined();
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
@@ -329,6 +330,18 @@ timeout: 300
             expect(result.showReportIntent).toBe(false);
         });
 
+        it('should override toolCompactness', () => {
+            const override: CLIConfig = { toolCompactness: 2 };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.toolCompactness).toBe(2);
+        });
+
+        it('should preserve toolCompactness default when not overridden', () => {
+            const override: CLIConfig = { model: 'test' };
+            const result = mergeConfig(DEFAULT_CONFIG, override);
+            expect(result.toolCompactness).toBe(0);
+        });
+
         it('should override chat.followUpSuggestions.enabled from file', () => {
             const override: CLIConfig = { chat: { followUpSuggestions: { enabled: false } } };
             const result = mergeConfig(DEFAULT_CONFIG, override);
@@ -481,6 +494,7 @@ timeout: 300
                 'timeout: 600',
                 'persist: false',
                 'showReportIntent: true',
+                'toolCompactness: 1',
                 'chat:',
                 '  followUpSuggestions:',
                 '    enabled: false',
@@ -496,6 +510,24 @@ timeout: 300
             for (const key of CONFIG_SOURCE_KEYS) {
                 expect(result.sources[key]).toBe('file');
             }
+        });
+
+        it('should include toolCompactness in resolved with file source', () => {
+            const configPath = path.join(tmpDir, 'toolcompactness.yaml');
+            fs.writeFileSync(configPath, 'toolCompactness: 1\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.resolved.toolCompactness).toBe(1);
+            expect(result.sources['toolCompactness']).toBe('file');
+        });
+
+        it('should report default source for toolCompactness when absent', () => {
+            const configPath = path.join(tmpDir, 'no-toolcompactness.yaml');
+            fs.writeFileSync(configPath, 'model: test\n');
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.resolved.toolCompactness).toBe(0);
+            expect(result.sources['toolCompactness']).toBe('default');
         });
     });
 

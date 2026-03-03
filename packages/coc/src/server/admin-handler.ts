@@ -207,6 +207,16 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     errors.push('showReportIntent must be a boolean');
                 }
             }
+            if ('toolCompactness' in body) {
+                if (
+                    typeof body.toolCompactness !== 'number' ||
+                    !Number.isInteger(body.toolCompactness) ||
+                    body.toolCompactness < 0 ||
+                    body.toolCompactness > 2
+                ) {
+                    errors.push('toolCompactness must be 0, 1, or 2');
+                }
+            }
 
             // Validate nested chat.followUpSuggestions fields
             const chatBody = body['chat.followUpSuggestions.enabled'] !== undefined || body['chat.followUpSuggestions.count'] !== undefined
@@ -240,6 +250,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
             if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
+            if ('toolCompactness' in body) { existing.toolCompactness = body.toolCompactness as CLIConfig['toolCompactness']; }
 
             // Handle nested chat.followUpSuggestions fields
             if ('chat.followUpSuggestions.enabled' in body) {
