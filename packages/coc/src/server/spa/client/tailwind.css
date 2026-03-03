@@ -17,19 +17,24 @@
     display: none;
 }
 
+/* Compact tool group outer wrapper — Minimal mode (compactness === 2) */
+.tool-call-group--minimal {
+    /* Scope anchor for minimal-mode child selectors */
+}
+
 /* Compact tool group header — Minimal mode (compactness === 2) */
-.tool-group-header--minimal {
+.tool-call-group-header--minimal {
     max-height: 1.5rem;
     overflow: hidden;
     transition: max-height 0.2s ease;
 }
 
-.tool-group-header--minimal:hover,
-.tool-group-header--minimal:focus-within {
+.tool-call-group-header--minimal:hover,
+.tool-call-group-header--minimal:focus-within {
     max-height: 8rem;
 }
 
-.dark .tool-group-header--minimal {
+.dark .tool-call-group-header--minimal {
     /* inherits same geometry; dark palette is handled by Tailwind utility classes
        on the element itself inside ToolCallGroupView */
 }
