@@ -35,6 +35,7 @@ import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService } from '@plus
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { computeRepoId } from './queue-persistence';
+import { defaultIsExclusive } from './queue-executor-bridge';
 import { SchedulePersistence } from './schedule-persistence';
 import { ScheduleManager } from './schedule-manager';
 import { registerScheduleRoutes } from './schedule-handler';
@@ -154,6 +155,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         maxQueueSize: 0,  // unlimited
         keepHistory: true,
         maxHistorySize: options.queue?.historyLimit ?? 100,
+        isExclusive: defaultIsExclusive,
     });
 
     // Resolve config to derive default timeout for AI tasks

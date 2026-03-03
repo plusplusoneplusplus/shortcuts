@@ -327,12 +327,21 @@ export interface TaskQueueManagerOptions {
      * ```
      */
     getTaskRepoId?: (task: QueuedTask) => string | undefined;
+    /**
+     * Optional callback to classify a task as exclusive.
+     * When provided, non-exclusive tasks (those returning false) are inserted
+     * immediately before the first exclusive task in the queue, so they are
+     * not blocked behind an exclusive-limiter backlog.
+     * Falls back to standard priority insertion when no exclusive tasks are queued.
+     * If not provided, all tasks use standard priority insertion.
+     */
+    isExclusive?: (task: QueuedTask) => boolean;
 }
 
 /**
  * Default queue manager options
  */
-export const DEFAULT_QUEUE_MANAGER_OPTIONS: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId'>> = {
+export const DEFAULT_QUEUE_MANAGER_OPTIONS: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId' | 'isExclusive'>> = {
     maxQueueSize: 0,
     keepHistory: true,
     maxHistorySize: 100,

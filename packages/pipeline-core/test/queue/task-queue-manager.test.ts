@@ -2054,6 +2054,110 @@ describe('pause markers', () => {
 });
 
 // ============================================================================
+// insertBeforeFirstExclusive (isExclusive option)
+// ============================================================================
+
+describe('insertBeforeFirstExclusive (isExclusive option)', () => {
+    // A simple policy: tasks of type 'readonly-chat' are shared; everything else exclusive.
+    const isExclusive = (t: QueuedTask) => t.type !== 'readonly-chat';
+
+    let m: TaskQueueManager;
+    beforeEach(() => {
+        m = new TaskQueueManager({ isExclusive });
+    });
+
+    it('non-exclusive task is inserted before the first exclusive task', () => {
+        m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex1' }));
+        m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex2' }));
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc1' }));
+
+        const queued = m.getQueued();
+        expect(queued.map(t => t.displayName)).toEqual(['rc1', 'ex1', 'ex2']);
+    });
+
+    it('non-exclusive task falls back to priority order when no exclusive tasks are present', () => {
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc1' }));
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc2' }));
+
+        const queued = m.getQueued();
+        expect(queued.map(t => t.displayName)).toEqual(['rc1', 'rc2']);
+    });
+
+    it('falls back to priority insertion on empty queue', () => {
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc1' }));
+        expect(m.getQueued()).toHaveLength(1);
+    });
+
+    it('multiple non-exclusive tasks queued in sequence maintain FIFO relative to each other', () => {
+        m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex1' }));
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc1' }));
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc2' }));
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc3' }));
+
+        const queued = m.getQueued();
+        // All readonly-chats end up before ex1, in FIFO order relative to each other
+        expect(queued.map(t => t.displayName)).toEqual(['rc1', 'rc2', 'rc3', 'ex1']);
+    });
+
+    it('existing exclusive tasks preserve their relative ordering', () => {
+        m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex1' }));
+        m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex2' }));
+        m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex3' }));
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc1' }));
+
+        const queued = m.getQueued();
+        expect(queued.map(t => t.displayName)).toEqual(['rc1', 'ex1', 'ex2', 'ex3']);
+    });
+
+    it('exclusive tasks still use standard priority insertion', () => {
+        m.enqueue(createTestTask({ type: 'run-pipeline', priority: 'low', displayName: 'ex-low' }));
+        m.enqueue(createTestTask({ type: 'run-pipeline', priority: 'high', displayName: 'ex-high' }));
+
+        const queued = m.getQueued();
+        expect(queued.map(t => t.displayName)).toEqual(['ex-high', 'ex-low']);
+    });
+
+    it('markRetry re-insertion uses insertByPriority (not insertBeforeFirstExclusive)', () => {
+        const exId = m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex1' }));
+        m.markStarted(exId);
+        m.markRetry(exId, true);
+
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc1' }));
+
+        const queued = m.getQueued();
+        // ex1 was re-inserted via insertByPriority (normal priority), rc1 jumps before it
+        expect(queued.find(t => t.displayName === 'rc1')).toBeDefined();
+        expect(queued.find(t => t.displayName === 'ex1')).toBeDefined();
+        // rc1 should be before ex1 (rc1 inserts before first exclusive)
+        const rc1Idx = queued.findIndex(t => t.displayName === 'rc1');
+        const ex1Idx = queued.findIndex(t => t.displayName === 'ex1');
+        expect(rc1Idx).toBeLessThan(ex1Idx);
+    });
+
+    it('without isExclusive option, all tasks use standard priority insertion', () => {
+        const plain = new TaskQueueManager();
+        plain.enqueue(createTestTask({ type: 'run-pipeline', priority: 'low', displayName: 'ex-low' }));
+        plain.enqueue(createTestTask({ type: 'readonly-chat', priority: 'normal', displayName: 'rc1' }));
+
+        const queued = plain.getQueued();
+        // rc1 has higher priority → comes first via standard insertion
+        expect(queued[0].displayName).toBe('rc1');
+    });
+
+    it('pause markers are treated as transparent (not exclusive)', () => {
+        m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ex1' }));
+        m.insertPauseMarker(0); // insert pause marker at position 0 (before ex1)
+        m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'rc1' }));
+
+        // rc1 should appear before ex1 (the pause marker is at pos 0, ex1 at pos 1, rc1 inserts before ex1)
+        const queued = m.getQueued();
+        const rc1Idx = queued.findIndex(t => t.displayName === 'rc1');
+        const ex1Idx = queued.findIndex(t => t.displayName === 'ex1');
+        expect(rc1Idx).toBeLessThan(ex1Idx);
+    });
+});
+
+// ============================================================================
 // Test Helpers
 // ============================================================================
 

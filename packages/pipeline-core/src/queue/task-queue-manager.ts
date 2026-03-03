@@ -52,17 +52,20 @@ export class TaskQueueManager extends EventEmitter {
     /** Callbacks waiting for the queue to become idle */
     private idleResolvers: Array<() => void> = [];
     /** Configuration options */
-    private readonly options: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId'>>;
+    private readonly options: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId' | 'isExclusive'>>;
     /** Set of paused repository IDs */
     private pausedRepos = new Set<string>();
     /** Function to extract repo ID from a task (injected) */
     private readonly getTaskRepoId?: (task: QueuedTask) => string | undefined;
+    /** Optional function to classify a task as exclusive (for non-exclusive fast-path insertion) */
+    private readonly isExclusiveFn?: (task: QueuedTask) => boolean;
 
     constructor(options: TaskQueueManagerOptions = {}) {
         super();
-        const { getTaskRepoId, ...rest } = options;
+        const { getTaskRepoId, isExclusive, ...rest } = options;
         this.options = { ...DEFAULT_QUEUE_MANAGER_OPTIONS, ...rest };
         this.getTaskRepoId = getTaskRepoId;
+        this.isExclusiveFn = isExclusive;
     }
 
     // ========================================================================
@@ -93,8 +96,13 @@ export class TaskQueueManager extends EventEmitter {
             retryCount: 0,
         };
 
-        // Insert in priority order
-        this.insertByPriority(task);
+        // Insert: non-exclusive tasks jump before the first exclusive task in the queue
+        // so they are not blocked behind an exclusive-limiter backlog.
+        if (this.isExclusiveFn && !this.isExclusiveFn(task)) {
+            this.insertBeforeFirstExclusive(task);
+        } else {
+            this.insertByPriority(task);
+        }
 
         // Emit events
         this.emitChange('added', task);
@@ -891,6 +899,28 @@ export class TaskQueueManager extends EventEmitter {
             for (const resolve of resolvers) {
                 resolve();
             }
+        }
+    }
+
+    /**
+     * Insert a non-exclusive task right before the first exclusive task in the
+     * queue so it is not blocked behind the exclusive-limiter backlog.
+     * Falls back to insertByPriority if there are no exclusive tasks ahead.
+     * Pause markers are treated as transparent (not exclusive).
+     */
+    private insertBeforeFirstExclusive(task: QueuedTask): void {
+        if (!this.isExclusiveFn) {
+            this.insertByPriority(task);
+            return;
+        }
+        const idx = this.queue.findIndex(
+            item => !isPauseMarker(item) && this.isExclusiveFn!(item as QueuedTask)
+        );
+        if (idx === -1) {
+            // No exclusive tasks in queue — standard priority insertion
+            this.insertByPriority(task);
+        } else {
+            this.queue.splice(idx, 0, task);
         }
     }
 
