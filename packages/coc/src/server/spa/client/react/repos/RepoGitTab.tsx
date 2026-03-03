@@ -19,6 +19,7 @@ import { CommitDetail } from './CommitDetail';
 import { BranchChanges } from './BranchChanges';
 import { BranchFileDiff } from './BranchFileDiff';
 import { GitPanelHeader } from './GitPanelHeader';
+import { WorkingTree } from './WorkingTree';
 import { useApp } from '../context/AppContext';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
@@ -359,6 +360,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     onDefaultBranch={onDefaultBranch}
                     onFileSelect={handleFileSelect}
                     selectedFile={selectedBranchFile}
+                />
+                <WorkingTree
+                    workspaceId={workspaceId}
+                    onRefresh={refreshAll}
                 />
                 {commitListPanel}
             </aside>

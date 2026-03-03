@@ -8,6 +8,8 @@ export type { CommitTooltipProps } from './CommitTooltip';
 export { BranchChanges } from './BranchChanges';
 export { BranchFileDiff } from './BranchFileDiff';
 export { GitPanelHeader } from './GitPanelHeader';
+export { WorkingTree } from './WorkingTree';
+export type { WorkingTreeChange } from './WorkingTree';
 export type { CommitDetailProps } from './CommitDetail';
 export type { BranchFileDiffProps } from './BranchFileDiff';
 export { UnifiedDiffViewer } from './UnifiedDiffViewer';

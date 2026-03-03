@@ -15,7 +15,7 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
-import { deserializeProcess, GitRangeService, BranchService } from '@plusplusoneplusplus/pipeline-core';
+import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
@@ -911,6 +911,103 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             const result = await branchService.popStash(ws.rootPath);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Working-tree endpoints (via WorkingTreeService)
+    // ------------------------------------------------------------------
+
+    const workingTreeService = new WorkingTreeService();
+
+    // GET /api/workspaces/:id/git/changes — All working-tree changes
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            const changes = await workingTreeService.getAllChanges(ws.rootPath);
+            sendJSON(res, 200, { changes });
+        },
+    });
+
+    // POST /api/workspaces/:id/git/changes/stage — Stage a file
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/stage$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            let body: any = {};
+            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+
+            const result = await workingTreeService.stageFile(ws.rootPath, body.filePath);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/changes/unstage — Unstage a file
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/unstage$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            let body: any = {};
+            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+
+            const result = await workingTreeService.unstageFile(ws.rootPath, body.filePath);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/changes/discard — Discard unstaged changes
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/discard$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            let body: any = {};
+            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+
+            const result = await workingTreeService.discardChanges(ws.rootPath, body.filePath);
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // DELETE /api/workspaces/:id/git/changes/untracked — Delete an untracked file
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/untracked$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            let body: any = {};
+            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+
+            const result = await workingTreeService.deleteUntrackedFile(ws.rootPath, body.filePath);
             sendJSON(res, 200, result);
         },
     });

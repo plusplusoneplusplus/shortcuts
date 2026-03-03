@@ -36,3 +36,4 @@ export {
 export { GitLogService } from './git-log-service';
 export { GitRangeService } from './git-range-service';
 export { BranchService } from './branch-service';
+export { WorkingTreeService, parsePorcelain } from './working-tree-service';
