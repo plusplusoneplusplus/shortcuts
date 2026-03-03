@@ -64,7 +64,7 @@ export async function parseBody(req: http.IncomingMessage): Promise<any> {
         req.on('end', () => {
             try {
                 const raw = Buffer.concat(chunks).toString('utf-8').trim();
-                if (!raw) { reject(new Error('Empty body')); return; }
+                if (!raw) { resolve({}); return; }
                 resolve(JSON.parse(raw));
             } catch {
                 reject(new Error('Invalid JSON'));
@@ -786,7 +786,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             try {
                 body = await parseBody(req);
             } catch {
-                return handleAPIError(res, invalidJSON());
+                body = {}; // empty body is acceptable; setUpstream defaults to false
             }
 
             const setUpstream = body.setUpstream === true;
@@ -811,7 +811,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             try {
                 body = await parseBody(req);
             } catch {
-                return handleAPIError(res, invalidJSON());
+                body = {}; // empty body is acceptable; rebase defaults to false
             }
 
             const rebase = body.rebase === true;
@@ -836,7 +836,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             try {
                 body = await parseBody(req);
             } catch {
-                return handleAPIError(res, invalidJSON());
+                body = {}; // empty body is acceptable; remote defaults to undefined
             }
 
             const remote: string | undefined = typeof body.remote === 'string' ? body.remote : undefined;

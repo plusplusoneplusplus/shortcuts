@@ -192,6 +192,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         try {
             const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/push`, {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
             });
             if (result.success === false) throw new Error(result.error || 'Push failed');
             refreshAll();

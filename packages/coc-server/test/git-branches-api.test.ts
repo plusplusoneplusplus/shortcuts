@@ -592,6 +592,19 @@ describe('Git Branches API endpoints', () => {
             expect(res.status).toBe(200);
             expect(res.json()).toEqual({ success: false, error: 'no remote' });
         });
+
+        it('should succeed with empty body (no Content-Type, no body)', async () => {
+            mockPush.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/push`, {
+                method: 'POST',
+                // no body, no headers — regression test for 400 Bad Request bug
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockPush).toHaveBeenCalledWith(WORKSPACE_ROOT, false);
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -621,6 +634,19 @@ describe('Git Branches API endpoints', () => {
             });
 
             expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
+        });
+
+        it('should succeed with empty body (no Content-Type, no body)', async () => {
+            mockPull.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+                method: 'POST',
+                // no body, no headers — regression test for 400 Bad Request bug
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, false);
         });
     });
 
