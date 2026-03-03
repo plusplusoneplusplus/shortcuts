@@ -20,6 +20,8 @@ import { ChatSessionSidebar } from '../chat/ChatSessionSidebar';
 import { useChatSessions } from '../chat/useChatSessions';
 import { useChatReadState } from '../chat/useChatReadState';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useVisualViewport } from '../hooks/useVisualViewport';
+import { cn } from '../shared/cn';
 import { useQueue } from '../context/QueueContext';
 import { usePreferences } from '../hooks/usePreferences';
 import { SlashCommandMenu } from './SlashCommandMenu';
@@ -70,6 +72,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { model: savedModel, setModel: persistModel } = usePreferences();
     const { isMobile } = useBreakpoint();
+    const keyboardHeight = useVisualViewport();
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -731,7 +734,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     );
 
     const renderConversation = () => (
-        <div className="flex flex-col min-h-0 flex-1">
+        <div className="flex flex-col min-h-0 flex-1" style={isMobile && keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <div className="flex items-center gap-2">
@@ -814,7 +817,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             </div>
 
             {/* Input area */}
-            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
+            <div className={cn("border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2", isMobile && "pb-[calc(0.75rem+56px)]")}>
                 {error && <div className="text-xs text-red-500">{error}</div>}
                 {sessionExpired ? (
                     <div className="flex items-center justify-center gap-2 py-2 text-sm text-[#848484]">
@@ -853,6 +856,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); }
                                     }}
                                     onPaste={followUpImagePaste.addFromPaste}
+                                    onFocus={isMobile ? e => e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) : undefined}
                                     className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
                                 />
                                 <SlashCommandMenu
