@@ -476,7 +476,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                                     <div className="flex items-center justify-between gap-1.5 text-xs">
                                         <span className="flex items-center gap-1 min-w-0 truncate">
                                             <span className="shrink-0">
-                                                {task.type === 'chat' ? '💬' : task.status === 'completed' ? '✅' : task.status === 'failed' ? '❌' : '🚫'}
+                                                {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                             </span>
                                             <span className="truncate">
                                                 {task.displayName || task.type || 'Task'}
@@ -559,6 +559,23 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     );
 }
 
+/** Return a type-specific icon for a task. */
+function getTaskTypeIcon(task: any): string {
+    const type = task.type as string;
+    const payload = task.payload || {};
+    if (type === 'chat' || type === 'readonly-chat') return '💬';
+    if (type === 'follow-prompt') {
+        if (payload.skillName || (Array.isArray(payload.skillNames) && payload.skillNames.length)) return '🔧';
+        if (payload.promptFilePath) return '↩️';
+        return '📝';
+    }
+    if (type === 'code-review') return '🔍';
+    if (type === 'resolve-comments') return '💬';
+    if (type === 'ai-clarification') return '💡';
+    if (type === 'run-pipeline') return '▶️';
+    return '🤖';
+}
+
 /** Extract a short preview of the user prompt from the task payload. */
 function getTaskPromptPreview(task: any): string {
     const text = task.prompt || task.payload?.promptContent || task.payload?.prompt || '';
@@ -575,7 +592,7 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
     onContextMenu?: (e: React.MouseEvent) => void;
 }) {
     const name = (task.displayName || task.type || 'Task').substring(0, 35);
-    const icon = task.type === 'chat' ? '💬' : status === 'running' ? '🔄' : task.frozen ? '❄️' : '⏳';
+    const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
     let elapsed = '';
     if (status === 'running' && task.startedAt) {

@@ -86,18 +86,65 @@ describe('RepoQueueTab chat-type task inclusion', () => {
     });
 
     describe('chat icon in QueueTaskItem', () => {
-        it('uses 💬 icon for chat-type tasks in QueueTaskItem', () => {
+        it('uses getTaskTypeIcon(task) for icons in QueueTaskItem', () => {
             const itemIdx = source.indexOf('function QueueTaskItem');
             const itemBlock = source.slice(itemIdx, itemIdx + 500);
-            expect(itemBlock).toContain("task.type === 'chat' ? '💬'");
+            expect(itemBlock).toContain('getTaskTypeIcon(task)');
+        });
+
+        it('getTaskTypeIcon maps chat type to 💬', () => {
+            const helperIdx = source.indexOf('function getTaskTypeIcon');
+            const helperBlock = source.slice(helperIdx, helperIdx + 600);
+            expect(helperBlock).toContain("'chat'");
+            expect(helperBlock).toContain("'💬'");
         });
     });
 
     describe('chat icon in history section', () => {
-        it('uses 💬 icon for chat-type completed tasks in history list', () => {
+        it('uses getTaskTypeIcon(task) for icons in history list', () => {
             const historyIdx = source.indexOf('Completed Tasks');
             const historyBlock = source.slice(historyIdx, historyIdx + 1200);
-            expect(historyBlock).toContain("task.type === 'chat' ? '💬'");
+            expect(historyBlock).toContain('getTaskTypeIcon(task)');
+        });
+    });
+
+    describe('getTaskTypeIcon helper', () => {
+        it('defines getTaskTypeIcon function in the source', () => {
+            expect(source).toContain('function getTaskTypeIcon');
+        });
+
+        it('maps follow-prompt with skillName to 🔧', () => {
+            const helperIdx = source.indexOf('function getTaskTypeIcon');
+            const helperBlock = source.slice(helperIdx, helperIdx + 600);
+            expect(helperBlock).toContain("'🔧'");
+            expect(helperBlock).toContain('skillName');
+        });
+
+        it('maps follow-prompt with promptFilePath to ↩️', () => {
+            const helperIdx = source.indexOf('function getTaskTypeIcon');
+            const helperBlock = source.slice(helperIdx, helperIdx + 600);
+            expect(helperBlock).toContain("'↩️'");
+            expect(helperBlock).toContain('promptFilePath');
+        });
+
+        it('maps code-review to 🔍', () => {
+            const helperIdx = source.indexOf('function getTaskTypeIcon');
+            const helperBlock = source.slice(helperIdx, helperIdx + 600);
+            expect(helperBlock).toContain("'code-review'");
+            expect(helperBlock).toContain("'🔍'");
+        });
+
+        it('maps run-pipeline to ▶️', () => {
+            const helperIdx = source.indexOf('function getTaskTypeIcon');
+            const helperBlock = source.slice(helperIdx, helperIdx + 900);
+            expect(helperBlock).toContain("'run-pipeline'");
+            expect(helperBlock).toContain("'▶️'");
+        });
+
+        it('has fallback icon 🤖 for unknown types', () => {
+            const helperIdx = source.indexOf('function getTaskTypeIcon');
+            const helperBlock = source.slice(helperIdx, helperIdx + 900);
+            expect(helperBlock).toContain("'🤖'");
         });
     });
 
