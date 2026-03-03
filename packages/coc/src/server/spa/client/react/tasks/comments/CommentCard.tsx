@@ -11,8 +11,7 @@ import { CommentReply } from './CommentReply';
 import { MarkdownView } from '../../processes/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import { AICommandMenu } from './AICommandMenu';
-import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
-import { CATEGORY_INFO, getCommentCategory } from '../../../task-comments-types';
+import type { TaskComment } from '../../../task-comments-types';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
@@ -68,8 +67,6 @@ export function CommentCard({
     const [showAllReplies, setShowAllReplies] = useState(false);
     const [aiExpanded, setAiExpanded] = useState(false);
 
-    const category: TaskCommentCategory = getCommentCategory(comment);
-    const info = CATEGORY_INFO[category];
     const isResolved = comment.status === 'resolved';
     const replies = comment.replies || [];
     const visibleReplies = showAllReplies || replies.length <= 2 ? replies : replies.slice(-2);
@@ -94,11 +91,10 @@ export function CommentCard({
             role="article"
             aria-label={`Comment by ${comment.author || 'Anonymous'}`}
         >
-            {/* Header: status dot + category + author + time + actions */}
+            {/* Header: status dot + author + time + actions */}
             <div className="flex items-center gap-1.5">
                 <span className={cn('w-2 h-2 rounded-full shrink-0', isResolved ? 'bg-green-500' : 'bg-[#0078d4]')}
                     title={isResolved ? 'Resolved' : 'Open'} />
-                <span className="text-[10px] text-[#848484]" title={info.label}>{info.icon}</span>
                 <span className="text-[10px] text-[#848484] truncate">{comment.author || 'Anonymous'}</span>
                 <span className="text-[10px] text-[#a0a0a0] ml-auto shrink-0">{formatRelative(comment.createdAt)}</span>
             </div>

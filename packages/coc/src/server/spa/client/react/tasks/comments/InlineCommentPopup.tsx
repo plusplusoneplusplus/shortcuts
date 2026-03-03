@@ -6,7 +6,6 @@ import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Button } from '../../shared';
 import type { TaskCommentCategory } from '../../../task-comments-types';
-import { CATEGORY_INFO, ALL_CATEGORIES } from '../../../task-comments-types';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 
@@ -51,7 +50,6 @@ export interface InlineCommentPopupProps {
 
 export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineCommentPopupProps) {
     const [text, setText] = useState('');
-    const [category, setCategory] = useState<TaskCommentCategory>('general');
     const [clampedPos, setClampedPos] = useState(position);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const popupRef = useRef<HTMLDivElement>(null);
@@ -77,7 +75,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [text, category]);
+    }, [text]);
 
     // Click outside closes
     useEffect(() => {
@@ -99,33 +97,11 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
     const handleSubmit = () => {
         const trimmed = text.trim();
         if (!trimmed) return;
-        onSubmit(trimmed, category);
+        onSubmit(trimmed, 'general');
     };
 
     const popupContent = (
         <>
-            {/* Category selector */}
-            <div className="flex gap-1 flex-wrap">
-                {ALL_CATEGORIES.map(cat => {
-                    const info = CATEGORY_INFO[cat];
-                    return (
-                        <button
-                            key={cat}
-                            onClick={() => setCategory(cat)}
-                            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                                category === cat
-                                    ? 'bg-[#0078d4] text-white'
-                                    : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
-                            } ${isMobile ? 'min-h-[44px] flex items-center' : ''}`}
-                            title={info.label}
-                            data-testid={`popup-category-${cat}`}
-                        >
-                            {info.icon} {info.label}
-                        </button>
-                    );
-                })}
-            </div>
-
             {/* Textarea */}
             <textarea
                 ref={textareaRef}

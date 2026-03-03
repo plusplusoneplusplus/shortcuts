@@ -101,19 +101,7 @@ describe('InlineCommentPopup', () => {
         expect(screen.getByTestId('comment-textarea')).toBeTruthy();
     });
 
-    it('renders category buttons', () => {
-        render(
-            <InlineCommentPopup
-                position={{ top: 100, left: 200 }}
-                onSubmit={vi.fn()}
-                onCancel={vi.fn()}
-            />
-        );
-        expect(screen.getByTestId('popup-category-bug')).toBeTruthy();
-        expect(screen.getByTestId('popup-category-general')).toBeTruthy();
-    });
-
-    it('calls onSubmit with text and category', () => {
+    it('calls onSubmit with text and default category general', () => {
         const onSubmit = vi.fn();
         render(
             <InlineCommentPopup
@@ -126,14 +114,11 @@ describe('InlineCommentPopup', () => {
         const textarea = screen.getByTestId('comment-textarea');
         fireEvent.change(textarea, { target: { value: 'My comment' } });
 
-        // Click the bug category
-        fireEvent.click(screen.getByTestId('popup-category-bug'));
-
         // Click Submit button
         const submitBtn = screen.getByText(/Submit/);
         fireEvent.click(submitBtn);
 
-        expect(onSubmit).toHaveBeenCalledWith('My comment', 'bug');
+        expect(onSubmit).toHaveBeenCalledWith('My comment', 'general');
     });
 
     it('does not call onSubmit with empty text', () => {

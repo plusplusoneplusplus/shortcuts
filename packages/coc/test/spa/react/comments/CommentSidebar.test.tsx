@@ -94,23 +94,6 @@ describe('CommentSidebar', () => {
         expect(screen.getByText('resolved one')).toBeTruthy();
     });
 
-    it('filters by category', () => {
-        const comments = [
-            makeComment({ id: 'c1', category: 'bug', comment: 'bug comment' }),
-            makeComment({ id: 'c2', category: 'question', comment: 'question comment' }),
-        ];
-        render(
-            <CommentSidebar
-                taskId="task1" filePath="task1.md" comments={comments} loading={false}
-                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
-                onAskAI={noop} onCommentClick={noop}
-            />
-        );
-        fireEvent.click(screen.getByTestId('category-filter-bug'));
-        expect(screen.getByText('bug comment')).toBeTruthy();
-        expect(screen.queryByText('question comment')).toBeNull();
-    });
-
     it('calls onCommentClick when comment card is clicked', () => {
         const onCommentClick = vi.fn();
         const comment = makeComment({ id: 'c1' });
@@ -136,19 +119,6 @@ describe('CommentSidebar', () => {
         expect(screen.getByTestId('status-filter-all')).toBeTruthy();
         expect(screen.getByTestId('status-filter-open')).toBeTruthy();
         expect(screen.getByTestId('status-filter-resolved')).toBeTruthy();
-    });
-
-    it('renders category filter chips', () => {
-        render(
-            <CommentSidebar
-                taskId="task1" filePath="task1.md" comments={[]} loading={false}
-                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
-                onAskAI={noop} onCommentClick={noop}
-            />
-        );
-        expect(screen.getByTestId('category-filter-all')).toBeTruthy();
-        expect(screen.getByTestId('category-filter-bug')).toBeTruthy();
-        expect(screen.getByTestId('category-filter-question')).toBeTruthy();
     });
 
     describe('Resolve All button', () => {

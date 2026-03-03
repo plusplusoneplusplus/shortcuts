@@ -5,11 +5,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { cn, Spinner } from '../../shared';
 import { CommentCard } from './CommentCard';
-import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
-import { CATEGORY_INFO, ALL_CATEGORIES, getCommentCategory } from '../../../task-comments-types';
+import type { TaskComment } from '../../../task-comments-types';
 
 type StatusFilter = 'all' | 'open' | 'resolved';
-type CategoryFilter = 'all' | TaskCommentCategory;
 
 export interface CommentSidebarProps {
     taskId: string;
@@ -64,7 +62,6 @@ export function CommentSidebar({
     resolving = false,
 }: CommentSidebarProps) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-    const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
     const [copied, setCopied] = useState(false);
 
     const openCount = useMemo(
@@ -80,7 +77,6 @@ export function CommentSidebar({
 
     const filtered = (filteredComments ?? comments.filter(c => {
         if (statusFilter !== 'all' && c.status !== statusFilter) return false;
-        if (categoryFilter !== 'all' && getCommentCategory(c) !== categoryFilter) return false;
         return true;
     }));
 
@@ -163,42 +159,6 @@ export function CommentSidebar({
                             {tab.label}
                         </button>
                     ))}
-                </div>
-            )}
-
-            {showFilters && (
-                <div className="flex gap-1 px-2 py-1.5 flex-wrap border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <button
-                        onClick={() => setCategoryFilter('all')}
-                        className={cn(
-                            'px-1.5 py-0.5 text-[10px] rounded transition-colors',
-                            categoryFilter === 'all'
-                                ? 'bg-[#0078d4] text-white'
-                                : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                        )}
-                        data-testid="category-filter-all"
-                    >
-                        All
-                    </button>
-                    {ALL_CATEGORIES.map(cat => {
-                        const info = CATEGORY_INFO[cat];
-                        return (
-                            <button
-                                key={cat}
-                                onClick={() => setCategoryFilter(cat)}
-                                className={cn(
-                                    'px-1.5 py-0.5 text-[10px] rounded transition-colors',
-                                    categoryFilter === cat
-                                        ? 'bg-[#0078d4] text-white'
-                                        : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                                )}
-                                title={info.label}
-                                data-testid={`category-filter-${cat}`}
-                            >
-                                {info.icon}
-                            </button>
-                        );
-                    })}
                 </div>
             )}
 

@@ -82,17 +82,6 @@ describe('CommentCard', () => {
         expect(container.querySelector('[title="Resolved"]')).toBeTruthy();
     });
 
-    it('renders category icon', () => {
-        render(
-            <CommentCard
-                comment={makeComment({ category: 'bug' })}
-                onResolve={noop} onUnresolve={noop} onEdit={noop}
-                onDelete={noop} onAskAI={noop} onClick={noop}
-            />
-        );
-        expect(screen.getByTitle('Bug')).toBeTruthy();
-    });
-
     it('shows Resolve button for open comment', () => {
         render(
             <CommentCard
