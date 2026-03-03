@@ -181,6 +181,36 @@ describe('POST /api/processes/:id/message', () => {
             expect(updated?.status).toBe('running');
         });
 
+        it('should enqueue a chat-followup task instead of calling executeFollowUp directly', async () => {
+            const proc: AIProcess = {
+                id: 'proc-enqueue',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-enqueue',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-enqueue/message`, {
+                content: 'Hello from enqueue',
+            });
+
+            expect(res.status).toBe(202);
+            // Should use enqueue, not executeFollowUp directly
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledOnce();
+            const call = enqueueFn.mock.calls[0][0];
+            expect(call.type).toBe('chat-followup');
+            expect(call.payload.kind).toBe('chat-followup');
+            expect(call.payload.processId).toBe('proc-enqueue');
+            expect(call.payload.content).toBe('Hello from enqueue');
+            // executeFollowUp should NOT be called directly
+            expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
+        });
+
         it('should prepend skill directives when skillNames is provided', async () => {
             const proc: AIProcess = {
                 id: 'proc-skill',
@@ -200,13 +230,13 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            // Verify the bridge received the message with skill directives prepended
-            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
-            expect(bridgeFn).toHaveBeenCalledTimes(1);
-            const sentMessage = bridgeFn.mock.calls[0][1];
-            expect(sentMessage).toContain('Use go-deep skill when available');
-            expect(sentMessage).toContain('Use impl skill when available');
-            expect(sentMessage).toContain('[Task]\nanalyze auth module');
+            // Verify the enqueued task has skill directives prepended in payload.content
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledTimes(1);
+            const sentContent = enqueueFn.mock.calls[0][0].payload.content;
+            expect(sentContent).toContain('Use go-deep skill when available');
+            expect(sentContent).toContain('Use impl skill when available');
+            expect(sentContent).toContain('[Task]\nanalyze auth module');
         });
 
         it('should not prepend directives when skillNames is empty', async () => {
@@ -227,9 +257,9 @@ describe('POST /api/processes/:id/message', () => {
                 skillNames: [],
             });
 
-            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
-            const sentMessage = bridgeFn.mock.calls[0][1];
-            expect(sentMessage).toBe('plain question');
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            const sentContent = enqueueFn.mock.calls[0][0].payload.content;
+            expect(sentContent).toBe('plain question');
         });
 
         it('should not prepend directives when skillNames is not provided', async () => {
@@ -249,9 +279,9 @@ describe('POST /api/processes/:id/message', () => {
                 content: 'another question',
             });
 
-            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
-            const sentMessage = bridgeFn.mock.calls[0][1];
-            expect(sentMessage).toBe('another question');
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            const sentContent = enqueueFn.mock.calls[0][0].payload.content;
+            expect(sentContent).toBe('another question');
         });
 
         it('should filter out non-string skillNames', async () => {
@@ -272,11 +302,11 @@ describe('POST /api/processes/:id/message', () => {
                 skillNames: ['impl', '', 123, null, 'draft'],
             });
 
-            const bridgeFn = mockBridge.executeFollowUp as ReturnType<typeof vi.fn>;
-            const sentMessage = bridgeFn.mock.calls[0][1];
-            expect(sentMessage).toContain('Use impl skill when available');
-            expect(sentMessage).toContain('Use draft skill when available');
-            expect(sentMessage).toContain('[Task]\nquestion');
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            const sentContent = enqueueFn.mock.calls[0][0].payload.content;
+            expect(sentContent).toContain('Use impl skill when available');
+            expect(sentContent).toContain('Use draft skill when available');
+            expect(sentContent).toContain('[Task]\nquestion');
         });
     });
 
@@ -969,10 +999,15 @@ describe('POST /api/processes/:id/message', () => {
 
             const updated = await store.getProcess('proc-large-store');
             expect(updated!.conversationTurns![0].content.length).toBe(100_000);
-            expect(mockBridge.executeFollowUp).toHaveBeenCalledWith(
-                'proc-large-store',
-                largeContent,
-                undefined
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'chat-followup',
+                    payload: expect.objectContaining({
+                        processId: 'proc-large-store',
+                        content: largeContent,
+                    }),
+                })
             );
         });
     });

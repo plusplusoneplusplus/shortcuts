@@ -446,6 +446,68 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
+    // Chat Follow-up Tasks
+    // ========================================================================
+
+    describe('chat-followup tasks', () => {
+        it('should dispatch chat-followup to executeFollowUp on an existing session', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            // Pre-create a process with an SDK session
+            const proc = createCompletedProcessWithSession('proc-fu', 'sess-fu');
+            await store.addProcess(proc);
+
+            const task: QueuedTask = {
+                id: 'followup-task-1',
+                type: 'chat-followup',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat-followup',
+                    processId: 'proc-fu',
+                    content: 'What is the best approach?',
+                },
+                config: {},
+                displayName: 'What is the best approach?',
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            // executeFollowUp calls sendFollowUp on the AI service
+            expect(mockSendFollowUp).toHaveBeenCalledWith(
+                'sess-fu',
+                expect.stringContaining('What is the best approach?'),
+                expect.any(Object)
+            );
+        });
+
+        it('should fail gracefully when the parent process does not exist', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'followup-task-notfound',
+                type: 'chat-followup',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat-followup',
+                    processId: 'proc-does-not-exist',
+                    content: 'Hello?',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            // Should fail without crashing
+            expect(result.success).toBe(false);
+        });
+    });
+
+    // ========================================================================
     // Custom Tasks
     // ========================================================================
 

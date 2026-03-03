@@ -132,11 +132,13 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
  * Creates a mock QueueExecutorBridge with default implementations.
  * - executeFollowUp → vi.fn().mockResolvedValue(undefined)
  * - isSessionAlive → vi.fn().mockResolvedValue(true)
+ * - enqueue → vi.fn().mockResolvedValue('mock-task-id')
  */
 export function createMockBridge(overrides?: Partial<QueueExecutorBridge>): QueueExecutorBridge {
     return {
         executeFollowUp: overrides?.executeFollowUp ?? vi.fn().mockResolvedValue(undefined),
         isSessionAlive: overrides?.isSessionAlive ?? vi.fn().mockResolvedValue(true),
+        enqueue: overrides?.enqueue ?? vi.fn().mockResolvedValue('mock-task-id'),
     };
 }
 

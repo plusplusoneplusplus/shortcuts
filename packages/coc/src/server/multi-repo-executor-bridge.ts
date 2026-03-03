@@ -178,6 +178,20 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Enqueue a task into the correct per-repo queue.
+     * Routes based on payload.workingDirectory. Falls back to process.cwd().
+     * Implements the optional enqueue() method of QueueExecutorBridge so that
+     * api-handler.ts can route follow-ups through the queue instead of firing
+     * them directly.
+     */
+    async enqueue(input: CreateTaskInput): Promise<string> {
+        const rootPath = (input.payload as any)?.workingDirectory || process.cwd();
+        this.getOrCreateBridge(rootPath);
+        const queueManager = this.registry.getQueueForRepo(rootPath);
+        return queueManager.enqueue(input);
+    }
+
+    /**
      * Drain all per-repo executors, waiting for running tasks to finish.
      * Returns the worst-case outcome ('timeout' if any timed out).
      */

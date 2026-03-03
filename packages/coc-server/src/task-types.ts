@@ -9,6 +9,8 @@
  * The 'code-review' string stays in TaskType for forward-compatibility.
  */
 
+import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
+
 // ============================================================================
 // Target Type
 // ============================================================================
@@ -26,6 +28,7 @@ export type TaskType =
     | 'ai-clarification'
     | 'chat'
     | 'readonly-chat'
+    | 'chat-followup'
     | 'task-generation'
     | 'run-pipeline'
     | 'run-script'
@@ -121,6 +124,20 @@ export interface CustomTaskPayload {
     data: Record<string, unknown>;
 }
 
+export interface ChatFollowUpPayload {
+    readonly kind: 'chat-followup';
+    /** The process ID of the parent chat session to follow up on */
+    processId: string;
+    /** Message content to send as the follow-up */
+    content: string;
+    /** Optional file attachments decoded from uploaded images */
+    attachments?: Attachment[];
+    /** Temp directory created for image attachments — cleaned up after execution */
+    imageTempDir?: string;
+    /** Working directory of the original process — used to route to the correct per-repo queue */
+    workingDirectory?: string;
+}
+
 // ============================================================================
 // Payload Union
 // ============================================================================
@@ -130,6 +147,7 @@ export type TaskPayload =
     | ResolveCommentsPayload
     | AIClarificationPayload
     | ChatPayload
+    | ChatFollowUpPayload
     | TaskGenerationPayload
     | RunPipelinePayload
     | RunScriptPayload
@@ -177,4 +195,8 @@ export function isRunPipelinePayload(payload: Record<string, unknown>): payload 
 
 export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {
     return (payload as any).kind === 'run-script';
+}
+
+export function isChatFollowUpPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatFollowUpPayload {
+    return (payload as any).kind === 'chat-followup';
 }

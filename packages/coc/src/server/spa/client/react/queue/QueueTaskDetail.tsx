@@ -902,6 +902,27 @@ function PendingTaskPayload({ task }: { task: any }) {
         );
     }
 
+    if (type === 'chat-followup') {
+        return (
+            <div>
+                {payload.content && (
+                    <>
+                        <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Follow-up Message</h3>
+                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            {payload.content}
+                        </pre>
+                    </>
+                )}
+                {payload.processId && (
+                    <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mt-3">
+                        <MetaRow label="Parent Process" value={String(payload.processId)} />
+                    </div>
+                )}
+                {imagesSection}
+            </div>
+        );
+    }
+
     if (type === 'ai-clarification') {
         const hasClariMeta = payload.skillName || payload.instructionType || payload.model || payload.nearestHeading || payload.filePath;
         return (

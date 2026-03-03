@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
@@ -32,6 +32,8 @@ import { registerSkillRoutes } from './skill-handler';
 export interface QueueExecutorBridge {
     executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
+    /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
+    enqueue?(input: CreateTaskInput): Promise<string>;
 }
 
 // ============================================================================
@@ -1444,8 +1446,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 status: 'running',
             });
 
-            // Delegate AI execution to the queue executor bridge (fire-and-forget)
-            // Prepend skill directives if skillNames are provided
+            // Delegate AI execution to the queue executor bridge
+            // Prefer enqueueing as a chat-followup task so the follow-up is visible
+            // in the queue tab and respects scheduler policies (pause/resume, concurrency).
+            // Fall back to direct execution when enqueue is not available.
             let messageContent = body.content as string;
             if (Array.isArray(body.skillNames) && body.skillNames.length > 0) {
                 const validSkills = body.skillNames.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0);
@@ -1454,11 +1458,31 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                     messageContent = `${directives}\n\n[Task]\n${messageContent}`;
                 }
             }
-            bridge.executeFollowUp(id, messageContent, attachments).catch(() => {
-                // Error handling is done inside executeFollowUp
-            }).finally(() => {
-                if (imageTempDir) { cleanupTempDir(imageTempDir); }
-            });
+
+            if (bridge.enqueue) {
+                const snippet = messageContent.trim();
+                const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+                await bridge.enqueue({
+                    type: 'chat-followup',
+                    priority: 'normal',
+                    payload: {
+                        kind: 'chat-followup',
+                        processId: id,
+                        content: messageContent,
+                        attachments,
+                        imageTempDir,
+                        workingDirectory: process.workingDirectory,
+                    },
+                    config: {},
+                    displayName,
+                });
+            } else {
+                bridge.executeFollowUp(id, messageContent, attachments).catch(() => {
+                    // Error handling is done inside executeFollowUp
+                }).finally(() => {
+                    if (imageTempDir) { cleanupTempDir(imageTempDir); }
+                });
+            }
 
             globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);
 

@@ -73,16 +73,18 @@ describe('mock-sdk-service helpers', () => {
     });
 
     describe('createMockBridge', () => {
-        it('should return object with executeFollowUp and isSessionAlive', () => {
+        it('should return object with executeFollowUp, isSessionAlive, and enqueue', () => {
             const bridge = createMockBridge();
             expect(bridge.executeFollowUp).toBeDefined();
             expect(bridge.isSessionAlive).toBeDefined();
+            expect(bridge.enqueue).toBeDefined();
         });
 
         it('should have default implementations', async () => {
             const bridge = createMockBridge();
             await expect(bridge.executeFollowUp('id', 'msg')).resolves.toBeUndefined();
             await expect(bridge.isSessionAlive('id')).resolves.toBe(true);
+            await expect(bridge.enqueue!({ type: 'chat-followup', priority: 'normal', payload: {}, config: {} })).resolves.toBe('mock-task-id');
         });
 
         it('should accept overrides', async () => {

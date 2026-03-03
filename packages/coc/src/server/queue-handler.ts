@@ -25,7 +25,7 @@ import * as fs from 'fs';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'readonly-chat', 'run-pipeline']);
+const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'readonly-chat', 'run-pipeline', 'chat-followup']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
@@ -37,6 +37,7 @@ const TYPE_LABELS: Record<string, string> = {
     'chat': 'Chat',
     'readonly-chat': 'Read-Only Chat',
     'run-pipeline': 'Run Pipeline',
+    'chat-followup': 'Follow-up',
 };
 
 /**
@@ -48,6 +49,11 @@ function generateDisplayName(type: string, payload: any): string {
 
     // Try to extract a meaningful snippet from the payload
     if (payload) {
+        // Chat follow-up: use content text
+        if (payload.kind === 'chat-followup' && typeof payload.content === 'string' && payload.content.trim()) {
+            const snippet = payload.content.trim();
+            return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+        }
         // AI clarification: use prompt text
         if (typeof payload.prompt === 'string' && payload.prompt.trim()) {
             const snippet = payload.prompt.trim();

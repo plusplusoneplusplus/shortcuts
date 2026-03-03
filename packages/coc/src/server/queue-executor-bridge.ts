@@ -22,6 +22,7 @@ import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
     isAIClarificationPayload, isChatPayload,
+    isChatFollowUpPayload,
     isCustomTaskPayload,
     isFollowPromptPayload,
     isResolveCommentsPayload,
@@ -678,6 +679,10 @@ export class CLITaskExecutor implements TaskExecutor {
             return prompt;
         }
 
+        if (isChatFollowUpPayload(task.payload)) {
+            return task.payload.content || task.displayName || 'Chat follow-up';
+        }
+
         if (isCustomTaskPayload(task.payload)) {
             const data = task.payload.data;
             if (typeof data.prompt === 'string' && data.prompt.trim()) {
@@ -743,6 +748,19 @@ export class CLITaskExecutor implements TaskExecutor {
         // Resolve comments: build prompt from payload and execute with AI
         if (isResolveCommentsPayload(task.payload)) {
             return this.executeResolveComments(task);
+        }
+
+        // Chat follow-up: re-run executeFollowUp on an existing session
+        if (isChatFollowUpPayload(task.payload)) {
+            const payload = task.payload;
+            try {
+                await this.executeFollowUp(payload.processId, payload.content, payload.attachments);
+            } finally {
+                if (payload.imageTempDir) {
+                    cleanupTempDir(payload.imageTempDir);
+                }
+            }
+            return;
         }
 
         // Run script: spawn a child process and capture stdout/stderr
