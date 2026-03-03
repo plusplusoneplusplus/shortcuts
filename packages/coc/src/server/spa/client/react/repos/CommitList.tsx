@@ -4,7 +4,7 @@
  * Each row shows a selection indicator, short hash, subject, relative time,
  * and author. Clicking a row selects it (expanding the file list inline) and
  * notifies the parent via onSelect. Hovering a row shows a tooltip with full
- * commit metadata after a 250ms delay. Supports keyboard navigation with
+ * commit metadata after a 1000ms delay. Supports keyboard navigation with
  * ↑/↓ and Enter.
  */
 
@@ -112,13 +112,13 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
         }
     }, [expandedHash, fileCache, workspaceId, onSelect]);
 
-    // Hover tooltip handlers with 250ms delay
+    // Hover tooltip handlers with 1000ms delay
     const handleRowMouseEnter = useCallback((commit: GitCommitItem, e: React.MouseEvent) => {
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         hoverTimerRef.current = setTimeout(() => {
             setHoveredCommit(commit);
             setTooltipAnchorRect(rect);
-        }, 250);
+        }, 1000);
     }, []);
 
     const handleRowMouseLeave = useCallback(() => {
