@@ -97,6 +97,17 @@ describe('AI Invoker', () => {
             expect(typeof invoker).toBe('function');
         });
 
+        it('should accept mcpServers option', () => {
+            const options: CLIAIInvokerOptions = {
+                loadMcpConfig: false,
+                mcpServers: {
+                    github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
+                },
+            };
+            const invoker = createCLIAIInvoker(options);
+            expect(typeof invoker).toBe('function');
+        });
+
         it('should create an invoker with empty options', () => {
             const invoker = createCLIAIInvoker({});
             expect(typeof invoker).toBe('function');

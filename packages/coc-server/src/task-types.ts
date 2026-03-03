@@ -105,6 +105,8 @@ export interface RunPipelinePayload {
     model?: string;
     params?: Record<string, string>;
     workspaceId?: string;
+    /** Pre-filtered MCP server map to pass to the AI SDK for this pipeline run. */
+    mcpServers?: Record<string, import('@plusplusoneplusplus/pipeline-core').MCPServerConfig>;
 }
 
 export interface RunScriptPayload {

@@ -26,6 +26,7 @@ import type {
     RunScriptPayload,
     CustomTaskPayload,
 } from '../src/task-types';
+import type { MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // isFollowPromptPayload
@@ -179,6 +180,20 @@ describe('isRunPipelinePayload', () => {
             prompt: 'x',
         };
         expect(isRunPipelinePayload(payload)).toBe(false);
+    });
+
+    it('accepts mcpServers field and still passes type guard', () => {
+        const servers: Record<string, MCPServerConfig> = {
+            github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
+        };
+        const payload: RunPipelinePayload = {
+            kind: 'run-pipeline',
+            pipelinePath: '/tmp/pipeline',
+            workingDirectory: '/tmp',
+            mcpServers: servers,
+        };
+        expect(isRunPipelinePayload(payload as Record<string, unknown>)).toBe(true);
+        expect(payload.mcpServers).toEqual(servers);
     });
 });
 

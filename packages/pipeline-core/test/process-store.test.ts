@@ -39,6 +39,35 @@ describe('WorkspaceInfo', () => {
         };
         expect(ws.color).toBe('#ff5733');
     });
+
+    it('should accept enabledMcpServers as an array of server names', () => {
+        const ws: WorkspaceInfo = {
+            id: 'abc123',
+            name: 'my-project',
+            rootPath: '/home/user/my-project',
+            enabledMcpServers: ['github', 'filesystem'],
+        };
+        expect(ws.enabledMcpServers).toEqual(['github', 'filesystem']);
+    });
+
+    it('should accept enabledMcpServers as null (all servers disabled)', () => {
+        const ws: WorkspaceInfo = {
+            id: 'abc123',
+            name: 'my-project',
+            rootPath: '/home/user/my-project',
+            enabledMcpServers: null,
+        };
+        expect(ws.enabledMcpServers).toBeNull();
+    });
+
+    it('should default enabledMcpServers to undefined (use default config)', () => {
+        const ws: WorkspaceInfo = {
+            id: 'abc123',
+            name: 'my-project',
+            rootPath: '/home/user/my-project',
+        };
+        expect(ws.enabledMcpServers).toBeUndefined();
+    });
 });
 
 describe('ProcessFilter', () => {

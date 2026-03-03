@@ -18,6 +18,7 @@ import type {
     AIInvokerOptions,
     AIInvokerResult,
     CopilotSDKService,
+    MCPServerConfig,
     SendMessageOptions,
     Tool,
 } from '@plusplusoneplusplus/pipeline-core';
@@ -40,6 +41,8 @@ export interface CLIAIInvokerOptions {
     timeoutMs?: number;
     /** Whether to load default MCP config */
     loadMcpConfig?: boolean;
+    /** Pre-filtered MCP server map; mirrors `mcpServers` on `SendMessageOptions` and can be forwarded without transformation. */
+    mcpServers?: Record<string, MCPServerConfig>;
     /** Optional callback invoked with each AI output chunk for streaming */
     onChunk?: (chunk: string) => void;
     /** Custom tools to expose to the AI session */

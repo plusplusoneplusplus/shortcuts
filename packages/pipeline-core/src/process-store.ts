@@ -65,6 +65,13 @@ export interface WorkspaceInfo {
     color?: string;
     /** Git remote URL (typically origin) — used to group clones of the same repo */
     remoteUrl?: string;
+    /**
+     * Per-workspace MCP server filter.
+     * - `undefined` — use the default MCP configuration (no override).
+     * - `null` — all MCP servers are disabled for this workspace.
+     * - `string[]` — only the named servers are active; others are suppressed.
+     */
+    enabledMcpServers?: string[] | null;
 }
 
 /**
