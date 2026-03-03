@@ -14,8 +14,8 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
-import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
+import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
@@ -305,6 +305,57 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             sendJSON(res, 200, { branch, dirty, ahead, behind, isGitRepo: true, remoteUrl: remoteUrl || null });
+        },
+    });
+
+    // GET /api/workspaces/:id/mcp-config — Get available MCP servers and workspace-enabled list
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+            const { mcpServers: available } = loadDefaultMcpConfig();
+            const enabled: string[] | null = ws.enabledMcpServers ?? null;
+            sendJSON(res, 200, { available, enabled });
+        },
+    });
+
+    // PUT /api/workspaces/:id/mcp-config — Save workspace-enabled MCP server list
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+            if (!Object.prototype.hasOwnProperty.call(body, 'enabled')) {
+                return handleAPIError(res, missingFields(['enabled']));
+            }
+            if (body.enabled !== null && !Array.isArray(body.enabled)) {
+                return handleAPIError(res, badRequest('`enabled` must be an array of strings or null'));
+            }
+            if (Array.isArray(body.enabled) && body.enabled.some((e: any) => typeof e !== 'string')) {
+                return handleAPIError(res, badRequest('`enabled` items must be strings'));
+            }
+            const updated = await store.updateWorkspace(id, { enabledMcpServers: body.enabled });
+            if (!updated) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+            sendJSON(res, 200, { workspace: updated });
         },
     });
 
