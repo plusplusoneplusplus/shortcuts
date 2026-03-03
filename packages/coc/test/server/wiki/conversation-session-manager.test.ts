@@ -273,6 +273,74 @@ describe('ConversationSessionManager', () => {
     });
 
     // ============================================================================
+    // Streaming Chunks
+    // ============================================================================
+
+    describe('streaming chunks', () => {
+        it('should invoke onStreamingChunk for each chunk emitted by mock AI', async () => {
+            const chunks: string[] = [];
+            const mockSend = vi.fn().mockImplementation(async (_prompt: string, opts?: any) => {
+                opts?.onStreamingChunk?.('chunk-A');
+                opts?.onStreamingChunk?.('chunk-B');
+                opts?.onStreamingChunk?.('chunk-C');
+                return 'chunk-Achunk-Bchunk-C';
+            });
+            manager = createManager({ sendMessage: mockSend });
+            const session = manager.create()!;
+            await manager.send(session.sessionId, 'Hello', {
+                onStreamingChunk: (c) => chunks.push(c),
+            });
+            expect(chunks).toEqual(['chunk-A', 'chunk-B', 'chunk-C']);
+        });
+
+        it('should return the full accumulated response from a streaming mock AI', async () => {
+            const mockSend = vi.fn().mockImplementation(async (_prompt: string, opts?: any) => {
+                opts?.onStreamingChunk?.('Hello');
+                opts?.onStreamingChunk?.(' world');
+                return 'Hello world';
+            });
+            manager = createManager({ sendMessage: mockSend });
+            const session = manager.create()!;
+            const result = await manager.send(session.sessionId, 'test');
+            expect(result.response).toBe('Hello world');
+        });
+
+        it('should increment turnCount to 1 after a streaming send', async () => {
+            const mockSend = vi.fn().mockImplementation(async (_prompt: string, opts?: any) => {
+                opts?.onStreamingChunk?.('part-1');
+                opts?.onStreamingChunk?.('part-2');
+                return 'part-1part-2';
+            });
+            manager = createManager({ sendMessage: mockSend });
+            const session = manager.create()!;
+            expect(session.turnCount).toBe(0);
+            await manager.send(session.sessionId, 'Hello', {
+                onStreamingChunk: () => {},
+            });
+            expect(session.turnCount).toBe(1);
+        });
+    });
+
+    // ============================================================================
+    // Timer Cleanup
+    // ============================================================================
+
+    describe('timer cleanup', () => {
+        it('should clear the cleanup interval timer on destroyAll', () => {
+            vi.useFakeTimers();
+            const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+            try {
+                manager = createManager({ cleanupIntervalMs: 1000 });
+                manager.destroyAll();
+                expect(clearSpy).toHaveBeenCalled();
+            } finally {
+                vi.useRealTimers();
+                clearSpy.mockRestore();
+            }
+        });
+    });
+
+    // ============================================================================
     // Idle Session Cleanup
     // ============================================================================
 
