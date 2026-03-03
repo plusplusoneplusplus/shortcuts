@@ -105,6 +105,101 @@ describe('CopilotSDKService - Client Initialization', () => {
 });
 
 // ============================================================================
+// onSessionCreated Callback Tests
+// ============================================================================
+
+describe('CopilotSDKService - onSessionCreated callback', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('should invoke onSessionCreated with the session ID immediately after session is created (non-streaming)', async () => {
+        const mockSession = {
+            sessionId: 'non-streaming-early',
+            sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
+            destroy: vi.fn().mockResolvedValue(undefined),
+        };
+        const { MockCopilotClient } = createMockSDKModule(mockSession);
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const receivedIds: string[] = [];
+        const result = await service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test',
+            timeoutMs: 10000, // non-streaming path (<= 120000)
+            loadDefaultMcpConfig: false,
+            onSessionCreated: (id) => receivedIds.push(id),
+        });
+
+        expect(result.success).toBe(true);
+        expect(receivedIds).toHaveLength(1);
+        expect(receivedIds[0]).toBe('non-streaming-early');
+    });
+
+    it('should invoke onSessionCreated with the session ID immediately after session is created (streaming)', async () => {
+        const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const receivedIds: string[] = [];
+        const resultPromise = service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test',
+            timeoutMs: 200000, // streaming path
+            loadDefaultMcpConfig: false,
+            onSessionCreated: (id) => receivedIds.push(id),
+        });
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        // onSessionCreated should have been called before message send
+        expect(receivedIds).toHaveLength(1);
+        expect(receivedIds[0]).toBe(sessions[0].session.sessionId);
+
+        // Settle the session
+        sessions[0].dispatchEvent({ type: 'session.idle', data: {} });
+        await resultPromise;
+    });
+
+    it('should not throw if onSessionCreated is not provided', async () => {
+        const mockSession = {
+            sessionId: 'no-callback-session',
+            sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'response' } }),
+            destroy: vi.fn().mockResolvedValue(undefined),
+        };
+        const { MockCopilotClient } = createMockSDKModule(mockSession);
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const result = await service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test',
+            timeoutMs: 10000,
+            loadDefaultMcpConfig: false,
+            // no onSessionCreated
+        });
+
+        expect(result.success).toBe(true);
+    });
+});
+
+// ============================================================================
 // Streaming Event Handling Tests
 // ============================================================================
 

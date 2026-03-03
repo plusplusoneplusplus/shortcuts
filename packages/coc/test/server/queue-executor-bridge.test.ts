@@ -5987,3 +5987,67 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(sentMessage).not.toContain('When suggesting follow-ups');
     });
 });
+
+// ============================================================================
+// sdkSessionId Early Persistence Tests
+// ============================================================================
+
+describe('CLITaskExecutor - sdkSessionId stored via onSessionCreated', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    it('should write sdkSessionId to the store when onSessionCreated is invoked during sendMessage', async () => {
+        // Simulate the SDK calling onSessionCreated before resolving sendMessage
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onSessionCreated?.('early-session-id');
+            return { success: true, response: 'done', sessionId: 'early-session-id' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-early-session',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'Test early session' },
+            config: { timeoutMs: 30000 },
+            displayName: 'Test early session',
+        };
+
+        await executor.execute(task);
+
+        // updateProcess should have been called with sdkSessionId from onSessionCreated
+        expect(store.updateProcess).toHaveBeenCalledWith(
+            'queue_task-early-session',
+            expect.objectContaining({ sdkSessionId: 'early-session-id' }),
+        );
+    });
+
+    it('should pass onSessionCreated callback via sendMessage options', async () => {
+        mockSendMessage.mockResolvedValue({ success: true, response: 'done', sessionId: 'sess-cb' });
+
+        const executor = new CLITaskExecutor(store);
+        const task: QueuedTask = {
+            id: 'task-cb-check',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'callback check' },
+            config: { timeoutMs: 30000 },
+        };
+
+        await executor.execute(task);
+
+        expect(mockSendMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ onSessionCreated: expect.any(Function) }),
+        );
+    });
+});

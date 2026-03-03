@@ -621,6 +621,7 @@ export class CopilotSDKService {
 
             session = await client.createSession(sessionOptions);
             logger.debug(LogCategory.AI, `CopilotSDKService: Session created: ${session.sessionId}`);
+            options.onSessionCreated?.(session.sessionId);
 
             // Track the session for potential cancellation
             this.trackSession(session);

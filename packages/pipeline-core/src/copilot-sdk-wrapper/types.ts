@@ -308,6 +308,12 @@ export interface SendMessageOptions {
     onPermissionRequest?: PermissionHandler;
 
     /**
+     * Callback invoked immediately after the SDK session is created.
+     * Receives the new session ID before any messages are sent.
+     */
+    onSessionCreated?: (sessionId: string) => void;
+
+    /**
      * Callback invoked for each streaming chunk as it arrives from the SDK.
      * When provided, streaming mode is automatically enabled.
      */

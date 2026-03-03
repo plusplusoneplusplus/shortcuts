@@ -786,6 +786,11 @@ export class CLITaskExecutor implements TaskExecutor {
                 attachments,
                 tools: options?.tools,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
+                onSessionCreated: (sessionId: string) => {
+                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
+                        // Non-fatal: store may be a stub
+                    });
+                },
                 // Stream response chunks to the process store for real-time UI updates
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate output for disk persistence
