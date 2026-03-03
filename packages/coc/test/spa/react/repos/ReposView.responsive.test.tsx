@@ -348,6 +348,8 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
     beforeEach(async () => {
         vi.clearAllMocks();
         cleanup();
+        // Ensure desktop breakpoint so the tab strip renders (mobile uses MobileTabBar instead)
+        setBreakpoint('desktop');
         // jsdom doesn't implement scrollIntoView
         Element.prototype.scrollIntoView = vi.fn();
         mockAppState = {

@@ -21,6 +21,7 @@ import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useGlobalToast } from '../context/ToastContext';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
+import { MobileTabBar } from '../layout/MobileTabBar';
 import type { RepoData } from './repoGrouping';
 import type { RepoSubTab } from '../types/dashboard';
 
@@ -212,6 +213,18 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             )}>
                 {/* Title row */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {isMobile && (
+                        <button
+                            className="text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex-shrink-0 p-0.5 -ml-1"
+                            onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = '#repos'; }}
+                            aria-label="Back to repos"
+                            data-testid="repo-back-btn"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                            </svg>
+                        </button>
+                    )}
                     <span
                         className="inline-block w-3.5 h-3.5 rounded-full flex-shrink-0"
                         style={{ background: color }}
@@ -354,7 +367,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 </div>
             </div>
 
-            {/* Sub-tab bar */}
+            {/* Sub-tab bar — desktop only; mobile uses MobileTabBar */}
+            {!isMobile && (
             <div className="relative" data-testid="repo-sub-tab-strip-container">
                 {/* Left scroll fade */}
                 {tabScrollState.canScrollLeft && (
@@ -413,6 +427,20 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 ))}
                 </div>
             </div>
+            )}
+
+            {/* Mobile tab bar */}
+            {isMobile && (
+                <MobileTabBar
+                    activeTab={activeSubTab}
+                    onTabChange={switchSubTab}
+                    tabs={SUB_TABS}
+                    taskCount={taskCount}
+                    queueRunningCount={queueRunningCount}
+                    queueQueuedCount={queueQueuedCount}
+                    chatPendingCount={chatPendingCount}
+                />
+            )}
 
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className="flex-1 min-h-0 min-w-0 overflow-hidden">

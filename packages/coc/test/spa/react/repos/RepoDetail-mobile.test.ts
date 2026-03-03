@@ -179,3 +179,72 @@ describe('RepoDetail mobile: tab scroll affordance', () => {
         expect(nearby).toContain('pointer-events-none');
     });
 });
+
+describe('RepoDetail mobile: back button in header', () => {
+    it('renders mobile back button with data-testid="repo-back-btn"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-back-btn"');
+    });
+
+    it('back button is only shown on mobile (gated on isMobile)', () => {
+        // The button is wrapped in {isMobile && (...)}
+        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
+        // isMobile guard is in the parent conditional block
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 700), backBtnIdx);
+        expect(nearby).toContain('isMobile');
+    });
+
+    it('back button dispatches SET_SELECTED_REPO with null', () => {
+        // onClick handler is before data-testid in the source
+        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 400), backBtnIdx + 100);
+        expect(nearby).toContain("type: 'SET_SELECTED_REPO', id: null");
+    });
+
+    it('back button sets hash to #repos', () => {
+        // location.hash assignment is before data-testid in the source
+        const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
+        const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 400), backBtnIdx + 100);
+        expect(nearby).toContain("'#repos'");
+    });
+
+    it('back button has aria-label "Back to repos"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('aria-label="Back to repos"');
+    });
+});
+
+describe('RepoDetail mobile: MobileTabBar integration', () => {
+    it('imports MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { MobileTabBar } from '../layout/MobileTabBar'");
+    });
+
+    it('renders MobileTabBar only on mobile', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('isMobile && (');
+        expect(REPO_DETAIL_SOURCE).toContain('<MobileTabBar');
+    });
+
+    it('passes activeTab to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('activeTab={activeSubTab}');
+    });
+
+    it('passes onTabChange to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('onTabChange={switchSubTab}');
+    });
+
+    it('passes SUB_TABS list to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('tabs={SUB_TABS}');
+    });
+
+    it('passes badge counts to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('taskCount={taskCount}');
+        expect(REPO_DETAIL_SOURCE).toContain('queueRunningCount={queueRunningCount}');
+        expect(REPO_DETAIL_SOURCE).toContain('queueQueuedCount={queueQueuedCount}');
+        expect(REPO_DETAIL_SOURCE).toContain('chatPendingCount={chatPendingCount}');
+    });
+
+    it('hides top tab strip on mobile', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('!isMobile && (');
+        const noMobileIdx = REPO_DETAIL_SOURCE.indexOf('!isMobile && (');
+        const nearby = REPO_DETAIL_SOURCE.substring(noMobileIdx, noMobileIdx + 200);
+        expect(nearby).toContain('repo-sub-tab-strip-container');
+    });
+});
