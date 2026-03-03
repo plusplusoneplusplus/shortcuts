@@ -25,6 +25,7 @@ interface ComponentGraph {
 
 interface WikiDetailProps {
     wikiId: string;
+    embedded?: boolean;
 }
 
 type WikiStatus = 'loaded' | 'generating' | 'error' | 'pending';
@@ -50,7 +51,7 @@ function buildWikiHash(wikiId: string, tab: WikiProjectTab, componentId?: string
     return base + '/' + tab;
 }
 
-export function WikiDetail({ wikiId }: WikiDetailProps) {
+export function WikiDetail({ wikiId, embedded }: WikiDetailProps) {
     const { state, dispatch } = useApp();
     const { isMobile } = useBreakpoint();
     const [graph, setGraph] = useState<ComponentGraph | null>(null);
@@ -61,6 +62,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
 
     // Consume initial tab from context (e.g. from hash routing or "→ Setup" CTA)
     useEffect(() => {
+        if (embedded) return;
         if (state.wikiDetailInitialTab) {
             const tab = state.wikiDetailInitialTab as WikiProjectTab;
             if (WIKI_TABS.includes(tab)) {
@@ -71,7 +73,7 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
             }
             dispatch({ type: 'CLEAR_WIKI_INITIAL_TAB' });
         }
-    }, [state.wikiDetailInitialTab]);  // eslint-disable-line react-hooks/exhaustive-deps
+    }, [state.wikiDetailInitialTab, embedded]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     const wiki = useMemo(
         () => state.wikis.find((w: any) => w.id === wikiId),
@@ -92,26 +94,33 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
     }, [wikiId]);
 
     const handleBack = useCallback(() => {
+        if (embedded) return;
         dispatch({ type: 'SELECT_WIKI', wikiId: null });
         location.hash = '#wiki';
-    }, [dispatch]);
+    }, [dispatch, embedded]);
 
     const changeTab = useCallback((tab: WikiProjectTab) => {
         setActiveTab(tab);
         if (tab !== 'admin') setAdminSubTab(null);
-        location.hash = buildWikiHash(wikiId, tab, tab === 'browse' ? state.selectedWikiComponentId : null);
-    }, [wikiId, state.selectedWikiComponentId]);
+        if (!embedded) {
+            location.hash = buildWikiHash(wikiId, tab, tab === 'browse' ? state.selectedWikiComponentId : null);
+        }
+    }, [wikiId, state.selectedWikiComponentId, embedded]);
 
     const handleAdminTabChange = useCallback((subTab: WikiAdminTab) => {
         setAdminSubTab(subTab);
-        location.hash = buildWikiHash(wikiId, 'admin', null, subTab);
-    }, [wikiId]);
+        if (!embedded) {
+            location.hash = buildWikiHash(wikiId, 'admin', null, subTab);
+        }
+    }, [wikiId, embedded]);
 
     const handleSelectComponent = useCallback((componentId: string) => {
         dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId });
-        location.hash = buildWikiHash(wikiId, 'browse', componentId);
+        if (!embedded) {
+            location.hash = buildWikiHash(wikiId, 'browse', componentId);
+        }
         setActiveTab('browse');
-    }, [dispatch, wikiId]);
+    }, [dispatch, wikiId, embedded]);
 
     const selectedComponentId = state.selectedWikiComponentId;
 
@@ -190,11 +199,13 @@ export function WikiDetail({ wikiId }: WikiDetailProps) {
         <div className="flex flex-col h-[calc(100vh-48px-56px)] md:h-[calc(100vh-48px)] overflow-hidden" id="view-wiki">
             {/* Top bar */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <button
-                    className="text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
-                    onClick={handleBack}
-                    title="Back to wiki list"
-                >←</button>
+                {!embedded && (
+                    <button
+                        className="text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                        onClick={handleBack}
+                        title="Back to wiki list"
+                    >←</button>
+                )}
                 <span
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ background: wiki?.color || '#848484' }}

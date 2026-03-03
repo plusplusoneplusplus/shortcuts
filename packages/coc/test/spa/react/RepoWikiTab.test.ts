@@ -64,6 +64,20 @@ describe('RepoWikiTab', () => {
         });
     });
 
+    describe('single wiki inline view (state 2)', () => {
+        it('should import WikiDetail', () => {
+            expect(content).toMatch(/import.*WikiDetail.*from/);
+        });
+
+        it('should render WikiDetail with embedded prop for single wiki', () => {
+            expect(content).toMatch(/WikiDetail\s+wikiId=\{repoWikis\[0\]\.id\}\s+embedded/);
+        });
+
+        it('should check repoWikis.length === 1 for single wiki state', () => {
+            expect(content).toMatch(/repoWikis\.length\s*===\s*1/);
+        });
+    });
+
     describe('integration with RepoDetail', () => {
         const detailPath = path.resolve(__dirname, '../../../src/server/spa/client/react/repos/RepoDetail.tsx');
         let detailContent: string;

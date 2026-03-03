@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
+import { WikiDetail } from '../wiki/WikiDetail';
 
 interface RepoWikiTabProps {
     workspaceId: string;
@@ -49,6 +50,11 @@ export function RepoWikiTab({ workspaceId: _workspaceId, workspacePath }: RepoWi
                 </Button>
             </div>
         );
+    }
+
+    // State 2: exactly one wiki — render inline
+    if (repoWikis.length === 1) {
+        return <WikiDetail wikiId={repoWikis[0].id} embedded />;
     }
 
     return null;

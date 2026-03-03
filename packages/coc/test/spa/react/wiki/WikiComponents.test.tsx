@@ -16,6 +16,7 @@ import { WikiAsk } from '../../../../src/server/spa/client/react/wiki/WikiAsk';
 import { WikiAdmin } from '../../../../src/server/spa/client/react/wiki/WikiAdmin';
 import { WikiDetail } from '../../../../src/server/spa/client/react/wiki/WikiDetail';
 import { WikiGraph } from '../../../../src/server/spa/client/react/wiki/WikiGraph';
+import { RepoWikiTab } from '../../../../src/server/spa/client/react/repos/RepoWikiTab';
 
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
@@ -1529,4 +1530,189 @@ describe('vanilla wiki files removed', () => {
             expect(fs.existsSync(path.join(CLIENT_DIR, file))).toBe(false);
         });
     }
+});
+
+// ============================================================================
+// WikiDetail — embedded mode
+// ============================================================================
+
+describe('WikiDetail embedded mode', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/graph')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        components: [{ id: 'c1', name: 'Component A', path: '/a', purpose: 'Purpose A', category: 'ui' }],
+                        categories: [{ id: 'ui', name: 'UI' }],
+                        project: { name: 'Test Project', description: 'A test', mainLanguage: 'TypeScript' },
+                    }),
+                });
+            }
+            if (url.includes('/admin/cache')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        }));
+        location.hash = '';
+    });
+
+    function EmbeddedWikiDetail({ wiki }: { wiki: any }) {
+        const { dispatch } = useApp();
+        useEffect(() => {
+            dispatch({ type: 'SET_WIKIS', wikis: [wiki] });
+        }, [dispatch, wiki]);
+        return <WikiDetail wikiId={wiki.id} embedded />;
+    }
+
+    it('hides back button in embedded mode', async () => {
+        render(
+            <Wrap>
+                <EmbeddedWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('My Wiki')).toBeTruthy();
+        });
+        expect(screen.queryByTitle('Back to wiki list')).toBeNull();
+    });
+
+    it('still renders wiki name and tab bar in embedded mode', async () => {
+        render(
+            <Wrap>
+                <EmbeddedWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('My Wiki')).toBeTruthy();
+        });
+        expect(document.getElementById('wiki-project-title')).toBeTruthy();
+        expect(document.getElementById('wiki-project-tabs')).toBeTruthy();
+        expect(screen.getByText('Browse')).toBeTruthy();
+        expect(screen.getByText('Ask')).toBeTruthy();
+    });
+
+    it('does not mutate location.hash when clicking tabs in embedded mode', async () => {
+        location.hash = '#repos/repo1/wiki';
+        render(
+            <Wrap>
+                <EmbeddedWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Ask')).toBeTruthy();
+        });
+        fireEvent.click(screen.getByText('Ask'));
+        expect(location.hash).toBe('#repos/repo1/wiki');
+    });
+
+    it('shows back button in non-embedded mode (regression)', async () => {
+        render(
+            <Wrap>
+                <SeededWikiDetail wiki={{ id: 'w1', name: 'My Wiki', status: 'loaded' }} />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByTitle('Back to wiki list')).toBeTruthy();
+        });
+    });
+});
+
+// ============================================================================
+// RepoWikiTab — state 2 single wiki inline view
+// ============================================================================
+
+describe('RepoWikiTab single wiki inline view', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/graph')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        components: [{ id: 'c1', name: 'Component A', path: '/a', purpose: 'Purpose A', category: 'ui' }],
+                        categories: [{ id: 'ui', name: 'UI' }],
+                        project: { name: 'Test Project', description: 'A test', mainLanguage: 'TypeScript' },
+                    }),
+                });
+            }
+            if (url.includes('/api/wikis')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'new-wiki' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        }));
+        location.hash = '';
+    });
+
+    function SeededRepoWikiTab({ wikis, workspacePath }: { wikis: any[]; workspacePath: string }) {
+        const { dispatch } = useApp();
+        useEffect(() => {
+            dispatch({ type: 'SET_WIKIS', wikis });
+        }, [dispatch, wikis]);
+        return <RepoWikiTab workspaceId="ws1" workspacePath={workspacePath} />;
+    }
+
+    it('renders WikiDetail inline when exactly one wiki matches', async () => {
+        render(
+            <Wrap>
+                <SeededRepoWikiTab
+                    wikis={[{ id: 'w1', name: 'My Wiki', status: 'loaded', repoPath: '/path/to/repo' }]}
+                    workspacePath="/path/to/repo"
+                />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(document.getElementById('wiki-project-title')).toBeTruthy();
+        });
+        expect(document.getElementById('wiki-project-tabs')).toBeTruthy();
+    });
+
+    it('does not show back button when rendering inline (embedded mode)', async () => {
+        render(
+            <Wrap>
+                <SeededRepoWikiTab
+                    wikis={[{ id: 'w1', name: 'My Wiki', status: 'loaded', repoPath: '/path/to/repo' }]}
+                    workspacePath="/path/to/repo"
+                />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(document.getElementById('wiki-project-title')).toBeTruthy();
+        });
+        expect(screen.queryByTitle('Back to wiki list')).toBeNull();
+    });
+
+    it('shows empty state when no wikis match (regression)', async () => {
+        render(
+            <Wrap>
+                <SeededRepoWikiTab
+                    wikis={[{ id: 'w1', name: 'My Wiki', status: 'loaded', repoPath: '/other/path' }]}
+                    workspacePath="/path/to/repo"
+                />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('No Wiki Found')).toBeTruthy();
+        });
+    });
+
+    it('returns null for multiple matching wikis (state 3 placeholder)', async () => {
+        const { container } = render(
+            <Wrap>
+                <SeededRepoWikiTab
+                    wikis={[
+                        { id: 'w1', name: 'Wiki 1', status: 'loaded', repoPath: '/path/to/repo' },
+                        { id: 'w2', name: 'Wiki 2', status: 'loaded', repoPath: '/path/to/repo' },
+                    ]}
+                    workspacePath="/path/to/repo"
+                />
+            </Wrap>
+        );
+        // Multiple wikis: component returns null — no wiki content rendered
+        await waitFor(() => {
+            expect(document.getElementById('view-wiki')).toBeNull();
+        });
+        expect(container.querySelector('#wiki-project-title')).toBeNull();
+    });
 });
