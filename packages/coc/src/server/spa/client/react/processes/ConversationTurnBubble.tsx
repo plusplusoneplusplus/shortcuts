@@ -114,6 +114,46 @@ function mergeToolCall(target: RenderToolCall, incoming: RenderToolCall): void {
     }
 }
 
+/**
+ * Merge consecutive content chunks into a single chunk to avoid rendering
+ * multiple bordered boxes for text that is logically one message.
+ * Non-content chunks (e.g. hidden tool calls like report_intent) act as
+ * potential separators in the array but should not break the visual flow.
+ */
+export function mergeConsecutiveContentChunks(chunks: RenderChunk[]): RenderChunk[] {
+    if (chunks.length === 0) return chunks;
+
+    const result: RenderChunk[] = [];
+    let pendingHtml = '';
+    let pendingKey = '';
+    let pendingParentToolId: string | undefined;
+
+    const flush = () => {
+        if (pendingKey) {
+            result.push({ kind: 'content', key: pendingKey, html: pendingHtml, parentToolId: pendingParentToolId });
+            pendingHtml = '';
+            pendingKey = '';
+            pendingParentToolId = undefined;
+        }
+    };
+
+    for (const chunk of chunks) {
+        if (chunk.kind === 'content' && chunk.html) {
+            if (!pendingKey) {
+                pendingKey = chunk.key;
+                pendingParentToolId = chunk.parentToolId;
+            }
+            pendingHtml += chunk.html;
+        } else {
+            flush();
+            result.push(chunk);
+        }
+    }
+
+    flush();
+    return result;
+}
+
 function removeFromTaskStack(activeTaskStack: string[], toolCallId: string): void {
     const idx = activeTaskStack.lastIndexOf(toolCallId);
     if (idx >= 0) {
@@ -517,15 +557,32 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                 }
             >
                 {hasSubtools
-                    ? childChunks.map((childChunk) => {
-                        if (childChunk.kind === 'content' && childChunk.html) {
-                            return <MarkdownView key={childChunk.key} html={childChunk.html} />;
+                    ? (() => {
+                        const nodes: React.ReactNode[] = [];
+                        let accHtml = '';
+                        let accKey = '';
+                        const flushContent = () => {
+                            if (accKey && accHtml) {
+                                nodes.push(<MarkdownView key={accKey} html={accHtml} />);
+                                accHtml = '';
+                                accKey = '';
+                            }
+                        };
+                        for (const childChunk of childChunks) {
+                            if (childChunk.kind === 'content' && childChunk.html) {
+                                if (!accKey) accKey = childChunk.key;
+                                accHtml += childChunk.html;
+                            } else if (childChunk.kind === 'tool' && childChunk.toolId) {
+                                const toolNode = renderToolTree(childChunk.toolId, depth + 1);
+                                if (toolNode !== null) {
+                                    flushContent();
+                                    nodes.push(toolNode);
+                                }
+                            }
                         }
-                        if (childChunk.kind === 'tool' && childChunk.toolId) {
-                            return renderToolTree(childChunk.toolId, depth + 1);
-                        }
-                        return null;
-                    })
+                        flushContent();
+                        return nodes;
+                    })()
                     : undefined}
             </ToolCallView>
         );
@@ -629,21 +686,36 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                             </pre>
                         </div>
                     )}
-                    {!isUser && !showRaw && assistantRender && assistantRender.chunks.map((chunk) => {
-                        if (chunk.kind === 'content' && chunk.html) {
-                            // Content emitted while a sub-task is active should render under that task.
-                            if (chunk.parentToolId && assistantRender.toolById.has(chunk.parentToolId)) {
-                                return null;
+                    {!isUser && !showRaw && assistantRender && (() => {
+                        const nodes: React.ReactNode[] = [];
+                        let accHtml = '';
+                        let accKey = '';
+                        const flushContent = () => {
+                            if (accKey && accHtml) {
+                                nodes.push(<MarkdownView key={accKey} html={accHtml} />);
+                                accHtml = '';
+                                accKey = '';
                             }
-                            return <MarkdownView key={chunk.key} html={chunk.html} />;
+                        };
+                        for (const chunk of assistantRender.chunks) {
+                            if (chunk.kind === 'content' && chunk.html) {
+                                // Content emitted while a sub-task is active should render under that task.
+                                if (chunk.parentToolId && assistantRender.toolById.has(chunk.parentToolId)) continue;
+                                if (!accKey) accKey = chunk.key;
+                                accHtml += chunk.html;
+                            } else if (chunk.kind === 'tool' && chunk.toolId) {
+                                // Skip children — they are rendered inside their parent's .tool-call-children
+                                if (assistantRender.toolParentById.has(chunk.toolId)) continue;
+                                const toolNode = renderToolTree(chunk.toolId, 0);
+                                if (toolNode !== null) {
+                                    flushContent();
+                                    nodes.push(toolNode);
+                                }
+                            }
                         }
-                        if (chunk.kind === 'tool' && chunk.toolId) {
-                            // Skip children — they are rendered inside their parent's .tool-call-children
-                            if (assistantRender.toolParentById.has(chunk.toolId)) return null;
-                            return renderToolTree(chunk.toolId, 0);
-                        }
-                        return null;
-                    })}
+                        flushContent();
+                        return nodes;
+                    })()}
                 </div>
             </div>
         </div>

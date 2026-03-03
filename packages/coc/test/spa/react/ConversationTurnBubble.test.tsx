@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { mergeConsecutiveContentChunks } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import * as formatUtils from '../../../src/server/spa/client/react/utils/format';
 
@@ -542,5 +543,147 @@ describe('ConversationTurnBubble — copy button feedback', () => {
         const btn = container.querySelector('.bubble-copy-btn') as HTMLButtonElement;
         await act(async () => { fireEvent.click(btn); });
         expect(spy).toHaveBeenCalledWith('');
+    });
+});
+
+describe('mergeConsecutiveContentChunks', () => {
+    it('returns empty array unchanged', () => {
+        expect(mergeConsecutiveContentChunks([])).toEqual([]);
+    });
+
+    it('passes through a single content chunk unchanged', () => {
+        const chunks = [{ kind: 'content' as const, key: 'c1', html: '<p>hello</p>' }];
+        const result = mergeConsecutiveContentChunks(chunks);
+        expect(result).toHaveLength(1);
+        expect(result[0].html).toBe('<p>hello</p>');
+        expect(result[0].key).toBe('c1');
+    });
+
+    it('merges two consecutive content chunks into one', () => {
+        const chunks = [
+            { kind: 'content' as const, key: 'c1', html: '<p>first</p>' },
+            { kind: 'content' as const, key: 'c2', html: '<p>second</p>' },
+        ];
+        const result = mergeConsecutiveContentChunks(chunks);
+        expect(result).toHaveLength(1);
+        expect(result[0].html).toBe('<p>first</p><p>second</p>');
+        expect(result[0].key).toBe('c1');
+    });
+
+    it('merges multiple consecutive content chunks, using first key', () => {
+        const chunks = [
+            { kind: 'content' as const, key: 'c1', html: '<p>A</p>' },
+            { kind: 'content' as const, key: 'c2', html: '<p>B</p>' },
+            { kind: 'content' as const, key: 'c3', html: '<p>C</p>' },
+        ];
+        const result = mergeConsecutiveContentChunks(chunks);
+        expect(result).toHaveLength(1);
+        expect(result[0].html).toBe('<p>A</p><p>B</p><p>C</p>');
+        expect(result[0].key).toBe('c1');
+    });
+
+    it('preserves tool chunks and does not merge content across them', () => {
+        const chunks = [
+            { kind: 'content' as const, key: 'c1', html: '<p>first</p>' },
+            { kind: 'tool' as const, key: 'tool-1', toolId: 'tool-1' },
+            { kind: 'content' as const, key: 'c2', html: '<p>second</p>' },
+        ];
+        const result = mergeConsecutiveContentChunks(chunks);
+        expect(result).toHaveLength(3);
+        expect(result[0].html).toBe('<p>first</p>');
+        expect(result[1].kind).toBe('tool');
+        expect(result[2].html).toBe('<p>second</p>');
+    });
+
+    it('merges consecutive content on both sides of a tool chunk independently', () => {
+        const chunks = [
+            { kind: 'content' as const, key: 'c1', html: '<p>A</p>' },
+            { kind: 'content' as const, key: 'c2', html: '<p>B</p>' },
+            { kind: 'tool' as const, key: 'tool-1', toolId: 'tool-1' },
+            { kind: 'content' as const, key: 'c3', html: '<p>C</p>' },
+            { kind: 'content' as const, key: 'c4', html: '<p>D</p>' },
+        ];
+        const result = mergeConsecutiveContentChunks(chunks);
+        expect(result).toHaveLength(3);
+        expect(result[0].html).toBe('<p>A</p><p>B</p>');
+        expect(result[1].kind).toBe('tool');
+        expect(result[2].html).toBe('<p>C</p><p>D</p>');
+    });
+
+    it('preserves parentToolId from the first chunk in a merged group', () => {
+        const chunks = [
+            { kind: 'content' as const, key: 'c1', html: '<p>A</p>', parentToolId: 'task-1' },
+            { kind: 'content' as const, key: 'c2', html: '<p>B</p>', parentToolId: 'task-1' },
+        ];
+        const result = mergeConsecutiveContentChunks(chunks);
+        expect(result).toHaveLength(1);
+        expect(result[0].parentToolId).toBe('task-1');
+    });
+});
+
+describe('ConversationTurnBubble — content chunk merging', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders content events separated by top-level report_intent as a single markdown-view', () => {
+        const turn = makeTurn({
+            role: 'assistant',
+            content: '',
+            timeline: [
+                { type: 'content', timestamp: 't1', content: "I'll explore in parallel." },
+                {
+                    type: 'tool-start',
+                    timestamp: 't2',
+                    toolCall: { id: 'ri-1', toolName: 'report_intent', args: { intent: 'Exploring codebase' }, status: 'running' },
+                },
+                {
+                    type: 'tool-complete',
+                    timestamp: 't3',
+                    toolCall: { id: 'ri-1', toolName: 'report_intent', args: { intent: 'Exploring codebase' }, status: 'completed' },
+                },
+                { type: 'content', timestamp: 't4', content: 'Let me look at the files.' },
+            ] as any,
+        });
+        const { container } = render(<ConversationTurnBubble turn={turn} />);
+        const markdownViews = container.querySelectorAll('[data-testid="markdown-view"]');
+        expect(markdownViews.length).toBe(1);
+    });
+
+    it('renders content events inside a task separated by report_intent as a single markdown-view', () => {
+        const turn = makeTurn({
+            role: 'assistant',
+            content: '',
+            timeline: [
+                {
+                    type: 'tool-start',
+                    timestamp: 't0',
+                    toolCall: { id: 'task-1', toolName: 'task', args: { agent_type: 'explore', description: 'test' }, status: 'running' },
+                },
+                { type: 'content', timestamp: 't1', content: 'First line.' },
+                {
+                    type: 'tool-start',
+                    timestamp: 't2',
+                    toolCall: { id: 'ri-1', toolName: 'report_intent', args: { intent: 'Exploring' }, status: 'running', parentToolCallId: 'task-1' },
+                },
+                {
+                    type: 'tool-complete',
+                    timestamp: 't3',
+                    toolCall: { id: 'ri-1', toolName: 'report_intent', args: { intent: 'Exploring' }, status: 'completed', parentToolCallId: 'task-1' },
+                },
+                { type: 'content', timestamp: 't4', content: 'Second line.' },
+                {
+                    type: 'tool-complete',
+                    timestamp: 't5',
+                    toolCall: { id: 'task-1', toolName: 'task', args: { agent_type: 'explore', description: 'test' }, status: 'completed' },
+                },
+            ] as any,
+        });
+        const { container } = render(<ConversationTurnBubble turn={turn} />);
+        // Expand the task subtree to show children
+        const toggleBtn = container.querySelector('.tool-call-header button[aria-label]') as HTMLButtonElement;
+        if (toggleBtn) fireEvent.click(toggleBtn);
+        const markdownViews = container.querySelectorAll('[data-testid="markdown-view"]');
+        expect(markdownViews.length).toBe(1);
     });
 });
