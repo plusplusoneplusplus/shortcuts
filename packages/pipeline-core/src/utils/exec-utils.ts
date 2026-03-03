@@ -23,6 +23,12 @@ export function execAsync(
 
         exec(command, { ...defaultOptions, encoding: 'utf-8' }, (error, stdout, stderr) => {
             if (error) {
+                // Augment the error message with stderr when the process is killed
+                // (e.g. timeout/SIGTERM) and stderr is not already in the message.
+                const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
+                if (stderrStr && !error.message.includes(stderrStr)) {
+                    error.message += `\n${stderrStr}`;
+                }
                 reject(error);
             } else {
                 resolve({ stdout: stdout as string, stderr: stderr as string });

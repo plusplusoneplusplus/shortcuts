@@ -55,6 +55,12 @@ export class BranchService {
             cwd: options.cwd,
             timeout: options.timeout || 30000,
             shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
+            // Prevent git from prompting for credentials on the terminal, which
+            // would cause the process to hang and eventually be killed (SIGTERM).
+            env: {
+                ...process.env,
+                GIT_TERMINAL_PROMPT: '0',
+            },
         });
         return stdout;
     }

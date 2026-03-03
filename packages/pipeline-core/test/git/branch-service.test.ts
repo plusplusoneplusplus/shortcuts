@@ -488,6 +488,19 @@ describe('BranchService', () => {
             expect(result.success).toBe(false);
             expect(result.error).toBe('rejected');
         });
+
+        it('sets GIT_TERMINAL_PROMPT=0 to prevent interactive credential prompts', async () => {
+            mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            await service.push('/repo');
+
+            expect(mockedExecAsync).toHaveBeenCalledWith(
+                'git push',
+                expect.objectContaining({
+                    env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
+                })
+            );
+        });
     });
 
     // ── pull ─────────────────────────────────────────────────────
@@ -522,6 +535,32 @@ describe('BranchService', () => {
             const result = await service.pull('/repo');
 
             expect(result.success).toBe(false);
+        });
+
+        it('sets GIT_TERMINAL_PROMPT=0 to prevent interactive credential prompts', async () => {
+            mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+            await service.pull('/repo', true);
+
+            expect(mockedExecAsync).toHaveBeenCalledWith(
+                'git pull --rebase',
+                expect.objectContaining({
+                    env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
+                })
+            );
+        });
+
+        it('returns error result with message when killed (SIGTERM)', async () => {
+            const killedErr = Object.assign(
+                new Error('Command failed: git pull --rebase\nfatal: unable to access'),
+                { code: null, killed: true, signal: 'SIGTERM', cmd: 'git pull --rebase' }
+            );
+            mockedExecAsync.mockRejectedValueOnce(killedErr);
+
+            const result = await service.pull('/repo', true);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Command failed: git pull --rebase');
         });
     });
 
