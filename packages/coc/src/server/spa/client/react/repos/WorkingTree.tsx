@@ -267,6 +267,7 @@ export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
     /** Set of filePaths currently being acted on */
     const [busyFiles, setBusyFiles] = useState<Set<string>>(new Set());
     const [stagingAll, setStagingAll] = useState(false);
+    const [workingChangesExpanded, setWorkingChangesExpanded] = useState(false);
 
     const fetchChanges = useCallback(() => {
         return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/changes`)
@@ -279,6 +280,12 @@ export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
         setError(null);
         fetchChanges().finally(() => setLoading(false));
     }, [workspaceId, fetchChanges]);
+
+    useEffect(() => {
+        if (changes.length > 0 && !workingChangesExpanded) setWorkingChangesExpanded(true);
+        // Only auto-expand when count goes from 0 to >0
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [changes.length > 0]);
 
     const setBusy = (filePath: string, busy: boolean) => {
         setBusyFiles(prev => {
@@ -379,6 +386,7 @@ export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
     const staged    = changes.filter(c => c.stage === 'staged');
     const unstaged  = changes.filter(c => c.stage === 'unstaged');
     const untracked = changes.filter(c => c.stage === 'untracked');
+    const totalCount = staged.length + unstaged.length + untracked.length;
 
     if (loading) {
         return (
@@ -404,57 +412,74 @@ export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
                 </div>
             )}
 
-            <Section
-                title="Staged"
-                count={staged.length}
-                onUnstageAll={() => handleUnstageAll(staged)}
-                stagingAll={stagingAll}
-                testId="working-tree-staged"
-            >
-                {staged.map(c => (
-                    <FileRow
-                        key={`staged-${c.filePath}`}
-                        change={c}
-                        onAction={action => handleAction(action, c.filePath)}
-                        busy={busyFiles.has(c.filePath)}
-                    />
-                ))}
-            </Section>
+            <div data-testid="working-changes-group">
+                <button
+                    className="w-full flex items-center gap-1.5 px-4 py-1.5 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
+                    onClick={() => setWorkingChangesExpanded(prev => !prev)}
+                    data-testid="working-changes-header"
+                >
+                    <span className="text-[10px] text-[#848484] flex-shrink-0">{workingChangesExpanded ? '▼' : '▶'}</span>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[#616161] dark:text-[#999] flex-1">
+                        Working Changes
+                    </span>
+                    <span className="text-xs text-[#848484] flex-shrink-0 mr-1">{totalCount}</span>
+                </button>
+                {workingChangesExpanded && (
+                    <div data-testid="working-changes-content">
+                        <Section
+                            title="Staged"
+                            count={staged.length}
+                            onUnstageAll={() => handleUnstageAll(staged)}
+                            stagingAll={stagingAll}
+                            testId="working-tree-staged"
+                        >
+                            {staged.map(c => (
+                                <FileRow
+                                    key={`staged-${c.filePath}`}
+                                    change={c}
+                                    onAction={action => handleAction(action, c.filePath)}
+                                    busy={busyFiles.has(c.filePath)}
+                                />
+                            ))}
+                        </Section>
 
-            <Section
-                title="Changes"
-                count={unstaged.length}
-                onStageAll={() => handleStageAll(unstaged)}
-                stagingAll={stagingAll}
-                testId="working-tree-unstaged"
-            >
-                {unstaged.map(c => (
-                    <FileRow
-                        key={`unstaged-${c.filePath}`}
-                        change={c}
-                        onAction={action => handleAction(action, c.filePath)}
-                        busy={busyFiles.has(c.filePath)}
-                    />
-                ))}
-            </Section>
+                        <Section
+                            title="Changes"
+                            count={unstaged.length}
+                            onStageAll={() => handleStageAll(unstaged)}
+                            stagingAll={stagingAll}
+                            testId="working-tree-unstaged"
+                        >
+                            {unstaged.map(c => (
+                                <FileRow
+                                    key={`unstaged-${c.filePath}`}
+                                    change={c}
+                                    onAction={action => handleAction(action, c.filePath)}
+                                    busy={busyFiles.has(c.filePath)}
+                                />
+                            ))}
+                        </Section>
 
-            <Section
-                title="Untracked"
-                count={untracked.length}
-                onStageAll={() => handleStageAll(untracked)}
-                stagingAll={stagingAll}
-                defaultExpanded={false}
-                testId="working-tree-untracked"
-            >
-                {untracked.map(c => (
-                    <FileRow
-                        key={`untracked-${c.filePath}`}
-                        change={c}
-                        onAction={action => handleAction(action, c.filePath)}
-                        busy={busyFiles.has(c.filePath)}
-                    />
-                ))}
-            </Section>
+                        <Section
+                            title="Untracked"
+                            count={untracked.length}
+                            onStageAll={() => handleStageAll(untracked)}
+                            stagingAll={stagingAll}
+                            defaultExpanded={false}
+                            testId="working-tree-untracked"
+                        >
+                            {untracked.map(c => (
+                                <FileRow
+                                    key={`untracked-${c.filePath}`}
+                                    change={c}
+                                    onAction={action => handleAction(action, c.filePath)}
+                                    busy={busyFiles.has(c.filePath)}
+                                />
+                            ))}
+                        </Section>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

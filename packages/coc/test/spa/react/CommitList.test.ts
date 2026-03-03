@@ -349,6 +349,48 @@ describe('CommitList', () => {
         });
     });
 
+    describe('unpushed commits', () => {
+        it('accepts optional unpushedCount prop', () => {
+            expect(source).toContain('unpushedCount?: number');
+        });
+
+        it('defaults unpushedCount to 0', () => {
+            expect(source).toContain('unpushedCount = 0');
+        });
+
+        it('renders unpushed commit hash in orange color', () => {
+            expect(source).toContain('text-[#f57c00]');
+            expect(source).toContain('dark:text-[#ffb74d]');
+        });
+
+        it('uses isUnpushed flag based on index comparison', () => {
+            expect(source).toContain('isUnpushed');
+            expect(source).toContain('index < unpushedCount');
+        });
+
+        it('renders filled dot for unpushed commits', () => {
+            expect(source).toContain('isUnpushed ? \'●\'');
+        });
+
+        it('renders separator row between unpushed and pushed commits', () => {
+            expect(source).toContain('data-testid="unpushed-separator"');
+        });
+
+        it('separator shows the unpushed count', () => {
+            expect(source).toContain('↑');
+            expect(source).toContain('unpushed');
+        });
+
+        it('shows separator at boundary index between unpushed and pushed', () => {
+            expect(source).toContain('index === unpushedCount');
+        });
+
+        it('separator has accessible aria-label', () => {
+            expect(source).toContain('aria-label=');
+            expect(source).toContain('unpushed commit');
+        });
+    });
+
     describe('empty state with showEmpty', () => {
         it('renders custom emptyMessage when showEmpty is true', () => {
             expect(source).toContain('showEmpty ?');

@@ -248,8 +248,6 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         );
     }
 
-    const unpushed = commits.slice(0, unpushedCount);
-    const history = commits.slice(unpushedCount);
     const selectedCommit = rightPanelView?.type === 'commit' ? rightPanelView.commit : rightPanelView?.type === 'commit-file' ? commits.find(c => c.hash === rightPanelView.hash) ?? null : null;
     const selectedBranchFile = rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null;
 
@@ -277,27 +275,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     })();
 
     const commitListPanel = (
-        <>
-            <CommitList
-                title="Unpushed"
-                commits={unpushed}
-                selectedHash={selectedCommit?.hash}
-                onSelect={handleSelect}
-                onFileSelect={handleCommitFileSelect}
-                workspaceId={workspaceId}
-                showEmpty
-                emptyMessage="Nothing to push — you're up to date"
-            />
-            <CommitList
-                title="History"
-                commits={history}
-                selectedHash={selectedCommit?.hash}
-                onSelect={handleSelect}
-                onFileSelect={handleCommitFileSelect}
-                workspaceId={workspaceId}
-                defaultCollapsed={unpushedCount > 0}
-            />
-        </>
+        <CommitList
+            title="History"
+            commits={commits}
+            unpushedCount={unpushedCount}
+            selectedHash={selectedCommit?.hash}
+            onSelect={handleSelect}
+            onFileSelect={handleCommitFileSelect}
+            workspaceId={workspaceId}
+        />
     );
 
     const detailPanel = rightPanelView?.type === 'commit' ? (

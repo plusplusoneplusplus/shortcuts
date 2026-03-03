@@ -54,9 +54,10 @@ interface CommitListProps {
     defaultCollapsed?: boolean;
     showEmpty?: boolean;
     emptyMessage?: string;
+    unpushedCount?: number;
 }
 
-export function CommitList({ title, commits, selectedHash, onSelect, onFileSelect, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, onSelect, onFileSelect, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     // Expanded file list state: hash -> files (cached)
@@ -184,13 +185,24 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
                         )
                     ) : (
                 <div ref={listRef} role="listbox" tabIndex={0} onKeyDown={handleKeyDown} className="outline-none">
-                    {commits.map(commit => {
+                    {commits.map((commit, index) => {
                         const isSelected = commit.hash === selectedHash;
                         const isExpanded = commit.hash === expandedHash;
                         const files = fileCache[commit.hash];
                         const isFilesLoading = filesLoading === commit.hash;
+                        const isUnpushed = unpushedCount > 0 && index < unpushedCount;
+                        const showSeparator = unpushedCount > 0 && index === unpushedCount;
                         return (
                             <div key={commit.hash}>
+                                {showSeparator && (
+                                    <div
+                                        className="px-3 py-1 text-[11px] text-[#f57c00] dark:text-[#ffb74d] border-b border-t border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff8f0] dark:bg-[#2a1f00] flex items-center gap-1"
+                                        data-testid="unpushed-separator"
+                                        aria-label={`${unpushedCount} unpushed commit${unpushedCount !== 1 ? 's' : ''}`}
+                                    >
+                                        ↑ {unpushedCount} unpushed
+                                    </div>
+                                )}
                                 <button
                                     role="option"
                                     aria-selected={isSelected}
@@ -201,10 +213,10 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
                                     onMouseLeave={handleRowMouseLeave}
                                     data-testid={`commit-row-${commit.shortHash}`}
                                 >
-                                    <span className="text-[10px] mt-0.5 flex-shrink-0">{isSelected ? '●' : '○'}</span>
+                                    <span className="text-[10px] mt-0.5 flex-shrink-0">{isUnpushed ? '●' : '○'}</span>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
-                                            <span className="font-mono text-xs text-[#0078d4] dark:text-[#3794ff] flex-shrink-0">{commit.shortHash}</span>
+                                            <span className={`font-mono text-xs flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
                                             <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] truncate">{commit.subject}</span>
                                         </div>
                                         <div className="text-[11px] text-[#848484] mt-0.5">

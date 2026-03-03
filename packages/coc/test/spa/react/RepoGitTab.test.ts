@@ -474,20 +474,21 @@ describe('RepoGitTab', () => {
             expect(source).toContain('data-testid="repo-git-tab"');
         });
 
-        it('always renders Unpushed section with showEmpty', () => {
-            expect(source).toContain('title="Unpushed"');
-            expect(source).toContain('showEmpty');
-            expect(source).toContain("Nothing to push");
+        it('renders single unified CommitList with unpushedCount prop', () => {
+            expect(source).toContain('title="History"');
+            expect(source).toContain('unpushedCount={unpushedCount}');
+            expect(source).not.toContain('title="Unpushed"');
         });
 
-        it('renders History section with defaultCollapsed when unpushed > 0', () => {
-            expect(source).toContain("title=\"History\"");
-            expect(source).toContain('defaultCollapsed={unpushedCount > 0}');
+        it('renders unified History CommitList with all commits', () => {
+            expect(source).toContain('title="History"');
+            expect(source).toContain('commits={commits}');
         });
 
-        it('splits commits into unpushed and history based on unpushedCount', () => {
-            expect(source).toContain('commits.slice(0, unpushedCount)');
-            expect(source).toContain('commits.slice(unpushedCount)');
+        it('passes unpushedCount to unified CommitList instead of slicing', () => {
+            expect(source).toContain('unpushedCount={unpushedCount}');
+            expect(source).not.toContain('commits.slice(0, unpushedCount)');
+            expect(source).not.toContain('commits.slice(unpushedCount)');
         });
 
         it('passes selectedHash and onSelect to CommitList', () => {
