@@ -16,11 +16,14 @@ import { fetchApi } from './hooks/useApi';
 import { ToastContainer, useToast } from './shared';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
+import { MarkdownReviewMinimizedChip } from './processes/MarkdownReviewMinimizedChip';
 import { EnqueueDialog } from './queue/EnqueueDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 
 interface MarkdownReviewDialogState {
     open: boolean;
+    minimized: boolean;
+    scrollTop: number;
     wsId: string | null;
     filePath: string | null;
     displayPath: string | null;
@@ -45,6 +48,11 @@ interface QueueMessageLike {
 
 function normalizePath(pathValue: string): string {
     return toForwardSlashes(pathValue);
+}
+
+function getFileName(path: string): string {
+    const normalized = path.replace(/\\/g, '/');
+    return normalized.split('/').pop() || path;
 }
 
 function normalizeComparablePath(pathValue: string): string {
@@ -118,6 +126,8 @@ function AppInner() {
     const hasConnectedRef = useRef(false);
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
+        minimized: false,
+        scrollTop: 0,
         wsId: null,
         filePath: null,
         displayPath: null,
@@ -279,6 +289,8 @@ function AppInner() {
                     const displayPath = rootNormalized ? `${rootNormalized}/.vscode/tasks/${filePath}` : filePath;
                     setReviewDialog({
                         open: true,
+                        minimized: false,
+                        scrollTop: 0,
                         wsId: hintedWorkspace.id,
                         filePath,
                         displayPath,
@@ -306,6 +318,8 @@ function AppInner() {
 
             setReviewDialog({
                 open: true,
+                minimized: false,
+                scrollTop: 0,
                 wsId: workspace.id,
                 filePath: taskRelativePath ?? fullPath,
                 displayPath: fullPath,
@@ -319,6 +333,18 @@ function AppInner() {
         };
     }, [appState.workspaces]);
 
+    const handleMinimizeReview = useCallback((scrollTop: number) => {
+        setReviewDialog(prev => ({ ...prev, open: false, minimized: true, scrollTop }));
+    }, []);
+
+    const handleRestoreReview = useCallback(() => {
+        setReviewDialog(prev => ({ ...prev, open: true, minimized: false }));
+    }, []);
+
+    const handleCloseReviewChip = useCallback(() => {
+        setReviewDialog({ open: false, minimized: false, scrollTop: 0, wsId: null, filePath: null, displayPath: null, fetchMode: 'auto' });
+    }, []);
+
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <TopBar />
@@ -329,11 +355,20 @@ function AppInner() {
             <MarkdownReviewDialog
                 open={reviewDialog.open}
                 onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}
+                onMinimize={handleMinimizeReview}
                 wsId={reviewDialog.wsId}
                 filePath={reviewDialog.filePath}
                 displayPath={reviewDialog.displayPath}
                 fetchMode={reviewDialog.fetchMode}
+                initialScrollTop={reviewDialog.scrollTop}
             />
+            {reviewDialog.minimized && reviewDialog.filePath && (
+                <MarkdownReviewMinimizedChip
+                    fileName={getFileName(reviewDialog.displayPath || reviewDialog.filePath)}
+                    onRestore={handleRestoreReview}
+                    onClose={handleCloseReviewChip}
+                />
+            )}
         </ToastProvider>
     );
 }

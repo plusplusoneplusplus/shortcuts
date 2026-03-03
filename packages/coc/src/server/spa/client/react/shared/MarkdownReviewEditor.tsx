@@ -44,6 +44,10 @@ export interface MarkdownReviewEditorProps {
     onViewModeChange?: (mode: 'review' | 'source') => void;
     /** When true, renders Follow Prompt + Update Document AI buttons in the toolbar. */
     showAiButtons?: boolean;
+    /** Scroll position to restore after content loads (used for minimize/restore). */
+    initialScrollTop?: number;
+    /** Called whenever the preview scroll position changes. */
+    onScrollTopChange?: (scrollTop: number) => void;
 }
 
 /** Minimum selection length to trigger toolbar. */
@@ -72,11 +76,14 @@ export function MarkdownReviewEditor({
     initialViewMode = 'review',
     onViewModeChange,
     showAiButtons = false,
+    initialScrollTop,
+    onScrollTopChange,
 }: MarkdownReviewEditorProps) {
     const [rawContent, setRawContent] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [viewMode, setViewModeRaw] = useState<'review' | 'source'>(initialViewMode);
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
@@ -209,6 +216,14 @@ export function MarkdownReviewEditor({
         void load();
         return () => { cancelled = true; };
     }, [wsId, filePath, fetchMode]);
+
+    // Restore scroll position after content finishes loading (for minimize/restore)
+    useEffect(() => {
+        if (!loading && initialScrollTop && scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = initialScrollTop;
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loading]); // intentionally run only when loading state changes
 
     // Sync editedContent when switching to source mode or when rawContent changes
     useEffect(() => {
@@ -671,7 +686,11 @@ export function MarkdownReviewEditor({
                             />
                         </div>
                     ) : (
-                        <div className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0">
+                        <div
+                            ref={scrollContainerRef}
+                            className="flex-1 overflow-y-auto p-4 min-h-0 min-w-0"
+                            onScroll={onScrollTopChange ? (e) => onScrollTopChange((e.currentTarget as HTMLDivElement).scrollTop) : undefined}
+                        >
                             <div
                                 ref={previewRef}
                                 id="task-preview-body"
