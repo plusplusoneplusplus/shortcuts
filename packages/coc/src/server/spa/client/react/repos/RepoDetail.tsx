@@ -17,7 +17,6 @@ import { RepoChatTab } from './RepoChatTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { RepoCopilotTab } from './RepoCopilotTab';
-import { RepoSkillsTab } from './RepoSkillsTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
@@ -39,7 +38,6 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'git', label: 'Git' },
     { key: 'pipelines', label: 'Pipelines' },
     { key: 'tasks', label: 'Tasks' },
-    { key: 'skills', label: 'Skills' },
     { key: 'queue', label: 'Queue' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'chat', label: 'Chat' },
@@ -478,7 +476,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
-                        {activeSubTab === 'skills' && <RepoSkillsTab workspaceId={ws.id} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab workspaceId={ws.id} />}
                     </div>
                 )}

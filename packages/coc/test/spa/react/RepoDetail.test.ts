@@ -29,13 +29,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 10 entries', () => {
-        expect(SUB_TABS).toHaveLength(10);
+    it('has exactly 9 entries', () => {
+        expect(SUB_TABS).toHaveLength(9);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'pipelines', 'tasks', 'skills', 'queue', 'schedules', 'chat', 'wiki', 'copilot']);
+        expect(keys).toEqual(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot']);
     });
 
     it('includes a "wiki" entry', () => {

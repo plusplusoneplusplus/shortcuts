@@ -1,5 +1,5 @@
 /**
- * Tests for RepoCopilotTab — MCP server toggle panel.
+ * Tests for RepoCopilotTab — MCP server toggle panel + Agent Skills.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -14,6 +14,15 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
+}));
+
+// global fetch mock for skills API calls
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
+// ToastContext mock
+vi.mock('../../../../src/server/spa/client/react/context/ToastContext', () => ({
+    useGlobalToast: () => ({ addToast: vi.fn() }),
 }));
 
 async function renderTab(workspaceId = 'ws-1') {
@@ -31,9 +40,16 @@ const twoServers = {
     enabledMcpServers: null,
 };
 
+const emptySkillsResponse = { skills: [] };
+
 beforeEach(() => {
     vi.resetAllMocks();
     mockFetchApi.mockResolvedValue(twoServers);
+    // Default: skills API returns empty list
+    mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => emptySkillsResponse,
+    } as any);
 });
 
 // ── 1. Loading state ─────────────────────────────────────────────────────────
@@ -207,5 +223,65 @@ describe('saving state', () => {
         });
 
         await act(async () => { resolvePut!({}); });
+    });
+});
+
+// ── 11. Agent Skills section renders ─────────────────────────────────────────
+
+describe('Agent Skills section', () => {
+    it('renders Agent Skills heading', async () => {
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+        expect(screen.getByText('Agent Skills')).toBeTruthy();
+    });
+
+    it('renders skills-install-btn', async () => {
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+        expect(screen.getByTestId('skills-install-btn')).toBeTruthy();
+    });
+
+    it('shows empty-state when no skills are installed', async () => {
+        await act(async () => { await renderTab(); });
+        await waitFor(() => screen.getByTestId('skills-empty-state'));
+        expect(screen.getByTestId('skills-empty-state')).toBeTruthy();
+    });
+
+    it('renders skills list when skills are returned', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({ skills: [{ name: 'my-skill', description: 'A skill' }] }),
+        } as any);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => screen.getByTestId('skills-list'));
+        expect(screen.getByTestId('skill-item-my-skill')).toBeTruthy();
+        expect(screen.getByText('A skill')).toBeTruthy();
+    });
+
+    it('shows delete confirmation when delete button is clicked', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({ skills: [{ name: 'my-skill' }] }),
+        } as any);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => screen.getByTestId('skills-list'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('skill-delete-btn-my-skill'));
+        });
+        expect(screen.getByTestId('skill-delete-confirm-my-skill')).toBeTruthy();
+    });
+
+    it('opens install dialog when + Install is clicked', async () => {
+        await act(async () => { await renderTab(); });
+        await waitFor(() => screen.getByTestId('skills-install-btn'));
+        // Mock bundled skills response for dialog
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({ skills: [] }),
+        } as any);
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('skills-install-btn'));
+        });
+        expect(screen.getByTestId('install-skills-dialog')).toBeTruthy();
     });
 });
