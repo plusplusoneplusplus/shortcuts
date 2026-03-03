@@ -77,6 +77,7 @@ export function MarkdownReviewDialog({
                         wsId={wsId}
                         filePath={filePath}
                         fetchMode={fetchMode}
+                        showAiButtons={true}
                     />
                 </div>
             </div>

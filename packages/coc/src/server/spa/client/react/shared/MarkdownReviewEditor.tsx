@@ -12,6 +12,9 @@ import type { RenderCommentInfo } from '../../markdown-renderer';
 import { useTaskComments } from '../hooks/useTaskComments';
 import { Spinner } from './Spinner';
 import { SourceEditor } from './SourceEditor';
+import { Button } from './Button';
+import { FollowPromptDialog } from './FollowPromptDialog';
+import { UpdateDocumentDialog } from './UpdateDocumentDialog';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { ContextMenu } from '../tasks/comments/ContextMenu';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -39,6 +42,8 @@ export interface MarkdownReviewEditorProps {
     initialViewMode?: 'review' | 'source';
     /** Called when the user switches view mode. */
     onViewModeChange?: (mode: 'review' | 'source') => void;
+    /** When true, renders Follow Prompt + Update Document AI buttons in the toolbar. */
+    showAiButtons?: boolean;
 }
 
 /** Minimum selection length to trigger toolbar. */
@@ -66,6 +71,7 @@ export function MarkdownReviewEditor({
     toolbarRight,
     initialViewMode = 'review',
     onViewModeChange,
+    showAiButtons = false,
 }: MarkdownReviewEditorProps) {
     const [rawContent, setRawContent] = useState('');
     const [loading, setLoading] = useState(true);
@@ -74,6 +80,8 @@ export function MarkdownReviewEditor({
     const [viewMode, setViewModeRaw] = useState<'review' | 'source'>(initialViewMode);
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
+    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | 'update-document' | null>(null);
+    const taskName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
 
     const setViewMode = useCallback((mode: 'review' | 'source') => {
         setViewModeRaw(mode);
@@ -629,7 +637,30 @@ export function MarkdownReviewEditor({
                                 {saving ? 'Saving…' : 'Save'}
                             </button>
                         )}
-                        {toolbarRight && <div className="ml-auto flex items-center">{toolbarRight}</div>}
+                        {(showAiButtons || toolbarRight) && (
+                            <div className="ml-auto flex items-center">
+                                {showAiButtons && (
+                                    <>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            data-testid="task-preview-follow-prompt"
+                                            title="Follow Prompt"
+                                            onClick={() => setAiDialogType('follow-prompt')}
+                                        >📝</Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            data-testid="task-preview-update-document"
+                                            title="Update Document"
+                                            onClick={() => setAiDialogType('update-document')}
+                                        >✏️</Button>
+                                        <span className="w-px h-4 bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center" aria-hidden="true" />
+                                    </>
+                                )}
+                                {toolbarRight}
+                            </div>
+                        )}
                     </div>
 
                     {viewMode === 'source' ? (
@@ -821,6 +852,22 @@ export function MarkdownReviewEditor({
                     onClearAiError={(id) => clearAiError(id)}
                     onFixWithAI={handleFixWithAI}
                     fixLoading={resolvingCommentId === activePopoverComment.id}
+                />
+            )}
+            {showAiButtons && aiDialogType === 'follow-prompt' && (
+                <FollowPromptDialog
+                    wsId={wsId}
+                    taskPath={filePath}
+                    taskName={taskName}
+                    onClose={() => setAiDialogType(null)}
+                />
+            )}
+            {showAiButtons && aiDialogType === 'update-document' && (
+                <UpdateDocumentDialog
+                    wsId={wsId}
+                    taskPath={filePath}
+                    taskName={taskName}
+                    onClose={() => setAiDialogType(null)}
                 />
             )}
         </div>
