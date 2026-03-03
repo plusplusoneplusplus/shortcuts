@@ -362,10 +362,10 @@ describe('batch-resolve endpoints', () => {
             await createComment();
             // POST to batch-resolve should NOT be interpreted as "create comment"
             const res = await postJSON(batchResolveUrl(), { documentContent: DOC_CONTENT });
-            // Should get batch-resolve response (202 queue or 200 fallback), not "create comment" response
-            expect([200, 202]).toContain(res.status);
+            // Should get batch-resolve response (202 queued), not "create comment" response
+            expect(res.status).toBe(202);
             const body = JSON.parse(res.body);
-            expect(body.taskId ?? body.revisedContent).toBeDefined();
+            expect(body.taskId).toBeDefined();
             expect(body.comment).toBeUndefined();
         });
     });

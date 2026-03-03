@@ -401,10 +401,10 @@ function isValidWorkspaceId(wsId: string): boolean {
  *
  * @param routes - Shared route table
  * @param dataDir - Directory for comment storage (e.g. ~/.coc)
- * @param bridge - Optional multi-repo queue bridge for async AI execution
+ * @param bridge - Multi-repo queue bridge for async AI execution
  * @param store - Optional process store for workspace resolution
  */
-export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bridge?: MultiRepoQueueExecutorBridge, store?: ProcessStore, getWsServer?: () => ProcessWebSocketServer | undefined): void {
+export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore, getWsServer?: () => ProcessWebSocketServer | undefined): void {
     const manager = new TaskCommentsManager(dataDir);
 
     /**
@@ -423,7 +423,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
 
     /**
      * Enqueue a resolve-comments task via the multi-repo bridge.
-     * Returns the task ID, or undefined if the bridge is unavailable.
+     * Returns the task ID, or undefined if enqueueing fails.
      */
     async function enqueueResolveTask(
         wsId: string,
@@ -432,7 +432,6 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         prompt: string,
         documentContent: string,
     ): Promise<string | undefined> {
-        if (!bridge) return undefined;
         const rootPath = await resolveWorkspacePath(wsId) || process.cwd();
         bridge.getOrCreateBridge(rootPath);
         const queueManager = bridge.registry.getQueueForRepo(rootPath);
@@ -689,49 +688,15 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                     }
                     const resolvePrompt = buildBatchResolvePrompt([comment], documentContent, taskPath);
 
-                    // Try async queue path first
                     try {
                         const taskId = await enqueueResolveTask(wsId, taskPath, [comment.id], resolvePrompt, documentContent);
                         if (taskId) {
                             return sendJSON(res, 202, { taskId });
                         }
                     } catch {
-                        // Fall through to direct AI invocation
+                        // Fall through to error response
                     }
-
-                    // Fallback: direct AI invocation when bridge is unavailable
-                    let revisedContent: string;
-                    let resolvedCommentId: string | undefined;
-                    try {
-                        const { createCLIAIInvoker } = await import('../ai-invoker');
-                        const { createResolveCommentTool } = await import('./resolve-comment-tool');
-                        const { tool, getResolvedIds } = createResolveCommentTool();
-                        const invoker = createCLIAIInvoker({ approvePermissions: false, tools: [tool] });
-                        const result = await invoker(resolvePrompt, { timeoutMs: 120000 });
-                        if (!result.success) {
-                            return sendError(res, 502, result.error || 'AI request failed');
-                        }
-                        revisedContent = result.response || '';
-                        const resolved = getResolvedIds();
-                        resolvedCommentId = resolved.includes(comment.id) || resolved.length === 0
-                            ? comment.id : undefined;
-                    } catch {
-                        return sendError(res, 503, 'AI service unavailable');
-                    }
-                    // Persist resolution server-side and broadcast WS event
-                    if (resolvedCommentId) {
-                        try {
-                            await manager.updateComment(wsId, taskPath, resolvedCommentId, { status: 'resolved' });
-                            getWsServer?.()?.broadcastFileEvent(taskPath, {
-                                type: 'comment-resolved',
-                                filePath: taskPath,
-                                commentId: resolvedCommentId,
-                            });
-                        } catch {
-                            // Non-fatal
-                        }
-                    }
-                    return sendJSON(res, 200, { revisedContent, commentIds: resolvedCommentId ? [resolvedCommentId] : [] });
+                    return sendError(res, 503, 'Queue unavailable: unable to enqueue resolve task');
                 }
 
                 let prompt: string;
@@ -816,55 +781,15 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             const prompt = buildBatchResolvePrompt(openComments, documentContent, taskPath);
             const commentIds = openComments.map(c => c.id);
 
-            // Try async queue path first
             try {
                 const taskId = await enqueueResolveTask(wsId, taskPath, commentIds, prompt, documentContent);
                 if (taskId) {
                     return sendJSON(res, 202, { taskId });
                 }
             } catch {
-                // Fall through to direct AI invocation
+                // Fall through to error response
             }
-
-            // Fallback: direct AI invocation when bridge is unavailable
-            let revisedContent: string;
-            let resolvedCommentIds: string[];
-            try {
-                const { createCLIAIInvoker } = await import('../ai-invoker');
-                const { createResolveCommentTool } = await import('./resolve-comment-tool');
-                const { tool, getResolvedIds } = createResolveCommentTool();
-                const invoker = createCLIAIInvoker({ approvePermissions: false, tools: [tool] });
-                const result = await invoker(prompt, { timeoutMs: 120000 });
-                if (!result.success) {
-                    return sendError(res, 502, result.error || 'AI request failed');
-                }
-                revisedContent = result.response || '';
-                const resolved = getResolvedIds();
-                resolvedCommentIds = resolved.length > 0 ? resolved : commentIds;
-            } catch {
-                return sendError(res, 503, 'AI service unavailable');
-            }
-
-            // Persist resolution server-side and broadcast WS events
-            await Promise.all(
-                resolvedCommentIds.map(async (id) => {
-                    try {
-                        await manager.updateComment(wsId, taskPath, id, { status: 'resolved' });
-                        getWsServer?.()?.broadcastFileEvent(taskPath, {
-                            type: 'comment-resolved',
-                            filePath: taskPath,
-                            commentId: id,
-                        });
-                    } catch {
-                        // Non-fatal
-                    }
-                })
-            );
-
-            sendJSON(res, 200, {
-                revisedContent,
-                commentIds: resolvedCommentIds,
-            });
+            return sendError(res, 503, 'Queue unavailable: unable to enqueue resolve task');
         },
     });
 
