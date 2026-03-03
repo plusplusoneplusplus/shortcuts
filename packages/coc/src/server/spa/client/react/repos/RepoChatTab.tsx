@@ -440,6 +440,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
 
     const handleNewChat = useCallback((initialReadOnly = false) => {
         if (isStreaming) stopStreaming();
+        autoSelectedRef.current = true;
         currentChatTaskIdRef.current = null;
         setSelectedTaskId(null);
         setChatTaskId(null);
