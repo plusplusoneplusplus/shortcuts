@@ -803,7 +803,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                     )}
                     {(sessionExpired || taskFinished) && !isStreaming && (
                         <>
-                            <Button size="sm" variant="secondary" onClick={() => void handleResumeInTerminal()} disabled={!processId}>
+                            <Button size="sm" variant="secondary" className="hidden sm:inline-flex" onClick={() => void handleResumeInTerminal()} disabled={!processId}>
                                 Resume in Terminal
                             </Button>
                             <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>

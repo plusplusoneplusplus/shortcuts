@@ -571,6 +571,7 @@ export function QueueTaskDetail({ onBack }: { onBack?: () => void } = {}) {
                                 <Button
                                     variant="secondary"
                                     size="sm"
+                                    className="hidden sm:inline-flex"
                                     loading={resumeLaunching}
                                     onClick={() => { void launchInteractiveResume(); }}
                                 >

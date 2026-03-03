@@ -288,6 +288,7 @@ export function ProcessDetail() {
                                 <Button
                                     variant="secondary"
                                     size="sm"
+                                    className="hidden sm:inline-flex"
                                     loading={resumeLaunching}
                                     onClick={() => { void launchInteractiveResume(); }}
                                 >
