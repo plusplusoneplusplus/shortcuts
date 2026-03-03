@@ -379,7 +379,10 @@ export class CLITaskExecutor implements TaskExecutor {
      */
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void {
         const logger = getLogger();
-        const firstUserContent = turns.find(t => t.role === 'user')?.content ?? '';
+        const rawContent = turns.find(t => t.role === 'user')?.content ?? '';
+        const firstUserContent = rawContent.startsWith(READONLY_PROMPT_PREFIX)
+            ? rawContent.slice(READONLY_PROMPT_PREFIX.length)
+            : rawContent;
         if (!firstUserContent) return;
 
         // Use void to explicitly fire-and-forget

@@ -10,6 +10,7 @@
  */
 
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/pipeline-core';
+import { READONLY_PROMPT_PREFIX } from './queue-executor-bridge';
 import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -308,12 +309,16 @@ async function enrichChatTasks(
             const lastActivityAt = Number.isFinite(lastTurnTs)
                 ? lastTurnTs
                 : (task.completedAt as number) ?? (task.createdAt as number) ?? 0;
+            const rawFirstContent = firstUserTurn?.content ?? '';
+            const firstContent = rawFirstContent.startsWith(READONLY_PROMPT_PREFIX)
+                ? rawFirstContent.slice(READONLY_PROMPT_PREFIX.length)
+                : rawFirstContent;
             task.chatMeta = {
                 turnCount: turns.length,
                 firstMessage: firstUserTurn
-                    ? (firstUserTurn.content.length > 120
-                        ? firstUserTurn.content.substring(0, 117) + '...'
-                        : firstUserTurn.content)
+                    ? (firstContent.length > 120
+                        ? firstContent.substring(0, 117) + '...'
+                        : firstContent)
                     : undefined,
                 lastActivityAt,
                 title: process.title,

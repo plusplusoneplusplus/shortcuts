@@ -2014,6 +2014,64 @@ describe('Queue Handler', () => {
             expect(task.chatMeta).toBeDefined();
             expect(task.chatMeta.title).toBeUndefined();
         });
+
+        it('readonly-chat: should strip READONLY_PROMPT_PREFIX from firstMessage in chatMeta', async () => {
+            const READONLY_PROMPT_PREFIX =
+                'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code that\'s tracked by the git. Special files like task plan markdown files are exempt from this rule. If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
+            const userMessage = 'What does the auth module do?';
+            const processesDir = path.join(dataDir, 'processes');
+            fs.mkdirSync(processesDir, { recursive: true });
+            fs.writeFileSync(path.join(processesDir, 'proc-readonly-1.json'), JSON.stringify({
+                workspaceId: '',
+                process: {
+                    id: 'proc-readonly-1',
+                    type: 'clarification',
+                    promptPreview: 'test',
+                    fullPrompt: 'test prompt',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    conversationTurns: [
+                        { role: 'user', content: READONLY_PROMPT_PREFIX + userMessage, timestamp: new Date().toISOString(), turnIndex: 0 },
+                        { role: 'assistant', content: 'The auth module handles login.', timestamp: new Date().toISOString(), turnIndex: 1 },
+                    ],
+                },
+            }));
+
+            const repoRoot = path.resolve('/test/readonly-chat-firstmessage');
+            const crypto = require('crypto');
+            const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const queuesDir = path.join(dataDir, 'queues');
+            fs.mkdirSync(queuesDir, { recursive: true });
+            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+                version: 3,
+                savedAt: new Date().toISOString(),
+                repoRootPath: repoRoot,
+                repoId,
+                isPaused: false,
+                pending: [],
+                history: [{
+                    id: 'task-readonly-1',
+                    type: 'readonly-chat',
+                    priority: 'normal',
+                    status: 'completed',
+                    createdAt: Date.now(),
+                    payload: { prompt: userMessage },
+                    displayName: 'Readonly chat',
+                    processId: 'proc-readonly-1',
+                    repoId,
+                }],
+            }));
+
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const task = body.history.find((t: any) => t.id === 'task-readonly-1');
+            expect(task).toBeDefined();
+            expect(task.chatMeta).toBeDefined();
+            expect(task.chatMeta.firstMessage).toBe(userMessage);
+            expect(task.chatMeta.firstMessage).not.toContain('IMPORTANT: You are in read-only mode');
+        });
     });
 
     describe('Task config', () => {

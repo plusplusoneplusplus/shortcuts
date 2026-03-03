@@ -27,7 +27,7 @@ import {
     QueuedTask,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
-import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor, READONLY_PROMPT_PREFIX } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
@@ -78,6 +78,19 @@ function makeChatTask(id: string, prompt: string): QueuedTask {
         payload: { prompt },
         config: {},
         displayName: 'Chat task',
+    };
+}
+
+function makeReadonlyChatTask(id: string, prompt: string): QueuedTask {
+    return {
+        id,
+        type: 'readonly-chat',
+        priority: 'normal',
+        status: 'running',
+        createdAt: Date.now(),
+        payload: { prompt },
+        config: {},
+        displayName: 'Readonly chat task',
     };
 }
 
@@ -214,5 +227,22 @@ describe('CLITaskExecutor — Title Generation', () => {
             'queue_title-6',
             expect.objectContaining({ title: 'Fix authentication bug' }),
         );
+    });
+
+    it('readonly-chat: should generate title from user message, not from READONLY_PROMPT_PREFIX', async () => {
+        mockTransform.mockResolvedValue('Fix Auth Bug');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+
+        const userMessage = 'How do I fix the authentication bug?';
+        const task = makeReadonlyChatTask('title-readonly-1', userMessage);
+        await executor.execute(task);
+
+        await delay(50);
+
+        expect(mockTransform).toHaveBeenCalledOnce();
+        const promptArg = mockTransform.mock.calls[0]?.[0] as string;
+        // Should contain the user's actual message, not the READONLY_PROMPT_PREFIX
+        expect(promptArg).toContain(userMessage);
+        expect(promptArg).not.toContain(READONLY_PROMPT_PREFIX);
     });
 });
