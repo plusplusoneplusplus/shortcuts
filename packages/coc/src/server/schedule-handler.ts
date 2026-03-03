@@ -12,6 +12,7 @@ import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server'
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { ScheduleManager, describeCron, nextCronTime, parseCron } from './schedule-manager';
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager';
+import type { TargetType } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Validation
@@ -19,6 +20,7 @@ import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedul
 
 const VALID_STATUSES: Set<string> = new Set(['active', 'paused', 'stopped']);
 const VALID_ON_FAILURE: Set<string> = new Set(['notify', 'stop']);
+const VALID_TARGET_TYPES: Set<string> = new Set(['prompt', 'script']);
 
 function validateScheduleInput(body: any): { valid: boolean; error?: string } {
     if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
@@ -41,6 +43,9 @@ function validateScheduleInput(body: any): { valid: boolean; error?: string } {
     if (body.status && !VALID_STATUSES.has(body.status)) {
         return { valid: false, error: `Invalid status: ${body.status}. Valid values: active, paused, stopped` };
     }
+    if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
+        return { valid: false, error: `Invalid targetType: ${body.targetType}. Valid values: prompt, script` };
+    }
     return { valid: true };
 }
 
@@ -50,6 +55,7 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
         id: entry.id,
         name: entry.name,
         target: entry.target,
+        targetType: entry.targetType ?? 'prompt',
         cron: entry.cron,
         cronDescription: describeCron(entry.cron),
         params: entry.params,
@@ -111,6 +117,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
                     params: body.params || {},
                     onFailure: (body.onFailure as ScheduleOnFailure) || 'notify',
                     status: (body.status as ScheduleStatus) || 'active',
+                    targetType: (body.targetType as TargetType) || 'prompt',
                 });
                 sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager) });
             } catch (err) {
@@ -150,6 +157,9 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
             if (body.status && !VALID_STATUSES.has(body.status)) {
                 return sendError(res, 400, `Invalid status: ${body.status}`);
             }
+            if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
+                return sendError(res, 400, `Invalid targetType: ${body.targetType}. Valid values: prompt, script`);
+            }
 
             const updates: any = {};
             if (body.name) updates.name = body.name.trim();
@@ -158,6 +168,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
             if (body.params !== undefined) updates.params = body.params;
             if (body.onFailure) updates.onFailure = body.onFailure;
             if (body.status) updates.status = body.status;
+            if (body.targetType !== undefined) updates.targetType = body.targetType;
 
             const schedule = manager.updateSchedule(repoId, scheduleId, updates);
             if (!schedule) {

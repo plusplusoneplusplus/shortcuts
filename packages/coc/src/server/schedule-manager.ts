@@ -281,7 +281,7 @@ export class ScheduleManager extends EventEmitter {
     /**
      * Update an existing schedule.
      */
-    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status'>>): ScheduleEntry | undefined {
+    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType'>>): ScheduleEntry | undefined {
         const schedule = this.schedules.get(repoId)?.get(scheduleId);
         if (!schedule) return undefined;
 

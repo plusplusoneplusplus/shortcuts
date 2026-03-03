@@ -177,6 +177,33 @@ describe('Schedule Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.schedule.params).toEqual({ env: 'prod' });
         });
+
+        it('should create a schedule with targetType: script', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ targetType: 'script' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.targetType).toBe('script');
+        });
+
+        it('should default targetType to prompt when absent', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule());
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.targetType).toBe('prompt');
+        });
+
+        it('should reject invalid targetType', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ targetType: 'invalid' }));
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('targetType');
+        });
     });
 
     // ========================================================================
@@ -220,6 +247,18 @@ describe('Schedule Handler', () => {
             const body2 = JSON.parse(res2.body);
             expect(body2.schedules).toHaveLength(1);
             expect(body2.schedules[0].name).toBe('WS2 Schedule');
+        });
+
+        it('should include targetType in list response', async () => {
+            await startServer();
+
+            await postJSON(schedulesUrl(), makeSchedule({ name: 'Script Schedule', targetType: 'script' }));
+
+            const res = await request(schedulesUrl());
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.schedules).toHaveLength(1);
+            expect(body.schedules[0].targetType).toBe('script');
         });
     });
 
