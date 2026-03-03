@@ -311,6 +311,20 @@ describe('SSE replay', () => {
         expect((chunkFrames[0].data as any).content).toBe('before-close');
     });
 
+    // Test 9: 404 for unknown process
+    it('returns 404 when the process does not exist in the store', async () => {
+        const req = createMockReq();
+        const res = createMockRes();
+
+        await handleProcessStream(req as any, res as any, 'nonexistent-id', store);
+
+        expect(res._statusCode).toBe(404);
+        expect(res._ended).toBe(true);
+        // Must not emit any SSE frames (no conversation-snapshot, no status, no done)
+        const frames = parseSSEFrames(res._chunks);
+        expect(frames).toHaveLength(0);
+    });
+
     // Test 8: Unsubscribe is called on disconnect
     it('calls the store unsubscribe function when client disconnects', async () => {
         const unsubscribe = vi.fn();

@@ -431,6 +431,20 @@ describe('SSE replay', () => {
         expect(unsubscribe).toHaveBeenCalledTimes(1);
     });
 
+    // Test 13: 404 for unknown process
+    it('returns 404 when the process does not exist in the store', async () => {
+        const req = createMockReq();
+        const res = createMockRes();
+
+        await handleProcessStream(req as any, res as any, 'nonexistent-id', store);
+
+        expect(res._statusCode).toBe(404);
+        expect(res._ended).toBe(true);
+        // Must not emit any SSE frames (no conversation-snapshot, no status, no done)
+        const frames = parseSSEFrames(res._chunks);
+        expect(frames).toHaveLength(0);
+    });
+
     // Test 10: Suggestions event is forwarded to SSE stream
     it('forwards suggestions event to SSE stream', async () => {
         let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;
