@@ -23,6 +23,7 @@ export interface TaskTreeItemProps {
     onCheckboxChange: (path: string, checked: boolean) => void;
     onFolderContextMenu?: (folder: TaskFolder, x: number, y: number) => void;
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
+    onDoubleClick?: (path: string) => void;
     // Drag-and-drop handlers
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: (e: React.DragEvent) => void;
@@ -100,6 +101,7 @@ export function TaskTreeItem({
     onCheckboxChange,
     onFolderContextMenu,
     onFileContextMenu,
+    onDoubleClick,
     onDragStart,
     onDragEnd,
     onDragOver,
@@ -196,6 +198,12 @@ export function TaskTreeItem({
         handleClick();
     };
 
+    const handleDoubleClick = () => {
+        if (!isFolder && path) {
+            onDoubleClick?.(path);
+        }
+    };
+
     return (
         <li
             className={cn(
@@ -220,6 +228,7 @@ export function TaskTreeItem({
             onDragLeave={isFolder ? onDragLeave : undefined}
             onDrop={isFolder ? onDrop : undefined}
             onClick={handleClickWithLongPress}
+            onDoubleClick={handleDoubleClick}
             onContextMenu={(e) => {
                 if (e.shiftKey) {
                     // Keep the browser's native context menu when Shift is held.

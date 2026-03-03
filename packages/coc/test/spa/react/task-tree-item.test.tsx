@@ -453,8 +453,7 @@ describe('buildFileTooltip', () => {
     });
 });
 
-describe('TaskTreeItem — backslash normalization in paths', () => {
-    afterEach(() => cleanup());
+describe('TaskTreeItem — backslash normalization in paths', () => {    afterEach(() => cleanup());
 
     it('normalizes backslashes in relativePath for single document click', () => {
         const onFileClick = vi.fn();
@@ -494,5 +493,44 @@ describe('TaskTreeItem — backslash normalization in paths', () => {
         });
         const li = screen.getByTestId('task-tree-item-render');
         expect(li.getAttribute('title')).toContain('coc/chat/render.md');
+    });
+});
+
+describe('TaskTreeItem — double-click behaviour', () => {
+    afterEach(() => cleanup());
+
+    it('double-clicking a file item calls onDoubleClick with the file path', () => {
+        const onDoubleClick = vi.fn();
+        renderItem({
+            item: makeDocument({ relativePath: 'sub', fileName: 'task.md' }),
+            onDoubleClick,
+        });
+        fireEvent.dblClick(screen.getByTestId('task-tree-item-task'));
+        expect(onDoubleClick).toHaveBeenCalledWith('sub/task.md');
+    });
+
+    it('double-clicking a folder does NOT call onDoubleClick', () => {
+        const onDoubleClick = vi.fn();
+        renderItem({ item: makeFolder({ name: 'myfolder' }), onDoubleClick });
+        fireEvent.dblClick(screen.getByTestId('task-tree-item-myfolder'));
+        expect(onDoubleClick).not.toHaveBeenCalled();
+    });
+
+    it('double-clicking a document group calls onDoubleClick with first document path', () => {
+        const onDoubleClick = vi.fn();
+        const group = makeDocumentGroup({
+            baseName: 'design',
+            documents: [
+                { baseName: 'design', docType: 'spec', fileName: 'design.spec.md', relativePath: 'feat', isArchived: false },
+            ],
+        });
+        renderItem({ item: group, onDoubleClick });
+        fireEvent.dblClick(screen.getByTestId('task-tree-item-design'));
+        expect(onDoubleClick).toHaveBeenCalledWith('feat/design.spec.md');
+    });
+
+    it('does not throw if onDoubleClick prop is omitted', () => {
+        renderItem({ item: makeDocument() });
+        expect(() => fireEvent.dblClick(screen.getByTestId('task-tree-item-task'))).not.toThrow();
     });
 });

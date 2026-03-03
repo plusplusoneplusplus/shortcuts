@@ -191,6 +191,12 @@ export function TaskTree({
         toggleSelectedFile(path);
     };
 
+    const handleFileDoubleClick = (path: string) => {
+        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
+            detail: { filePath: path, wsId },
+        }));
+    };
+
     const getColumnFolder = (colIndex: number): TaskFolder | null => {
         if (colIndex === 0) return tree;
         const parentKey = activeFolderKeys[colIndex - 1];
@@ -301,6 +307,7 @@ export function TaskTree({
                                         onFolderClick={(folder) => handleFolderClick(folder, colIndex)}
                                         onFileClick={(path) => handleFileClick(path, colIndex)}
                                         onCheckboxChange={handleCheckboxChange}
+                                        onDoubleClick={handleFileDoubleClick}
                                         onFolderContextMenu={onFolderContextMenu}
                                         onFileContextMenu={onFileContextMenu}
                                         onDragStart={dragItem ? dnd.createDragStartHandler(dragItem, selectedFilePaths, resolveSelectedItems) : undefined}

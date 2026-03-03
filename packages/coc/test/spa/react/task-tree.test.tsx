@@ -452,4 +452,35 @@ describe('TaskTree', () => {
             '#repos/ws1/tasks/feature1/task.md',
         );
     });
+
+    it('double-clicking a file dispatches coc-open-markdown-review with relative path and wsId', () => {
+        const events: CustomEvent[] = [];
+        const listener = (e: Event) => events.push(e as CustomEvent);
+        window.addEventListener('coc-open-markdown-review', listener);
+
+        renderTaskTree(mockTree);
+
+        // Navigate into feature1 to expose task.md
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        fireEvent.dblClick(screen.getByTestId('task-tree-item-task'));
+
+        window.removeEventListener('coc-open-markdown-review', listener);
+
+        expect(events).toHaveLength(1);
+        expect(events[0].detail.filePath).toBe('feature1/task.md');
+        expect(events[0].detail.wsId).toBe('ws1');
+    });
+
+    it('double-clicking a folder does NOT dispatch coc-open-markdown-review', () => {
+        const events: CustomEvent[] = [];
+        const listener = (e: Event) => events.push(e as CustomEvent);
+        window.addEventListener('coc-open-markdown-review', listener);
+
+        renderTaskTree(mockTree);
+        fireEvent.dblClick(screen.getByTestId('task-tree-item-feature1'));
+
+        window.removeEventListener('coc-open-markdown-review', listener);
+
+        expect(events).toHaveLength(0);
+    });
 });

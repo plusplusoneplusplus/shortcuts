@@ -265,9 +265,28 @@ function AppInner() {
 
     useEffect(() => {
         const handleOpenMarkdownReview = (event: Event) => {
-            const detail = (event as CustomEvent<{ filePath?: string; sourceFilePath?: string }>).detail;
+            const detail = (event as CustomEvent<{ filePath?: string; sourceFilePath?: string; wsId?: string }>).detail;
             let filePath = typeof detail?.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
+
+            const wsIdHint = typeof detail?.wsId === 'string' ? detail.wsId : '';
+
+            // Fast path: wsId hint provided — use workspace directly without path resolution
+            if (wsIdHint) {
+                const hintedWorkspace = (appState.workspaces as WorkspaceLike[] || []).find(ws => ws.id === wsIdHint);
+                if (hintedWorkspace) {
+                    const rootNormalized = normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
+                    const displayPath = rootNormalized ? `${rootNormalized}/.vscode/tasks/${filePath}` : filePath;
+                    setReviewDialog({
+                        open: true,
+                        wsId: hintedWorkspace.id,
+                        filePath,
+                        displayPath,
+                        fetchMode: 'tasks',
+                    });
+                    return;
+                }
+            }
 
             // Resolve relative paths against the source file's directory
             const sourceFilePath = typeof detail?.sourceFilePath === 'string' ? detail.sourceFilePath : '';
