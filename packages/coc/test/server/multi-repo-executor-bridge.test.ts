@@ -250,6 +250,66 @@ describe('MultiRepoQueueExecutorBridge', () => {
     });
 
     // --------------------------------------------------------------------
+    // createAggregateFacade — resolveManager repoId-to-path lookup
+    // --------------------------------------------------------------------
+
+    describe('createAggregateFacade resolveManager', () => {
+        it('enqueues into the correct repo queue when input carries a repoId (not a path)', () => {
+            const { bridge, registry } = createBridge();
+            const rootPath = '/repo/schedule-test';
+            const resolvedPath = require('path').resolve(rootPath);
+
+            // Pre-create the bridge so repoIdToPath is populated
+            bridge.getOrCreateBridge(rootPath);
+            const repoId = computeRepoId(resolvedPath);
+
+            const facade = bridge.createAggregateFacade();
+
+            // Enqueue with only repoId set (simulating a schedule-triggered task)
+            const taskId = facade.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { prompt: 'hello' },
+                repoId,
+            } as any);
+
+            // The task must appear in the queue for the correct repo, not a phantom queue
+            expect(facade.getTask(taskId)).toBeDefined();
+
+            // The registry must NOT have created a phantom repo keyed by the raw hex repoId
+            expect(registry.hasRepo(repoId)).toBe(false);
+
+            // The real repo must still exist
+            expect(registry.hasRepo(resolvedPath)).toBe(true);
+
+            bridge.dispose();
+        });
+
+        it('falls back to workingDirectory when repoId is not registered', () => {
+            const { bridge, registry } = createBridge();
+            const rootPath = '/repo/fallback-test';
+            const resolvedPath = require('path').resolve(rootPath);
+
+            bridge.getOrCreateBridge(rootPath);
+            const facade = bridge.createAggregateFacade();
+
+            // Use an unknown repoId but provide workingDirectory as fallback
+            const taskId = facade.enqueue({
+                type: 'custom',
+                priority: 'normal',
+                payload: { prompt: 'world', workingDirectory: resolvedPath },
+                repoId: 'aaaaaaaaaaaaaaaa', // unknown id
+            } as any);
+
+            expect(facade.getTask(taskId)).toBeDefined();
+            // Phantom repo for the unknown hex id must not exist
+            expect(registry.hasRepo('aaaaaaaaaaaaaaaa')).toBe(false);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
     // dispose
     // --------------------------------------------------------------------
 

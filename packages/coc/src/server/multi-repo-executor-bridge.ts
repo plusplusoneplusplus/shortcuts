@@ -215,7 +215,8 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         };
 
         const resolveManager = (input: CreateTaskInput): TaskQueueManager => {
-            const rootPath = (input as any).repoId
+            const repoId = (input as any).repoId as string | undefined;
+            const rootPath = (repoId && bridgeRef.repoIdToPath.get(repoId))
                 || ((input.payload as any)?.workingDirectory)
                 || process.cwd();
             bridgeRef.getOrCreateBridge(rootPath);
