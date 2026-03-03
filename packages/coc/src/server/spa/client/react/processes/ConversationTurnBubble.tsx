@@ -13,6 +13,7 @@ import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard } from '../utils/format';
 import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import type { ToolGroupCategory } from './toolGroupUtils';
 
 const chatMarked = new Marked({
     gfm: true,
@@ -58,13 +59,23 @@ interface RenderToolCall {
     parentToolCallId?: string;
 }
 
-interface RenderChunk {
-    kind: 'content' | 'tool';
-    key: string;
-    html?: string;
-    toolId?: string;
-    parentToolId?: string;
-}
+type RenderChunk =
+    | { kind: 'content';    key: string; html?: string; toolId?: string; parentToolId?: string }
+    | { kind: 'tool';       key: string; html?: string; toolId?: string; parentToolId?: string }
+    | {
+        kind:         'tool-group';
+        key:          string;
+        category:     ToolGroupCategory;
+        /** Ordered list of RenderToolCall IDs that are collapsed into this group. */
+        toolIds:      string[];
+        /** Epoch ms of the earliest startTime among grouped tools (undefined if none have timing). */
+        startTime?:   number;
+        /** Epoch ms of the latest endTime among grouped tools (undefined if any are still running). */
+        endTime?:     number;
+        /** true only when every tool in the group has status === 'completed'. */
+        allSucceeded: boolean;
+        parentToolId?: string;
+      };
 
 function toContentHtml(content: string): string {
     return chatMarkdownToHtml(content);
