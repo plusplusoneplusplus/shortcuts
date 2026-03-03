@@ -146,9 +146,9 @@ export function ChatSessionSidebar({
                     <span className="w-2 h-2 rounded-full bg-[#3794ff] flex-shrink-0 mt-1" data-testid="unread-dot" />
                 )}
                 <span className={cn('truncate', showUnread && 'font-semibold')}>
-                    {session.firstMessage.length > 60
-                        ? session.firstMessage.slice(0, 60) + '…'
-                        : session.firstMessage || 'Chat session'}
+                    {(session.title || session.firstMessage).length > 60
+                        ? (session.title || session.firstMessage).slice(0, 60) + '…'
+                        : session.title || session.firstMessage || 'Chat session'}
                 </span>
                 {!isPinned && onTogglePin && (
                     <button

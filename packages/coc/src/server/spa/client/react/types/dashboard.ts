@@ -62,6 +62,7 @@ export interface ChatSessionItem {
     completedAt?: string;  // ISO timestamp
     lastActivityAt?: string; // ISO timestamp — last conversation activity
     firstMessage: string;  // first user prompt (for preview, may be truncated by server)
+    title?: string;        // AI-generated title (overrides firstMessage in sidebar when set)
     turnCount?: number;    // number of conversation turns (from enriched history)
 }
 

@@ -96,9 +96,13 @@ describe('ChatSessionSidebar', () => {
             expect(source).toContain('statusIcon(session.status)');
         });
 
-        it('truncates firstMessage to 60 chars', () => {
-            expect(source).toContain('session.firstMessage.length > 60');
-            expect(source).toContain('session.firstMessage.slice(0, 60)');
+        it('truncates session display text (title or firstMessage) to 60 chars', () => {
+            expect(source).toContain('(session.title || session.firstMessage).length > 60');
+            expect(source).toContain('(session.title || session.firstMessage).slice(0, 60)');
+        });
+
+        it('renders title when available, falling back to firstMessage', () => {
+            expect(source).toContain('session.title || session.firstMessage');
         });
 
         it('shows turn count', () => {

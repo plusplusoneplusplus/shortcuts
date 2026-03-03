@@ -242,6 +242,11 @@ describe('RepoChatTab', () => {
             const handler = source.substring(source.indexOf('const handleStartChat'));
             expect(handler).toContain('sessionsHook.refresh()');
         });
+
+        it('schedules a delayed refresh 5 seconds after start to pick up AI-generated title', () => {
+            const handler = source.substring(source.indexOf('const handleStartChat'));
+            expect(handler).toContain("setTimeout(() => sessionsHook.refresh(), 5000)");
+        });
     });
 
     describe('active chat UI', () => {

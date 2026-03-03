@@ -541,6 +541,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 firstMessage: prompt,
             });
             sessionsHook.refresh();
+            setTimeout(() => sessionsHook.refresh(), 5000);
         } catch (err: any) {
             setError(err?.message ?? 'Failed to start chat.');
         } finally {

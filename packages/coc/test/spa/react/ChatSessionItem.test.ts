@@ -49,6 +49,10 @@ describe('ChatSessionItem type', () => {
         expect(source).toMatch(/firstMessage:\s*string/);
     });
 
+    it('has optional title field for AI-generated title', () => {
+        expect(source).toMatch(/title\?:\s*string/);
+    });
+
     it('has optional turnCount field as number', () => {
         expect(source).toMatch(/turnCount\?:\s*number/);
     });
