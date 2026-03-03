@@ -224,7 +224,7 @@ describe('SchedulePersistence', () => {
 
             const filePath = getRepoScheduleFilePath(dataDir, repoId);
             const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            expect(raw.version).toBe(1);
+            expect(raw.version).toBe(2);
             expect(raw.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
             expect(raw.repoId).toBe(repoId);
             expect(raw.schedules).toHaveLength(1);
@@ -264,6 +264,74 @@ describe('SchedulePersistence', () => {
             expect(fs.existsSync(schedulesDir)).toBe(true);
 
             cleanupDir(freshDir);
+        });
+    });
+
+    // ========================================================================
+    // 10. Version migration
+    // ========================================================================
+
+    describe('version migration', () => {
+        it('loads v1 files and back-fills targetType: prompt on all entries', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const schedulesDir = path.join(dataDir, 'schedules');
+            const v1State = {
+                version: 1,
+                savedAt: '2026-01-01T00:00:00Z',
+                repoId: 'repo-v1',
+                schedules: [
+                    createSchedule({ id: 'sch_a', name: 'Old A' }),
+                    createSchedule({ id: 'sch_b', name: 'Old B' }),
+                ],
+            };
+            fs.writeFileSync(
+                path.join(schedulesDir, 'repo-repo-v1.json'),
+                JSON.stringify(v1State),
+                'utf-8'
+            );
+
+            const loaded = persistence.loadAll();
+            expect(loaded.has('repo-v1')).toBe(true);
+            const schedules = loaded.get('repo-v1')!;
+            expect(schedules).toHaveLength(2);
+            expect(schedules[0].targetType).toBe('prompt');
+            expect(schedules[1].targetType).toBe('prompt');
+        });
+
+        it('loads v2 files without migration', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const schedulesDir = path.join(dataDir, 'schedules');
+            const v2State = {
+                version: 2,
+                savedAt: '2026-01-01T00:00:00Z',
+                repoId: 'repo-v2',
+                schedules: [
+                    createSchedule({ id: 'sch_c', name: 'Script', targetType: 'script' as any }),
+                ],
+            };
+            fs.writeFileSync(
+                path.join(schedulesDir, 'repo-repo-v2.json'),
+                JSON.stringify(v2State),
+                'utf-8'
+            );
+
+            const loaded = persistence.loadAll();
+            expect(loaded.has('repo-v2')).toBe(true);
+            const schedules = loaded.get('repo-v2')!;
+            expect(schedules[0].targetType).toBe('script');
+        });
+
+        it('skips files with unknown future version (e.g. 99)', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const schedulesDir = path.join(dataDir, 'schedules');
+            fs.writeFileSync(
+                path.join(schedulesDir, 'repo-future.json'),
+                JSON.stringify({ version: 99, repoId: 'repo-future', schedules: [createSchedule()] }),
+                'utf-8'
+            );
+
+            const loaded = persistence.loadAll();
+            expect(loaded.has('repo-future')).toBe(false);
         });
     });
 });

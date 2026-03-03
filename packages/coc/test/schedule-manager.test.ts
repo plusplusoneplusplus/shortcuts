@@ -436,6 +436,148 @@ describe('ScheduleManager', () => {
         });
     });
 
+    describe('executeRun dispatch by targetType', () => {
+        it('enqueues follow-prompt task when targetType is undefined', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_1'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Prompt Schedule',
+                target: 'my-prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].type).toBe('follow-prompt');
+            expect(enqueued[0].payload.promptFilePath).toBe('my-prompt.md');
+            expect(enqueued[0].payload.scheduleId).toBe(schedule.id);
+            expect(enqueued[0].displayName).toBe('[Schedule] Prompt Schedule');
+
+            mgr.dispose();
+        });
+
+        it('enqueues follow-prompt task when targetType is prompt', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_2'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Explicit Prompt',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'prompt',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].type).toBe('follow-prompt');
+            expect(enqueued[0].displayName).toBe('[Schedule] Explicit Prompt');
+
+            mgr.dispose();
+        });
+
+        it('enqueues run-script task when targetType is script', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_3'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'My Script',
+                target: 'echo hello',
+                cron: '0 9 * * *',
+                params: { workingDirectory: '/tmp/work' },
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'script',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].type).toBe('run-script');
+            expect(enqueued[0].payload.kind).toBe('run-script');
+            expect(enqueued[0].payload.script).toBe('echo hello');
+            expect(enqueued[0].payload.workingDirectory).toBe('/tmp/work');
+            expect(enqueued[0].payload.scheduleId).toBe(schedule.id);
+
+            mgr.dispose();
+        });
+
+        it('displayName for script schedule is [Schedule:script] <name>', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_4'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'My Script Job',
+                target: 'echo abc',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'script',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].displayName).toBe('[Schedule:script] My Script Job');
+
+            mgr.dispose();
+        });
+
+        it('workingDirectory falls back to empty string when params.workingDirectory is absent', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_5'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'No WorkDir',
+                target: 'node -e "1"',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'script',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].payload.workingDirectory).toBe('');
+
+            mgr.dispose();
+        });
+
+        it('sets run.processId to queue_<taskId> for script schedules', async () => {
+            const mockQueue = { enqueue: (_task: any) => 'mytaskid' };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Script PID',
+                target: 'echo x',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'script',
+            });
+
+            const run = await mgr.triggerRun(REPO_ID, schedule.id);
+            expect(run.processId).toBe('queue_mytaskid');
+
+            mgr.dispose();
+        });
+    });
+
     describe('targetType field', () => {
         it('targetType is undefined when not provided (treated as prompt)', () => {
             const schedule = manager.addSchedule(REPO_ID, {

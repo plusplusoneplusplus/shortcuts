@@ -459,20 +459,37 @@ export class ScheduleManager extends EventEmitter {
         try {
             // Enqueue a task if queueManager is available
             if (this.queueManager) {
-                const taskId = this.queueManager.enqueue({
-                    type: 'follow-prompt',
-                    priority: 'normal',
-                    payload: {
-                        promptFilePath: schedule.target,
-                        workingDirectory: '',
-                        scheduleId: schedule.id,
-                        scheduleParams: schedule.params,
-                    },
-                    config: {},
-                    displayName: `[Schedule] ${schedule.name}`,
-                    repoId,
-                });
-                run.processId = `queue_${taskId}`;
+                if (!schedule.targetType || schedule.targetType === 'prompt') {
+                    const taskId = this.queueManager.enqueue({
+                        type: 'follow-prompt',
+                        priority: 'normal',
+                        payload: {
+                            promptFilePath: schedule.target,
+                            workingDirectory: '',
+                            scheduleId: schedule.id,
+                            scheduleParams: schedule.params,
+                        },
+                        config: {},
+                        displayName: `[Schedule] ${schedule.name}`,
+                        repoId,
+                    });
+                    run.processId = `queue_${taskId}`;
+                } else if (schedule.targetType === 'script') {
+                    const taskId = this.queueManager.enqueue({
+                        type: 'run-script',
+                        priority: 'normal',
+                        payload: {
+                            kind: 'run-script',
+                            script: schedule.target,
+                            workingDirectory: schedule.params?.workingDirectory ?? '',
+                            scheduleId: schedule.id,
+                        },
+                        config: {},
+                        displayName: `[Schedule:script] ${schedule.name}`,
+                        repoId,
+                    });
+                    run.processId = `queue_${taskId}`;
+                }
             }
 
             run.status = 'completed';

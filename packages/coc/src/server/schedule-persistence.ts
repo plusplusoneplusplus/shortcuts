@@ -26,7 +26,7 @@ export interface PersistedScheduleState {
     schedules: ScheduleEntry[];
 }
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 // ============================================================================
 // Helpers
@@ -71,7 +71,15 @@ export class SchedulePersistence {
             try {
                 const raw = fs.readFileSync(filePath, 'utf-8');
                 const state: PersistedScheduleState = JSON.parse(raw);
-                if (state.version !== CURRENT_VERSION) {
+                if (state.version === 1) {
+                    // forward migration: all existing schedules were prompt-based
+                    for (const s of state.schedules) {
+                        if (!s.targetType) {
+                            (s as ScheduleEntry).targetType = 'prompt';
+                        }
+                    }
+                    // fall through — treat as current
+                } else if (state.version !== CURRENT_VERSION) {
                     process.stderr.write(
                         `[SchedulePersistence] Unknown version ${state.version} in ${file} — skipping\n`
                     );
