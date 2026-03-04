@@ -43,3 +43,7 @@ export type { ToolCallCaptureOptions } from './tool-call-capture';
 
 export { ToolCallCacheAggregator } from './tool-call-cache-aggregator';
 export type { ToolCallCacheAggregatorOptions } from './tool-call-cache-aggregator';
+
+export { ToolCallCacheRetriever } from './tool-call-cache-retriever';
+export type { ToolCallCacheRetrieverOptions } from './tool-call-cache-retriever';
+export type { ToolCallCacheLookupResult, StalenessStrategy } from './tool-call-cache-types';

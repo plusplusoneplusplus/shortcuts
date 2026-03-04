@@ -86,6 +86,23 @@ export interface ConsolidatedToolCallEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Retrieval types
+// ---------------------------------------------------------------------------
+
+/** Strategy for handling stale cache entries */
+export type StalenessStrategy = 'skip' | 'warn' | 'revalidate';
+
+/** Result of a cache lookup — returned by ToolCallCacheRetriever.lookup() */
+export interface ToolCallCacheLookupResult {
+    /** The matched consolidated entry */
+    entry: ConsolidatedToolCallEntry;
+    /** Similarity score between 0 and 1 */
+    score: number;
+    /** Whether the entry is stale (gitHash mismatch) */
+    stale: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Configuration types
 // ---------------------------------------------------------------------------
 
