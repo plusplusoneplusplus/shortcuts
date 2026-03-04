@@ -3,7 +3,6 @@ import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
-import { getApiBase } from '../utils/config';
 import { WikiDetail } from '../wiki/WikiDetail';
 import type { WikiProjectTab, WikiAdminTab } from '../types/dashboard';
 
@@ -76,24 +75,18 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
         });
         if (res.ok) {
             const wiki = await res.json();
+            dispatch({ type: 'SET_WIKI_AUTO_GENERATE', value: true });
             location.hash = '#wiki/' + encodeURIComponent(wiki.id) + '/admin';
         } else {
             const body = await res.json().catch(() => ({ error: 'Failed to create wiki' }));
             addToast(body.error || 'Failed to create wiki', 'error');
         }
-    }, [workspacePath, addToast]);
+    }, [workspacePath, addToast, dispatch]);
 
     const handleRetryGeneration = useCallback(async (wikiId: string) => {
-        try {
-            await fetchApi(`${getApiBase()}/api/dw/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ wikiId }),
-            });
-        } catch (err) {
-            console.error('Failed to retry wiki generation:', err);
-        }
-    }, []);
+        dispatch({ type: 'SET_WIKI_AUTO_GENERATE', value: true });
+        location.hash = '#wiki/' + encodeURIComponent(wikiId) + '/admin';
+    }, [dispatch]);
 
     if (repoWikis.length === 0) {
         return (

@@ -28,8 +28,10 @@ describe('RepoWikiTab generation status', () => {
         expect(SOURCE).toContain('handleRetryGeneration');
     });
 
-    it('retry posts to dw/generate endpoint', () => {
-        expect(SOURCE).toContain('/api/dw/generate');
+    it('retry navigates to wiki admin page with auto-generate', () => {
+        expect(SOURCE).toContain('SET_WIKI_AUTO_GENERATE');
+        expect(SOURCE).toContain("location.hash = '#wiki/'");
+        expect(SOURCE).not.toContain('/api/dw/generate');
     });
 
     it('error banner displays wiki error message when available', () => {

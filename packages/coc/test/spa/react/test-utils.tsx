@@ -34,6 +34,7 @@ function defaultAppState(): AppContextState {
         wikiView: 'list',
         wikiDetailInitialTab: null,
         wikiDetailInitialAdminTab: null,
+        wikiAutoGenerate: false,
         wikis: [],
         selectedPipelineName: null,
         conversationCache: {},

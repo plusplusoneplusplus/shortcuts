@@ -39,6 +39,7 @@ export interface AppContextState {
     wikiView: WikiViewMode;
     wikiDetailInitialTab: string | null;
     wikiDetailInitialAdminTab: string | null;
+    wikiAutoGenerate: boolean;
     wikis: any[];
     selectedRepoWikiId: string | null;
     repoWikiInitialTab: WikiProjectTab | null;
@@ -68,6 +69,7 @@ const initialState: AppContextState = {
     wikiView: 'list',
     wikiDetailInitialTab: null,
     wikiDetailInitialAdminTab: null,
+    wikiAutoGenerate: false,
     wikis: [],
     selectedRepoWikiId: null,
     repoWikiInitialTab: null,
@@ -108,6 +110,7 @@ export type AppAction =
     | { type: 'SELECT_WIKI_WITH_TAB'; wikiId: string; tab: string; adminTab?: string | null; componentId?: string | null }
     | { type: 'SELECT_WIKI_COMPONENT'; componentId: string | null }
     | { type: 'CLEAR_WIKI_INITIAL_TAB' }
+    | { type: 'SET_WIKI_AUTO_GENERATE'; value: boolean }
     | { type: 'ADD_WIKI'; wiki: any }
     | { type: 'UPDATE_WIKI'; wiki: any }
     | { type: 'REMOVE_WIKI'; wikiId: string }
@@ -199,6 +202,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedWikiComponentId: action.componentId };
         case 'CLEAR_WIKI_INITIAL_TAB':
             return { ...state, wikiDetailInitialTab: null, wikiDetailInitialAdminTab: null };
+        case 'SET_WIKI_AUTO_GENERATE':
+            return { ...state, wikiAutoGenerate: action.value };
         case 'ADD_WIKI':
             return { ...state, wikis: [...state.wikis, action.wiki] };
         case 'UPDATE_WIKI': {

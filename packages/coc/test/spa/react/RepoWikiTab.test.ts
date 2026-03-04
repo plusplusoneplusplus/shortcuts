@@ -98,6 +98,32 @@ describe('RepoWikiTab', () => {
         it('should handle non-ok response with error toast', () => {
             expect(content).toMatch(/res\.ok[\s\S]*?else/);
         });
+
+        it('should dispatch SET_WIKI_AUTO_GENERATE before navigating', () => {
+            expect(content).toContain("SET_WIKI_AUTO_GENERATE");
+            // Ensure auto-generate is dispatched before the hash change
+            const autoGenIdx = content.indexOf('SET_WIKI_AUTO_GENERATE');
+            const hashIdx = content.indexOf("location.hash = '#wiki/'");
+            expect(autoGenIdx).toBeLessThan(hashIdx);
+        });
+    });
+
+    describe('retry generation action', () => {
+        it('should dispatch SET_WIKI_AUTO_GENERATE on retry', () => {
+            const retryMatch = content.match(/handleRetryGeneration[\s\S]*?\}, \[/);
+            expect(retryMatch).toBeTruthy();
+            expect(retryMatch![0]).toContain('SET_WIKI_AUTO_GENERATE');
+        });
+
+        it('should navigate to wiki admin page on retry', () => {
+            const retryMatch = content.match(/handleRetryGeneration[\s\S]*?\}, \[/);
+            expect(retryMatch).toBeTruthy();
+            expect(retryMatch![0]).toContain("location.hash = '#wiki/'");
+        });
+
+        it('should not call the old /api/dw/generate endpoint', () => {
+            expect(content).not.toContain('/api/dw/generate');
+        });
     });
 
     describe('single wiki inline view (state 2)', () => {

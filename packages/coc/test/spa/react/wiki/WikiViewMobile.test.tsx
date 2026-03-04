@@ -25,6 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
             selectedWikiComponentId: null,
             wikiDetailInitialTab: null,
             wikiDetailInitialAdminTab: null,
+            wikiAutoGenerate: false,
             ...mockAppState,
         },
         dispatch: mockAppDispatch,

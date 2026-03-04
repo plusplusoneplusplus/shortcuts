@@ -18,6 +18,8 @@ interface WikiAdminProps {
     wikiId: string;
     initialTab?: WikiAdminTab | null;
     onTabChange?: (tab: WikiAdminTab) => void;
+    autoGenerate?: boolean;
+    onAutoGenerateConsumed?: () => void;
 }
 
 const DEFAULT_CONFIG_TEMPLATE = `# deep-wiki configuration
@@ -77,7 +79,7 @@ const PHASE_NAMES: Record<number, { name: string; desc: string }> = {
     5: { name: 'Website', desc: 'Build static site output' },
 };
 
-export function WikiAdmin({ wikiId, initialTab, onTabChange }: WikiAdminProps) {
+export function WikiAdmin({ wikiId, initialTab, onTabChange, autoGenerate, onAutoGenerateConsumed }: WikiAdminProps) {
     const [tab, setTab] = useState<WikiAdminTab>(
         initialTab && ADMIN_TABS.includes(initialTab) ? initialTab : 'generate'
     );
@@ -120,7 +122,7 @@ export function WikiAdmin({ wikiId, initialTab, onTabChange }: WikiAdminProps) {
 
             {/* Tab content */}
             <div className="flex-1 overflow-y-auto p-3">
-                {tab === 'generate' && <div id="admin-content-generate"><GenerateTab wikiId={wikiId} /></div>}
+                {tab === 'generate' && <div id="admin-content-generate"><GenerateTab wikiId={wikiId} autoGenerate={autoGenerate} onAutoGenerateConsumed={onAutoGenerateConsumed} /></div>}
                 {tab === 'seeds' && <div id="admin-content-seeds"><EditorTab wikiId={wikiId} kind="seeds" /></div>}
                 {tab === 'config' && <div id="admin-content-config"><EditorTab wikiId={wikiId} kind="config" /></div>}
                 {tab === 'delete' && <DangerZone wikiId={wikiId} />}
@@ -142,7 +144,7 @@ interface CacheMetadata {
     projectLanguage?: string;
 }
 
-function GenerateTab({ wikiId }: { wikiId: string }) {
+function GenerateTab({ wikiId, autoGenerate, onAutoGenerateConsumed }: { wikiId: string; autoGenerate?: boolean; onAutoGenerateConsumed?: () => void }) {
     const [cache, setCache] = useState<Record<number, string>>({});
     const [metadata, setMetadata] = useState<CacheMetadata | null>(null);
     const [runningPhase, setRunningPhase] = useState<number | null>(null);
@@ -265,6 +267,16 @@ function GenerateTab({ wikiId }: { wikiId: string }) {
     const runAll = useCallback((force = false) => {
         runPhase(fromPhase, 5, force);
     }, [runPhase, fromPhase]);
+
+    // Auto-start generation when triggered from "Generate Wiki" button
+    const autoGenTriggered = useRef(false);
+    useEffect(() => {
+        if (autoGenerate && !autoGenTriggered.current) {
+            autoGenTriggered.current = true;
+            onAutoGenerateConsumed?.();
+            runPhase(1, 5, false);
+        }
+    }, [autoGenerate]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleAbort = useCallback(() => {
         if (abortRef.current) abortRef.current.abort();

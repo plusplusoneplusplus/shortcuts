@@ -66,6 +66,7 @@ describe('AppContext reducer — wiki actions', () => {
         wikiView: 'list',
         wikiDetailInitialTab: null,
         wikiDetailInitialAdminTab: null,
+        wikiAutoGenerate: false,
         wikis: [],
         conversationCache: {},
         selectedRepoWikiId: null,
@@ -947,8 +948,89 @@ describe('WikiAdmin sub-tab routing', () => {
 });
 
 // ============================================================================
-// WikiDetail — pending setup/admin path
+// WikiAdmin — autoGenerate prop
 // ============================================================================
+
+describe('WikiAdmin autoGenerate', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = (init?.method || 'GET').toUpperCase();
+
+            if (url.includes('/admin/generate/status')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ phases: {}, metadata: null }),
+                });
+            }
+            if (method === 'POST' && url.includes('/admin/generate')) {
+                // Return a readable stream that completes immediately
+                const encoder = new TextEncoder();
+                const stream = new ReadableStream({
+                    start(ctrl) {
+                        ctrl.enqueue(encoder.encode('data: {"type":"done"}\n'));
+                        ctrl.close();
+                    },
+                });
+                return Promise.resolve({ ok: true, body: stream });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        }));
+    });
+
+    it('auto-starts generation when autoGenerate is true', async () => {
+        const onConsumed = vi.fn();
+        render(<WikiAdmin wikiId="w1" autoGenerate={true} onAutoGenerateConsumed={onConsumed} />);
+        await waitFor(() => {
+            // Generation was triggered — the fetch to /admin/generate was called
+            const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+            const generateCall = calls.find(
+                (c: any[]) => String(c[0]).includes('/admin/generate') && c[1]?.method === 'POST'
+            );
+            expect(generateCall).toBeTruthy();
+        });
+        // onAutoGenerateConsumed should have been called
+        expect(onConsumed).toHaveBeenCalled();
+    });
+
+    it('does not auto-start when autoGenerate is false', async () => {
+        render(<WikiAdmin wikiId="w1" autoGenerate={false} />);
+        await waitFor(() => {
+            expect(screen.getByText('Run All')).toBeTruthy();
+        });
+        const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+        const generateCall = calls.find(
+            (c: any[]) => String(c[0]).includes('/admin/generate') && c[1]?.method === 'POST'
+        );
+        expect(generateCall).toBeUndefined();
+    });
+
+    it('does not auto-start when autoGenerate is undefined', async () => {
+        render(<WikiAdmin wikiId="w1" />);
+        await waitFor(() => {
+            expect(screen.getByText('Run All')).toBeTruthy();
+        });
+        const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+        const generateCall = calls.find(
+            (c: any[]) => String(c[0]).includes('/admin/generate') && c[1]?.method === 'POST'
+        );
+        expect(generateCall).toBeUndefined();
+    });
+
+    it('sends startPhase=1 and endPhase=5 when auto-generating', async () => {
+        render(<WikiAdmin wikiId="w1" autoGenerate={true} />);
+        await waitFor(() => {
+            const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+            const generateCall = calls.find(
+                (c: any[]) => String(c[0]).includes('/admin/generate') && c[1]?.method === 'POST'
+            );
+            expect(generateCall).toBeTruthy();
+            const body = JSON.parse(generateCall![1].body as string);
+            expect(body.startPhase).toBe(1);
+            expect(body.endPhase).toBe(5);
+        });
+    });
+});
 
 describe('WikiDetail pending setup flow', () => {
     beforeEach(() => {
@@ -1014,6 +1096,57 @@ describe('WikiDetail pending setup flow', () => {
         await waitFor(() => {
             expect(screen.getByText('Run All')).toBeTruthy();
         });
+    });
+});
+
+// ============================================================================
+// WikiDetail — autoGenerate prop plumbing
+// ============================================================================
+
+describe('WikiDetail autoGenerate plumbing', () => {
+    it('WikiDetail source passes autoGenerate prop to WikiAdmin', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const detailSrc = fs.readFileSync(
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/wiki/WikiDetail.tsx'),
+            'utf-8'
+        );
+        expect(detailSrc).toContain('autoGenerate={autoGenerate}');
+        expect(detailSrc).toContain('onAutoGenerateConsumed={clearAutoGenerate}');
+    });
+
+    it('WikiDetail captures wikiAutoGenerate from global state', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const detailSrc = fs.readFileSync(
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/wiki/WikiDetail.tsx'),
+            'utf-8'
+        );
+        expect(detailSrc).toContain('state.wikiAutoGenerate');
+        expect(detailSrc).toContain('setAutoGenerate(true)');
+        expect(detailSrc).toContain("SET_WIKI_AUTO_GENERATE");
+    });
+
+    it('WikiAdmin source accepts autoGenerate prop', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const adminSrc = fs.readFileSync(
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/wiki/WikiAdmin.tsx'),
+            'utf-8'
+        );
+        expect(adminSrc).toContain('autoGenerate');
+        expect(adminSrc).toContain('onAutoGenerateConsumed');
+    });
+
+    it('GenerateTab has auto-start useEffect with guard ref', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const adminSrc = fs.readFileSync(
+            path.resolve(__dirname, '../../../../src/server/spa/client/react/wiki/WikiAdmin.tsx'),
+            'utf-8'
+        );
+        expect(adminSrc).toContain('autoGenTriggered');
+        expect(adminSrc).toContain('runPhase(1, 5, false)');
     });
 });
 
@@ -1264,6 +1397,7 @@ describe('useWebSocket wiki event dispatching', () => {
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
             wikiDetailInitialAdminTab: null,
+            wikiAutoGenerate: false,
             wikis: [{ id: 'w1', name: 'Old', status: 'generating' }],
             conversationCache: {},
         };
@@ -1280,6 +1414,7 @@ describe('useWebSocket wiki event dispatching', () => {
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
             wikiDetailInitialAdminTab: null,
+            wikiAutoGenerate: false,
             wikis: [{ id: 'w1', status: 'loaded' }],
             conversationCache: {},
         };
@@ -1295,6 +1430,7 @@ describe('useWebSocket wiki event dispatching', () => {
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
             wikiDetailInitialAdminTab: null,
+            wikiAutoGenerate: false,
             wikis: [{ id: 'w1', status: 'generating' }],
             conversationCache: {},
         };

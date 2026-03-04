@@ -23,6 +23,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wikiView: 'list',
         wikiDetailInitialTab: null,
         wikiDetailInitialAdminTab: null,
+        wikiAutoGenerate: false,
         wikis: [],
         selectedPipelineName: null,
         selectedChatSessionId: null,
@@ -516,6 +517,40 @@ describe('AppContext reducer', () => {
             });
             const result = appReducer(state, { type: 'CLEAR_WIKI_INITIAL_TAB' });
             expect(result.wikiView).toBe('detail');
+        });
+
+        it('does not clear wikiAutoGenerate', () => {
+            const state = makeState({
+                wikiDetailInitialTab: 'admin',
+                wikiAutoGenerate: true,
+            });
+            const result = appReducer(state, { type: 'CLEAR_WIKI_INITIAL_TAB' });
+            expect(result.wikiAutoGenerate).toBe(true);
+        });
+    });
+
+    describe('SET_WIKI_AUTO_GENERATE', () => {
+        it('sets wikiAutoGenerate to true', () => {
+            const state = makeState({ wikiAutoGenerate: false });
+            const result = appReducer(state, { type: 'SET_WIKI_AUTO_GENERATE', value: true });
+            expect(result.wikiAutoGenerate).toBe(true);
+        });
+
+        it('sets wikiAutoGenerate to false', () => {
+            const state = makeState({ wikiAutoGenerate: true });
+            const result = appReducer(state, { type: 'SET_WIKI_AUTO_GENERATE', value: false });
+            expect(result.wikiAutoGenerate).toBe(false);
+        });
+
+        it('does not affect other state', () => {
+            const state = makeState({
+                wikiAutoGenerate: false,
+                selectedWikiId: 'w1',
+                wikiDetailInitialTab: 'admin',
+            });
+            const result = appReducer(state, { type: 'SET_WIKI_AUTO_GENERATE', value: true });
+            expect(result.selectedWikiId).toBe('w1');
+            expect(result.wikiDetailInitialTab).toBe('admin');
         });
     });
 

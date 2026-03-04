@@ -64,6 +64,15 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
     const [adminSubTab, setAdminSubTab] = useState<WikiAdminTab | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
+    // Capture auto-generate intent from global state into local state (one-shot)
+    const [autoGenerate, setAutoGenerate] = useState(false);
+    useEffect(() => {
+        if (!embedded && state.wikiAutoGenerate) {
+            setAutoGenerate(true);
+            dispatch({ type: 'SET_WIKI_AUTO_GENERATE', value: false });
+        }
+    }, [state.wikiAutoGenerate, embedded, dispatch]);
+
     // Consume initial tab from context (e.g. from hash routing or "→ Setup" CTA)
     useEffect(() => {
         if (embedded) return;
@@ -138,7 +147,9 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
         }
     }, [wikiId, onHashChange, embedded]);
 
-    const handleSelectComponent = useCallback((componentId: string) => {
+    const clearAutoGenerate = useCallback(() => setAutoGenerate(false), []);
+
+    const handleSelectComponent= useCallback((componentId: string) => {
         dispatch({ type: 'SELECT_WIKI_COMPONENT', componentId });
         const hash = buildWikiHash(wikiId, 'browse', componentId);
         if (onHashChange) {
@@ -181,7 +192,7 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
         if (!graph) {
             if (wikiStatus === 'pending') {
                 if (activeTab === 'admin') {
-                    return <WikiAdmin wikiId={wikiId} initialTab={adminSubTab} onTabChange={handleAdminTabChange} />;
+                    return <WikiAdmin wikiId={wikiId} initialTab={adminSubTab} onTabChange={handleAdminTabChange} autoGenerate={autoGenerate} onAutoGenerateConsumed={clearAutoGenerate} />;
                 }
                 return (
                     <div className="flex flex-col items-center justify-center h-full text-center">
@@ -235,7 +246,7 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
                     />
                 );
             case 'admin':
-                return <WikiAdmin wikiId={wikiId} initialTab={adminSubTab} onTabChange={handleAdminTabChange} />;
+                return <WikiAdmin wikiId={wikiId} initialTab={adminSubTab} onTabChange={handleAdminTabChange} autoGenerate={autoGenerate} onAutoGenerateConsumed={clearAutoGenerate} />;
         }
     };
 
