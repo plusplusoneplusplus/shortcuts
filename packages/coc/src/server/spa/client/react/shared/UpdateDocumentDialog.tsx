@@ -68,7 +68,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
     }, [selectedWsId, taskPath, state.workspaces]);
 
     useEffect(() => {
-        setPrompt(`Update the document at "${resolvedPath}" based on the current state of the codebase. Review the task file and update its status, notes, and checklist items to reflect the latest changes.`);
+        setPrompt(`Update the document at "${resolvedPath}" `);
     }, [resolvedPath]);
 
     const handleSubmit = useCallback(async () => {
