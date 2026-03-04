@@ -51,6 +51,7 @@ packages/coc-server/
 │   ├── git-api.test.ts
 │   ├── git-branches-api.test.ts
 │   ├── git-branch-range-api.test.ts
+│   ├── process-children-api.test.ts
 │   ├── repo-utils.test.ts
 │   ├── scaffold.test.ts
 │   ├── sse-replay.test.ts
@@ -68,7 +69,7 @@ packages/coc-server/
 
 ### Execution Server Layer
 
-- **api-handler.ts** — Process CRUD, queue management (`/api/processes`, `/api/queue/*`), git remote detection, git commit history (`/api/workspaces/:id/git/commits`, `/git/commits/:hash/files`, `/git/commits/:hash/diff`), branch range analysis (`/api/workspaces/:id/git/branch-range`, `/branch-range/files`, `/branch-range/diff`, `/branch-range/files/:path/diff`), branch listing and status (`/api/workspaces/:id/git/branches` GET, `/git/branch-status`), branch CRUD (`/git/branches` POST create, `/git/branches/switch` POST, `/git/branches/rename` POST, `/git/branches/:name` DELETE) via `BranchService`, pipeline discovery, directory browsing. Git endpoints for commits, commit-files, commit-diff, and branch-range use `GitCacheService` — mutable data invalidated via `?refresh=true`, immutable hash-keyed data cached forever. Exports `QueueExecutorBridge` for connecting queue to pipeline execution.
+- **api-handler.ts** — Process CRUD, queue management (`/api/processes`, `/api/queue/*`), child process retrieval (`/api/processes/:id/children`), git remote detection, git commit history (`/api/workspaces/:id/git/commits`, `/git/commits/:hash/files`, `/git/commits/:hash/diff`), branch range analysis (`/api/workspaces/:id/git/branch-range`, `/branch-range/files`, `/branch-range/diff`, `/branch-range/files/:path/diff`), branch listing and status (`/api/workspaces/:id/git/branches` GET, `/git/branch-status`), branch CRUD (`/git/branches` POST create, `/git/branches/switch` POST, `/git/branches/rename` POST, `/git/branches/:name` DELETE) via `BranchService`, pipeline discovery, directory browsing. Git endpoints for commits, commit-files, commit-diff, and branch-range use `GitCacheService` — mutable data invalidated via `?refresh=true`, immutable hash-keyed data cached forever. Exports `QueueExecutorBridge` for connecting queue to pipeline execution. `parseQueryParams` supports `parentProcessId` filter for child process queries.
 - **admin-handler.ts** — Destructive operations (data wipe) guarded by time-limited crypto tokens.
 - **preferences-handler.ts** — JSON file persistence for UI preferences at `~/.coc/preferences.json`.
 - **websocket.ts** — `ProcessWebSocketServer` broadcasts process lifecycle, queue, and comment events. Supports workspace-scoped filtering and file subscriptions.
@@ -112,7 +113,7 @@ The package exports from `src/index.ts`:
 
 ## Testing
 
-17 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints, git cache unit and integration tests.
+17 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints, git cache unit and integration tests, child process API routes.
 
 Run with `npm run test:run` in `packages/coc-server/`.
 
