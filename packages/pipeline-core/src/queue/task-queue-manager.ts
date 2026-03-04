@@ -469,6 +469,33 @@ export class TaskQueueManager extends EventEmitter {
         return task;
     }
 
+    /**
+     * Re-activate a task from history back to running state.
+     * Used to reuse a completed task (e.g. a chat session receiving follow-ups)
+     * instead of creating a separate task for each interaction.
+     *
+     * @param id Task ID to re-activate
+     * @returns true if the task was found in history and moved to running
+     */
+    reActivate(id: string): boolean {
+        const index = this.history.findIndex(t => t.id === id);
+        if (index === -1) {
+            return false;
+        }
+
+        const [task] = this.history.splice(index, 1);
+        task.status = 'running';
+        task.startedAt = Date.now();
+        task.completedAt = undefined;
+        task.result = undefined;
+        task.error = undefined;
+        this.running.set(id, task);
+
+        this.emitChange('updated', task);
+        this.emit('taskUpdated', task, { status: 'running', startedAt: task.startedAt });
+        return true;
+    }
+
     // ========================================================================
     // Freeze / Unfreeze
     // ========================================================================

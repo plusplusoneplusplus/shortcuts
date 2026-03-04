@@ -100,8 +100,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         fetchQueue();
     }, [workspaceId]);
 
-    // Derive available filter options and filtered task lists
-    const allTasks = useMemo(() => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history], [running, queued, history]);
+    // Derive available filter options and filtered task lists (chat-followup tasks are internal implementation details)
+    const allTasks = useMemo(() => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history].filter((t: any) => t.type !== 'chat-followup'), [running, queued, history]);
     const availableFilters = useMemo(() => {
         const opts: { value: string; label: string }[] = [{ value: 'all', label: 'All' }];
         const types = new Set(allTasks.map((t: any) => t.type as string));
@@ -113,13 +113,13 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         return opts;
     }, [allTasks]);
 
-    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, filterType)), [running, filterType]);
+    const filteredRunning = useMemo(() => running.filter(t => t.type !== 'chat-followup' && taskMatchesFilter(t, filterType)), [running, filterType]);
     // Pause markers are always shown regardless of type filter
     const filteredQueued = useMemo(
-        () => queued.filter(t => t.kind === 'pause-marker' || taskMatchesFilter(t, filterType)),
+        () => queued.filter(t => t.kind === 'pause-marker' || (t.type !== 'chat-followup' && taskMatchesFilter(t, filterType))),
         [queued, filterType]
     );
-    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType)), [history, filterType]);
+    const filteredHistory = useMemo(() => history.filter(t => t.type !== 'chat-followup' && taskMatchesFilter(t, filterType)), [history, filterType]);
 
     // Apply per-repo WS updates directly without HTTP round-trip
     useEffect(() => {
@@ -154,7 +154,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     }, [selectedTaskId]);
 
     const selectTask = useCallback((id: string, task?: any) => {
-        if (task?.type === 'chat') {
+        if (task?.type === 'chat' || task?.type === 'chat-followup') {
             // Navigate to Chat tab and select the session
             const sessionId = task.processId || task.id;
             appDispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: sessionId });

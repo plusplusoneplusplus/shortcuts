@@ -117,7 +117,8 @@ describe('RepoQueueTab filter dropdown', () => {
     describe('filtered list derivation', () => {
         it('derives filteredRunning via useMemo with taskMatchesFilter', () => {
             expect(source).toMatch(/filteredRunning\s*=\s*useMemo/);
-            expect(source).toContain('running.filter(t => taskMatchesFilter(t, filterType))');
+            expect(source).toContain('running.filter(t =>');
+            expect(source).toContain('taskMatchesFilter(t, filterType)');
         });
 
         it('derives filteredQueued via useMemo with taskMatchesFilter (always includes markers)', () => {
@@ -129,7 +130,15 @@ describe('RepoQueueTab filter dropdown', () => {
 
         it('derives filteredHistory via useMemo with taskMatchesFilter', () => {
             expect(source).toMatch(/filteredHistory\s*=\s*useMemo/);
-            expect(source).toContain('history.filter(t => taskMatchesFilter(t, filterType))');
+            expect(source).toContain('history.filter(t =>');
+            expect(source).toContain('taskMatchesFilter(t, filterType)');
+        });
+
+        it('filters out chat-followup tasks from all rendered lists', () => {
+            // chat-followup tasks are internal implementation details and should not appear in the UI
+            expect(source).toMatch(/filteredRunning.*chat-followup/s);
+            expect(source).toMatch(/filteredQueued.*chat-followup/s);
+            expect(source).toMatch(/filteredHistory.*chat-followup/s);
         });
     });
 

@@ -505,6 +505,126 @@ describe('CLITaskExecutor', () => {
             // Should fail without crashing
             expect(result.success).toBe(false);
         });
+
+        it('should re-activate parent task and return it to history on success', async () => {
+            const queueManager = new TaskQueueManager();
+            const executor = new CLITaskExecutor(store);
+            executor.setQueueManager(queueManager);
+
+            // Pre-create a process with an SDK session and conversation turns
+            const proc = createCompletedProcessWithSession('proc-reactivate', 'sess-reactivate');
+            (proc as any).conversationTurns = [
+                { role: 'user', content: 'Hello', turnIndex: 0 },
+                { role: 'assistant', content: 'Hi!', turnIndex: 1 },
+            ];
+            await store.addProcess(proc);
+
+            // Simulate a parent chat task that completed
+            const parentId = queueManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Hello' },
+                config: {},
+                processId: 'proc-reactivate',
+                displayName: 'Chat',
+            });
+            queueManager.markStarted(parentId);
+            queueManager.markCompleted(parentId);
+            expect(queueManager.getHistory()).toHaveLength(1);
+
+            const task: QueuedTask = {
+                id: 'followup-reactivate',
+                type: 'chat-followup',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat-followup',
+                    processId: 'proc-reactivate',
+                    parentTaskId: parentId,
+                    content: 'Follow-up question',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(true);
+
+            // Parent task should be back in history (re-activated then re-completed)
+            expect(queueManager.getRunning()).toHaveLength(0);
+            expect(queueManager.getHistory()).toHaveLength(1);
+            const parentTask = queueManager.getTask(parentId);
+            expect(parentTask?.status).toBe('completed');
+            expect(parentTask?.displayName).toMatch(/Chat \(\d+ turns?\)/);
+        });
+
+        it('should return parent task to history even on follow-up failure', async () => {
+            const queueManager = new TaskQueueManager();
+            const executor = new CLITaskExecutor(store);
+            executor.setQueueManager(queueManager);
+
+            // Process without SDK session → follow-up will fail
+            const proc = createCompletedProcessWithSession('proc-fail-reactivate', '');
+            (proc as any).sdkSessionId = undefined;
+            await store.addProcess(proc);
+
+            const parentId = queueManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Hello' },
+                config: {},
+                displayName: 'Chat',
+            });
+            queueManager.markStarted(parentId);
+            queueManager.markCompleted(parentId);
+
+            const task: QueuedTask = {
+                id: 'followup-fail-reactivate',
+                type: 'chat-followup',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat-followup',
+                    processId: 'proc-fail-reactivate',
+                    parentTaskId: parentId,
+                    content: 'This will fail',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(false);
+
+            // Parent should be back in history despite failure
+            expect(queueManager.getRunning()).toHaveLength(0);
+            expect(queueManager.getHistory()).toHaveLength(1);
+            expect(queueManager.getTask(parentId)?.status).toBe('completed');
+        });
+
+        it('should work without parentTaskId (backward compatible)', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const proc = createCompletedProcessWithSession('proc-noparent', 'sess-noparent');
+            await store.addProcess(proc);
+
+            const task: QueuedTask = {
+                id: 'followup-noparent',
+                type: 'chat-followup',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat-followup',
+                    processId: 'proc-noparent',
+                    content: 'No parent task id',
+                },
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(true);
+        });
     });
 
     // ========================================================================

@@ -347,4 +347,42 @@ describe('MultiRepoQueueExecutorBridge', () => {
             mrBridge2.dispose();
         });
     });
+
+    // ========================================================================
+    // findTaskByProcessId
+    // ========================================================================
+
+    describe('findTaskByProcessId', () => {
+        it('finds a task by processId across repos', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/find-test');
+            const manager = bridge.registry.getQueueForRepo('/repo/find-test');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Hello' },
+                config: {},
+                processId: 'proc-123',
+                displayName: 'Chat',
+            });
+            manager.markStarted(taskId);
+            manager.markCompleted(taskId);
+
+            const found = bridge.findTaskByProcessId('proc-123');
+            expect(found).toEqual({ id: taskId, type: 'chat' });
+
+            bridge.dispose();
+        });
+
+        it('returns undefined when processId is not found', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/find-test-2');
+
+            const found = bridge.findTaskByProcessId('nonexistent');
+            expect(found).toBeUndefined();
+
+            bridge.dispose();
+        });
+    });
 });

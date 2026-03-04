@@ -128,6 +128,8 @@ export interface ChatFollowUpPayload {
     readonly kind: 'chat-followup';
     /** The process ID of the parent chat session to follow up on */
     processId: string;
+    /** Queue task ID of the original chat task — used to re-activate it instead of creating a new row */
+    parentTaskId?: string;
     /** Message content to send as the follow-up */
     content: string;
     /** Optional file attachments decoded from uploaded images */

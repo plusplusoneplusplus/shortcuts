@@ -2158,6 +2158,117 @@ describe('insertBeforeFirstExclusive (isExclusive option)', () => {
 });
 
 // ============================================================================
+// reActivate
+// ============================================================================
+
+describe('TaskQueueManager.reActivate', () => {
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = createTaskQueueManager();
+    });
+
+    it('moves a completed task from history to running', () => {
+        const id = manager.enqueue(createTestTask({ displayName: 'chat-task' }));
+        manager.markStarted(id);
+        manager.markCompleted(id, 'done');
+        expect(manager.getHistory()).toHaveLength(1);
+        expect(manager.getRunning()).toHaveLength(0);
+
+        const result = manager.reActivate(id);
+        expect(result).toBe(true);
+        expect(manager.getHistory()).toHaveLength(0);
+        expect(manager.getRunning()).toHaveLength(1);
+
+        const task = manager.getTask(id);
+        expect(task?.status).toBe('running');
+        expect(task?.startedAt).toBeDefined();
+        expect(task?.completedAt).toBeUndefined();
+        expect(task?.result).toBeUndefined();
+        expect(task?.error).toBeUndefined();
+    });
+
+    it('returns false for a task not in history', () => {
+        const id = manager.enqueue(createTestTask());
+        expect(manager.reActivate(id)).toBe(false); // still queued, not in history
+    });
+
+    it('returns false for unknown task ID', () => {
+        expect(manager.reActivate('nonexistent')).toBe(false);
+    });
+
+    it('moves a failed task from history to running', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markFailed(id, 'some error');
+        expect(manager.getHistory()).toHaveLength(1);
+
+        const result = manager.reActivate(id);
+        expect(result).toBe(true);
+        expect(manager.getRunning()).toHaveLength(1);
+        const task = manager.getTask(id);
+        expect(task?.status).toBe('running');
+        expect(task?.error).toBeUndefined();
+    });
+
+    it('emits change and taskUpdated events', () => {
+        const changeListener = vi.fn();
+        const updateListener = vi.fn();
+        manager.on('change', changeListener);
+        manager.on('taskUpdated', updateListener);
+
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id);
+        changeListener.mockClear();
+        updateListener.mockClear();
+
+        manager.reActivate(id);
+
+        expect(changeListener).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'updated', taskId: id })
+        );
+        expect(updateListener).toHaveBeenCalledWith(
+            expect.objectContaining({ id, status: 'running' }),
+            expect.objectContaining({ status: 'running' })
+        );
+    });
+
+    it('preserves original createdAt', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        const originalCreatedAt = manager.getTask(id)!.createdAt;
+        manager.markCompleted(id);
+
+        manager.reActivate(id);
+
+        const task = manager.getTask(id);
+        expect(task?.createdAt).toBe(originalCreatedAt);
+    });
+
+    it('can be re-completed after re-activation', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id, 'first-result');
+
+        manager.reActivate(id);
+        expect(manager.getRunning()).toHaveLength(1);
+
+        manager.markCompleted(id, 'second-result');
+        expect(manager.getRunning()).toHaveLength(0);
+        expect(manager.getHistory()).toHaveLength(1);
+        expect(manager.getTask(id)?.result).toBe('second-result');
+    });
+
+    it('returns false when task is currently running', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        // Task is running, not in history
+        expect(manager.reActivate(id)).toBe(false);
+    });
+});
+
+// ============================================================================
 // Test Helpers
 // ============================================================================
 

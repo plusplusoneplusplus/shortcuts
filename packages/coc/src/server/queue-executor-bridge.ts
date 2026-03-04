@@ -149,6 +149,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly followUpSuggestions: { enabled: boolean; count: number };
     /** Lazy getter for the WebSocket server to broadcast file events */
     private readonly getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
+    /** Optional queue manager for re-activating parent tasks during follow-ups */
+    private queueManager?: TaskQueueManager;
 
     constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number; followUpSuggestions?: { enabled: boolean; count: number }; getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined } = {}) {
         this.store = store;
@@ -159,6 +161,11 @@ export class CLITaskExecutor implements TaskExecutor {
         this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
         this.followUpSuggestions = options.followUpSuggestions ?? { enabled: true, count: 3 };
         this.getWsServer = options.getWsServer;
+    }
+
+    /** Inject the queue manager (called by createQueueExecutorBridge after construction). */
+    setQueueManager(qm: TaskQueueManager): void {
+        this.queueManager = qm;
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
@@ -191,6 +198,12 @@ export class CLITaskExecutor implements TaskExecutor {
         if (isChatFollowUpPayload(task.payload)) {
             const followUpPayload = task.payload as unknown as ChatFollowUpPayload;
             task.processId = followUpPayload.processId;
+            const parentTaskId = followUpPayload.parentTaskId;
+
+            // Re-activate the parent chat task so it shows as "running" in the queue
+            if (parentTaskId && this.queueManager) {
+                this.queueManager.reActivate(parentTaskId);
+            }
 
             // Rehydrate externalized images if needed
             const rawPayload = task.payload as any;
@@ -202,11 +215,26 @@ export class CLITaskExecutor implements TaskExecutor {
                 await this.executeFollowUp(followUpPayload.processId, followUpPayload.content, followUpPayload.attachments);
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
+
+                // Return parent chat task to history with updated display name
+                if (parentTaskId && this.queueManager) {
+                    const proc = await this.store.getProcess(followUpPayload.processId);
+                    const turnCount = proc?.conversationTurns?.length ?? 0;
+                    this.queueManager.updateTask(parentTaskId, { displayName: `Chat (${turnCount} turns)` });
+                    this.queueManager.markCompleted(parentTaskId);
+                }
+
                 return { success: true, durationMs: duration };
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} failed in ${duration}ms: ${errorMsg}`);
+
+                // Return parent chat task to history even on failure
+                if (parentTaskId && this.queueManager) {
+                    this.queueManager.markCompleted(parentTaskId);
+                }
+
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
             } finally {
                 if (followUpPayload.imageTempDir) {
@@ -1445,6 +1473,9 @@ export function createQueueExecutorBridge(
         followUpSuggestions: options.followUpSuggestions,
         getWsServer: options.getWsServer,
     });
+
+    // Inject queue manager so follow-ups can re-activate parent tasks
+    taskExecutor.setQueueManager(queueManager);
 
     const executor = createQueueExecutor(queueManager, taskExecutor, {
         sharedConcurrency: options.sharedConcurrency ?? 5,

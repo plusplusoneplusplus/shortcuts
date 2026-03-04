@@ -132,8 +132,14 @@ describe('RepoQueueTab split-panel layout', () => {
 
         it('dispatches SELECT_QUEUE_TASK for non-chat tasks', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 600);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
             expect(callbackBlock).toContain('SELECT_QUEUE_TASK');
+        });
+
+        it('redirects chat-followup tasks to Chat tab', () => {
+            const callbackIdx = source.indexOf('const selectTask = useCallback');
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 400);
+            expect(callbackBlock).toContain("'chat-followup'");
         });
     });
 

@@ -207,6 +207,21 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Find a task by its processId across all per-repo queues.
+     * Returns the task id and type if found.
+     */
+    findTaskByProcessId(processId: string): { id: string; type: string } | undefined {
+        for (const manager of this.registry.getAllQueues().values()) {
+            for (const task of manager.getAll()) {
+                if (task.processId === processId) {
+                    return { id: task.id, type: task.type };
+                }
+            }
+        }
+        return undefined;
+    }
+
+    /**
      * Drain all per-repo executors, waiting for running tasks to finish.
      * Returns the worst-case outcome ('timeout' if any timed out).
      */

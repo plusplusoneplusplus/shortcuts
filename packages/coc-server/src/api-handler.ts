@@ -34,6 +34,8 @@ export interface QueueExecutorBridge {
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
+    /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
+    findTaskByProcessId?(processId: string): { id: string; type: string } | undefined;
 }
 
 // ============================================================================
@@ -1486,12 +1488,15 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (bridge.enqueue) {
                 const snippet = messageContent.trim();
                 const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+                // Look up the original chat task so the follow-up can re-activate it
+                const parentTask = bridge.findTaskByProcessId?.(id);
                 await bridge.enqueue({
                     type: 'chat-followup',
                     priority: 'normal',
                     payload: {
                         kind: 'chat-followup',
                         processId: id,
+                        parentTaskId: parentTask?.id,
                         content: messageContent,
                         attachments,
                         imageTempDir,
