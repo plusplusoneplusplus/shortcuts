@@ -116,7 +116,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
     const taskFinished = task?.status === 'completed' || task?.status === 'failed';
-    const inputDisabled = sending || isStreaming || task?.status === 'queued' || task?.status === 'running';
+    const inputDisabled = sending || isStreaming || task?.status === 'queued';
 
     // Build a process-like object for ConversationMetadataPopover from the queue task
     const metadataProcess = useMemo(() => {

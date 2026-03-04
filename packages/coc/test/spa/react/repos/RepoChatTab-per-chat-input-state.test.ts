@@ -53,9 +53,13 @@ describe('RepoChatTab per-chat input state: inputDrafts ref', () => {
 });
 
 describe('RepoChatTab per-chat input state: inputDisabled', () => {
-    it('derives inputDisabled from sending, isStreaming, queued, and running', () => {
+    it('derives inputDisabled from sending, isStreaming, and queued (not running)', () => {
         expect(SRC).toContain(
-            "const inputDisabled = sending || isStreaming || task?.status === 'queued' || task?.status === 'running'"
+            "const inputDisabled = sending || isStreaming || task?.status === 'queued'"
+        );
+        // 'running' should NOT be in the inputDisabled expression
+        expect(SRC).not.toMatch(
+            /const inputDisabled = sending \|\| isStreaming \|\| task\?\.status === 'queued' \|\| task\?\.status === 'running'/
         );
     });
 
