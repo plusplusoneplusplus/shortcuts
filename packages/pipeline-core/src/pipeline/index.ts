@@ -58,7 +58,7 @@ export {
     PipelineExecutionError,
     DEFAULT_PARALLEL_LIMIT
 } from './executor';
-export type { ExecutePipelineOptions, PipelineExecutionResult } from './executor';
+export type { ExecutePipelineOptions, PipelineExecutionResult, ItemProcessEvent } from './executor';
 
 // CSV Reader
 export {

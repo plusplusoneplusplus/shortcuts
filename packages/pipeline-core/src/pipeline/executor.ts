@@ -100,6 +100,8 @@ export interface ExecutePipelineOptions {
     onPhaseChange?: (event: PipelinePhaseEvent) => void;
     /** Optional cancellation check function - returns true if execution should be cancelled */
     isCancelled?: () => boolean;
+    /** Callback invoked when a child process is created for an individual map/batch item */
+    onItemProcessCreated?: (event: ItemProcessEvent) => void;
 }
 
 /** Emit a phase change event via the options callback (no-op when callback is absent). */
@@ -148,11 +150,35 @@ function createPhaseTrackingProgress(
 }
 
 /**
+ * Event emitted when a child process is created for an individual map/batch item
+ */
+export interface ItemProcessEvent {
+    /** Zero-based index of the item in the original input array */
+    itemIndex: number;
+    /** Generated child process ID */
+    processId: string;
+    /** The input item being processed */
+    item: PromptItem;
+    /** Batch index (only present in batch mode) */
+    batchIndex?: number;
+    /** Which pipeline phase produced this child */
+    phase: 'map' | 'job' | 'filter-ai' | 'reduce-ai';
+    /** Whether the item succeeded */
+    success: boolean;
+    /** Error message if the item failed */
+    error?: string;
+    /** SDK session ID from the AI response (for session resume) */
+    sessionId?: string;
+}
+
+/**
  * Result type from pipeline execution
  */
 export interface PipelineExecutionResult extends MapReduceResult<PromptMapResult, PromptMapOutput> {
     /** Filter result if filter was used */
     filterResult?: FilterResult;
+    /** Child process IDs created for individual map/batch items */
+    itemProcessIds?: string[];
 }
 
 /**
@@ -291,10 +317,24 @@ async function executeSingleJob(
         }
 
         // 6. Process result
+        const jobProcessId = `${config.name}-job-${startTime}`;
         if (!aiResult.success || !aiResult.response) {
             const executionTimeMs = Date.now() - startTime;
             const errorMsg = aiResult.error || 'AI invocation failed';
             emitPhase(options, 'job', 'failed', { durationMs: Date.now() - jobStart, error: errorMsg });
+            if (options.onItemProcessCreated) {
+                try {
+                    options.onItemProcessCreated({
+                        itemIndex: 0,
+                        processId: jobProcessId,
+                        item: { prompt: prompt } as PromptItem,
+                        phase: 'job',
+                        success: false,
+                        error: errorMsg,
+                        sessionId: aiResult.sessionId,
+                    });
+                } catch { /* callback errors don't break execution */ }
+            }
             return {
                 success: false,
                 output: {
@@ -312,7 +352,8 @@ async function executeSingleJob(
                 reduceStats: { inputCount: 1, outputCount: 0, mergedCount: 0, reduceTimeMs: 0, usedAIReduce: false },
                 totalTimeMs: executionTimeMs,
                 executionStats: { totalItems: 1, successfulMaps: 0, failedMaps: 1, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 },
-                error: errorMsg
+                error: errorMsg,
+                itemProcessIds: [jobProcessId]
             };
         }
 
@@ -336,6 +377,19 @@ async function executeSingleJob(
             } catch (error) {
                 const parseError = `Failed to parse AI response: ${error instanceof Error ? error.message : String(error)}`;
                 emitPhase(options, 'job', 'failed', { durationMs: Date.now() - jobStart, error: parseError });
+                if (options.onItemProcessCreated) {
+                    try {
+                        options.onItemProcessCreated({
+                            itemIndex: 0,
+                            processId: jobProcessId,
+                            item: { prompt: prompt } as PromptItem,
+                            phase: 'job',
+                            success: false,
+                            error: parseError,
+                            sessionId: aiResult.sessionId,
+                        });
+                    } catch { /* callback errors don't break execution */ }
+                }
                 return {
                     success: false,
                     output: {
@@ -353,13 +407,26 @@ async function executeSingleJob(
                     reduceStats: { inputCount: 1, outputCount: 0, mergedCount: 0, reduceTimeMs: 0, usedAIReduce: false },
                     totalTimeMs: executionTimeMs,
                     executionStats: { totalItems: 1, successfulMaps: 0, failedMaps: 1, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 },
-                    error: parseError
+                    error: parseError,
+                    itemProcessIds: [jobProcessId]
                 };
             }
         }
 
         // 8. Return success result
         emitPhase(options, 'job', 'completed', { durationMs: Date.now() - jobStart });
+        if (options.onItemProcessCreated) {
+            try {
+                options.onItemProcessCreated({
+                    itemIndex: 0,
+                    processId: jobProcessId,
+                    item: { prompt: prompt } as PromptItem,
+                    phase: 'job',
+                    success: true,
+                    sessionId: aiResult.sessionId,
+                });
+            } catch { /* callback errors don't break execution */ }
+        }
         return {
             success: true,
             output: {
@@ -375,7 +442,8 @@ async function executeSingleJob(
             }],
             reduceStats: { inputCount: 1, outputCount: 1, mergedCount: 1, reduceTimeMs: 0, usedAIReduce: false },
             totalTimeMs: executionTimeMs,
-            executionStats: { totalItems: 1, successfulMaps: 1, failedMaps: 0, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 }
+            executionStats: { totalItems: 1, successfulMaps: 1, failedMaps: 0, mapPhaseTimeMs: executionTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 },
+            itemProcessIds: [jobProcessId]
         };
     } catch (error) {
         if (error instanceof PipelineExecutionError) {
@@ -805,6 +873,7 @@ async function executeStandardMode(
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
     const timeoutMs = config.map.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
 
+    const itemProcessIds: string[] = [];
     const executorOptions: ExecutorOptions = {
         aiInvoker: options.aiInvoker,
         maxConcurrency: parallelLimit,
@@ -815,7 +884,28 @@ async function executeStandardMode(
         onProgress: createPhaseTrackingProgress(options, processItems.length),
         jobName: config.name,
         timeoutMs,
-        isCancelled: options.isCancelled
+        isCancelled: options.isCancelled,
+        onItemComplete: (workItem, result) => {
+            if (result.processId) {
+                itemProcessIds.push(result.processId);
+            }
+            if (options.onItemProcessCreated) {
+                const itemIndex = parseInt(workItem.id.replace(/\D/g, ''), 10) || 0;
+                const innerSuccess = (result.output as any)?.success ?? result.success;
+                const innerError = (result.output as any)?.error ?? result.error;
+                try {
+                    options.onItemProcessCreated({
+                        itemIndex,
+                        processId: result.processId || workItem.id,
+                        item: workItem.data as PromptItem,
+                        phase: 'map',
+                        success: innerSuccess,
+                        error: innerError,
+                        sessionId: (result.output as any)?.sessionId,
+                    });
+                } catch { /* callback errors don't break execution */ }
+            }
+        }
     };
 
     const executor = createExecutor(executorOptions);
@@ -845,7 +935,7 @@ async function executeStandardMode(
 
     try {
         const result = await executor.execute(job, jobInput);
-        return { ...result, filterResult };
+        return { ...result, filterResult, itemProcessIds: itemProcessIds.length > 0 ? itemProcessIds : undefined };
     } catch (error) {
         emitPhase(options, 'map', 'failed', { error: error instanceof Error ? error.message : String(error) });
         throw new PipelineExecutionError(
@@ -910,6 +1000,7 @@ async function executeBatchMode(
     const timeoutMs = config.map.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
     const outputFields = config.map.output || [];
     const isTextMode = outputFields.length === 0;
+    const itemProcessIds: string[] = [];
 
     // Split items into batches
     const batches = splitIntoBatches(processItems, batchSize);
@@ -939,15 +1030,39 @@ async function executeBatchMode(
     let failedBatches = 0;
 
     // Create a simple concurrency limiter for batch processing
+    const emitItemEvents = (results: PromptMapResult[], batchIndex: number, batchProcessId?: string) => {
+        if (!options.onItemProcessCreated) { return; }
+        const baseItemIndex = batchIndex * batchSize;
+        for (let i = 0; i < results.length; i++) {
+            const r = results[i];
+            const perItemId = batchProcessId ? `${batchProcessId}-i${i}` : `batch-${batchIndex}-i${i}`;
+            itemProcessIds.push(perItemId);
+            try {
+                options.onItemProcessCreated({
+                    itemIndex: baseItemIndex + i,
+                    processId: perItemId,
+                    item: r.item,
+                    batchIndex,
+                    phase: 'map',
+                    success: r.success,
+                    error: r.error,
+                    sessionId: r.sessionId,
+                });
+            } catch { /* callback errors don't break execution */ }
+        }
+    };
+
     const processBatch = async (batch: PromptItem[], batchIndex: number): Promise<PromptMapResult[]> => {
         // Check for cancellation
         if (options.isCancelled?.()) {
-            return batch.map(item => ({
+            const cancelledResults = batch.map(item => ({
                 item,
                 output: isTextMode ? {} : createEmptyOutput(outputFields),
                 success: false,
                 error: 'Operation cancelled'
             }));
+            emitItemEvents(cancelledResults, batchIndex);
+            return cancelledResults;
         }
 
         // Register batch process
@@ -977,7 +1092,7 @@ async function executeBatchMode(
                 if (options.processTracker && processId) {
                     options.processTracker.updateProcess(processId, 'failed', undefined, aiResult.error || 'AI invocation failed');
                 }
-                return batch.map(item => ({
+                const failedResults = batch.map(item => ({
                     item,
                     output: isTextMode ? {} : createEmptyOutput(outputFields),
                     success: false,
@@ -985,6 +1100,8 @@ async function executeBatchMode(
                     rawResponse: aiResult.response,
                     sessionId: aiResult.sessionId
                 }));
+                emitItemEvents(failedResults, batchIndex, processId);
+                return failedResults;
             }
 
             // Parse batch response
@@ -1008,6 +1125,7 @@ async function executeBatchMode(
                 );
             }
 
+            emitItemEvents(batchResults, batchIndex, processId);
             return batchResults;
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1043,6 +1161,7 @@ async function executeBatchMode(
                             );
                         }
 
+                        emitItemEvents(batchResults, batchIndex, processId);
                         return batchResults;
                     }
                 } catch (retryError) {
@@ -1054,12 +1173,14 @@ async function executeBatchMode(
             if (options.processTracker && processId) {
                 options.processTracker.updateProcess(processId, 'failed', undefined, errorMsg);
             }
-            return batch.map(item => ({
+            const failedResults = batch.map(item => ({
                 item,
                 output: isTextMode ? {} : createEmptyOutput(outputFields),
                 success: false,
                 error: errorMsg
             }));
+            emitItemEvents(failedResults, batchIndex, processId);
+            return failedResults;
         }
     };
 
@@ -1202,7 +1323,8 @@ async function executeBatchMode(
         },
         totalTimeMs,
         executionStats,
-        filterResult
+        filterResult,
+        itemProcessIds: itemProcessIds.length > 0 ? itemProcessIds : undefined
     };
 
     if (!overallSuccess) {
