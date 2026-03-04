@@ -117,6 +117,10 @@ export function parseQueryParams(reqUrl: string): ProcessFilter {
         filter.type = query.type as AIProcessType;
     }
 
+    if (typeof query.parentProcessId === 'string' && query.parentProcessId) {
+        filter.parentProcessId = query.parentProcessId;
+    }
+
     if (typeof query.since === 'string' && query.since) {
         const date = new Date(query.since);
         if (!isNaN(date.getTime())) {
@@ -1295,6 +1299,34 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 }
                 return handleAPIError(res, internalError('Failed to read conversation output'));
             }
+        },
+    });
+
+    // GET /api/processes/:id/children — Child processes for a pipeline run
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/processes\/([^/]+)\/children$/,
+        handler: async (req, res, match) => {
+            const parentId = decodeURIComponent(match![1]);
+
+            // Build filter from query params (reuse parseQueryParams for status, exclude, etc.)
+            const baseFilter = parseQueryParams(req.url || '/');
+            const filter: ProcessFilter = {
+                ...baseFilter,
+                parentProcessId: parentId,
+            };
+
+            // Default: exclude conversation for lightweight payloads
+            if (!filter.exclude) {
+                filter.exclude = ['conversation'];
+            }
+
+            const children = await store.getAllProcesses(filter);
+            const responseChildren = filter.exclude
+                ? children.map(p => stripExcludedFields(p, filter.exclude))
+                : children;
+
+            sendJSON(res, 200, { children: responseChildren, total: children.length });
         },
     });
 

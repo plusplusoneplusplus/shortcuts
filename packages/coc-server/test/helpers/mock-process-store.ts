@@ -67,7 +67,17 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             }
         }),
         getProcess: vi.fn(async (id: string) => processes.get(id)),
-        getAllProcesses: vi.fn(async () => Array.from(processes.values())),
+        getAllProcesses: vi.fn(async (filter?: { parentProcessId?: string; status?: string | string[]; exclude?: string[] }) => {
+            let result = Array.from(processes.values());
+            if (filter?.parentProcessId) {
+                result = result.filter(p => p.parentProcessId === filter.parentProcessId);
+            }
+            if (filter?.status) {
+                const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+                result = result.filter(p => statuses.includes(p.status));
+            }
+            return result;
+        }),
         removeProcess: vi.fn(async (id: string) => { processes.delete(id); }),
         clearProcesses: vi.fn(async () => {
             const count = processes.size;
