@@ -9,6 +9,7 @@ import { useQueue } from '../context/QueueContext';
 import { fetchPipelineContent, savePipelineContent, deletePipeline, runPipeline } from './pipeline-api';
 import { PipelineRunHistory } from './PipelineRunHistory';
 import { PipelineDAGPreview } from './PipelineDAGPreview';
+import { PipelineAIRefinePanel } from './PipelineAIRefinePanel';
 import type { PipelineInfo } from './repoGrouping';
 
 export interface PipelineDetailProps {
@@ -23,7 +24,7 @@ export interface PipelineDetailProps {
 export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess, refreshKey }: PipelineDetailProps) {
     const { addToast } = useGlobalToast();
     const { state: queueState } = useQueue();
-    const [mode, setMode] = useState<'view' | 'edit'>('view');
+    const [mode, setMode] = useState<'view' | 'edit' | 'ai-edit'>('view');
     const [activeTab, setActiveTab] = useState<'pipeline' | 'history'>('pipeline');
     const [content, setContent] = useState('');
     const [editContent, setEditContent] = useState('');
@@ -93,6 +94,22 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
         }
     }
 
+    async function handleAIApply(newYaml: string) {
+        setSaving(true);
+        setError(null);
+        try {
+            await savePipelineContent(workspaceId, pipeline.name, newYaml);
+            setContent(newYaml);
+            setEditContent(newYaml);
+            setMode('view');
+            addToast('Pipeline saved', 'success');
+        } catch (err: any) {
+            setError(err.message || 'Failed to save');
+        } finally {
+            setSaving(false);
+        }
+    }
+
     async function handleDelete() {
         try {
             await deletePipeline(workspaceId, pipeline.name);
@@ -138,8 +155,11 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                             </Button>
                             <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
                             <Button variant="secondary" size="sm" onClick={() => setMode('edit')}>Edit</Button>
+                            <Button variant="secondary" size="sm" onClick={() => setMode('ai-edit')}>Edit with AI ✨</Button>
                             <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>Delete</Button>
                         </>
+                    ) : mode === 'ai-edit' ? (
+                        null
                     ) : (
                         <>
                             <Button variant="secondary" size="sm" onClick={() => { setMode('view'); setError(null); }}>Cancel</Button>
@@ -210,6 +230,14 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                             />
                         )}
                     </>
+                ) : mode === 'ai-edit' ? (
+                    <PipelineAIRefinePanel
+                        workspaceId={workspaceId}
+                        pipelineName={pipeline.name}
+                        currentYaml={content}
+                        onApply={handleAIApply}
+                        onCancel={() => setMode('view')}
+                    />
                 ) : (
                     <div className="flex flex-col gap-2 h-full">
                         <textarea
