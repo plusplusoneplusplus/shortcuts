@@ -26,7 +26,7 @@ import * as fs from 'fs';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'readonly-chat', 'run-pipeline', 'chat-followup']);
+const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'run-pipeline']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
@@ -36,9 +36,7 @@ const TYPE_LABELS: Record<string, string> = {
     'ai-clarification': 'AI Clarification',
     'custom': 'Task',
     'chat': 'Chat',
-    'readonly-chat': 'Read-Only Chat',
     'run-pipeline': 'Run Pipeline',
-    'chat-followup': 'Follow-up',
 };
 
 /**
@@ -50,9 +48,9 @@ function generateDisplayName(type: string, payload: any): string {
 
     // Try to extract a meaningful snippet from the payload
     if (payload) {
-        // Chat follow-up: use content text
-        if (payload.kind === 'chat-followup' && typeof payload.content === 'string' && payload.content.trim()) {
-            const snippet = payload.content.trim();
+        // Chat follow-up: use prompt text
+        if (payload.kind === 'chat' && payload.processId && typeof payload.prompt === 'string' && payload.prompt.trim()) {
+            const snippet = payload.prompt.trim();
             return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
         }
         // AI clarification: use prompt text
@@ -169,9 +167,9 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
 
     const payload = taskSpec.payload || {};
 
-    // Ensure chat/readonly-chat payloads carry kind:'chat' so downstream
+    // Ensure chat payloads carry kind:'chat' so downstream
     // isChatPayload() guards match (e.g. extractPrompt applies READONLY_PROMPT_PREFIX).
-    if ((taskSpec.type === 'chat' || taskSpec.type === 'readonly-chat') && !payload.kind) {
+    if (taskSpec.type === 'chat' && !payload.kind) {
         payload.kind = 'chat';
     }
 
@@ -297,7 +295,7 @@ async function enrichChatTasks(
 ): Promise<void> {
     if (!store) return;
     for (const task of tasks) {
-        if (task.type !== 'chat' && task.type !== 'readonly-chat' || !task.processId) continue;
+        if (task.type !== 'chat' || !task.processId) continue;
         try {
             const process = await store.getProcess(task.processId as string);
             if (!process) continue;
@@ -775,8 +773,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             }
 
             if (typeFilter) {
-                history = history.filter(t => t.type === typeFilter
-                    || (typeFilter === 'chat' && t.type === 'readonly-chat'));
+                history = history.filter(t => t.type === typeFilter);
             }
 
             // For chat type, include running and queued tasks so the chat
@@ -785,7 +782,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 const seenIds = new Set(history.map(t => t.id as string));
                 const collectActive = (mgr: TaskQueueManager) => {
                     for (const task of [...mgr.getRunning(), ...mgr.getQueued()]) {
-                        if (((task.type as string) === 'chat' || (task.type as string) === 'readonly-chat') && !seenIds.has(task.id)) {
+                        if ((task.type as string) === 'chat' && !seenIds.has(task.id)) {
                             seenIds.add(task.id);
                             history.push(serializeTask(task));
                         }

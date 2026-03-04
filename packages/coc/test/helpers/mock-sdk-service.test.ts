@@ -84,7 +84,7 @@ describe('mock-sdk-service helpers', () => {
             const bridge = createMockBridge();
             await expect(bridge.executeFollowUp('id', 'msg')).resolves.toBeUndefined();
             await expect(bridge.isSessionAlive('id')).resolves.toBe(true);
-            await expect(bridge.enqueue!({ type: 'chat-followup', priority: 'normal', payload: {}, config: {} })).resolves.toBe('mock-task-id');
+            await expect(bridge.enqueue!({ type: 'chat', priority: 'normal', payload: { kind: 'chat', prompt: 'test', processId: 'pid' }, config: {} })).resolves.toBe('mock-task-id');
         });
 
         it('should accept overrides', async () => {

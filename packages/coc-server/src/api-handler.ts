@@ -1524,16 +1524,17 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 // Look up the original chat task so the follow-up can re-activate it
                 const parentTask = bridge.findTaskByProcessId?.(id);
                 await bridge.enqueue({
-                    type: 'chat-followup',
+                    type: 'chat',
                     priority: 'normal',
                     payload: {
-                        kind: 'chat-followup',
+                        kind: 'chat',
+                        prompt: messageContent,
                         processId: id,
                         parentTaskId: parentTask?.id,
-                        content: messageContent,
                         attachments,
                         imageTempDir,
                         workingDirectory: process.workingDirectory,
+                        readonly: (process as any).payload?.readonly,
                     },
                     config: {},
                     displayName,

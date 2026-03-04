@@ -113,7 +113,6 @@ export {
     type ResolveCommentsPayload,
     type AIClarificationPayload,
     type ChatPayload,
-    type ChatFollowUpPayload,
     type TaskGenerationPayload,
     type RunPipelinePayload,
     type RunScriptPayload,
@@ -123,12 +122,11 @@ export {
     isResolveCommentsPayload,
     isAIClarificationPayload,
     isChatPayload,
-    isReadOnlyChatPayload,
+    isChatFollowUp,
     isCustomTaskPayload,
     isTaskGenerationPayload,
     isRunPipelinePayload,
     isRunScriptPayload,
-    isChatFollowUpPayload,
 } from './task-types';
 
 // Suggest follow-ups tool

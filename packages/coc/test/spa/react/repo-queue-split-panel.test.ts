@@ -136,10 +136,10 @@ describe('RepoQueueTab split-panel layout', () => {
             expect(callbackBlock).toContain('SELECT_QUEUE_TASK');
         });
 
-        it('redirects chat-followup tasks to Chat tab', () => {
+        it('redirects chat tasks to Chat tab', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
             const callbackBlock = source.slice(callbackIdx, callbackIdx + 400);
-            expect(callbackBlock).toContain("'chat-followup'");
+            expect(callbackBlock).toContain("task?.type === 'chat'");
         });
     });
 

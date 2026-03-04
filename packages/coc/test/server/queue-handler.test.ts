@@ -224,30 +224,32 @@ describe('Queue Handler', () => {
             expect(body.task.type).toBe('chat');
         });
 
-        it('should enqueue readonly-chat type', async () => {
+        it('should enqueue chat type with readonly flag', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'readonly-chat',
-                payload: { kind: 'chat', prompt: 'Explain the architecture' },
+                type: 'chat',
+                payload: { kind: 'chat', prompt: 'Explain the architecture', readonly: true },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.type).toBe('readonly-chat');
+            expect(body.task.type).toBe('chat');
+            expect(body.task.payload.readonly).toBe(true);
         });
 
-        it('should auto-set payload.kind to chat for readonly-chat without explicit kind', async () => {
+        it('should auto-set payload.kind to chat for chat type without explicit kind', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'readonly-chat',
+                type: 'chat',
                 prompt: 'Explain the architecture',
                 workingDirectory: '/tmp/repo',
                 displayName: 'Chat',
+                payload: { readonly: true },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.type).toBe('readonly-chat');
+            expect(body.task.type).toBe('chat');
             expect(body.task.payload.kind).toBe('chat');
         });
 
@@ -269,8 +271,8 @@ describe('Queue Handler', () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'readonly-chat',
-                payload: { kind: 'chat', prompt: 'Test' },
+                type: 'chat',
+                payload: { kind: 'chat', prompt: 'Test', readonly: true },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -2015,7 +2017,7 @@ describe('Queue Handler', () => {
             expect(task.chatMeta.title).toBeUndefined();
         });
 
-        it('readonly-chat: should strip READONLY_PROMPT_PREFIX from firstMessage in chatMeta', async () => {
+        it('chat with readonly flag: should strip READONLY_PROMPT_PREFIX from firstMessage in chatMeta', async () => {
             const READONLY_PROMPT_PREFIX =
                 'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code that\'s tracked by the git. Special files like task plan markdown files are exempt from this rule. If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
             const userMessage = 'What does the auth module do?';
@@ -2051,11 +2053,11 @@ describe('Queue Handler', () => {
                 pending: [],
                 history: [{
                     id: 'task-readonly-1',
-                    type: 'readonly-chat',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'completed',
                     createdAt: Date.now(),
-                    payload: { prompt: userMessage },
+                    payload: { prompt: userMessage, readonly: true },
                     displayName: 'Readonly chat',
                     processId: 'proc-readonly-1',
                     repoId,

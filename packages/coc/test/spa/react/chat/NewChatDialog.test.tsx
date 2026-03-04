@@ -321,7 +321,8 @@ describe('NewChatDialog', () => {
         );
         expect(postCall).toBeDefined();
         const body = JSON.parse(postCall![1].body);
-        expect(body.type).toBe('readonly-chat');
+        expect(body.type).toBe('chat');
+        expect(body.payload?.readonly).toBe(true);
 
         await act(async () => { eventListeners['done']?.(); });
     });

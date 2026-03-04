@@ -268,7 +268,7 @@ describe('useRepoQueueStats', () => {
         expect(hookResult!.chatPending).toBe(2);
     });
 
-    it('excludes chat-followup tasks from running/queued badge counts', () => {
+    it('excludes chat follow-up tasks from running/queued badge counts', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -282,7 +282,7 @@ describe('useRepoQueueStats', () => {
                         queued: [{ id: 'q1', type: 'run-pipeline' }],
                         running: [
                             { id: 'r1', type: 'chat' },
-                            { id: 'r2', type: 'chat-followup' },
+                            { id: 'r2', type: 'chat', payload: { processId: 'parent-1' } },
                             { id: 'r3', type: 'follow-prompt' },
                         ],
                     },
@@ -292,11 +292,11 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        // chat-followup excluded from running count; chat and follow-prompt included
+        // chat follow-up (chat with processId) excluded from running count; chat and follow-prompt included
         expect(hookResult).toEqual({ running: 2, queued: 1, chatRunning: 1, chatQueued: 0, chatPending: 1 });
     });
 
-    it('excludes chat-followup from queued badge count', () => {
+    it('excludes chat follow-up from queued badge count', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -308,7 +308,7 @@ describe('useRepoQueueStats', () => {
                     repoId: 'ws-followup-q',
                     queue: {
                         queued: [
-                            { id: 'q1', type: 'chat-followup' },
+                            { id: 'q1', type: 'chat', payload: { processId: 'parent-q' } },
                             { id: 'q2', type: 'run-pipeline' },
                         ],
                         running: [],
@@ -336,7 +336,7 @@ describe('useRepoQueueStats', () => {
                         queued: [],
                         running: [
                             { id: 'parent-chat', type: 'chat' },
-                            { id: 'followup-1', type: 'chat-followup' },
+                            { id: 'followup-1', type: 'chat', payload: { processId: 'parent-chat' } },
                         ],
                         history: [
                             { id: 'h1', type: 'follow-prompt' },

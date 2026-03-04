@@ -18,7 +18,7 @@ export interface RepoQueueStats {
 }
 
 const isChat = (t: { type?: string }) => t.type === 'chat';
-const isHidden = (t: { type?: string }) => t.type === 'chat-followup';
+const isHidden = (t: { type?: string; payload?: any }) => t.type === 'chat' && t.payload?.processId;
 
 export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
     const { state } = useQueue();
@@ -28,8 +28,8 @@ export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
         if (!entry) return { running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: streamingCount };
         const runningArr = entry.running ?? [];
         const queuedArr = entry.queued ?? [];
-        const chatRunning = runningArr.filter(isChat).length;
-        const chatQueued = queuedArr.filter(isChat).length;
+        const chatRunning = runningArr.filter(t => isChat(t) && !isHidden(t)).length;
+        const chatQueued = queuedArr.filter(t => isChat(t) && !isHidden(t)).length;
         return {
             running: runningArr.filter(t => !isHidden(t)).length,
             queued: queuedArr.filter(t => !isHidden(t)).length,

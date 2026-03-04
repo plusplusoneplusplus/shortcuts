@@ -7,7 +7,7 @@
  *
  * Task types supported:
  * - ai-clarification: Sends prompt to CopilotSDKService
- * - chat: Interactive SPA conversation, sends prompt to CopilotSDKService
+ * - chat: Interactive SPA conversation, sends prompt to CopilotSDKService (readonly flag for read-only mode)
  * - custom: Sends payload.data.prompt to CopilotSDKService
  * - follow-prompt: Reads prompt file and sends to CopilotSDKService
  * - task-generation: Builds task creation prompt and sends to CopilotSDKService
@@ -17,12 +17,12 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ChatFollowUpPayload, ResolveCommentsPayload, RunPipelinePayload, RunScriptPayload, TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
+import type { ResolveCommentsPayload, RunPipelinePayload, RunScriptPayload, TaskGenerationPayload, ChatPayload } from '@plusplusoneplusplus/coc-server';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
     isAIClarificationPayload, isChatPayload,
-    isChatFollowUpPayload,
+    isChatFollowUp,
     isCustomTaskPayload,
     isFollowPromptPayload,
     isResolveCommentsPayload,
@@ -179,11 +179,11 @@ export class CLITaskExecutor implements TaskExecutor {
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} was cancelled before starting`);
             // For follow-ups, revert the original process from 'running' back to 'completed'
             // since api-handler.ts set it to 'running' before enqueueing
-            if (isChatFollowUpPayload(task.payload)) {
-                const payload = task.payload as unknown as ChatFollowUpPayload;
+            if (isChatFollowUp(task.payload)) {
+                const payload = task.payload as unknown as ChatPayload;
                 task.processId = payload.processId;
                 try {
-                    await this.store.updateProcess(payload.processId, { status: 'completed' });
+                    await this.store.updateProcess(payload.processId!, { status: 'completed' });
                 } catch {
                     // Non-fatal: process may already be cleaned up
                 }
@@ -195,8 +195,8 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         // ── Chat follow-up: skip ghost process creation — reuse the original process ──
-        if (isChatFollowUpPayload(task.payload)) {
-            const followUpPayload = task.payload as unknown as ChatFollowUpPayload;
+        if (isChatFollowUp(task.payload)) {
+            const followUpPayload = task.payload as unknown as ChatPayload;
             task.processId = followUpPayload.processId;
             const parentTaskId = followUpPayload.parentTaskId;
 
@@ -212,13 +212,13 @@ export class CLITaskExecutor implements TaskExecutor {
             }
 
             try {
-                await this.executeFollowUp(followUpPayload.processId, followUpPayload.content, followUpPayload.attachments);
+                await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments);
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
 
                 // Return parent chat task to history with updated display name
                 if (parentTaskId && this.queueManager) {
-                    const proc = await this.store.getProcess(followUpPayload.processId);
+                    const proc = await this.store.getProcess(followUpPayload.processId!);
                     const turnCount = proc?.conversationTurns?.length ?? 0;
                     this.queueManager.updateTask(parentTaskId, { displayName: `Chat (${turnCount} turns)` });
                     this.queueManager.markCompleted(parentTaskId);
@@ -683,8 +683,9 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         if (isChatPayload(task.payload)) {
-            const prompt = task.payload.prompt || task.displayName || 'Chat message';
-            if (task.type === 'readonly-chat') {
+            const payload = task.payload as unknown as ChatPayload;
+            const prompt = payload.prompt || task.displayName || 'Chat message';
+            if (payload.readonly) {
                 return READONLY_PROMPT_PREFIX + prompt;
             }
             return prompt;
@@ -752,10 +753,6 @@ export class CLITaskExecutor implements TaskExecutor {
             return prompt;
         }
 
-        if (isChatFollowUpPayload(task.payload)) {
-            return task.payload.content || task.displayName || 'Chat follow-up';
-        }
-
         if (isCustomTaskPayload(task.payload)) {
             const data = task.payload.data;
             if (typeof data.prompt === 'string' && data.prompt.trim()) {
@@ -810,7 +807,7 @@ export class CLITaskExecutor implements TaskExecutor {
             isCustomTaskPayload(task.payload) ||
             isFollowPromptPayload(task.payload)
         ) {
-            const isChatTask = task.type === 'chat' || task.type === 'readonly-chat';
+            const isChatTask = task.type === 'chat';
             const tools = (isChatTask && this.followUpSuggestions.enabled) ? [createSuggestFollowUpsTool()] : undefined;
             const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
                 ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
@@ -824,10 +821,10 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         // Chat follow-up: re-run executeFollowUp on an existing session
-        if (isChatFollowUpPayload(task.payload)) {
-            const payload = task.payload;
+        if (isChatFollowUp(task.payload)) {
+            const payload = task.payload as unknown as ChatPayload;
             try {
-                await this.executeFollowUp(payload.processId, payload.content, payload.attachments);
+                await this.executeFollowUp(payload.processId!, payload.prompt, payload.attachments);
             } finally {
                 if (payload.imageTempDir) {
                     cleanupTempDir(payload.imageTempDir);
@@ -1492,7 +1489,6 @@ const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
     'ai-clarification',
     'code-review',
     'resolve-comments',
-    'readonly-chat',
 ]);
 
 /**
@@ -1500,6 +1496,9 @@ const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
  * (concurrent); everything else is exclusive (serialised).
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
+    if (task.type === 'chat') {
+        return !(task.payload as any)?.readonly;
+    }
     return !SHARED_TASK_TYPES.has(task.type);
 }
 

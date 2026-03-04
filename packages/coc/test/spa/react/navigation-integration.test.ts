@@ -73,7 +73,7 @@ describe('RepoQueueTab selectTask: run-pipeline navigation', () => {
 
 // ─── RepoQueueTab: non-pipeline tasks unchanged ────────────────
 describe('RepoQueueTab selectTask: no regression for other types', () => {
-    it('chat/chat-followup branch is preserved before run-pipeline', () => {
+    it('chat branch is preserved before run-pipeline', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
             REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile])')

@@ -27,8 +27,6 @@ export type TaskType =
     | 'code-review'
     | 'ai-clarification'
     | 'chat'
-    | 'readonly-chat'
-    | 'chat-followup'
     | 'task-generation'
     | 'run-pipeline'
     | 'run-script'
@@ -82,6 +80,11 @@ export interface AIClarificationPayload {
 export interface ChatPayload {
     readonly kind: 'chat';
     prompt: string;
+    readonly?: boolean;
+    processId?: string;
+    parentTaskId?: string;
+    attachments?: Attachment[];
+    imageTempDir?: string;
     skillNames?: string[];
     workspaceId?: string;
     folderPath?: string;
@@ -124,22 +127,6 @@ export interface CustomTaskPayload {
     data: Record<string, unknown>;
 }
 
-export interface ChatFollowUpPayload {
-    readonly kind: 'chat-followup';
-    /** The process ID of the parent chat session to follow up on */
-    processId: string;
-    /** Queue task ID of the original chat task — used to re-activate it instead of creating a new row */
-    parentTaskId?: string;
-    /** Message content to send as the follow-up */
-    content: string;
-    /** Optional file attachments decoded from uploaded images */
-    attachments?: Attachment[];
-    /** Temp directory created for image attachments — cleaned up after execution */
-    imageTempDir?: string;
-    /** Working directory of the original process — used to route to the correct per-repo queue */
-    workingDirectory?: string;
-}
-
 // ============================================================================
 // Payload Union
 // ============================================================================
@@ -149,7 +136,6 @@ export type TaskPayload =
     | ResolveCommentsPayload
     | AIClarificationPayload
     | ChatPayload
-    | ChatFollowUpPayload
     | TaskGenerationPayload
     | RunPipelinePayload
     | RunScriptPayload
@@ -179,8 +165,8 @@ export function isChatPayload(payload: Record<string, unknown>): payload is Reco
     return (payload as any).kind === 'chat';
 }
 
-export function isReadOnlyChatPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
-    return (payload as any).kind === 'chat';
+export function isChatFollowUp(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
+    return isChatPayload(payload) && !!(payload as any).processId;
 }
 
 export function isCustomTaskPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & CustomTaskPayload {
@@ -197,8 +183,4 @@ export function isRunPipelinePayload(payload: Record<string, unknown>): payload 
 
 export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {
     return (payload as any).kind === 'run-script';
-}
-
-export function isChatFollowUpPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatFollowUpPayload {
-    return (payload as any).kind === 'chat-followup';
 }

@@ -71,14 +71,14 @@ vi.mock('@plusplusoneplusplus/coc-server', async (importOriginal) => {
 function followUpTask(overrides: { processId: string; content: string } & Partial<QueuedTask> & { attachments?: any; imageTempDir?: string }): QueuedTask {
     return {
         id: overrides.id ?? 'fu-task-1',
-        type: 'chat-followup',
+        type: 'chat',
         priority: 'normal',
         status: 'running',
         createdAt: Date.now(),
         payload: {
-            kind: 'chat-followup',
+            kind: 'chat',
             processId: overrides.processId,
-            content: overrides.content,
+            prompt: overrides.content,
             attachments: overrides.attachments,
             imageTempDir: overrides.imageTempDir,
         },

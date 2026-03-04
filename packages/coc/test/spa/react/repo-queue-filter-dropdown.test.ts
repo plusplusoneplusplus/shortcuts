@@ -134,11 +134,11 @@ describe('RepoQueueTab filter dropdown', () => {
             expect(source).toContain('taskMatchesFilter(t, filterType)');
         });
 
-        it('filters out chat-followup tasks from all rendered lists', () => {
-            // chat-followup tasks are internal implementation details and should not appear in the UI
-            expect(source).toMatch(/filteredRunning.*chat-followup/s);
-            expect(source).toMatch(/filteredQueued.*chat-followup/s);
-            expect(source).toMatch(/filteredHistory.*chat-followup/s);
+        it('filters out chat follow-up tasks from all rendered lists', () => {
+            // chat follow-up tasks (chat with processId) are internal implementation details and should not appear in the UI
+            expect(source).toMatch(/filteredRunning.*payload.*processId/s);
+            expect(source).toMatch(/filteredQueued.*payload.*processId/s);
+            expect(source).toMatch(/filteredHistory.*payload.*processId/s);
         });
     });
 

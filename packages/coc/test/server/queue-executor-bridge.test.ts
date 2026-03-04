@@ -375,17 +375,17 @@ describe('CLITaskExecutor', () => {
     // Read-Only Chat Tasks
     // ========================================================================
 
-    describe('readonly-chat tasks', () => {
-        it('should prepend read-only prompt prefix for readonly-chat tasks', async () => {
+    describe('chat tasks with readonly flag', () => {
+        it('should prepend read-only prompt prefix for chat tasks with readonly=true', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'readonly-chat-1',
-                type: 'readonly-chat',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'Explain the architecture' },
+                payload: { kind: 'chat' as const, prompt: 'Explain the architecture', readonly: true } as any,
                 config: {},
                 displayName: 'Read-Only Chat',
             };
@@ -421,16 +421,16 @@ describe('CLITaskExecutor', () => {
             }));
         });
 
-        it('should include suggest_follow_ups tool for readonly-chat tasks', async () => {
+        it('should include suggest_follow_ups tool for chat tasks with readonly=true', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'readonly-chat-tools',
-                type: 'readonly-chat',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'What is this?' },
+                payload: { kind: 'chat' as const, prompt: 'What is this?', readonly: true } as any,
                 config: {},
                 displayName: 'Read-Only Chat',
             };
@@ -449,8 +449,8 @@ describe('CLITaskExecutor', () => {
     // Chat Follow-up Tasks
     // ========================================================================
 
-    describe('chat-followup tasks', () => {
-        it('should dispatch chat-followup to executeFollowUp on an existing session', async () => {
+    describe('chat follow-up tasks', () => {
+        it('should dispatch chat follow-up to executeFollowUp on an existing session', async () => {
             const executor = new CLITaskExecutor(store);
 
             // Pre-create a process with an SDK session
@@ -459,15 +459,15 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'followup-task-1',
-                type: 'chat-followup',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'chat-followup',
+                    kind: 'chat',
                     processId: 'proc-fu',
-                    content: 'What is the best approach?',
-                },
+                    prompt: 'What is the best approach?',
+                } as any,
                 config: {},
                 displayName: 'What is the best approach?',
             };
@@ -488,15 +488,15 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'followup-task-notfound',
-                type: 'chat-followup',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'chat-followup',
+                    kind: 'chat',
                     processId: 'proc-does-not-exist',
-                    content: 'Hello?',
-                },
+                    prompt: 'Hello?',
+                } as any,
                 config: {},
             };
 
@@ -534,16 +534,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'followup-reactivate',
-                type: 'chat-followup',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'chat-followup',
+                    kind: 'chat',
                     processId: 'proc-reactivate',
                     parentTaskId: parentId,
-                    content: 'Follow-up question',
-                },
+                    prompt: 'Follow-up question',
+                } as any,
                 config: {},
             };
 
@@ -580,16 +580,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'followup-fail-reactivate',
-                type: 'chat-followup',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'chat-followup',
+                    kind: 'chat',
                     processId: 'proc-fail-reactivate',
                     parentTaskId: parentId,
-                    content: 'This will fail',
-                },
+                    prompt: 'This will fail',
+                } as any,
                 config: {},
             };
 
@@ -610,15 +610,15 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'followup-noparent',
-                type: 'chat-followup',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'chat-followup',
+                    kind: 'chat',
                     processId: 'proc-noparent',
-                    content: 'No parent task id',
-                },
+                    prompt: 'No parent task id',
+                } as any,
                 config: {},
             };
 
@@ -5970,10 +5970,19 @@ describe('defaultIsExclusive', () => {
         { type: 'task-generation', expected: false },
         { type: 'ai-clarification', expected: false },
         { type: 'code-review', expected: false },
-        { type: 'readonly-chat', expected: false },
     ])('should classify "$type" as exclusive=$expected', ({ type, expected }) => {
         const task = { type } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(expected);
+    });
+
+    it('should classify chat as exclusive when not readonly', () => {
+        const task = { type: 'chat', payload: { kind: 'chat', prompt: 'test' } } as QueuedTask;
+        expect(defaultIsExclusive(task)).toBe(true);
+    });
+
+    it('should classify chat as non-exclusive when readonly=true', () => {
+        const task = { type: 'chat', payload: { kind: 'chat', prompt: 'test', readonly: true } } as any as QueuedTask;
+        expect(defaultIsExclusive(task)).toBe(false);
     });
 
     it('should classify unknown task types as exclusive', () => {

@@ -367,7 +367,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     useEffect(() => {
         if (!repoQueue || eventSourceRef.current) return;
         const hasChatTask = [...(repoQueue.running ?? []), ...(repoQueue.queued ?? []), ...(repoQueue.history ?? [])]
-            .some(t => t.type === 'chat' || t.type === 'readonly-chat');
+            .some(t => t.type === 'chat');
         if (hasChatTask) sessionsHook.refresh();
     }, [repoQueueKey]);
 
@@ -525,7 +525,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: readOnly ? 'readonly-chat' : 'chat',
+                    type: 'chat',
                     workspaceId,
                     workingDirectory: workspacePath,
                     prompt,
@@ -533,6 +533,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                     images: initialImagePaste.images.length > 0
                         ? initialImagePaste.images
                         : undefined,
+                    payload: { readonly: readOnly },
                     ...(parsedSkills.length > 0 ? { skillNames: parsedSkills } : {}),
                     ...(model ? { config: { model } } : {}),
                 }),
@@ -859,7 +860,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                         </button>
                     )}
                     <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
-                    {task?.type === 'readonly-chat' && (
+                    {(task?.payload as any)?.readonly && (
                         <span
                             className="text-xs px-2 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 whitespace-nowrap"
                             data-testid="chat-readonly-badge"

@@ -203,7 +203,7 @@ describe('RepoChatTab', () => {
 
         it('sends type chat in the request body', () => {
             expect(source).toContain("'chat'");
-            expect(source).toContain("'readonly-chat'");
+            expect(source).toContain("readonly: readOnly");
         });
 
         it('sends workspaceId in the request body', () => {
@@ -284,8 +284,8 @@ describe('RepoChatTab', () => {
             expect(source).toContain('followUpImagePaste.images.length > 0');
         });
 
-        it('handles Enter key without Shift for send', () => {
-            expect(source).toContain("e.key === 'Enter' && !e.shiftKey");
+        it('handles Ctrl/Cmd+Enter for send', () => {
+            expect(source).toContain("(e.ctrlKey || e.metaKey) && e.key === 'Enter'");
         });
     });
 
@@ -1408,8 +1408,8 @@ describe('RepoChatTab', () => {
             expect(source).toContain('setReadOnly');
         });
 
-        it('sends readonly-chat type when readOnly is true', () => {
-            expect(source).toContain("readOnly ? 'readonly-chat' : 'chat'");
+        it('sends readonly flag in payload when readOnly is true', () => {
+            expect(source).toContain("readonly: readOnly");
         });
 
         it('shows read-only badge in conversation header', () => {
@@ -1420,8 +1420,9 @@ describe('RepoChatTab', () => {
             expect(convSection).toContain('Read-only');
         });
 
-        it('badge checks task type for readonly-chat', () => {
-            expect(source).toContain("task?.type === 'readonly-chat'");
+        it('badge checks payload.readonly for read-only mode', () => {
+            expect(source).toContain("task?.payload");
+            expect(source).toContain("readonly");
         });
     });
 
