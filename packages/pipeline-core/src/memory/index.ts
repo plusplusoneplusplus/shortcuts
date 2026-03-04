@@ -37,3 +37,6 @@ export type {
 } from './tool-call-cache-types';
 
 export { FileToolCallCacheStore } from './tool-call-cache-store';
+
+export { ToolCallCapture } from './tool-call-capture';
+export type { ToolCallCaptureOptions } from './tool-call-capture';
