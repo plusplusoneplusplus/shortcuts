@@ -29,15 +29,15 @@ describe('useDisplaySettings', () => {
         expect(source).toContain('toolCompactness: 0 | 1 | 2');
     });
 
-    it('includes toolCompactness default of 0 in DEFAULT_SETTINGS', () => {
-        expect(source).toContain('toolCompactness: 0');
+    it('includes toolCompactness default of 1 in DEFAULT_SETTINGS', () => {
+        expect(source).toContain('toolCompactness: 1');
     });
 
     it('maps toolCompactness from resolved in fetchDisplaySettings', () => {
         expect(source).toContain('data?.resolved?.toolCompactness');
     });
 
-    it('falls back to 0 when toolCompactness is absent', () => {
-        expect(source).toContain('data?.resolved?.toolCompactness ?? 0');
+    it('falls back to 1 when toolCompactness is absent', () => {
+        expect(source).toContain('data?.resolved?.toolCompactness ?? 1');
     });
 });
