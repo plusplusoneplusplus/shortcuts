@@ -135,8 +135,7 @@ describe('Schedule edit mode', () => {
     it('shows Edit and Duplicate buttons in expanded detail', async () => {
         await renderWithSchedules();
 
-        // Expand the schedule
-        fireEvent.click(screen.getByText('Test Schedule'));
+        // Detail auto-visible via auto-select on load
         await waitFor(() => {
             expect(screen.getByTestId('edit-btn')).toBeTruthy();
             expect(screen.getByTestId('duplicate-btn')).toBeTruthy();
@@ -147,7 +146,6 @@ describe('Schedule edit mode', () => {
         const running = { ...MOCK_SCHEDULE, isRunning: true };
         await renderWithSchedules([running]);
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => {
             const editBtn = screen.getByTestId('edit-btn');
             expect(editBtn).toBeTruthy();
@@ -155,10 +153,9 @@ describe('Schedule edit mode', () => {
         });
     });
 
-    it('clicking Edit shows the edit form with pre-populated fields', async () => {
+    it('Edit shows the edit form with pre-populated fields', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('edit-btn'));
@@ -179,7 +176,6 @@ describe('Schedule edit mode', () => {
     it('edit form does not show template picker', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
@@ -192,7 +188,6 @@ describe('Schedule edit mode', () => {
     it('Cancel returns to read-only detail view', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
@@ -211,7 +206,6 @@ describe('Schedule edit mode', () => {
 
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
@@ -244,7 +238,6 @@ describe('Schedule edit mode', () => {
     it('edit form shows params in generic editor', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
@@ -258,7 +251,6 @@ describe('Schedule edit mode', () => {
         const cronSchedule = { ...MOCK_SCHEDULE, cron: '0 9 * * 1-5', cronDescription: 'Weekdays at 9am' };
         await renderWithSchedules([cronSchedule]);
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('edit-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('edit-btn'));
 
@@ -281,7 +273,6 @@ describe('Schedule duplicate', () => {
     it('Duplicate button opens create form with "Copy of" prefix', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('duplicate-btn'));
@@ -297,7 +288,6 @@ describe('Schedule duplicate', () => {
     it('Duplicate pre-populates target and onFailure', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
@@ -311,7 +301,6 @@ describe('Schedule duplicate', () => {
     it('Duplicate shows template picker (create mode)', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
@@ -323,7 +312,6 @@ describe('Schedule duplicate', () => {
     it('Duplicate pre-populates params', async () => {
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 
@@ -339,7 +327,6 @@ describe('Schedule duplicate', () => {
 
         await renderWithSchedules();
 
-        fireEvent.click(screen.getByText('Test Schedule'));
         await waitFor(() => expect(screen.getByTestId('duplicate-btn')).toBeTruthy());
         fireEvent.click(screen.getByTestId('duplicate-btn'));
 

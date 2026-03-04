@@ -17,8 +17,9 @@ const mockFetch = vi.fn().mockResolvedValue({
 });
 vi.stubGlobal('fetch', mockFetch);
 
+const mockFetchApi = vi.fn().mockResolvedValue({ schedules: [] });
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: vi.fn().mockResolvedValue({ schedules: [] }),
+    fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
@@ -124,6 +125,7 @@ describe('SCHEDULE_TEMPLATES', () => {
 describe('CreateScheduleForm template UI', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockFetchApi.mockResolvedValue({ schedules: [] });
         mockFetch.mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({ schedules: [] }),
@@ -321,6 +323,7 @@ describe('CreateScheduleForm template UI', () => {
 describe('Pipeline dropdown selector (target field)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockFetchApi.mockResolvedValue({ schedules: [] });
         mockFetch.mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({ schedules: [] }),
@@ -586,5 +589,125 @@ describe('Pipeline dropdown selector (target field)', () => {
         const body = JSON.parse(postCall![1].body);
         expect(body.params.pipeline).toBe('pipelines/daily-report/pipeline.yaml');
         expect(body.target).toBe('pipelines/daily-report/pipeline.yaml');
+    });
+});
+
+// ============================================================================
+// Split-panel layout tests
+// ============================================================================
+
+const MOCK_SCHEDULE = {
+    id: 'sched-1',
+    name: 'Test Schedule',
+    target: 'pipelines/test/pipeline.yaml',
+    targetType: 'prompt' as const,
+    cron: '0 */2 * * *',
+    cronDescription: 'Every 2 hours',
+    params: {},
+    onFailure: 'notify',
+    status: 'active',
+    isRunning: false,
+    nextRun: new Date(Date.now() + 3600000).toISOString(),
+    createdAt: new Date().toISOString(),
+};
+
+const MOCK_SCHEDULE_2 = {
+    id: 'sched-2',
+    name: 'Second Schedule',
+    target: 'pipelines/other/pipeline.yaml',
+    targetType: 'prompt' as const,
+    cron: '*/5 * * * *',
+    cronDescription: 'Every 5 minutes',
+    params: {},
+    onFailure: 'notify',
+    status: 'active',
+    isRunning: false,
+    nextRun: new Date(Date.now() + 300000).toISOString(),
+    createdAt: new Date().toISOString(),
+};
+
+async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
+    mockFetchApi.mockImplementation((url: string) => {
+        if (url.includes('/history')) return Promise.resolve({ history: [] });
+        return Promise.resolve({ schedules });
+    });
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    return renderSchedulesTab();
+}
+
+describe('Split-panel layout', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('auto-selects first schedule on load and shows its detail in right panel', async () => {
+        await renderWithSchedules();
+
+        // No click performed — detail should auto-appear
+        await waitFor(() => {
+            expect(screen.getAllByText('Test Schedule').length).toBeGreaterThanOrEqual(1);
+            expect(screen.getByText('pipelines/test/pipeline.yaml')).toBeTruthy();
+        });
+    });
+
+    it('clicking a schedule row shows that schedule\'s detail in the right panel', async () => {
+        await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
+
+        // Click the second schedule row in the left panel
+        fireEvent.click(screen.getByText(MOCK_SCHEDULE_2.name));
+
+        await waitFor(() => {
+            expect(screen.getByText(MOCK_SCHEDULE_2.target)).toBeTruthy();
+        });
+    });
+
+    it('clicking "+ New" shows CreateScheduleForm in the right panel while left list remains visible', async () => {
+        await renderWithSchedules();
+
+        fireEvent.click(screen.getByText('+ New'));
+
+        await waitFor(() => {
+            expect(screen.getByText('New Schedule')).toBeTruthy();
+            expect(screen.getByText(MOCK_SCHEDULE.name)).toBeTruthy();
+        });
+    });
+
+    it('selected row has border-l-2 class applied', async () => {
+        await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
+
+        // First schedule is auto-selected
+        await waitFor(() => {
+            const rows = screen.getAllByRole('option');
+            const firstRow = rows.find(r => r.textContent?.includes(MOCK_SCHEDULE.name));
+            expect(firstRow?.className).toContain('border-l-2');
+        });
+
+        // Click the second schedule; it should gain the class and first should lose it
+        fireEvent.click(screen.getByText(MOCK_SCHEDULE_2.name));
+
+        await waitFor(() => {
+            const rows = screen.getAllByRole('option');
+            const secondRow = rows.find(r => r.textContent?.includes(MOCK_SCHEDULE_2.name));
+            expect(secondRow?.className).toContain('border-l-2');
+
+            const firstRow = rows.find(r => r.textContent?.includes(MOCK_SCHEDULE.name));
+            expect(firstRow?.className).not.toContain('border-l-2');
+        });
+    });
+
+    it('clicking a different schedule replaces the right panel content', async () => {
+        await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
+
+        // First schedule auto-selected — its detail is visible
+        await waitFor(() => {
+            expect(screen.getByText(MOCK_SCHEDULE.target)).toBeTruthy();
+        });
+
+        // Select the second schedule
+        fireEvent.click(screen.getByText(MOCK_SCHEDULE_2.name));
+
+        await waitFor(() => {
+            expect(screen.getByText(MOCK_SCHEDULE_2.target)).toBeTruthy();
+        });
     });
 });
