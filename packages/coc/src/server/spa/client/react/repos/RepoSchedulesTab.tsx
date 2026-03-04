@@ -70,7 +70,7 @@ interface RunRecord {
 export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [loading, setLoading] = useState(true);
-    const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
     const [history, setHistory] = useState<RunRecord[]>([]);
     const [showCreate, setShowCreate] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -107,21 +107,33 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
         return () => window.removeEventListener('schedule-changed', wsHandler);
     }, [workspaceId, fetchSchedules]);
 
-    const handleToggleExpand = async (scheduleId: string) => {
-        if (expandedId === scheduleId) {
-            setExpandedId(null);
+    const handleSelect = (scheduleId: string) => {
+        if (selectedId !== scheduleId) {
             setEditingId(null);
-            return;
         }
-        setExpandedId(scheduleId);
-        setEditingId(null);
-        try {
-            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/history`);
-            setHistory(data?.history || []);
-        } catch {
-            setHistory([]);
-        }
+        setSelectedId(scheduleId);
     };
+
+    // Fetch history whenever selectedId changes
+    useEffect(() => {
+        if (!selectedId) return;
+        let cancelled = false;
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(selectedId)}/history`)
+            .then(data => {
+                if (!cancelled) setHistory(data?.history || []);
+            })
+            .catch(() => {
+                if (!cancelled) setHistory([]);
+            });
+        return () => { cancelled = true; };
+    }, [selectedId, workspaceId]);
+
+    // Auto-select first schedule when schedules load and nothing is selected
+    useEffect(() => {
+        if (selectedId === null && schedules.length > 0) {
+            setSelectedId(schedules[0].id);
+        }
+    }, [schedules, selectedId]);
 
     const handlePauseResume = async (schedule: Schedule) => {
         const newStatus = schedule.status === 'active' ? 'paused' : 'active';
@@ -138,7 +150,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             method: 'POST',
         });
         fetchSchedules();
-        if (expandedId === scheduleId) {
+        if (selectedId === scheduleId) {
             const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/history`);
             setHistory(data?.history || []);
         }
@@ -149,7 +161,10 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
         await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`, {
             method: 'DELETE',
         });
-        if (expandedId === scheduleId) setExpandedId(null);
+        if (selectedId === scheduleId) {
+            // Deleted the selected schedule — will auto-select first remaining via useEffect
+            setSelectedId(null);
+        }
         fetchSchedules();
     };
 
@@ -199,7 +214,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                     {/* Row */}
                     <button
                         className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] transition-colors"
-                        onClick={() => handleToggleExpand(schedule.id)}
+                        onClick={() => handleSelect(schedule.id)}
                     >
                         <span className="flex-shrink-0">
                             <StatusDot status={schedule.status} isRunning={schedule.isRunning} />
@@ -221,11 +236,11 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                                 next: {formatRelativeTime(schedule.nextRun).replace(' ago', '') || new Date(schedule.nextRun).toLocaleString()}
                             </span>
                         )}
-                        <span className="text-[10px] text-[#848484]">{expandedId === schedule.id ? '▼' : '▶'}</span>
+                        <span className="text-[10px] text-[#848484]">{selectedId === schedule.id ? '▼' : '▶'}</span>
                     </button>
 
                     {/* Expanded detail */}
-                    {expandedId === schedule.id && (
+                    {selectedId === schedule.id && (
                         <ScheduleDetail
                             schedule={schedule}
                             workspaceId={workspaceId}
@@ -234,7 +249,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             onRunNow={handleRunNow}
                             onPauseResume={handlePauseResume}
                             onEdit={(id) => setEditingId(id)}
-                            onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); setExpandedId(null); }}
+                            onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); setSelectedId(null); }}
                             onDelete={handleDelete}
                             onCancelEdit={() => setEditingId(null)}
                             onSaved={() => { setEditingId(null); fetchSchedules(); }}

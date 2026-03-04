@@ -55,7 +55,10 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
-    mockFetchApi.mockResolvedValue({ schedules });
+    mockFetchApi.mockImplementation((url: string) => {
+        if (url.includes('/history')) return Promise.resolve({ history: [] });
+        return Promise.resolve({ schedules });
+    });
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
     const { RepoSchedulesTab } = await import(
@@ -357,5 +360,79 @@ describe('Schedule duplicate', () => {
             (c: any[]) => c[1]?.method === 'PATCH',
         );
         expect(patchCalls.length).toBe(0);
+    });
+});
+
+// ============================================================================
+// Selection state refactor tests
+// ============================================================================
+
+const MOCK_SCHEDULE_2 = {
+    id: 'sched-2',
+    name: 'Second Schedule',
+    target: 'pipelines/other/pipeline.yaml',
+    targetType: 'prompt' as const,
+    cron: '0 */4 * * *',
+    cronDescription: 'Every 4 hours',
+    params: {},
+    onFailure: 'notify',
+    status: 'active',
+    isRunning: false,
+    nextRun: new Date(Date.now() + 7200000).toISOString(),
+    createdAt: new Date().toISOString(),
+};
+
+describe('Schedule selection state', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('auto-selects first schedule on load', async () => {
+        await renderWithSchedules();
+
+        // Detail should be visible without any explicit click
+        await waitFor(() => {
+            expect(screen.getByTestId('edit-btn')).toBeTruthy();
+        });
+    });
+
+    it('clicking same schedule does not collapse', async () => {
+        await renderWithSchedules();
+
+        // Wait for auto-select
+        await waitFor(() => {
+            expect(screen.getByTestId('edit-btn')).toBeTruthy();
+        });
+
+        // Click the already-selected schedule
+        fireEvent.click(screen.getByText('Test Schedule'));
+
+        // Detail should still be visible
+        await waitFor(() => {
+            expect(screen.getByTestId('edit-btn')).toBeTruthy();
+        });
+    });
+
+    it('switching selection clears editingId', async () => {
+        await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
+
+        // Wait for auto-select of sched-1
+        await waitFor(() => {
+            expect(screen.getByTestId('edit-btn')).toBeTruthy();
+        });
+
+        // Click Edit on the first schedule
+        fireEvent.click(screen.getByTestId('edit-btn'));
+        await waitFor(() => {
+            expect(screen.getByText('Edit Schedule')).toBeTruthy();
+        });
+
+        // Click second schedule row
+        fireEvent.click(screen.getByText('Second Schedule'));
+
+        // Edit form should be gone
+        await waitFor(() => {
+            expect(screen.queryByText('Edit Schedule')).toBeNull();
+        });
     });
 });
