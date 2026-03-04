@@ -941,6 +941,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             onToggleArchive={toggleArchive}
             showArchived={showArchived}
             onToggleShowArchived={() => setShowArchived(prev => !prev)}
+            onRefresh={() => void sessionsHook.refresh()}
+            isRefreshing={sessionsHook.loading}
         />
     );
 

@@ -30,6 +30,8 @@ export interface ChatSessionSidebarProps {
     onToggleArchive?: (sessionId: string) => void;
     showArchived?: boolean;
     onToggleShowArchived?: () => void;
+    onRefresh?: () => void;
+    isRefreshing?: boolean;
 }
 
 export function ChatSessionSidebar({
@@ -47,6 +49,8 @@ export function ChatSessionSidebar({
     onToggleArchive,
     showArchived = false,
     onToggleShowArchived,
+    onRefresh,
+    isRefreshing = false,
 }: ChatSessionSidebarProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
     const [newChatDropdownOpen, setNewChatDropdownOpen] = useState(false);
@@ -208,6 +212,19 @@ export function ChatSessionSidebar({
             <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] flex-shrink-0">Chats</span>
+                    {onRefresh && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isRefreshing}
+                            loading={isRefreshing}
+                            onClick={onRefresh}
+                            title="Refresh chat sessions"
+                            data-testid="chat-refresh-btn"
+                        >
+                            {!isRefreshing && '↺'}
+                        </Button>
+                    )}
                     {onToggleShowArchived && (
                         <label className="flex items-center gap-1 text-[10px] text-[#848484] cursor-pointer select-none ml-auto mr-1 flex-shrink-0" data-testid="show-archived-toggle-row">
                             <input

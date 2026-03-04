@@ -46,6 +46,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [filterType, setFilterType] = useState<string>('all');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
@@ -252,6 +253,16 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
         }
     }
 
+    const handleRefresh = useCallback(async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            await fetchQueue();
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [isRefreshing]);
+
     const handleTaskContextMenu = useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued') => {
         e.preventDefault();
         e.stopPropagation();
@@ -345,6 +356,17 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
                     </select>
                 )}
                 <div className="flex-1" />
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isRefreshing}
+                    loading={isRefreshing}
+                    onClick={handleRefresh}
+                    title="Refresh queue"
+                    data-testid="queue-refresh-btn"
+                >
+                    {!isRefreshing && '↺'}
+                </Button>
                 {(isPaused || running.length > 0 || queued.length > 0) && (
                     <Button
                         variant="ghost"
