@@ -92,3 +92,42 @@ export function typeLabel(type: string): string {
     };
     return map[type] || type || '';
 }
+
+function truncate(str: string, limit: number): string {
+    if (str.length <= limit) return str;
+    return str.slice(0, limit) + '…';
+}
+
+export interface ConversationTurnLike {
+    role: 'user' | 'assistant';
+    content: string;
+    toolCalls?: Array<{
+        toolName: string;
+        args: any;
+        result?: string;
+        error?: string;
+        status: string;
+    }>;
+}
+
+export function formatConversationAsText(turns: ConversationTurnLike[], truncateAt = 100): string {
+    if (!turns || turns.length === 0) return '';
+    return turns.map(turn => {
+        const lines: string[] = [`[${turn.role}]`, turn.content];
+        if (turn.toolCalls && turn.toolCalls.length > 0) {
+            for (const tc of turn.toolCalls) {
+                const argsJson = JSON.stringify(tc.args ?? {});
+                const argsStr = truncate(argsJson, truncateAt);
+                if (tc.status === 'pending' || tc.status === 'running') {
+                    lines.push(`[tool: ${tc.toolName}] args: ${argsStr}`);
+                } else if (tc.error != null) {
+                    lines.push(`[tool: ${tc.toolName}] args: ${argsStr} → error: ${truncate(tc.error, truncateAt)}`);
+                } else {
+                    const resultStr = tc.result != null ? truncate(tc.result, truncateAt) : '';
+                    lines.push(`[tool: ${tc.toolName}] args: ${argsStr} → result: ${resultStr}`);
+                }
+            }
+        }
+        return lines.join('\n');
+    }).join('\n\n');
+}

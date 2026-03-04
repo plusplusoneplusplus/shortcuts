@@ -30,6 +30,7 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { useSlashCommands } from './useSlashCommands';
 import type { SkillItem } from './SlashCommandMenu';
 import type { ClientConversationTurn } from '../types/dashboard';
+import { copyToClipboard, formatConversationAsText } from '../utils/format';
 
 interface RepoChatTabProps {
     workspaceId: string;
@@ -96,6 +97,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const [models, setModels] = useState<string[]>([]);
     const [readOnly, setReadOnly] = useState(false);
     const [skills, setSkills] = useState<SkillItem[]>([]);
+    const [copied, setCopied] = useState(false);
 
     const initialImagePaste = useImagePaste();
     const followUpImagePaste = useImagePaste();
@@ -820,6 +822,30 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             {task.config?.model || task.metadata?.model}
                         </span>
                     )}
+                    <button
+                        title="Copy conversation"
+                        data-testid="copy-conversation-btn"
+                        disabled={isStreaming || turns.length === 0}
+                        onClick={() => {
+                            void copyToClipboard(formatConversationAsText(turns)).then(() => {
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                            });
+                        }}
+                        className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                        {copied ? (
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M2 8L6 12L14 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        ) : (
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="4" y="4" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                                <path d="M4 4V3a1 1 0 011-1h6a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.5"/>
+                                <path d="M3 2h7a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5"/>
+                            </svg>
+                        )}
+                    </button>
                     {metadataProcess && <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />}
                 </div>
             </div>

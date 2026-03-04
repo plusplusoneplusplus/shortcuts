@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatRelativeTime } from '../../../../src/server/spa/client/react/utils/format';
+import { formatRelativeTime, formatConversationAsText } from '../../../../src/server/spa/client/react/utils/format';
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -86,5 +86,121 @@ describe('formatRelativeTime — edge cases', () => {
 
     it('returns empty string for empty string', () => {
         expect(formatRelativeTime('')).toBe('');
+    });
+});
+
+describe('formatConversationAsText', () => {
+    it('returns empty string for empty turns array', () => {
+        expect(formatConversationAsText([])).toBe('');
+    });
+
+    it('formats a basic user/assistant round-trip', () => {
+        const turns = [
+            { role: 'user' as const, content: 'Hello', toolCalls: [], timeline: [] },
+            { role: 'assistant' as const, content: 'Hi there!', toolCalls: [], timeline: [] },
+        ];
+        expect(formatConversationAsText(turns)).toBe('[user]\nHello\n\n[assistant]\nHi there!');
+    });
+
+    it('includes tool calls with args and result', () => {
+        const turns = [
+            {
+                role: 'assistant' as const,
+                content: 'Reading file',
+                timeline: [],
+                toolCalls: [{
+                    id: '1',
+                    toolName: 'read_file',
+                    args: { path: 'src/foo.ts' },
+                    result: 'file content',
+                    status: 'completed' as const,
+                }],
+            },
+        ];
+        const output = formatConversationAsText(turns);
+        expect(output).toContain('[tool: read_file]');
+        expect(output).toContain('args: {"path":"src/foo.ts"}');
+        expect(output).toContain('→ result: file content');
+    });
+
+    it('truncates tool call result longer than truncateAt', () => {
+        const longResult = 'a'.repeat(150);
+        const turns = [
+            {
+                role: 'assistant' as const,
+                content: 'Done',
+                timeline: [],
+                toolCalls: [{
+                    id: '1',
+                    toolName: 'run_cmd',
+                    args: {},
+                    result: longResult,
+                    status: 'completed' as const,
+                }],
+            },
+        ];
+        const output = formatConversationAsText(turns, 100);
+        expect(output).toContain('→ result: ' + 'a'.repeat(100) + '…');
+        expect(output).not.toContain('a'.repeat(101));
+    });
+
+    it('truncates tool call args JSON longer than truncateAt', () => {
+        const longPath = 'x'.repeat(200);
+        const turns = [
+            {
+                role: 'assistant' as const,
+                content: 'Done',
+                timeline: [],
+                toolCalls: [{
+                    id: '1',
+                    toolName: 'write_file',
+                    args: { path: longPath },
+                    result: 'ok',
+                    status: 'completed' as const,
+                }],
+            },
+        ];
+        const output = formatConversationAsText(turns, 100);
+        const argsLine = output.split('\n').find(l => l.startsWith('[tool:'));
+        expect(argsLine).toBeDefined();
+        // args: ... portion should be truncated
+        const argsMatch = argsLine!.match(/args: (.+?) →/);
+        expect(argsMatch![1].length).toBeLessThanOrEqual(101); // 100 chars + '…'
+    });
+
+    it('omits result for pending/running tool calls', () => {
+        const turns = [
+            {
+                role: 'assistant' as const,
+                content: 'Thinking',
+                timeline: [],
+                toolCalls: [
+                    { id: '1', toolName: 'tool_a', args: {}, status: 'pending' as const },
+                    { id: '2', toolName: 'tool_b', args: {}, status: 'running' as const },
+                ],
+            },
+        ];
+        const output = formatConversationAsText(turns);
+        expect(output).toContain('[tool: tool_a]');
+        expect(output).not.toContain('→');
+    });
+
+    it('renders tool call error instead of result', () => {
+        const turns = [
+            {
+                role: 'assistant' as const,
+                content: 'Oops',
+                timeline: [],
+                toolCalls: [{
+                    id: '1',
+                    toolName: 'write_file',
+                    args: { path: 'x' },
+                    error: 'File not found',
+                    status: 'failed' as const,
+                }],
+            },
+        ];
+        const output = formatConversationAsText(turns);
+        expect(output).toContain('→ error: File not found');
     });
 });
