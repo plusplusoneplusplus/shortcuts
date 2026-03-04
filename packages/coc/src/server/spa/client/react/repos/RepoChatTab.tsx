@@ -110,8 +110,11 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const loadSessionCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
 
+    const inputDrafts = useRef<Map<string | null, string>>(new Map());
+
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
     const taskFinished = task?.status === 'completed' || task?.status === 'failed';
+    const inputDisabled = sending || isStreaming || task?.status === 'queued' || task?.status === 'running';
 
     // Build a process-like object for ConversationMetadataPopover from the queue task
     const metadataProcess = useMemo(() => {
@@ -450,6 +453,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setError(null);
         setSessionExpired(false);
         setSuggestions([]);
+        setInputValue(inputDrafts.current.get(taskId) ?? '');
+        slashCommands.dismissMenu();
         loadSession(taskId);
         const session = sessionsHook.sessions.find(s => s.id === taskId);
         if (session?.turnCount != null) readState.markRead(taskId, session.turnCount);
@@ -469,6 +474,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setSessionExpired(false);
         setSuggestions([]);
         setInputValue('');
+        inputDrafts.current.delete(null);
+        slashCommands.dismissMenu();
         setReadOnly(initialReadOnly);
         initialImagePaste.clearImages();
         followUpImagePaste.clearImages();
@@ -507,6 +514,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         const { skills: parsedSkills, prompt } = slashCommands.parseAndExtract(raw);
         if (!prompt) return;
         setInputValue('');
+        inputDrafts.current.delete(selectedTaskId ?? null);
         slashCommands.dismissMenu();
         setSending(true);
         setError(null);
@@ -575,6 +583,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         const content = cleanedContent || raw;
         setSuggestions([]);
         setInputValue('');
+        inputDrafts.current.delete(selectedTaskId ?? null);
         slashCommands.dismissMenu();
         setSending(true);
         setError(null);
@@ -748,6 +757,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                     value={inputValue}
                     onChange={e => {
                         setInputValue(e.target.value);
+                        inputDrafts.current.set(selectedTaskId ?? null, e.target.value);
                         slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
                     }}
                     onKeyDown={e => {
@@ -967,7 +977,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             <SuggestionChips
                                 suggestions={suggestions}
                                 onSelect={(text) => { setSuggestions([]); void sendFollowUp(text); }}
-                                disabled={sending || sessionExpired}
+                                disabled={inputDisabled || sessionExpired}
                             />
                         )}
                         <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
@@ -976,10 +986,11 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                 <textarea
                                     rows={1}
                                     value={inputValue}
-                                    disabled={sending}
+                                    disabled={inputDisabled}
                                     placeholder="Follow up… Type / for skills"
                                     onChange={e => {
                                         setInputValue(e.target.value);
+                                        inputDrafts.current.set(selectedTaskId ?? null, e.target.value);
                                         slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
                                         if (suggestions.length > 0) setSuggestions([]);
                                     }}
@@ -1006,7 +1017,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                     highlightIndex={slashCommands.highlightIndex}
                                 />
                             </div>
-                            <Button disabled={sending || !inputValue.trim()} onClick={() => void sendFollowUp()}>
+                            <Button disabled={inputDisabled || !inputValue.trim()} onClick={() => void sendFollowUp()}>
                                 {sending ? '...' : 'Send'}
                             </Button>
                         </div>
