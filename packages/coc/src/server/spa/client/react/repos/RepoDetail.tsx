@@ -19,6 +19,7 @@ import { RepoWikiTab } from './RepoWikiTab';
 import { RepoCopilotTab } from './RepoCopilotTab';
 import { AddRepoDialog } from './AddRepoDialog';
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
+import { NewChatDialog } from '../chat/NewChatDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useGlobalToast } from '../context/ToastContext';
@@ -57,6 +58,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         minimized: boolean;
         targetFolder: string | undefined;
     }>({ open: false, minimized: false, targetFolder: undefined });
+    const [chatDialog, setChatDialog] = useState<{
+        open: boolean;
+        minimized: boolean;
+        readOnly: boolean;
+    }>({ open: false, minimized: false, readOnly: false });
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -187,8 +193,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     }, [newChatDropdownOpen]);
 
     const handleNewChatFromTopBar = useCallback((readOnly = false) => {
-        setNewChatTrigger(prev => ({ count: prev.count + 1, readOnly }));
-        switchSubTab('chat');
+        setChatDialog({ open: true, minimized: false, readOnly });
     }, []);
 
     const handleLaunchInTerminal = useCallback(async () => {
@@ -473,7 +478,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} />}
+                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} onOpenNewChatDialog={(readOnly) => handleNewChatFromTopBar(readOnly)} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab workspaceId={ws.id} />}
@@ -493,6 +498,19 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     onSuccess={() => {
                         setGenerateDialog({ open: false, minimized: false, targetFolder: undefined });
                     }}
+                />
+            )}
+
+            {/* New Chat floating dialog */}
+            {chatDialog.open && (
+                <NewChatDialog
+                    workspaceId={ws.id}
+                    workspacePath={ws.rootPath}
+                    readOnly={chatDialog.readOnly}
+                    minimized={chatDialog.minimized}
+                    onMinimize={() => setChatDialog(prev => ({ ...prev, minimized: true }))}
+                    onRestore={() => setChatDialog(prev => ({ ...prev, minimized: false }))}
+                    onClose={() => setChatDialog({ open: false, minimized: false, readOnly: false })}
                 />
             )}
 

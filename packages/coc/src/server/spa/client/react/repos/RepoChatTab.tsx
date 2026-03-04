@@ -38,6 +38,8 @@ interface RepoChatTabProps {
     initialSessionId?: string | null;
     newChatTrigger?: { count: number; readOnly: boolean };
     newChatTriggerProcessedRef?: React.MutableRefObject<number>;
+    /** When provided, sidebar "New Chat" opens the floating dialog instead of inline start screen. */
+    onOpenNewChatDialog?: (readOnly: boolean) => void;
 }
 
 function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
@@ -69,7 +71,7 @@ function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
     return [];
 }
 
-export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef, onOpenNewChatDialog }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
     const readState = useChatReadState(workspaceId);
     const { pinnedIds, togglePin } = usePinnedChats(workspaceId);
@@ -1036,7 +1038,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             sessions={sessionsHook.sessions}
             activeTaskId={selectedTaskId}
             onSelectSession={handleSelectSession}
-            onNewChat={(readOnly) => handleNewChat(readOnly)}
+            onNewChat={(readOnly) => onOpenNewChatDialog ? onOpenNewChatDialog(readOnly) : handleNewChat(readOnly)}
             onCancelSession={(taskId) => void handleCancelChat(taskId)}
             loading={sessionsHook.loading}
             isUnread={readState.isUnread}

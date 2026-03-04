@@ -394,11 +394,11 @@ describe('RepoDetail New Chat button in header', () => {
         expect(newChatIdx).toBeLessThan(queueBtnIdx);
     });
 
-    it('has handleNewChatFromTopBar handler that calls switchSubTab to chat', () => {
+    it('has handleNewChatFromTopBar handler that opens the floating chat dialog', () => {
         expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar');
         const fnStart = REPO_DETAIL_SOURCE.indexOf('handleNewChatFromTopBar');
         const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
-        expect(fnBody).toContain("switchSubTab('chat')");
+        expect(fnBody).toContain('setChatDialog');
     });
 
     it('handleNewChatFromTopBar accepts readOnly parameter with default false', () => {
@@ -407,9 +407,9 @@ describe('RepoDetail New Chat button in header', () => {
         expect(fnBody).toContain('readOnly = false');
     });
 
-    it('increments newChatTrigger count and sets readOnly on click', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('setNewChatTrigger');
-        expect(REPO_DETAIL_SOURCE).toContain('prev.count + 1');
+    it('opens floating chat dialog with readOnly param on click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('setChatDialog');
+        expect(REPO_DETAIL_SOURCE).toContain('readOnly');
     });
 
     it('newChatTrigger state is an object with count and readOnly', () => {

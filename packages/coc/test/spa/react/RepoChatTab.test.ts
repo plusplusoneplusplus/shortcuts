@@ -109,7 +109,7 @@ describe('RepoChatTab', () => {
         });
 
         it('passes onNewChat callback to ChatSessionSidebar with readOnly forwarding', () => {
-            expect(source).toContain('onNewChat={(readOnly) => handleNewChat(readOnly)}');
+            expect(source).toContain('onNewChat={(readOnly) => onOpenNewChatDialog ? onOpenNewChatDialog(readOnly) : handleNewChat(readOnly)}');
         });
     });
 
@@ -791,7 +791,7 @@ describe('RepoChatTab', () => {
 
     describe('initialSessionId prop', () => {
         it('destructures initialSessionId from props', () => {
-            expect(source).toContain('{ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef }');
+            expect(source).toContain('{ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef, onOpenNewChatDialog }');
         });
 
         it('prefers initialSessionId over auto-select when provided', () => {
@@ -1246,7 +1246,7 @@ describe('RepoChatTab', () => {
         });
 
         it('destructures newChatTrigger from props', () => {
-            expect(source).toMatch(/\{\s*workspaceId.*newChatTrigger.*newChatTriggerProcessedRef\s*\}/s);
+            expect(source).toMatch(/\{\s*workspaceId.*newChatTrigger.*newChatTriggerProcessedRef.*\}/s);
         });
 
         it('tracks previous trigger value with a ref', () => {
