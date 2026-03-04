@@ -1172,7 +1172,61 @@ export class CLITaskExecutor implements TaskExecutor {
                     // Non-fatal
                 }
             },
+            onItemProcessCreated: (event) => {
+                const itemStr = typeof event.item === 'string' ? event.item : JSON.stringify(event.item);
+                const childProcess: AIProcess = {
+                    id: event.processId,
+                    type: 'pipeline-item',
+                    parentProcessId: processId,
+                    promptPreview: itemStr.length > 80 ? itemStr.substring(0, 77) + '...' : itemStr,
+                    fullPrompt: itemStr,
+                    status: event.success ? 'completed' : (event.error ? 'failed' : 'running'),
+                    startTime: new Date(),
+                    metadata: {
+                        type: 'pipeline-item',
+                        itemIndex: event.itemIndex,
+                        phase: event.phase,
+                        parentPipelineId: processId,
+                    },
+                };
+                if (event.error) {
+                    childProcess.error = event.error;
+                }
+                if (event.sessionId) {
+                    childProcess.sdkSessionId = event.sessionId;
+                }
+                this.store.addProcess(childProcess).catch(() => {
+                    // Non-fatal: don't fail the pipeline if store write fails
+                });
+                try {
+                    this.store.emitProcessEvent(processId, {
+                        type: 'pipeline-progress',
+                        pipelineProgress: {
+                            phase: 'map',
+                            totalItems: 0,
+                            completedItems: 0,
+                            failedItems: 0,
+                            percentage: 0,
+                            message: `Item process created: ${event.processId}`,
+                        },
+                    });
+                } catch {
+                    // Non-fatal
+                }
+            },
         });
+
+        // Update parent process with child process IDs
+        if (result.itemProcessIds?.length) {
+            this.store.updateProcess(processId, {
+                groupMetadata: {
+                    type: 'pipeline-execution',
+                    childProcessIds: result.itemProcessIds,
+                },
+            }).catch(() => {
+                // Non-fatal
+            });
+        }
 
         return {
             response: result.output?.formattedOutput ?? JSON.stringify(result.executionStats),

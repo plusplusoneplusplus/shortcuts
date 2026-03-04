@@ -5646,6 +5646,314 @@ job:
                 mcpServers: undefined,
             }));
         });
+
+        describe('child process wiring via onItemProcessCreated', () => {
+            function createPipelineTask(id: string): QueuedTask {
+                return {
+                    id,
+                    type: 'run-pipeline',
+                    priority: 'normal',
+                    status: 'running',
+                    createdAt: Date.now(),
+                    payload: {
+                        kind: 'run-pipeline' as const,
+                        pipelinePath: '/workspace/.vscode/pipelines/child-test',
+                        workingDirectory: '/workspace',
+                    },
+                    config: {},
+                };
+            }
+
+            function setupFsMock() {
+                readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                    if (String(p).includes('pipeline.yaml')) { return SIMPLE_JOB_YAML; }
+                    return '';
+                });
+            }
+
+            it('should create child AIProcess records for each map item', async () => {
+                setupFsMock();
+                const itemProcessIds = ['queue_cp-3items-m0', 'queue_cp-3items-m1', 'queue_cp-3items-m2'];
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    // Simulate 3 map items firing the callback
+                    for (let i = 0; i < 3; i++) {
+                        opts.onItemProcessCreated?.({
+                            itemIndex: i,
+                            processId: itemProcessIds[i],
+                            item: `input item ${i}`,
+                            phase: 'map',
+                            success: true,
+                        });
+                    }
+                    return {
+                        executionStats: { totalItems: 3, successfulItems: 3, failedItems: 0, durationMs: 100 },
+                        output: { formattedOutput: 'done' },
+                        itemProcessIds,
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-3items'));
+
+                // 3 child processes should be added (plus the parent process from execute())
+                const addCalls = store.addProcess.mock.calls.filter(
+                    (call: any[]) => call[0].type === 'pipeline-item'
+                );
+                expect(addCalls).toHaveLength(3);
+
+                for (let i = 0; i < 3; i++) {
+                    expect(addCalls[i][0]).toMatchObject({
+                        id: itemProcessIds[i],
+                        type: 'pipeline-item',
+                        parentProcessId: 'queue_cp-3items',
+                        status: 'completed',
+                    });
+                }
+            });
+
+            it('should set correct parentProcessId on child processes', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcessCreated?.({
+                        itemIndex: 0,
+                        processId: 'queue_cp-parent-m0',
+                        item: 'test input',
+                        phase: 'map',
+                        success: true,
+                    });
+                    return {
+                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                        output: { formattedOutput: 'done' },
+                        itemProcessIds: ['queue_cp-parent-m0'],
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-parent'));
+
+                const childCalls = store.addProcess.mock.calls.filter(
+                    (call: any[]) => call[0].type === 'pipeline-item'
+                );
+                expect(childCalls[0][0].parentProcessId).toBe('queue_cp-parent');
+            });
+
+            it('should set type pipeline-item and metadata on child processes', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcessCreated?.({
+                        itemIndex: 2,
+                        processId: 'queue_cp-meta-m2',
+                        item: 'some input',
+                        phase: 'map',
+                        success: true,
+                        sessionId: 'sdk-session-123',
+                    });
+                    return {
+                        executionStats: { totalItems: 3, successfulItems: 3, failedItems: 0, durationMs: 50 },
+                        output: { formattedOutput: 'done' },
+                        itemProcessIds: ['queue_cp-meta-m2'],
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-meta'));
+
+                const childCalls = store.addProcess.mock.calls.filter(
+                    (call: any[]) => call[0].type === 'pipeline-item'
+                );
+                expect(childCalls[0][0]).toMatchObject({
+                    type: 'pipeline-item',
+                    metadata: {
+                        type: 'pipeline-item',
+                        itemIndex: 2,
+                        phase: 'map',
+                        parentPipelineId: 'queue_cp-meta',
+                    },
+                    sdkSessionId: 'sdk-session-123',
+                });
+            });
+
+            it('should update parent process with groupMetadata.childProcessIds on completion', async () => {
+                setupFsMock();
+                const childIds = ['queue_cp-group-m0', 'queue_cp-group-m1'];
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    for (let i = 0; i < 2; i++) {
+                        opts.onItemProcessCreated?.({
+                            itemIndex: i,
+                            processId: childIds[i],
+                            item: `item ${i}`,
+                            phase: 'map',
+                            success: true,
+                        });
+                    }
+                    return {
+                        executionStats: { totalItems: 2, successfulItems: 2, failedItems: 0, durationMs: 50 },
+                        output: { formattedOutput: 'done' },
+                        itemProcessIds: childIds,
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-group'));
+
+                // Wait for fire-and-forget promises
+                await new Promise(r => setTimeout(r, 10));
+
+                const updateCalls = store.updateProcess.mock.calls.filter(
+                    (call: any[]) => call[0] === 'queue_cp-group' && call[1].groupMetadata
+                );
+                expect(updateCalls).toHaveLength(1);
+                expect(updateCalls[0][1]).toMatchObject({
+                    groupMetadata: {
+                        type: 'pipeline-execution',
+                        childProcessIds: childIds,
+                    },
+                });
+            });
+
+            it('should emit SSE event per child process creation', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    for (let i = 0; i < 2; i++) {
+                        opts.onItemProcessCreated?.({
+                            itemIndex: i,
+                            processId: `queue_cp-sse-m${i}`,
+                            item: `item ${i}`,
+                            phase: 'map',
+                            success: true,
+                        });
+                    }
+                    return {
+                        executionStats: { totalItems: 2, successfulItems: 2, failedItems: 0, durationMs: 50 },
+                        output: { formattedOutput: 'done' },
+                        itemProcessIds: ['queue_cp-sse-m0', 'queue_cp-sse-m1'],
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-sse'));
+
+                const sseCalls = store.emitProcessEvent.mock.calls.filter(
+                    (call: any[]) => call[0] === 'queue_cp-sse'
+                        && call[1].type === 'pipeline-progress'
+                        && call[1].pipelineProgress?.message?.startsWith('Item process created:')
+                );
+                expect(sseCalls).toHaveLength(2);
+                expect(sseCalls[0][1].pipelineProgress.message).toContain('queue_cp-sse-m0');
+                expect(sseCalls[1][1].pipelineProgress.message).toContain('queue_cp-sse-m1');
+            });
+
+            it('should not crash the pipeline if store.addProcess fails', async () => {
+                setupFsMock();
+                const originalAddProcess = store.addProcess;
+                let callCount = 0;
+                store.addProcess = vi.fn(async (process: any) => {
+                    callCount++;
+                    // Fail on child process adds (pipeline-item type)
+                    if (process.type === 'pipeline-item') {
+                        throw new Error('Store write failed');
+                    }
+                    return originalAddProcess(process);
+                });
+
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcessCreated?.({
+                        itemIndex: 0,
+                        processId: 'queue_cp-fail-m0',
+                        item: 'test',
+                        phase: 'map',
+                        success: true,
+                    });
+                    return {
+                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                        output: { formattedOutput: 'pipeline completed' },
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                const result = await executor.execute(createPipelineTask('cp-fail'));
+
+                // Pipeline should succeed despite store failure
+                expect(result.success).toBe(true);
+                expect((result.result as any).response).toBe('pipeline completed');
+            });
+
+            it('should not update parent groupMetadata when no itemProcessIds returned', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockResolvedValue({
+                    executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                    output: { formattedOutput: 'done' },
+                    // No itemProcessIds
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-noids'));
+
+                await new Promise(r => setTimeout(r, 10));
+
+                const groupMetadataCalls = store.updateProcess.mock.calls.filter(
+                    (call: any[]) => call[1].groupMetadata
+                );
+                expect(groupMetadataCalls).toHaveLength(0);
+            });
+
+            it('should handle object items by JSON-stringifying them', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcessCreated?.({
+                        itemIndex: 0,
+                        processId: 'queue_cp-obj-m0',
+                        item: { name: 'test', value: 42 },
+                        phase: 'map',
+                        success: true,
+                    });
+                    return {
+                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                        output: { formattedOutput: 'done' },
+                        itemProcessIds: ['queue_cp-obj-m0'],
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-obj'));
+
+                const childCalls = store.addProcess.mock.calls.filter(
+                    (call: any[]) => call[0].type === 'pipeline-item'
+                );
+                expect(childCalls[0][0].fullPrompt).toBe('{"name":"test","value":42}');
+                expect(childCalls[0][0].promptPreview).toBe('{"name":"test","value":42}');
+            });
+
+            it('should set failed status and error on failed items', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcessCreated?.({
+                        itemIndex: 0,
+                        processId: 'queue_cp-err-m0',
+                        item: 'bad input',
+                        phase: 'map',
+                        success: false,
+                        error: 'AI model timeout',
+                    });
+                    return {
+                        executionStats: { totalItems: 1, successfulItems: 0, failedItems: 1, durationMs: 50 },
+                        output: { formattedOutput: 'done' },
+                        itemProcessIds: ['queue_cp-err-m0'],
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-err'));
+
+                const childCalls = store.addProcess.mock.calls.filter(
+                    (call: any[]) => call[0].type === 'pipeline-item'
+                );
+                expect(childCalls[0][0]).toMatchObject({
+                    status: 'failed',
+                    error: 'AI model timeout',
+                });
+            });
+        });
     });
 });
 
