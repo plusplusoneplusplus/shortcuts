@@ -519,6 +519,7 @@ export function GenerateTaskDialog({
                 title="Generate Task"
                 className="max-w-[600px]"
                 footer={footer}
+                resizable
             >
                 {dialogContent}
             </FloatingDialog>
