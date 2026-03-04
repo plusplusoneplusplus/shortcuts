@@ -722,8 +722,8 @@ export async function activate(context: vscode.ExtensionContext) {
             gitTreeDataProvider.onDidChangeTreeData(updateGitViewDescription);
 
             // Register git view commands
-            gitRefreshCommand = vscode.commands.registerCommand('gitView.refresh', () => {
-                gitTreeDataProvider.refresh();
+            gitRefreshCommand = vscode.commands.registerCommand('gitView.refresh', async () => {
+                await gitTreeDataProvider.forceRefresh();
             });
 
             gitOpenScmCommand = vscode.commands.registerCommand('gitView.openInScm', () => {

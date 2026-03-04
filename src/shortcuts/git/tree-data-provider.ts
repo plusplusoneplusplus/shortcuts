@@ -284,6 +284,14 @@ export class GitTreeDataProvider
     }
 
     /**
+     * Force repositories to re-scan status, then refresh the tree
+     */
+    async forceRefresh(): Promise<void> {
+        await this.gitService.refreshRepositoryStatus();
+        this.refresh();
+    }
+
+    /**
      * Get the tree item representation
      */
     getTreeItem(element: vscode.TreeItem): vscode.TreeItem {

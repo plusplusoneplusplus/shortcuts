@@ -20,6 +20,7 @@ interface GitAPI {
 interface Repository {
     rootUri: vscode.Uri;
     state: RepositoryState;
+    status(): Promise<void>;
     add(paths: string[]): Promise<void>;
     revert(paths: string[]): Promise<void>;
     clean(paths: string[]): Promise<void>;
@@ -127,6 +128,14 @@ export class GitService implements vscode.Disposable {
     getFirstRepositoryRoot(): string | undefined {
         const repos = this.getRepositories();
         return repos.length > 0 ? repos[0].rootUri.fsPath : undefined;
+    }
+
+    /**
+     * Force all repositories to re-scan their working tree status
+     */
+    async refreshRepositoryStatus(): Promise<void> {
+        const repos = this.getRepositories();
+        await Promise.all(repos.map(repo => repo.status()));
     }
 
     /**

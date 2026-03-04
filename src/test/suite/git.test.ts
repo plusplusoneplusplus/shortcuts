@@ -2237,6 +2237,69 @@ suite('Git View Tests', () => {
     });
 
     // ============================================
+    // GitService refreshRepositoryStatus Tests
+    // ============================================
+    suite('GitService refreshRepositoryStatus', () => {
+        test('GitService should have refreshRepositoryStatus method', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            assert.ok(typeof service.refreshRepositoryStatus === 'function');
+
+            service.dispose();
+        });
+
+        test('refreshRepositoryStatus should resolve when not initialized (no repos)', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            // Not initialized, should resolve without error
+            await service.refreshRepositoryStatus();
+
+            service.dispose();
+        });
+    });
+
+    // ============================================
+    // GitTreeDataProvider forceRefresh Tests
+    // ============================================
+    suite('GitTreeDataProvider forceRefresh', () => {
+        test('GitTreeDataProvider should have forceRefresh method', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            assert.ok(typeof provider.forceRefresh === 'function');
+
+            provider.dispose();
+        });
+
+        test('forceRefresh should resolve when not initialized', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            // Not initialized, should resolve without error
+            await provider.forceRefresh();
+
+            provider.dispose();
+        });
+
+        test('forceRefresh should fire onDidChangeTreeData', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            let fired = false;
+            provider.onDidChangeTreeData(() => {
+                fired = true;
+            });
+
+            await provider.forceRefresh();
+            assert.strictEqual(fired, true, 'onDidChangeTreeData should fire after forceRefresh');
+
+            provider.dispose();
+        });
+    });
+
+    // ============================================
     // Discard/Delete Inline Button Tests
     // ============================================
     suite('Discard/Delete Inline Buttons', () => {
