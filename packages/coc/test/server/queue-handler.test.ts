@@ -1649,6 +1649,89 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // Follow-up tasks excluded from chat history
+    // ========================================================================
+
+    describe('GET /api/queue/history?type=chat — excludes follow-up tasks', () => {
+        it('should exclude completed follow-up tasks (with parentTaskId) from chat history', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            // Original chat task (no parentTaskId)
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat',
+                displayName: 'Original chat',
+                payload: { prompt: 'hello' },
+            }));
+            // Follow-up task (has parentTaskId)
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat',
+                displayName: 'Follow-up',
+                payload: { prompt: 'follow up', parentTaskId: 'parent-1', processId: 'proc-1' },
+            }));
+
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // Only the original chat should appear; the follow-up is excluded
+            expect(body.history).toHaveLength(1);
+            expect(body.history[0].displayName).toBe('Original chat');
+        });
+
+        it('should still show original chats when multiple follow-ups exist', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            // Two original chat tasks
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat', displayName: 'Chat A', payload: { prompt: 'a' },
+            }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat', displayName: 'Chat B', payload: { prompt: 'b' },
+            }));
+            // Follow-ups for Chat A
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat', displayName: 'Follow-up 1',
+                payload: { prompt: 'f1', parentTaskId: 'parent-a', processId: 'proc-a' },
+            }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat', displayName: 'Follow-up 2',
+                payload: { prompt: 'f2', parentTaskId: 'parent-a', processId: 'proc-a' },
+            }));
+
+            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.history).toHaveLength(2);
+            const names = body.history.map((t: any) => t.displayName);
+            expect(names).toContain('Chat A');
+            expect(names).toContain('Chat B');
+            expect(names).not.toContain('Follow-up 1');
+            expect(names).not.toContain('Follow-up 2');
+        });
+
+        it('should not affect non-chat type filter when tasks have parentTaskId', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+
+            // A custom task with parentTaskId (not chat) — cancel it so it appears in history
+            const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'custom', displayName: 'Custom child',
+                payload: { data: { prompt: 'test' }, parentTaskId: 'parent-x' },
+            }));
+            const id1 = JSON.parse(r1.body).task.id;
+            await request(`${srv.url}/api/queue/${id1}`, { method: 'DELETE' });
+
+            const res = await request(`${srv.url}/api/queue/history?type=custom`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            // Non-chat types should not be filtered by parentTaskId
+            expect(body.history).toHaveLength(1);
+            expect(body.history[0].displayName).toBe('Custom child');
+        });
+    });
+
+    // ========================================================================
     // lastActivityAt enrichment and sort
     // ========================================================================
 

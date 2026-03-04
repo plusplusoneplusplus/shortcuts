@@ -776,13 +776,22 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 history = history.filter(t => t.type === typeFilter);
             }
 
+            // Exclude follow-up tasks — they are child tasks of an existing chat session
+            if (typeFilter === 'chat') {
+                history = history.filter(t => !(t as any).payload?.parentTaskId);
+            }
+
             // For chat type, include running and queued tasks so the chat
             // session list shows newly created chats that haven't completed yet.
             if (typeFilter === 'chat') {
                 const seenIds = new Set(history.map(t => t.id as string));
                 const collectActive = (mgr: TaskQueueManager) => {
                     for (const task of [...mgr.getRunning(), ...mgr.getQueued()]) {
-                        if ((task.type as string) === 'chat' && !seenIds.has(task.id)) {
+                        if (
+                            (task.type as string) === 'chat' &&
+                            !seenIds.has(task.id) &&
+                            !(task.payload as any)?.parentTaskId
+                        ) {
                             seenIds.add(task.id);
                             history.push(serializeTask(task));
                         }
