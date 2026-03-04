@@ -198,6 +198,33 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
         expect(container.querySelector('[data-testid="tool-call-group-view"]')).toBeNull();
     });
 
+    it('excludes parent tools from grouping even with groupable toolName (regression: toolsWithChildren)', () => {
+        // Bug: ConversationTurnBubble passed toolParentById.keys() (child IDs) instead of
+        // toolsWithChildren (parent IDs). This meant parent tools were not excluded from grouping.
+        mockToolCompactness = 1;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    timeline: [
+                        // Two top-level view calls
+                        { type: 'tool-start', toolCall: { id: 'v1', toolName: 'view', args: { path: '/a.ts' }, status: 'completed' } },
+                        { type: 'tool-start', toolCall: { id: 'v2', toolName: 'view', args: { path: '/b.ts' }, status: 'completed' } },
+                        // A view tool that is also a parent (has children)
+                        { type: 'tool-start', toolCall: { id: 'parent-v', toolName: 'view', args: { path: '/dir' }, status: 'completed' } },
+                        // Child of parent-v — makes parent-v a "parent tool"
+                        { type: 'tool-start', toolCall: { id: 'child-g', toolName: 'glob', args: { pattern: '*.ts' }, status: 'completed', parentToolCallId: 'parent-v' } },
+                        // Two more top-level view calls
+                        { type: 'tool-start', toolCall: { id: 'v4', toolName: 'view', args: { path: '/c.ts' }, status: 'completed' } },
+                        { type: 'tool-start', toolCall: { id: 'v5', toolName: 'view', args: { path: '/d.ts' }, status: 'completed' } },
+                    ],
+                })}
+            />
+        );
+        // parent-v has children so it must NOT be grouped. v1+v2 form one group, v4+v5 another.
+        const groups = container.querySelectorAll('[data-testid="tool-call-group-view"]');
+        expect(groups.length).toBe(2);
+    });
+
     it('does not group a single leaf tool call (run of 1 is never collapsed)', () => {
         mockToolCompactness = 1;
         const { container } = render(

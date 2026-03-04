@@ -513,10 +513,16 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
     const displayChunks = useMemo(() => {
         if (!assistantRender) return [];
         if (toolCompactness < 1) return assistantRender.chunks;
+        // Exclude both parent tools (rendered as expandable trees) and
+        // child tools (rendered under their parent) from grouping.
+        const excludeFromGrouping = new Set([
+            ...assistantRender.toolsWithChildren,
+            ...assistantRender.toolParentById.keys(),
+        ]);
         return groupConsecutiveToolChunks(
             assistantRender.chunks,
             assistantRender.toolById,
-            new Set(assistantRender.toolParentById.keys()),
+            excludeFromGrouping,
         );
     }, [assistantRender, toolCompactness]);
 

@@ -356,6 +356,31 @@ describe('AdminPanel', () => {
             });
         }
 
+        it('defaults to Compact (1) when server returns no toolCompactness (regression)', async () => {
+            // Bug: AdminPanel used ?? 0 (Full) while useDisplaySettings defaults to 1 (Compact).
+            // When toolCompactness is absent from the server response, Compact should be selected.
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: { model: 'gpt-4', parallel: 2 },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => {
+                expect(screen.getByTestId('tool-compactness-compact')).toBeDefined();
+            });
+            const full = screen.getByTestId('tool-compactness-full') as HTMLButtonElement;
+            const compact = screen.getByTestId('tool-compactness-compact') as HTMLButtonElement;
+            expect(full.getAttribute('aria-pressed')).toBe('false');
+            expect(compact.getAttribute('aria-pressed')).toBe('true');
+        });
+
         it('renders segmented control with correct aria-pressed for initial value', async () => {
             mockConfig(1);
             await act(async () => { renderWithProviders(); });

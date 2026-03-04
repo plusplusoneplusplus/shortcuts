@@ -103,7 +103,7 @@ export function AdminPanel() {
                 output: resolved.output ?? 'table',
             });
             setShowReportIntent(resolved.showReportIntent ?? false);
-            setToolCompactness((resolved.toolCompactness ?? 0) as 0 | 1 | 2);
+            setToolCompactness((resolved.toolCompactness ?? 1) as 0 | 1 | 2);
             setChatFollowUpEnabled(resolved.chat?.followUpSuggestions?.enabled ?? true);
             setChatFollowUpCount(String(resolved.chat?.followUpSuggestions?.count ?? 3));
         } catch (err: any) {
