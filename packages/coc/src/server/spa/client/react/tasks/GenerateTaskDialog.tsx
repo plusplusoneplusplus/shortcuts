@@ -5,14 +5,14 @@
  * The user can track progress in the Queue tab.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Dialog, FloatingDialog, Button, ImageLightbox } from '../shared';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useGlobalToast } from '../context/ToastContext';
+import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { type TaskFolder, filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 
@@ -229,31 +229,21 @@ export function GenerateTaskDialog({
         </>
     );
 
-    // ── minimized pill ─────────────────────────────────────────────────────
-    if (minimized) {
-        const preview = prompt.trim().length > 30 ? prompt.trim().slice(0, 30) + '…' : prompt.trim();
-        return ReactDOM.createPortal(
-            <div
-                data-testid="generate-task-pill"
-                className="fixed bottom-4 right-4 z-[10001] flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] cursor-pointer hover:shadow-xl transition-shadow"
-                onClick={onRestore}
-            >
-                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">✨ Generate Task</span>
-                {preview && (
-                    <span className="text-xs text-[#848484] max-w-[160px] truncate" data-testid="pill-prompt-preview">
-                        ▪ &ldquo;{preview}&rdquo;
-                    </span>
-                )}
-                <span
-                    className="ml-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
-                    data-testid="pill-restore-btn"
-                >
-                    Restore
-                </span>
-            </div>,
-            document.body,
-        );
-    }
+    // ── register with minimized dialogs tray ───────────────────────────────
+    const pillPreview = prompt.trim().length > 30 ? prompt.trim().slice(0, 30) + '…' : prompt.trim();
+    const minimizedEntry = useMemo(() => {
+        if (!minimized || !onRestore) return null;
+        return {
+            id: 'generate-task',
+            icon: '✨',
+            label: 'Generate Task',
+            preview: pillPreview || undefined,
+            onRestore,
+        };
+    }, [minimized, pillPreview, onRestore]);
+    useMinimizedDialog(minimizedEntry);
+
+    if (minimized) return null;
 
     // ── full dialog ─────────────────────────────────────────────────────────
     const dialogContent = (

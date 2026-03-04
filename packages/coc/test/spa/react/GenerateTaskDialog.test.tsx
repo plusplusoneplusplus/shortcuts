@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
+import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
 import { GenerateTaskDialog, EFFORT_PRESETS } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
 import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/hooks/useQueueTaskGeneration';
 import { usePreferences } from '../../../src/server/spa/client/react/hooks/usePreferences';
@@ -117,9 +118,12 @@ function renderDialog(props: Partial<React.ComponentProps<typeof GenerateTaskDia
     return {
         ...render(
             <AppProvider>
-                <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
-                    <GenerateTaskDialog {...defaultProps} />
-                </ToastProvider>
+                <MinimizedDialogsProvider>
+                    <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                        <GenerateTaskDialog {...defaultProps} />
+                        <MinimizedDialogsTray />
+                    </ToastProvider>
+                </MinimizedDialogsProvider>
             </AppProvider>,
         ),
         props: defaultProps,
@@ -691,9 +695,12 @@ describe('GenerateTaskDialog', () => {
         await act(async () => {
             rerender(
                 <AppProvider>
-                    <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
-                        <GenerateTaskDialog wsId="ws-1" onSuccess={vi.fn()} onClose={vi.fn()} />
-                    </ToastProvider>
+                    <MinimizedDialogsProvider>
+                        <ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}>
+                            <GenerateTaskDialog wsId="ws-1" onSuccess={vi.fn()} onClose={vi.fn()} />
+                            <MinimizedDialogsTray />
+                        </ToastProvider>
+                    </MinimizedDialogsProvider>
                 </AppProvider>,
             );
         });
@@ -1460,16 +1467,17 @@ describe('GenerateTaskDialog', () => {
         await act(async () => { renderDialog(); });
 
         expect(document.getElementById('generate-task-overlay')).not.toBeNull();
-        expect(document.querySelector('[data-testid="generate-task-pill"]')).toBeNull();
+        expect(document.querySelector('[data-testid="minimized-pill-generate-task"]')).toBeNull();
     });
 
     it('renders minimized pill instead of full dialog when minimized is true', async () => {
         await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore: vi.fn() }); });
 
         expect(document.getElementById('generate-task-overlay')).toBeNull();
-        const pill = document.querySelector('[data-testid="generate-task-pill"]');
+        const pill = document.querySelector('[data-testid="minimized-pill-generate-task"]');
         expect(pill).not.toBeNull();
-        expect(pill!.textContent).toContain('✨ Generate Task');
+        expect(pill!.textContent).toContain('✨');
+        expect(pill!.textContent).toContain('Generate Task');
         expect(pill!.textContent).toContain('Restore');
     });
 
@@ -1486,31 +1494,33 @@ describe('GenerateTaskDialog', () => {
 
         // Second render gets its own prompt state so let's test with prop-driven approach
         // The pill should show the preview from internal state
-        const pill = document.querySelector('[data-testid="generate-task-pill"]');
+        const pill = document.querySelector('[data-testid="minimized-pill-generate-task"]');
         expect(pill).not.toBeNull();
     });
 
     it('minimized pill does not show prompt preview when prompt is empty', async () => {
         await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore: vi.fn() }); });
 
-        const preview = document.querySelector('[data-testid="pill-prompt-preview"]');
-        expect(preview).toBeNull();
+        const pill = document.querySelector('[data-testid="minimized-pill-generate-task"]');
+        expect(pill).not.toBeNull();
+        // Empty prompt should not have a preview with quotes
+        expect(pill!.textContent).not.toContain('▪');
     });
 
     it('clicking minimized pill calls onRestore', async () => {
         const onRestore = vi.fn();
         await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore }); });
 
-        const pill = document.querySelector('[data-testid="generate-task-pill"]') as HTMLElement;
+        const pill = document.querySelector('[data-testid="minimized-pill-generate-task"]') as HTMLElement;
         fireEvent.click(pill);
         expect(onRestore).toHaveBeenCalledOnce();
     });
 
-    it('minimized pill is rendered as a portal into document.body', async () => {
+    it('minimized pill is rendered inside the tray portal in document.body', async () => {
         await act(async () => { renderDialog({ minimized: true, onMinimize: vi.fn(), onRestore: vi.fn() }); });
 
-        const pill = document.querySelector('[data-testid="generate-task-pill"]');
-        expect(pill?.parentElement).toBe(document.body);
+        const tray = document.querySelector('[data-testid="minimized-dialogs-tray"]');
+        expect(tray?.parentElement).toBe(document.body);
     });
 
     it('full dialog renders minimize button via Dialog onMinimize prop', async () => {

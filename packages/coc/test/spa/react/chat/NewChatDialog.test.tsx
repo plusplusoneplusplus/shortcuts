@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
+import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../../src/server/spa/client/react/context/MinimizedDialogsContext';
 import { NewChatDialog } from '../../../../src/server/spa/client/react/chat/NewChatDialog';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -75,7 +76,10 @@ function renderDialog(props: Partial<React.ComponentProps<typeof NewChatDialog>>
     return {
         ...render(
             <AppProvider>
-                <NewChatDialog {...defaultProps} />
+                <MinimizedDialogsProvider>
+                    <NewChatDialog {...defaultProps} />
+                    <MinimizedDialogsTray />
+                </MinimizedDialogsProvider>
             </AppProvider>,
         ),
         props: defaultProps,
@@ -183,19 +187,21 @@ describe('NewChatDialog', () => {
 
     it('renders minimized pill when minimized=true', async () => {
         await act(async () => { renderDialog({ minimized: true }); });
-        expect(screen.getByTestId('new-chat-pill')).toBeDefined();
+        expect(document.querySelector('[data-testid="minimized-pill-new-chat"]')).not.toBeNull();
         expect(screen.getByText(/New Chat/)).toBeDefined();
     });
 
     it('minimized pill shows read-only label', async () => {
         await act(async () => { renderDialog({ minimized: true, readOnly: true }); });
-        expect(screen.getByText(/Read-Only/)).toBeDefined();
+        const pill = document.querySelector('[data-testid="minimized-pill-new-chat"]');
+        expect(pill).not.toBeNull();
+        expect(pill!.textContent).toContain('Read-Only');
     });
 
     it('clicking minimized pill calls onRestore', async () => {
         const onRestore = vi.fn();
         await act(async () => { renderDialog({ minimized: true, onRestore }); });
-        fireEvent.click(screen.getByTestId('new-chat-pill'));
+        fireEvent.click(document.querySelector('[data-testid="minimized-pill-new-chat"]')!);
         expect(onRestore).toHaveBeenCalledOnce();
     });
 

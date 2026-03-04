@@ -3,10 +3,11 @@
  * Wraps providers around the layout shell.
  */
 
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
 import { ToastProvider } from './context/ToastContext';
+import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
 import { BottomNav } from './layout/BottomNav';
@@ -16,7 +17,6 @@ import { fetchApi } from './hooks/useApi';
 import { ToastContainer, useToast } from './shared';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
-import { MarkdownReviewMinimizedChip } from './processes/MarkdownReviewMinimizedChip';
 import { EnqueueDialog } from './queue/EnqueueDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 
@@ -345,6 +345,23 @@ function AppInner() {
         setReviewDialog({ open: false, minimized: false, scrollTop: 0, wsId: null, filePath: null, displayPath: null, fetchMode: 'auto' });
     }, []);
 
+    const reviewFileName = useMemo(() =>
+        reviewDialog.filePath ? getFileName(reviewDialog.displayPath || reviewDialog.filePath) : '',
+        [reviewDialog.filePath, reviewDialog.displayPath]
+    );
+
+    const minimizedReviewEntry = useMemo(() => {
+        if (!reviewDialog.minimized || !reviewDialog.filePath) return null;
+        return {
+            id: 'markdown-review',
+            icon: '📄',
+            label: reviewFileName,
+            onRestore: handleRestoreReview,
+            onClose: handleCloseReviewChip,
+        };
+    }, [reviewDialog.minimized, reviewDialog.filePath, reviewFileName, handleRestoreReview, handleCloseReviewChip]);
+    useMinimizedDialog(minimizedReviewEntry);
+
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <TopBar />
@@ -362,13 +379,7 @@ function AppInner() {
                 fetchMode={reviewDialog.fetchMode}
                 initialScrollTop={reviewDialog.scrollTop}
             />
-            {reviewDialog.minimized && reviewDialog.filePath && (
-                <MarkdownReviewMinimizedChip
-                    fileName={getFileName(reviewDialog.displayPath || reviewDialog.filePath)}
-                    onRestore={handleRestoreReview}
-                    onClose={handleCloseReviewChip}
-                />
-            )}
+            <MinimizedDialogsTray />
         </ToastProvider>
     );
 }
@@ -377,9 +388,11 @@ export function App() {
     return (
         <AppProvider>
             <QueueProvider>
-                <ThemeProvider>
-                    <AppInner />
-                </ThemeProvider>
+                <MinimizedDialogsProvider>
+                    <ThemeProvider>
+                        <AppInner />
+                    </ThemeProvider>
+                </MinimizedDialogsProvider>
             </QueueProvider>
         </AppProvider>
     );

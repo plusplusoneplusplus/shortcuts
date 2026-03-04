@@ -7,14 +7,14 @@
  * with SSE streaming → follow-up messages.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { FloatingDialog, Dialog, Button, Spinner, SuggestionChips } from '../shared';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { usePreferences } from '../hooks/usePreferences';
+import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { cn } from '../shared/cn';
@@ -321,37 +321,30 @@ export function NewChatDialog({
         }
     };
 
-    // --- minimized pill ---
+    // --- register with minimized dialogs tray ---
 
-    if (minimized) {
-        const preview = inputValue.trim() || (turns.length > 0 ? turns[0].content : '');
-        const truncated = preview.length > 30 ? preview.slice(0, 30) + '…' : preview;
-        return ReactDOM.createPortal(
-            <div
-                data-testid="new-chat-pill"
-                className="fixed bottom-4 right-4 z-[10001] flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] cursor-pointer hover:shadow-xl transition-shadow"
-                onClick={onRestore}
-            >
-                <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">
-                    💬 {chatStarted ? 'Chat' : 'New Chat'}
-                    {readOnly && ' (Read-Only)'}
-                </span>
-                {truncated && (
-                    <span className="text-xs text-[#848484] max-w-[160px] truncate" data-testid="pill-chat-preview">
-                        ▪ &ldquo;{truncated}&rdquo;
-                    </span>
-                )}
-                {isStreaming && <Spinner size="sm" />}
-                <span
-                    className="ml-1 text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
-                    data-testid="pill-restore-btn"
-                >
-                    Restore
-                </span>
-            </div>,
-            document.body,
-        );
-    }
+    const pillPreview = useMemo(() => {
+        const raw = inputValue.trim() || (turns.length > 0 ? turns[0].content : '');
+        return raw.length > 30 ? raw.slice(0, 30) + '…' : raw;
+    }, [inputValue, turns]);
+
+    const chatLabel = chatStarted ? 'Chat' : 'New Chat';
+    const fullLabel = readOnly ? `${chatLabel} (Read-Only)` : chatLabel;
+
+    const minimizedEntry = useMemo(() => {
+        if (!minimized) return null;
+        return {
+            id: 'new-chat',
+            icon: '💬',
+            label: fullLabel,
+            preview: pillPreview || undefined,
+            onRestore,
+            extra: isStreaming ? <Spinner size="sm" /> : undefined,
+        };
+    }, [minimized, fullLabel, pillPreview, onRestore, isStreaming]);
+    useMinimizedDialog(minimizedEntry);
+
+    if (minimized) return null;
 
     // --- start screen ---
 
