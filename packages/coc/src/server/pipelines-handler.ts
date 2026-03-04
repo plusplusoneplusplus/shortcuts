@@ -470,6 +470,101 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
     });
 
     // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/pipelines/refine — AI pipeline refinement
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/refine$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspace(store, id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const { currentYaml, instruction, model } = body || {};
+            if (!currentYaml || typeof currentYaml !== 'string' || !currentYaml.trim()) {
+                return sendError(res, 400, 'Missing required field: currentYaml');
+            }
+            if (!instruction || typeof instruction !== 'string' || !instruction.trim()) {
+                return sendError(res, 400, 'Missing required field: instruction');
+            }
+
+            // Validate that currentYaml is parseable YAML
+            try {
+                yaml.load(currentYaml);
+            } catch (err: any) {
+                return sendError(res, 400, 'Invalid YAML: ' + (err.message || 'Parse error'));
+            }
+
+            const systemPrompt = `You are a pipeline YAML editor. You modify existing pipeline YAML configurations based on user instructions.
+Output ONLY the complete modified YAML. Do NOT wrap in markdown code fences. Do NOT include any explanation before or after the YAML.
+
+${PIPELINE_SCHEMA_REFERENCE}`;
+
+            const userPrompt = `Here is the current pipeline YAML:
+
+${currentYaml.trim()}
+
+Apply the following change:
+
+${instruction.trim()}
+
+Return the complete modified pipeline YAML.`;
+
+            try {
+                if (!aiService) {
+                    return sendError(res, 503, 'AI service not configured');
+                }
+                const service = aiService;
+                const available = await service.isAvailable();
+                if (!available.available) {
+                    return sendError(res, 503, 'AI service unavailable');
+                }
+
+                const result = await service.sendMessage({
+                    prompt: systemPrompt + '\n\n' + userPrompt,
+                    model: model || undefined,
+                    workingDirectory: ws.rootPath,
+                    timeoutMs: GENERATION_TIMEOUT_MS,
+                    onPermissionRequest: denyAllPermissions,
+                });
+
+                if (!result.success) {
+                    return sendError(res, 500, 'Pipeline refinement failed: ' + (result.error || 'Unknown error'));
+                }
+
+                const raw = result.response || '';
+                const extractedYaml = extractYamlFromResponse(raw);
+
+                let valid = true;
+                let validationError: string | undefined;
+                try {
+                    yaml.load(extractedYaml);
+                } catch (err: any) {
+                    valid = false;
+                    validationError = err.message || 'YAML parse error';
+                }
+
+                sendJSON(res, 200, { yaml: extractedYaml, raw, valid, validationError });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (message.toLowerCase().includes('timeout')) {
+                    return sendError(res, 504, 'Pipeline refinement timed out');
+                }
+                return sendError(res, 500, 'Pipeline refinement failed: ' + message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // PATCH /api/workspaces/:id/pipelines/:pipelineName/content
     // Update YAML content of a pipeline.
     // ------------------------------------------------------------------
