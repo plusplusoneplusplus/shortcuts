@@ -62,7 +62,20 @@ function listInstalledSkills(installPath: string): Array<{ name: string; descrip
     return skills;
 }
 
+const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
+const DESCRIPTION_REGEX = /^description:\s*["']?(.+?)["']?\s*$/m;
+
 function extractDescriptionFromMarkdown(content: string): string | undefined {
+    // Try YAML frontmatter first
+    const fmMatch = content.match(FRONTMATTER_REGEX);
+    if (fmMatch) {
+        const descMatch = fmMatch[1].match(DESCRIPTION_REGEX);
+        if (descMatch) {
+            return descMatch[1];
+        }
+    }
+
+    // Fallback: first non-heading, non-fence, non-delimiter line after optional heading
     const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length === 0) return undefined;
 
@@ -76,9 +89,6 @@ function extractDescriptionFromMarkdown(content: string): string | undefined {
         }
     }
 
-    if (lines[0].startsWith('#')) {
-        return lines[0].replace(/^#+\s*/, '');
-    }
     return undefined;
 }
 

@@ -222,8 +222,8 @@ describe('CommitList', () => {
             expect(source).toContain('setTooltipAnchorRect');
         });
 
-        it('uses 250ms hover delay', () => {
-            expect(source).toContain('250');
+        it('uses 1000ms hover delay', () => {
+            expect(source).toContain('1000');
         });
 
         it('has handleRowMouseEnter callback', () => {

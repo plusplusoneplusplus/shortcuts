@@ -26,6 +26,11 @@ function makeComment(overrides: Record<string, any> = {}) {
     };
 }
 
+/** Helper: build a queue-completed response for pollTaskResult */
+function queueCompleted(result: any) {
+    return { ok: true, json: () => Promise.resolve({ task: { status: 'completed', result } }) };
+}
+
 describe('useTaskComments', () => {
     let fetchSpy: ReturnType<typeof vi.fn>;
 
@@ -498,12 +503,16 @@ describe('useTaskComments', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
-            // Batch resolve endpoint
+            // Batch resolve endpoint → queue path
             if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'revised doc', commentIds: ['c1', 'c2'] }),
+                    json: () => Promise.resolve({ taskId: 'resolve-task-1' }),
                 });
+            }
+            // Queue poll
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'revised doc', commentIds: ['c1', 'c2'] }));
             }
             // PATCH content endpoint
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
@@ -546,6 +555,9 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return new Promise(r => { resolveAiEndpoint = r; });
             }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'new', commentIds: ['c1'] }));
+            }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -569,7 +581,7 @@ describe('useTaskComments', () => {
         await act(async () => {
             resolveAiEndpoint({
                 ok: true,
-                json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
+                json: () => Promise.resolve({ taskId: 'resolve-task-1' }),
             });
             await promise!;
         });
@@ -617,8 +629,11 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
+                    json: () => Promise.resolve({ taskId: 'resolve-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'new', commentIds: ['c1'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: false, status: 500 });
@@ -651,11 +666,14 @@ describe('useTaskComments', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
             if (opts?.method === 'POST' && url.includes('batch-resolve')) {
-                // Queue path: no revisedContent returned (AI edited file via tools)
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ commentIds: ['c1'] }),
+                    json: () => Promise.resolve({ taskId: 'resolve-task-1' }),
                 });
+            }
+            // Queue path: no revisedContent returned (AI edited file via tools)
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ commentIds: ['c1'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 patchContentCalled = true;
@@ -698,8 +716,11 @@ describe('useTaskComments', () => {
                 capturedBody = JSON.parse(opts.body);
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'fixed doc', commentIds: ['c1'] }),
+                    json: () => Promise.resolve({ taskId: 'fix-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'fixed doc', commentIds: ['c1'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -735,6 +756,9 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('ask-ai')) {
                 return new Promise(r => { resolveAiEndpoint = r; });
             }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'new', commentIds: ['c1'] }));
+            }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -758,7 +782,7 @@ describe('useTaskComments', () => {
         await act(async () => {
             resolveAiEndpoint({
                 ok: true,
-                json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
+                json: () => Promise.resolve({ taskId: 'fix-task-1' }),
             });
             await promise!;
         });
@@ -805,11 +829,14 @@ describe('useTaskComments', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ counts: {} }) });
             }
             if (opts?.method === 'POST' && url.includes('ask-ai')) {
-                // Queue path: no revisedContent returned (AI edited file via tools)
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ commentIds: ['c1'] }),
+                    json: () => Promise.resolve({ taskId: 'fix-task-1' }),
                 });
+            }
+            // Queue path: no revisedContent returned (AI edited file via tools)
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ commentIds: ['c1'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 patchContentCalled = true;
@@ -851,8 +878,11 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('ask-ai')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'revised doc', commentIds: [] }),
+                    json: () => Promise.resolve({ taskId: 'fix-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'revised doc', commentIds: [] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -888,8 +918,11 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('ask-ai')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'revised doc', commentIds: ['c1'] }),
+                    json: () => Promise.resolve({ taskId: 'fix-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'revised doc', commentIds: ['c1'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -928,8 +961,11 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'revised', commentIds: ['c1', 'c3', 'c5'] }),
+                    json: () => Promise.resolve({ taskId: 'resolve-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'revised', commentIds: ['c1', 'c3', 'c5'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -968,8 +1004,11 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'revised', commentIds: ['c1', 'c2'] }),
+                    json: () => Promise.resolve({ taskId: 'resolve-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'revised', commentIds: ['c1', 'c2'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1082,8 +1121,11 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('batch-resolve')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
+                    json: () => Promise.resolve({ taskId: 'resolve-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'new', commentIds: ['c1'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1119,8 +1161,11 @@ describe('useTaskComments', () => {
             if (opts?.method === 'POST' && url.includes('ask-ai')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ revisedContent: 'new', commentIds: ['c1'] }),
+                    json: () => Promise.resolve({ taskId: 'fix-task-1' }),
                 });
+            }
+            if (url.includes('/queue/')) {
+                return Promise.resolve(queueCompleted({ revisedContent: 'new', commentIds: ['c1'] }));
             }
             if (opts?.method === 'PATCH' && url.includes('/tasks/content')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });

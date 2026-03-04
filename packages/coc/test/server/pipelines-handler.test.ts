@@ -574,7 +574,7 @@ reduce:
             createPipelines({ 'mcp-pipe-null': JOB_YAML });
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: null });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: null });
             const task = await runAndGetTask(srv, wsId, 'mcp-pipe-null');
             expect(task.payload.mcpServers).toBeUndefined();
         });
@@ -588,7 +588,7 @@ reduce:
                 configPath: '',
                 loadedAt: 0,
             });
-            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: [] });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: [] });
             const task = await runAndGetTask(srv, wsId, 'mcp-pipe-empty');
             expect(task.payload.mcpServers).toEqual({});
         });
@@ -606,7 +606,7 @@ reduce:
                 configPath: '',
                 loadedAt: 0,
             });
-            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: ['serverA'] });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: ['serverA'] });
             const task = await runAndGetTask(srv, wsId, 'mcp-pipe-filter');
             expect(task.payload.mcpServers).toEqual({ serverA: serverAConfig });
         });
@@ -620,7 +620,7 @@ reduce:
                 configPath: '',
                 loadedAt: 0,
             });
-            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabled: ['serverX'] });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: ['serverX'] });
             const task = await runAndGetTask(srv, wsId, 'mcp-pipe-absent');
             expect(task.payload.mcpServers).toEqual({});
         });

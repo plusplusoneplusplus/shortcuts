@@ -9,6 +9,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp, appReducer, type AppContextState } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
+import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
 import { WikiComponentTree } from '../../../../src/server/spa/client/react/wiki/WikiComponentTree';
 import { WikiList, shortenPath } from '../../../../src/server/spa/client/react/wiki/WikiList';
 import { AddWikiDialog } from '../../../../src/server/spa/client/react/wiki/AddWikiDialog';
@@ -18,8 +19,10 @@ import { WikiDetail } from '../../../../src/server/spa/client/react/wiki/WikiDet
 import { WikiGraph } from '../../../../src/server/spa/client/react/wiki/WikiGraph';
 import { RepoWikiTab } from '../../../../src/server/spa/client/react/repos/RepoWikiTab';
 
+const noopToast = { addToast: () => {}, removeToast: () => {}, toasts: [] };
+
 function Wrap({ children }: { children: ReactNode }) {
-    return <AppProvider><QueueProvider>{children}</QueueProvider></AppProvider>;
+    return <AppProvider><QueueProvider><ToastProvider value={noopToast}>{children}</ToastProvider></QueueProvider></AppProvider>;
 }
 
 function SeededWikiDetail({
