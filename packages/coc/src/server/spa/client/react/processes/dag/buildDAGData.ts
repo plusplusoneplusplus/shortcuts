@@ -78,7 +78,16 @@ export function buildDAGData(process: any): DAGChartData | null {
     const metadata = process?.metadata;
     if (!metadata) return null;
 
-    const stats = metadata.executionStats;
+    let stats = metadata.executionStats;
+    // Fallback: queue-run-pipeline stores stats in result JSON when metadata lacks them
+    if (!stats && process?.result) {
+        try {
+            const parsed = typeof process.result === 'string'
+                ? JSON.parse(process.result)
+                : process.result;
+            if (parsed?.stats) stats = parsed.stats;
+        } catch { /* ignore */ }
+    }
     const pipelinePhases: Array<{ phase: string; status: string }> | undefined = metadata.pipelinePhases;
 
     // Must have at least some pipeline metadata

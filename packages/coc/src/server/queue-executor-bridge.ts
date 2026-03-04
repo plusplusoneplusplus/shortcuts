@@ -1225,6 +1225,20 @@ export class CLITaskExecutor implements TaskExecutor {
             });
         }
 
+        // Persist execution stats and pipeline config into metadata so WorkflowDetailView can render the DAG
+        this.store.getProcess(processId).then(current => {
+            return this.store.updateProcess(processId, {
+                metadata: {
+                    type: current?.metadata?.type ?? `queue-${task.type}`,
+                    ...(current?.metadata ?? {}),
+                    executionStats: result.executionStats,
+                    pipelineConfig: config,
+                },
+            });
+        }).catch(() => {
+            // Non-fatal
+        });
+
         return {
             response: result.output?.formattedOutput ?? JSON.stringify(result.executionStats),
             pipelineName: config.name,

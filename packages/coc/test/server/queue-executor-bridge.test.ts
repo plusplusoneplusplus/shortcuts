@@ -5647,6 +5647,53 @@ job:
             }));
         });
 
+        it('persists executionStats to process metadata after pipeline execution', async () => {
+            readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
+                if (String(p).includes('pipeline.yaml')) { return SIMPLE_JOB_YAML; }
+                return '';
+            });
+
+            const executionStats = {
+                totalItems: 3,
+                successfulMaps: 3,
+                failedMaps: 0,
+                mapPhaseTimeMs: 5000,
+                reducePhaseTimeMs: 0,
+                maxConcurrency: 1,
+            };
+            mockExecutePipeline.mockResolvedValue({
+                executionStats,
+                output: { formattedOutput: 'done' },
+                itemProcessIds: [],
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-meta-stats',
+                type: 'run-pipeline',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'run-pipeline' as const,
+                    pipelinePath: '/workspace/.vscode/pipelines/stats-pipe',
+                    workingDirectory: '/workspace',
+                },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            // Allow the fire-and-forget metadata update to settle
+            await new Promise(r => setTimeout(r, 10));
+
+            const processId = `queue_${task.id}`;
+            const proc = await store.getProcess(processId);
+            expect(proc?.metadata).toEqual(expect.objectContaining({
+                executionStats: expect.objectContaining({ totalItems: 3 }),
+            }));
+        });
+
         describe('child process wiring via onItemProcessCreated', () => {
             function createPipelineTask(id: string): QueuedTask {
                 return {

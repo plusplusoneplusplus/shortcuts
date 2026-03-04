@@ -238,6 +238,51 @@ describe('buildDAGData', () => {
         expect(stateMap['input']).toBe('completed');
         expect(stateMap['map']).toBe('running');
     });
+
+    it('returns DAG data when stats are in process.result JSON string (queue-run-pipeline)', () => {
+        const proc = {
+            id: 'queue_123',
+            type: 'queue-run-pipeline',
+            status: 'completed',
+            durationMs: 13191,
+            metadata: { type: 'queue-run-pipeline', pipelineName: 'git-fetch' },
+            result: JSON.stringify({
+                response: '`git fetch` completed successfully',
+                pipelineName: 'git-fetch',
+                stats: {
+                    totalItems: 1,
+                    successfulMaps: 1,
+                    failedMaps: 0,
+                    mapPhaseTimeMs: 13191,
+                    reducePhaseTimeMs: 0,
+                    maxConcurrency: 1,
+                },
+            }),
+        };
+        const result = buildDAGData(proc);
+        expect(result).not.toBeNull();
+        expect(result!.nodes.map(n => n.phase)).toContain('map');
+    });
+
+    it('returns null when result JSON has no stats field', () => {
+        const proc = {
+            id: 'queue_456',
+            status: 'completed',
+            metadata: { type: 'queue-run-pipeline' },
+            result: JSON.stringify({ response: 'hello' }),
+        };
+        expect(buildDAGData(proc)).toBeNull();
+    });
+
+    it('returns null when result is malformed JSON', () => {
+        const proc = {
+            id: 'queue_789',
+            status: 'completed',
+            metadata: {},
+            result: 'not-json',
+        };
+        expect(buildDAGData(proc)).toBeNull();
+    });
 });
 
 // ── buildDAGDataFromLive ───────────────────────────────────────────────
