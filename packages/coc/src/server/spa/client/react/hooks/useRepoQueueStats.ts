@@ -2,8 +2,8 @@
  * useRepoQueueStats — returns running/queued counts for a given workspace.
  * Reads from QueueContext's repoQueueMap, falling back to zeros.
  *
- * Returns queue-only counts (excluding chat tasks) plus separate chatRunning/chatQueued
- * so badges on the Queue and Chat tabs stay independent.
+ * running/queued count all visible tasks (everything except hidden `chat-followup`).
+ * chatRunning/chatQueued/chatPending are separate counts for the Chat tab badge.
  */
 
 import { useMemo } from 'react';
@@ -18,7 +18,7 @@ export interface RepoQueueStats {
 }
 
 const isChat = (t: { type?: string }) => t.type === 'chat';
-const isNonChat = (t: { type?: string }) => t.type !== 'chat';
+const isHidden = (t: { type?: string }) => t.type === 'chat-followup';
 
 export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
     const { state } = useQueue();
@@ -31,8 +31,8 @@ export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
         const chatRunning = runningArr.filter(isChat).length;
         const chatQueued = queuedArr.filter(isChat).length;
         return {
-            running: runningArr.filter(isNonChat).length,
-            queued: queuedArr.filter(isNonChat).length,
+            running: runningArr.filter(t => !isHidden(t)).length,
+            queued: queuedArr.filter(t => !isHidden(t)).length,
             chatRunning,
             chatQueued,
             chatPending: Math.max(chatRunning + chatQueued, streamingCount),

@@ -24,7 +24,7 @@ describe('useRepoQueueStats', () => {
         expect(result.current).toEqual({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 });
     });
 
-    it('returns non-chat counts for running/queued and chat counts separately', () => {
+    it('counts all visible tasks (including chat) in running/queued', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -45,10 +45,10 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 0, chatPending: 1 });
+        expect(hookResult).toEqual({ running: 2, queued: 1, chatRunning: 1, chatQueued: 0, chatPending: 1 });
     });
 
-    it('excludes chat tasks from running/queued counts', () => {
+    it('includes chat tasks in running/queued counts and tracks them separately', () => {
         let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
 
         function Inner() {
@@ -75,7 +75,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 2, chatPending: 3 });
+        expect(hookResult).toEqual({ running: 2, queued: 3, chatRunning: 1, chatQueued: 2, chatPending: 3 });
     });
 
     it('returns all zeros when only empty arrays are provided', () => {
@@ -173,7 +173,7 @@ describe('useRepoQueueStats', () => {
         }
 
         render(<Wrap><Inner /></Wrap>);
-        expect(hookResult).toEqual({ running: 0, queued: 0, chatRunning: 1, chatQueued: 1, chatPending: 2 });
+        expect(hookResult).toEqual({ running: 1, queued: 1, chatRunning: 1, chatQueued: 1, chatPending: 2 });
     });
 
     it('returns chatPending 0 when no chat tasks exist in any array', () => {
@@ -266,5 +266,90 @@ describe('useRepoQueueStats', () => {
         render(<Wrap><Inner /></Wrap>);
         // queue has 0 running/queued chats, streaming has 2 → max(0, 2) = 2
         expect(hookResult!.chatPending).toBe(2);
+    });
+
+    it('excludes chat-followup tasks from running/queued badge counts', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-followup');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-followup',
+                    queue: {
+                        queued: [{ id: 'q1', type: 'run-pipeline' }],
+                        running: [
+                            { id: 'r1', type: 'chat' },
+                            { id: 'r2', type: 'chat-followup' },
+                            { id: 'r3', type: 'follow-prompt' },
+                        ],
+                    },
+                });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        // chat-followup excluded from running count; chat and follow-prompt included
+        expect(hookResult).toEqual({ running: 2, queued: 1, chatRunning: 1, chatQueued: 0, chatPending: 1 });
+    });
+
+    it('excludes chat-followup from queued badge count', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-followup-q');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-followup-q',
+                    queue: {
+                        queued: [
+                            { id: 'q1', type: 'chat-followup' },
+                            { id: 'q2', type: 'run-pipeline' },
+                        ],
+                        running: [],
+                    },
+                });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        expect(hookResult).toEqual({ running: 0, queued: 1, chatRunning: 0, chatQueued: 0, chatPending: 0 });
+    });
+
+    it('re-activated parent chat task is counted in running badge', () => {
+        let hookResult: ReturnType<typeof useRepoQueueStats> | null = null;
+
+        function Inner() {
+            const { dispatch } = useQueue();
+            hookResult = useRepoQueueStats('ws-reactivated');
+            useEffect(() => {
+                dispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: 'ws-reactivated',
+                    queue: {
+                        queued: [],
+                        running: [
+                            { id: 'parent-chat', type: 'chat' },
+                            { id: 'followup-1', type: 'chat-followup' },
+                        ],
+                        history: [
+                            { id: 'h1', type: 'follow-prompt' },
+                        ],
+                    },
+                });
+            }, [dispatch]);
+            return null;
+        }
+
+        render(<Wrap><Inner /></Wrap>);
+        // Parent chat counted in running (1), chat-followup hidden (0)
+        expect(hookResult!.running).toBe(1);
+        expect(hookResult!.chatRunning).toBe(1);
     });
 });
