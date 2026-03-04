@@ -1071,6 +1071,30 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // GET /api/workspaces/:id/git/changes/files/*/diff — Per-file working-tree diff
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/files\/(.+)\/diff$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const filePath = decodeURIComponent(match![2]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            const parsed = url.parse(req.url!, true).query;
+            const stage = parsed.stage as string | undefined;
+            const staged = stage === 'staged';
+
+            try {
+                const diff = await workingTreeService.getFileDiff(ws.rootPath, filePath, staged);
+                sendJSON(res, 200, { diff, path: filePath });
+            } catch {
+                sendJSON(res, 200, { diff: '', path: filePath });
+            }
+        },
+    });
+
     // ------------------------------------------------------------------
     // Filesystem browse endpoint
     // ------------------------------------------------------------------

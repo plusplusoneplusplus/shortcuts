@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as path from 'path';
-import { parsePorcelain } from '../../src/git/working-tree-service';
+import { parsePorcelain, WorkingTreeService } from '../../src/git/working-tree-service';
 
 const ROOT = process.platform === 'win32' ? 'C:\\repo' : '/repo';
 
@@ -111,5 +111,57 @@ describe('parsePorcelain', () => {
         // "M\n" is too short (< 4 chars), " M  ts" is long enough
         const result = parsePorcelain(out, ROOT);
         expect(result).toHaveLength(1);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkingTreeService.getFileDiff
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('../../src/utils/exec-utils', () => ({
+    execAsync: vi.fn(),
+}));
+
+import { execAsync } from '../../src/utils/exec-utils';
+
+const mockExecAsync = vi.mocked(execAsync);
+
+describe('WorkingTreeService.getFileDiff', () => {
+    afterEach(() => {
+        mockExecAsync.mockReset();
+    });
+
+    const service = new WorkingTreeService();
+    const repoRoot = ROOT;
+    const filePath = path.join(ROOT, 'src', 'foo.ts');
+
+    it('calls git diff --staged for staged=true', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: 'diff output', stderr: '' } as any);
+        const result = await service.getFileDiff(repoRoot, filePath, true);
+        expect(result).toBe('diff output');
+        expect(mockExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('--staged'),
+            expect.objectContaining({ cwd: repoRoot }),
+        );
+    });
+
+    it('calls git diff without --staged for staged=false', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: 'unstaged diff', stderr: '' } as any);
+        const result = await service.getFileDiff(repoRoot, filePath, false);
+        expect(result).toBe('unstaged diff');
+        const call = mockExecAsync.mock.calls[0][0] as string;
+        expect(call).not.toContain('--staged');
+    });
+
+    it('returns empty string on error', async () => {
+        mockExecAsync.mockRejectedValue(new Error('git failed'));
+        const result = await service.getFileDiff(repoRoot, filePath, false);
+        expect(result).toBe('');
+    });
+
+    it('returns empty string when diff is empty', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const result = await service.getFileDiff(repoRoot, filePath, true);
+        expect(result).toBe('');
     });
 });

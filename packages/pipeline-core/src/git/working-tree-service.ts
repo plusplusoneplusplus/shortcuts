@@ -214,6 +214,25 @@ export class WorkingTreeService {
     }
 
     /**
+     * Get the diff for a single file in the working tree.
+     * - staged=true  → `git diff --staged -- <file>`
+     * - staged=false → `git diff -- <file>`
+     * Returns empty string on error or when there is no diff.
+     */
+    async getFileDiff(repoRoot: string, filePath: string, staged: boolean): Promise<string> {
+        try {
+            const flag = staged ? '--staged ' : '';
+            return await execGitAsync(
+                `git -C "${repoRoot}" diff ${flag}-- "${filePath}"`,
+                { cwd: repoRoot }
+            );
+        } catch (error) {
+            getLogger().error('Git', `getFileDiff failed: ${filePath}`, error instanceof Error ? error : undefined);
+            return '';
+        }
+    }
+
+    /**
      * Delete an untracked file from the filesystem.
      * Uses `fs.unlinkSync` — the file must exist.
      */

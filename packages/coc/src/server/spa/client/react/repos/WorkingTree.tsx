@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
+import { copyToClipboard } from '../utils/format';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -26,6 +27,10 @@ interface WorkingTreeProps {
     workspaceId: string;
     /** Callback to trigger a full git data refresh in the parent. */
     onRefresh?: () => void;
+    /** Callback when a file row is clicked — opens it in the right panel. */
+    onFileSelect?: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
+    /** Currently selected file path for highlighting. */
+    selectedFilePath?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,9 +79,13 @@ interface FileRowProps {
     change: WorkingTreeChange;
     onAction: (action: 'stage' | 'unstage' | 'discard' | 'delete') => void;
     busy: boolean;
+    onFileSelect?: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
+    selected?: boolean;
 }
 
-function FileRow({ change, onAction, busy }: FileRowProps) {
+function FileRow({ change, onAction, busy, onFileSelect, selected }: FileRowProps) {
+    const [copied, setCopied] = useState(false);
+
     const displayPath = change.originalPath
         ? `${basename(change.originalPath)} → ${basename(change.filePath)}`
         : basename(change.filePath);
@@ -85,11 +94,28 @@ function FileRow({ change, onAction, busy }: FileRowProps) {
         ? `${change.originalPath} → ${change.filePath}`
         : change.filePath;
 
+    const handleCopyPath = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        copyToClipboard(change.filePath).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+
+    const handleRowClick = () => {
+        onFileSelect?.(change.filePath, change.stage);
+    };
+
     return (
         <div
-            className="group flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] text-xs"
+            className={`group flex items-center gap-1.5 px-2 py-0.5 rounded text-xs ${
+                selected
+                    ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
+                    : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'
+            } ${onFileSelect ? 'cursor-pointer' : ''}`}
             title={fullPath}
             data-testid={`working-tree-file-row-${change.filePath}`}
+            onClick={onFileSelect ? handleRowClick : undefined}
         >
             <span
                 className={`font-mono font-bold w-4 text-center flex-shrink-0 ${STATUS_COLOR[change.status] ?? 'text-[#848484]'}`}
@@ -103,6 +129,16 @@ function FileRow({ change, onAction, busy }: FileRowProps) {
 
             {/* Action buttons — visible on hover or when busy */}
             <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                {/* Copy Path button */}
+                <button
+                    className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c] transition-colors"
+                    title={copied ? 'Copied!' : 'Copy path'}
+                    onClick={handleCopyPath}
+                    data-testid={`copy-path-btn-${change.filePath}`}
+                >
+                    {copied ? '✓' : '⧉'}
+                </button>
+
                 {change.stage === 'unstaged' && (
                     <>
                         <ActionButton
@@ -259,7 +295,7 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
+export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -439,6 +475,8 @@ export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
                                     change={c}
                                     onAction={action => handleAction(action, c.filePath)}
                                     busy={busyFiles.has(c.filePath)}
+                                    onFileSelect={onFileSelect}
+                                    selected={selectedFilePath === c.filePath}
                                 />
                             ))}
                         </Section>
@@ -456,6 +494,8 @@ export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
                                     change={c}
                                     onAction={action => handleAction(action, c.filePath)}
                                     busy={busyFiles.has(c.filePath)}
+                                    onFileSelect={onFileSelect}
+                                    selected={selectedFilePath === c.filePath}
                                 />
                             ))}
                         </Section>
@@ -474,6 +514,8 @@ export function WorkingTree({ workspaceId, onRefresh }: WorkingTreeProps) {
                                     change={c}
                                     onAction={action => handleAction(action, c.filePath)}
                                     busy={busyFiles.has(c.filePath)}
+                                    onFileSelect={onFileSelect}
+                                    selected={selectedFilePath === c.filePath}
                                 />
                             ))}
                         </Section>

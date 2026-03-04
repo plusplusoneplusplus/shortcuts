@@ -21,6 +21,7 @@ import { BranchChanges } from './BranchChanges';
 import { BranchFileDiff } from './BranchFileDiff';
 import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './WorkingTree';
+import { WorkingTreeFileDiff } from './WorkingTreeFileDiff';
 import { BranchPickerModal } from './BranchPickerModal';
 import { useApp } from '../context/AppContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
@@ -34,7 +35,8 @@ interface RepoGitTabProps {
 type RightPanelView =
     | { type: 'commit'; commit: GitCommitItem }
     | { type: 'commit-file'; hash: string; filePath: string }
-    | { type: 'branch-file'; filePath: string };
+    | { type: 'branch-file'; filePath: string }
+    | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' };
 
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const { state, dispatch } = useApp();
@@ -163,8 +165,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     } else {
                         setRightPanelView(null);
                     }
-                } else if (rightPanelView?.type === 'branch-file') {
-                    // Keep the branch-file view as-is during refresh
+                } else if (rightPanelView?.type === 'branch-file' || rightPanelView?.type === 'working-tree-file') {
+                    // Keep the branch-file / working-tree-file view as-is during refresh
                 } else if (loaded.length > 0) {
                     setRightPanelView({ type: 'commit', commit: loaded[0] });
                 }
@@ -241,6 +243,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const handleCommitFileSelect = useCallback((hash: string, filePath: string) => {
         setRightPanelView({ type: 'commit-file', hash, filePath });
+    }, []);
+
+    const handleWorkingTreeFileSelect = useCallback((filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
+        setRightPanelView({ type: 'working-tree-file', filePath, stage });
     }, []);
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
@@ -375,6 +381,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const selectedCommit = rightPanelView?.type === 'commit' ? rightPanelView.commit : rightPanelView?.type === 'commit-file' ? commits.find(c => c.hash === rightPanelView.hash) ?? null : null;
     const selectedBranchFile = rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null;
+    const selectedWorkingTreeFile = rightPanelView?.type === 'working-tree-file' ? rightPanelView.filePath : null;
 
     // Scenario banner
     const scenarioBanner = (() => {
@@ -431,6 +438,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             workspaceId={workspaceId}
             filePath={rightPanelView.filePath}
         />
+    ) : rightPanelView?.type === 'working-tree-file' ? (
+        <WorkingTreeFileDiff
+            key={`${rightPanelView.filePath}:${rightPanelView.stage}`}
+            workspaceId={workspaceId}
+            filePath={rightPanelView.filePath}
+            stage={rightPanelView.stage}
+        />
     ) : (
         <div className="flex-1 flex items-center justify-center text-sm text-[#848484]" data-testid="git-detail-empty">
             Select a commit to view details
@@ -483,6 +497,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 <WorkingTree
                     workspaceId={workspaceId}
                     onRefresh={refreshAll}
+                    onFileSelect={handleWorkingTreeFileSelect}
+                    selectedFilePath={selectedWorkingTreeFile}
                 />
                 {commitListPanel}
             </aside>
