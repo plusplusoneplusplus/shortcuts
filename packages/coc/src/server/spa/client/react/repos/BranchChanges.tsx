@@ -11,7 +11,7 @@
 
 import { useState, useEffect } from 'react';
 import { fetchApi } from '../hooks/useApi';
-import { Spinner } from '../shared';
+import { Spinner, TruncatedPath } from '../shared';
 
 export interface BranchRangeInfo {
     baseRef: string;
@@ -239,9 +239,13 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                                         >
                                             {STATUS_CHARS[file.status] || '?'}
                                         </span>
-                                        <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate">
-                                            {file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
-                                        </span>
+                                        {file.oldPath ? (
+                                            <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate" title={`${file.oldPath} → ${file.path}`}>
+                                                {file.oldPath} → {file.path}
+                                            </span>
+                                        ) : (
+                                            <TruncatedPath path={file.path} className="text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                                        )}
                                         <span className="text-[#16825d] text-xs flex-shrink-0">+{file.additions}</span>
                                         <span className="text-[#d32f2f] text-xs flex-shrink-0">−{file.deletions}</span>
                                     </button>

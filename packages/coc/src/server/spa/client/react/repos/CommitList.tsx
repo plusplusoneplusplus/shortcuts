@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
+import { TruncatedPath } from '../shared';
 import { CommitTooltip } from './CommitTooltip';
 
 export interface GitCommitItem {
@@ -249,7 +250,7 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
                                                         >
                                                             {f.status}
                                                         </span>
-                                                        <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] truncate">{f.path}</span>
+                                                        <TruncatedPath path={f.path} className="text-[#1e1e1e] dark:text-[#ccc]" />
                                                     </button>
                                                 ))}
                                             </div>

@@ -209,8 +209,9 @@ describe('BranchFileDiff', () => {
             expect(source).toContain('Branch diff');
         });
 
-        it('uses font-mono for file path', () => {
-            expect(source).toContain('font-mono');
+        it('uses TruncatedPath for file path', () => {
+            expect(source).toContain('TruncatedPath');
+            expect(source).toContain('filePath');
         });
 
         it('uses styling consistent with CommitDetail header', () => {
@@ -244,7 +245,8 @@ describe('BranchFileDiff', () => {
         });
 
         it('imports Button from shared', () => {
-            expect(source).toContain("Button }");
+            expect(source).toContain("Button");
+            expect(source).toContain("from '../shared'");
         });
     });
 

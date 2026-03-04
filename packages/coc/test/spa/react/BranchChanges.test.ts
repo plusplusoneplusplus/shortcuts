@@ -248,7 +248,8 @@ describe('BranchChanges', () => {
         });
 
         it('imports Spinner from shared', () => {
-            expect(source).toContain("import { Spinner } from '../shared'");
+            expect(source).toContain("Spinner");
+            expect(source).toContain("from '../shared'");
         });
 
         it('shows loading spinner during file fetch', () => {

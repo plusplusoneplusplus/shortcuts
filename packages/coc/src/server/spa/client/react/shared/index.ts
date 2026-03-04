@@ -30,3 +30,5 @@ export type { BottomSheetProps } from './BottomSheet';
 export { FilePathLink } from './FilePathLink';
 export type { FilePathLinkProps } from './FilePathLink';
 export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';
+export { TruncatedPath } from './TruncatedPath';
+export type { TruncatedPathProps } from './TruncatedPath';

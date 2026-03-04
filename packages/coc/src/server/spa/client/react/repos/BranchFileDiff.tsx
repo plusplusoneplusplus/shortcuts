@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
-import { Spinner, Button } from '../shared';
+import { Spinner, Button, TruncatedPath } from '../shared';
 import { UnifiedDiffViewer } from './UnifiedDiffViewer';
 
 export interface BranchFileDiffProps {
@@ -46,7 +46,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
             {/* Header bar */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-file-diff-header">
                 <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate font-mono">{filePath}</span>
+                    <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">Branch diff</span>
                 </div>
             </div>
