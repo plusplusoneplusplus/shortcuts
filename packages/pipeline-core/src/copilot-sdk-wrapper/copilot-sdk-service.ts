@@ -576,43 +576,42 @@ export class CopilotSDKService {
             // Shared tool calls map — bridged between permission handler and sendWithStreaming
             const toolCallsMap = new Map<string, ToolCall>();
 
-            // Permission handler — wrap with logging to track permission requests
-            if (options.onPermissionRequest) {
-                const originalHandler = options.onPermissionRequest;
-                sessionOptions.onPermissionRequest = (request, invocation) => {
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission request: kind=${request.kind}, toolCallId=${request.toolCallId || '(none)'}`);
-                    const capturePermission = (permResult: PermissionRequestResult) => {
-                        if (request.toolCallId) {
-                            const tc = toolCallsMap.get(request.toolCallId);
-                            if (tc) {
-                                tc.permissionRequest = {
-                                    kind: request.kind,
-                                    timestamp: new Date(),
-                                    resource: (request as any).resource,
-                                    operation: (request as any).operation,
-                                };
-                                tc.permissionResult = {
-                                    approved: permResult.kind === 'approved',
-                                    timestamp: new Date(),
-                                    reason: permResult.kind !== 'approved' ? permResult.kind : undefined,
-                                };
-                            }
+            // Permission handler — wrap with logging to track permission requests.
+            // The SDK requires onPermissionRequest; default to denyAll when none is provided.
+            const effectiveHandler = options.onPermissionRequest || denyAllPermissions;
+            sessionOptions.onPermissionRequest = (request, invocation) => {
+                logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission request: kind=${request.kind}, toolCallId=${request.toolCallId || '(none)'}`);
+                const capturePermission = (permResult: PermissionRequestResult) => {
+                    if (request.toolCallId) {
+                        const tc = toolCallsMap.get(request.toolCallId);
+                        if (tc) {
+                            tc.permissionRequest = {
+                                kind: request.kind,
+                                timestamp: new Date(),
+                                resource: (request as any).resource,
+                                operation: (request as any).operation,
+                            };
+                            tc.permissionResult = {
+                                approved: permResult.kind === 'approved',
+                                timestamp: new Date(),
+                                reason: permResult.kind !== 'approved' ? permResult.kind : undefined,
+                            };
                         }
-                    };
-                    const result = originalHandler(request, invocation);
-                    // Handle both sync and async permission handlers
-                    if (result && typeof (result as Promise<PermissionRequestResult>).then === 'function') {
-                        return (result as Promise<PermissionRequestResult>).then(r => {
-                            logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${r.kind} (for ${request.kind})`);
-                            capturePermission(r);
-                            return r;
-                        });
                     }
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${(result as PermissionRequestResult).kind} (for ${request.kind})`);
-                    capturePermission(result as PermissionRequestResult);
-                    return result;
                 };
-            }
+                const result = effectiveHandler(request, invocation);
+                // Handle both sync and async permission handlers
+                if (result && typeof (result as Promise<PermissionRequestResult>).then === 'function') {
+                    return (result as Promise<PermissionRequestResult>).then(r => {
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${r.kind} (for ${request.kind})`);
+                        capturePermission(r);
+                        return r;
+                    });
+                }
+                logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${(result as PermissionRequestResult).kind} (for ${request.kind})`);
+                capturePermission(result as PermissionRequestResult);
+                return result;
+            };
 
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0 
                 ? JSON.stringify(sessionOptions) 
@@ -771,9 +770,8 @@ export class CopilotSDKService {
             }
 
             const resumeOptions: IResumeSessionOptions = {};
-            if (options?.onPermissionRequest) {
-                resumeOptions.onPermissionRequest = options.onPermissionRequest;
-            }
+            // The SDK requires onPermissionRequest; default to denyAll when none is provided.
+            resumeOptions.onPermissionRequest = options?.onPermissionRequest || denyAllPermissions;
             if (options?.onStreamingChunk || timeoutMs > 120000) {
                 resumeOptions.streaming = true;
             }
