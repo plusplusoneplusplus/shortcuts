@@ -128,7 +128,7 @@ describe('Git API caching', () => {
     // ========================================================================
 
     describe('GET /api/workspaces/:id/git/commits (cache)', () => {
-        const COMMIT_LOG = 'aaaa\naaaa\nFirst\nAlice\n2026-01-01T00:00:00Z\n\n';
+        const COMMIT_LOG = 'aaaa\naaaa\nFirst\nAlice\nalice@example.com\n2026-01-01T00:00:00Z\n\n';
 
         function setupGitMock() {
             mockExecSync.mockImplementation((cmd: string) => {
@@ -316,7 +316,7 @@ describe('Git API caching', () => {
             ]);
 
             mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return 'aaaa\naaaa\nFirst\nAlice\n2026-01-01T00:00:00Z\n\n';
+                if (cmd.includes('log --format=')) return 'aaaa\naaaa\nFirst\nAlice\nalice@example.com\n2026-01-01T00:00:00Z\n\n';
                 return '';
             });
 

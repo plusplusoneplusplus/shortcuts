@@ -401,7 +401,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             try {
-                const format = '%H%n%h%n%s%n%an%n%aI%n%P%n%b';
+                const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
                 const raw = execGitSync(
                     `log --format="${format}" --skip=${skip} --max-count=${limit} -z`,
                     ws.rootPath
@@ -409,7 +409,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
                 const commits: Array<{
                     hash: string; shortHash: string; subject: string;
-                    author: string; date: string; parentHashes: string[];
+                    author: string; authorEmail: string; date: string; parentHashes: string[];
                     body: string;
                 }> = [];
 
@@ -417,15 +417,16 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                     const entries = raw.split('\0').filter(Boolean);
                     for (const entry of entries) {
                         const lines = entry.split('\n');
-                        if (lines.length >= 5) {
+                        if (lines.length >= 6) {
                             commits.push({
                                 hash: lines[0],
                                 shortHash: lines[1],
                                 subject: lines[2],
                                 author: lines[3],
-                                date: lines[4],
-                                parentHashes: lines[5] ? lines[5].split(' ').filter(Boolean) : [],
-                                body: lines.slice(6).join('\n').trim(),
+                                authorEmail: lines[4],
+                                date: lines[5],
+                                parentHashes: lines[6] ? lines[6].split(' ').filter(Boolean) : [],
+                                body: lines.slice(7).join('\n').trim(),
                             });
                         }
                     }

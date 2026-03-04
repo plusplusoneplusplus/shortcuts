@@ -71,7 +71,7 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave }
 
             {/* Metadata */}
             <div className="flex flex-col gap-1 text-[11px] text-[#616161] dark:text-[#999] mb-2" data-testid="tooltip-metadata">
-                <div>Author: <strong className="text-[#1e1e1e] dark:text-[#ccc]">{commit.author}</strong></div>
+                <div>Author: <strong className="text-[#1e1e1e] dark:text-[#ccc]">{commit.author}</strong>{commit.authorEmail && <span className="ml-1 text-[#616161] dark:text-[#999]">&lt;{commit.authorEmail}&gt;</span>}</div>
                 <div>Date: {formattedDate}</div>
                 <div className="flex items-center gap-1">
                     Hash: <span className="font-mono text-[#0078d4] dark:text-[#3794ff]">{commit.hash.substring(0, 8)}</span>

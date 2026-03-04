@@ -19,6 +19,7 @@ export interface GitCommitItem {
     shortHash: string;
     subject: string;
     author: string;
+    authorEmail?: string;
     date: string;
     parentHashes: string[];
     body?: string;

@@ -140,8 +140,8 @@ describe('Git API endpoints', () => {
     describe('GET /api/workspaces/:id/git/commits', () => {
         it('returns commits and unpushedCount', async () => {
             const logOutput = [
-                'abc123def456789\nabc123d\nInitial commit\nJohn Doe\n2026-01-15T10:00:00+00:00\n\n',
-                'def456abc789012\ndef456a\nAdd feature\nJane Smith\n2026-01-16T12:00:00+00:00\nabc123def456789\nThis is the commit body\nwith multiple lines',
+                'abc123def456789\nabc123d\nInitial commit\nJohn Doe\njohn@example.com\n2026-01-15T10:00:00+00:00\n\n',
+                'def456abc789012\ndef456a\nAdd feature\nJane Smith\njane@example.com\n2026-01-16T12:00:00+00:00\nabc123def456789\nThis is the commit body\nwith multiple lines',
             ].join('\0');
 
             mockExecSync.mockImplementation((cmd: string) => {
@@ -159,6 +159,7 @@ describe('Git API endpoints', () => {
             expect(data.commits[0].shortHash).toBe('abc123d');
             expect(data.commits[0].subject).toBe('Initial commit');
             expect(data.commits[0].author).toBe('John Doe');
+            expect(data.commits[0].authorEmail).toBe('john@example.com');
             expect(data.commits[0].body).toBe('');
             expect(data.commits[1].parentHashes).toEqual(['abc123def456789']);
             expect(data.commits[1].body).toBe('This is the commit body\nwith multiple lines');
@@ -196,7 +197,7 @@ describe('Git API endpoints', () => {
 
         it('handles unpushedCount when no upstream (getBranchStatus returns null)', async () => {
             mockExecSync.mockImplementation((cmd: string) => {
-                if (cmd.includes('log --format=')) return 'a1b2c3\na1b2\nCommit\nDev\n2026-01-01T00:00:00Z\n\n';
+                if (cmd.includes('log --format=')) return 'a1b2c3\na1b2\nCommit\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n';
                 return '';
             });
             mockGetBranchStatus.mockReturnValue(null);
