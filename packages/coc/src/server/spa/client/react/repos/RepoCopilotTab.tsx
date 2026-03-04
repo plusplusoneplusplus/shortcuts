@@ -17,6 +17,17 @@ type McpServerEntry = { name: string; type: 'stdio' | 'sse' };
 interface Skill {
     name: string;
     description?: string;
+    version?: string;
+    variables?: string[];
+    output?: string[];
+    promptBody?: string;
+    references?: string[];
+    scripts?: string[];
+    relativePath?: string;
+}
+
+interface SkillDetail extends Skill {
+    relativePath?: string;
 }
 
 interface BundledSkill {
@@ -82,6 +93,9 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const [skillsLoading, setSkillsLoading] = useState(true);
     const [showInstallDialog, setShowInstallDialog] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+    const [skillDetail, setSkillDetail] = useState<SkillDetail | null>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true);
@@ -99,6 +113,27 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     }, [workspaceId]);
 
     useEffect(() => { fetchSkills(); }, [fetchSkills]);
+
+    const handleExpandSkill = useCallback(async (name: string) => {
+        if (expandedSkill === name) {
+            setExpandedSkill(null);
+            setSkillDetail(null);
+            return;
+        }
+        setExpandedSkill(name);
+        setDetailLoading(true);
+        try {
+            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/skills/' + encodeURIComponent(name));
+            if (res.ok) {
+                const data = await res.json();
+                setSkillDetail(data.skill || null);
+            }
+        } catch {
+            // ignore
+        } finally {
+            setDetailLoading(false);
+        }
+    }, [workspaceId, expandedSkill]);
 
     const handleDeleteSkill = async (name: string) => {
         try {
@@ -188,40 +223,55 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                         {skills.map(skill => (
                             <li
                                 key={skill.name}
-                                className="skill-item flex items-start justify-between gap-3 p-3 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] hover:border-[#0078d4]/40 group"
+                                className="skill-item flex flex-col rounded border border-[#e0e0e0] dark:border-[#3c3c3c] hover:border-[#0078d4]/40 group"
                                 data-testid={`skill-item-${skill.name}`}
                             >
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">📄 {skill.name}</div>
-                                    {skill.description && (
-                                        <div className="text-xs text-[#616161] dark:text-[#999999] mt-0.5 truncate">{skill.description}</div>
-                                    )}
-                                </div>
-                                <div className="flex-shrink-0">
-                                    {deleteConfirm === skill.name ? (
-                                        <span className="flex items-center gap-1 text-xs">
-                                            <span className="text-[#616161] dark:text-[#999]">Delete?</span>
+                                <div
+                                    className="flex items-start justify-between gap-3 p-3 cursor-pointer"
+                                    onClick={() => handleExpandSkill(skill.name)}
+                                    data-testid={`skill-expand-${skill.name}`}
+                                >
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] flex items-center gap-2">
+                                            📄 {skill.name}
+                                            {skill.version && (
+                                                <span className="text-[10px] text-[#848484] bg-[#f3f3f3] dark:bg-[#333] px-1.5 py-0.5 rounded-full">v{skill.version}</span>
+                                            )}
+                                            <span className="text-[10px] text-[#848484]">{expandedSkill === skill.name ? '▾' : '▸'}</span>
+                                        </div>
+                                        {skill.description && (
+                                            <div className="text-xs text-[#616161] dark:text-[#999999] mt-0.5 truncate">{skill.description}</div>
+                                        )}
+                                    </div>
+                                    <div className="flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                        {deleteConfirm === skill.name ? (
+                                            <span className="flex items-center gap-1 text-xs">
+                                                <span className="text-[#616161] dark:text-[#999]">Delete?</span>
+                                                <button
+                                                    className="text-red-600 dark:text-red-400 hover:underline"
+                                                    onClick={() => handleDeleteSkill(skill.name)}
+                                                    data-testid={`skill-delete-confirm-${skill.name}`}
+                                                >Yes</button>
+                                                <button
+                                                    className="text-[#616161] dark:text-[#999] hover:underline"
+                                                    onClick={() => setDeleteConfirm(null)}
+                                                >No</button>
+                                            </span>
+                                        ) : (
                                             <button
-                                                className="text-red-600 dark:text-red-400 hover:underline"
-                                                onClick={() => handleDeleteSkill(skill.name)}
-                                                data-testid={`skill-delete-confirm-${skill.name}`}
-                                            >Yes</button>
-                                            <button
-                                                className="text-[#616161] dark:text-[#999] hover:underline"
-                                                onClick={() => setDeleteConfirm(null)}
-                                            >No</button>
-                                        </span>
-                                    ) : (
-                                        <button
-                                            className="opacity-0 group-hover:opacity-100 text-[#616161] dark:text-[#999] hover:text-red-600 dark:hover:text-red-400 transition-opacity text-base leading-none"
-                                            title={`Delete ${skill.name}`}
-                                            onClick={() => setDeleteConfirm(skill.name)}
-                                            data-testid={`skill-delete-btn-${skill.name}`}
-                                        >
-                                            🗑
-                                        </button>
-                                    )}
+                                                className="opacity-0 group-hover:opacity-100 text-[#616161] dark:text-[#999] hover:text-red-600 dark:hover:text-red-400 transition-opacity text-base leading-none"
+                                                title={`Delete ${skill.name}`}
+                                                onClick={() => setDeleteConfirm(skill.name)}
+                                                data-testid={`skill-delete-btn-${skill.name}`}
+                                            >
+                                                🗑
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
+                                {expandedSkill === skill.name && (
+                                    <SkillDetailPanel detail={skillDetail} loading={detailLoading} />
+                                )}
                             </li>
                         ))}
                     </ul>
@@ -235,6 +285,81 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                     />
                 )}
             </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// SkillDetailPanel
+// ============================================================================
+
+function SkillDetailPanel({ detail, loading }: { detail: SkillDetail | null; loading: boolean }) {
+    if (loading) {
+        return (
+            <div className="px-3 pb-3 text-xs text-[#848484]" data-testid="skill-detail-loading">Loading detail...</div>
+        );
+    }
+    if (!detail) return null;
+
+    return (
+        <div className="px-3 pb-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-2 flex flex-col gap-2" data-testid="skill-detail-panel">
+            {/* Metadata badges */}
+            <div className="flex flex-wrap gap-1.5">
+                {detail.version && (
+                    <span className="text-[10px] bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#1a73e8] dark:text-[#8ab4f8] px-1.5 py-0.5 rounded" data-testid="skill-detail-version">
+                        v{detail.version}
+                    </span>
+                )}
+                {detail.variables && detail.variables.length > 0 && (
+                    <span className="text-[10px] bg-[#fef3e0] dark:bg-[#3c2e00] text-[#e37400] dark:text-[#fdd663] px-1.5 py-0.5 rounded" data-testid="skill-detail-variables">
+                        {detail.variables.length} variable{detail.variables.length !== 1 ? 's' : ''}: {detail.variables.join(', ')}
+                    </span>
+                )}
+                {detail.output && detail.output.length > 0 && (
+                    <span className="text-[10px] bg-[#e6f4ea] dark:bg-[#0d3f1f] text-[#137333] dark:text-[#81c995] px-1.5 py-0.5 rounded" data-testid="skill-detail-output">
+                        output: {detail.output.join(', ')}
+                    </span>
+                )}
+                {detail.relativePath && (
+                    <span className="text-[10px] text-[#848484] font-mono" data-testid="skill-detail-path">
+                        {detail.relativePath}
+                    </span>
+                )}
+            </div>
+
+            {/* References */}
+            {detail.references && detail.references.length > 0 && (
+                <div data-testid="skill-detail-references">
+                    <div className="text-[10px] font-medium text-[#616161] dark:text-[#999] mb-0.5">📎 References</div>
+                    <div className="flex flex-wrap gap-1">
+                        {detail.references.map(ref => (
+                            <span key={ref} className="text-[10px] text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#333] px-1.5 py-0.5 rounded font-mono">{ref}</span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Scripts */}
+            {detail.scripts && detail.scripts.length > 0 && (
+                <div data-testid="skill-detail-scripts">
+                    <div className="text-[10px] font-medium text-[#616161] dark:text-[#999] mb-0.5">⚙️ Scripts</div>
+                    <div className="flex flex-wrap gap-1">
+                        {detail.scripts.map(script => (
+                            <span key={script} className="text-[10px] text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#333] px-1.5 py-0.5 rounded font-mono">{script}</span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Prompt body */}
+            {detail.promptBody && (
+                <div data-testid="skill-detail-prompt">
+                    <div className="text-[10px] font-medium text-[#616161] dark:text-[#999] mb-0.5">📝 Prompt</div>
+                    <pre className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc] bg-[#f9f9f9] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap font-mono">
+                        {detail.promptBody}
+                    </pre>
+                </div>
+            )}
         </div>
     );
 }

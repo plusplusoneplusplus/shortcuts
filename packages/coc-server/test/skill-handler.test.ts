@@ -234,4 +234,130 @@ describe('registerSkillRoutes', () => {
         );
         expect(statusCode).toBe(400);
     });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills (enriched response)
+    // -----------------------------------------------------------------------
+
+    it('GET /api/workspaces/:id/skills returns enriched fields with frontmatter', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        const skillDir = path.join(skillsDir, 'test-skill');
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+            '---',
+            'name: test-skill',
+            'description: A test skill',
+            'version: 1.2.0',
+            'variables: [input, context]',
+            'output: [result, summary]',
+            '---',
+            '',
+            '# Test Skill',
+            '',
+            'Do the thing.',
+        ].join('\n'));
+
+        // Create references and scripts subdirectories
+        const refsDir = path.join(skillDir, 'references');
+        fs.mkdirSync(refsDir);
+        fs.writeFileSync(path.join(refsDir, 'ref1.prompt.md'), '# Ref');
+        fs.writeFileSync(path.join(refsDir, 'ref2.prompt.md'), '# Ref2');
+
+        const scriptsDir = path.join(skillDir, 'scripts');
+        fs.mkdirSync(scriptsDir);
+        fs.writeFileSync(path.join(scriptsDir, 'helper.py'), 'print("hi")');
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        expect(body.skills).toHaveLength(1);
+        const skill = body.skills[0];
+        expect(skill.name).toBe('test-skill');
+        expect(skill.description).toBe('A test skill');
+        expect(skill.version).toBe('1.2.0');
+        expect(skill.variables).toEqual(['input', 'context']);
+        expect(skill.output).toEqual(['result', 'summary']);
+        expect(skill.promptBody).toContain('# Test Skill');
+        expect(skill.promptBody).toContain('Do the thing.');
+        expect(skill.references).toEqual(['ref1.prompt.md', 'ref2.prompt.md']);
+        expect(skill.scripts).toEqual(['helper.py']);
+    });
+
+    it('GET /api/workspaces/:id/skills returns empty arrays for references/scripts when none exist', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        const skillDir = path.join(skillsDir, 'bare-skill');
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Bare Skill\n\nJust a prompt.');
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        const skill = body.skills[0];
+        expect(skill.name).toBe('bare-skill');
+        expect(skill.references).toEqual([]);
+        expect(skill.scripts).toEqual([]);
+        expect(skill.promptBody).toContain('Bare Skill');
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills/:name (detail endpoint)
+    // -----------------------------------------------------------------------
+
+    it('GET /api/workspaces/:id/skills/:name returns full skill detail', async () => {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        const skillDir = path.join(skillsDir, 'detail-skill');
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+            '---',
+            'name: detail-skill',
+            'description: Detailed skill',
+            'version: 2.0.0',
+            '---',
+            '',
+            '# Detail Skill',
+            '',
+            'Full prompt content here.',
+        ].join('\n'));
+        const refsDir = path.join(skillDir, 'references');
+        fs.mkdirSync(refsDir);
+        fs.writeFileSync(path.join(refsDir, 'deep-dive.prompt.md'), '# Deep');
+
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills/detail-skill`
+        );
+        expect(statusCode).toBe(200);
+        expect(body.skill.name).toBe('detail-skill');
+        expect(body.skill.description).toBe('Detailed skill');
+        expect(body.skill.version).toBe('2.0.0');
+        expect(body.skill.promptBody).toContain('Full prompt content here.');
+        expect(body.skill.references).toEqual(['deep-dive.prompt.md']);
+        expect(body.skill.scripts).toEqual([]);
+        expect(body.skill.relativePath).toContain('detail-skill');
+    });
+
+    it('GET /api/workspaces/:id/skills/:name returns 404 for non-existent skill', async () => {
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/${workspaceId}/skills/nonexistent`
+        );
+        expect(statusCode).toBe(404);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name returns 404 for unknown workspace', async () => {
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET', `/api/workspaces/unknown-ws/skills/any-skill`
+        );
+        expect(statusCode).toBe(404);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name returns 400 for reserved names', async () => {
+        // 'scan' and 'install' are POST-only routes, so GET would hit the detail endpoint
+        for (const reserved of ['scan', 'install']) {
+            const { statusCode } = await dispatchRoute(
+                routes, 'GET', `/api/workspaces/${workspaceId}/skills/${reserved}`
+            );
+            expect(statusCode).toBe(400);
+        }
+    });
 });

@@ -31,35 +31,132 @@ function getSkillsInstallPath(workspaceRoot: string, installPath?: string): stri
     return path.join(workspaceRoot, installPath || DEFAULT_SKILLS_SETTINGS.installPath);
 }
 
-function listInstalledSkills(installPath: string): Array<{ name: string; description?: string }> {
+/** Enriched skill info returned by the list/detail endpoints */
+interface SkillInfo {
+    name: string;
+    description?: string;
+    version?: string;
+    variables?: string[];
+    output?: string[];
+    promptBody?: string;
+    references?: string[];
+    scripts?: string[];
+    relativePath?: string;
+}
+
+const VERSION_REGEX = /^version:\s*["']?(.+?)["']?\s*$/m;
+const VARIABLES_REGEX = /^variables:\s*\[([^\]]+)\]/m;
+const OUTPUT_REGEX = /^output:\s*\[([^\]]+)\]/m;
+
+function parseSkillMd(content: string): {
+    description?: string;
+    version?: string;
+    variables?: string[];
+    output?: string[];
+    promptBody?: string;
+} {
+    let description: string | undefined;
+    let version: string | undefined;
+    let variables: string[] | undefined;
+    let output: string[] | undefined;
+    let promptBody: string | undefined;
+
+    const fmMatch = content.match(FRONTMATTER_REGEX);
+    if (fmMatch) {
+        const fm = fmMatch[1];
+        const descMatch = fm.match(DESCRIPTION_REGEX);
+        if (descMatch) description = descMatch[1];
+        const verMatch = fm.match(VERSION_REGEX);
+        if (verMatch) version = verMatch[1];
+        const varMatch = fm.match(VARIABLES_REGEX);
+        if (varMatch) {
+            variables = varMatch[1].split(',').map(v => v.trim().replace(/["']/g, '')).filter(v => v.length > 0);
+        }
+        const outMatch = fm.match(OUTPUT_REGEX);
+        if (outMatch) {
+            output = outMatch[1].split(',').map(v => v.trim().replace(/["']/g, '')).filter(v => v.length > 0);
+        }
+        // Prompt body = everything after frontmatter
+        promptBody = content.slice(fmMatch[0].length).trim() || undefined;
+    } else {
+        description = extractDescriptionFromMarkdown(content);
+        promptBody = content.trim() || undefined;
+    }
+
+    return { description, version, variables, output, promptBody };
+}
+
+function listDirectoryFiles(dirPath: string): string[] {
+    if (!fs.existsSync(dirPath)) return [];
+    try {
+        return fs.readdirSync(dirPath).filter(f => {
+            try { return fs.statSync(path.join(dirPath, f)).isFile(); } catch { return false; }
+        }).sort();
+    } catch { return []; }
+}
+
+function listInstalledSkills(installPath: string): SkillInfo[] {
     if (!fs.existsSync(installPath)) {
         return [];
     }
 
-    const skills: Array<{ name: string; description?: string }> = [];
+    const skills: SkillInfo[] = [];
 
     try {
         const entries = fs.readdirSync(installPath, { withFileTypes: true });
         for (const entry of entries) {
             if (!entry.isDirectory()) continue;
-            const skillMdPath = path.join(installPath, entry.name, 'SKILL.md');
+            const skillDir = path.join(installPath, entry.name);
+            const skillMdPath = path.join(skillDir, 'SKILL.md');
             if (!fs.existsSync(skillMdPath)) continue;
 
-            let description: string | undefined;
+            const skill: SkillInfo = { name: entry.name };
             try {
                 const content = fs.readFileSync(skillMdPath, 'utf-8');
-                description = extractDescriptionFromMarkdown(content);
+                const parsed = parseSkillMd(content);
+                skill.description = parsed.description;
+                skill.version = parsed.version;
+                skill.variables = parsed.variables;
+                skill.output = parsed.output;
+                skill.promptBody = parsed.promptBody;
             } catch {
                 // ignore
             }
 
-            skills.push({ name: entry.name, description });
+            skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
+            skill.scripts = listDirectoryFiles(path.join(skillDir, 'scripts'));
+
+            skills.push(skill);
         }
     } catch {
         // ignore
     }
 
     return skills;
+}
+
+function getSkillDetail(installPath: string, skillName: string): SkillInfo | null {
+    const skillDir = path.join(installPath, skillName);
+    const skillMdPath = path.join(skillDir, 'SKILL.md');
+    if (!fs.existsSync(skillMdPath)) return null;
+
+    const skill: SkillInfo = { name: skillName };
+    try {
+        const content = fs.readFileSync(skillMdPath, 'utf-8');
+        const parsed = parseSkillMd(content);
+        skill.description = parsed.description;
+        skill.version = parsed.version;
+        skill.variables = parsed.variables;
+        skill.output = parsed.output;
+        skill.promptBody = parsed.promptBody;
+    } catch {
+        // ignore
+    }
+    skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
+    skill.scripts = listDirectoryFiles(path.join(skillDir, 'scripts'));
+    skill.relativePath = path.join(DEFAULT_SKILLS_SETTINGS.installPath, skillName);
+
+    return skill;
 }
 
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
@@ -229,6 +326,43 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore): void 
 
             const result = await installSkills(skills, sourceResult.source, installPath, async () => replace);
             sendJSON(res, 200, result);
+        },
+    });
+
+    // GET /api/workspaces/:id/skills/:name — Get single skill detail
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/skills\/([^/]+)$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const skillName = decodeURIComponent(match![2]);
+
+            // Reject route-collision names
+            if (skillName === 'bundled' || skillName === 'scan' || skillName === 'install') {
+                return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
+            }
+
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            const installPath = getSkillsInstallPath(ws.rootPath);
+
+            // Validate skill path is within install path (security)
+            const skillPath = path.join(installPath, skillName);
+            const resolvedSkillPath = path.resolve(skillPath);
+            const resolvedInstallPath = path.resolve(installPath);
+            if (!resolvedSkillPath.startsWith(resolvedInstallPath + path.sep)) {
+                return handleAPIError(res, badRequest('Invalid skill name'));
+            }
+
+            const skill = getSkillDetail(installPath, skillName);
+            if (!skill) {
+                return handleAPIError(res, notFound('Skill'));
+            }
+            sendJSON(res, 200, { skill });
         },
     });
 
