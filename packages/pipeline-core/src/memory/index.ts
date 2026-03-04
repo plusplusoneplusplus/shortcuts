@@ -40,3 +40,6 @@ export { FileToolCallCacheStore } from './tool-call-cache-store';
 
 export { ToolCallCapture } from './tool-call-capture';
 export type { ToolCallCaptureOptions } from './tool-call-capture';
+
+export { ToolCallCacheAggregator } from './tool-call-cache-aggregator';
+export type { ToolCallCacheAggregatorOptions } from './tool-call-cache-aggregator';
