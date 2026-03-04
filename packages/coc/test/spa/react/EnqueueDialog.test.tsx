@@ -3,10 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
+import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/server/spa/client/react/context/MinimizedDialogsContext';
 import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
 import { mockViewport } from '../../spa/helpers/viewport-mock';
 
@@ -32,8 +33,11 @@ function Wrap({ children, workspaces = [] }: { children: ReactNode; workspaces?:
     return (
         <AppProvider>
             <QueueProvider>
-                <WorkspaceSetter workspaces={workspaces} />
-                {children}
+                <MinimizedDialogsProvider>
+                    <WorkspaceSetter workspaces={workspaces} />
+                    {children}
+                    <MinimizedDialogsTray />
+                </MinimizedDialogsProvider>
             </QueueProvider>
         </AppProvider>
     );
@@ -1183,5 +1187,224 @@ describe('EnqueueDialog', () => {
             expect.stringContaining('/queue/tasks'),
             expect.anything(),
         );
+    });
+});
+
+// ============================================================================
+// EnqueueDialog — minimize / restore
+// ============================================================================
+
+describe('EnqueueDialog minimize behavior', () => {
+    beforeEach(() => {
+        global.fetch = vi.fn().mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows minimize button in dialog header on desktop', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        expect(document.querySelector('[data-testid="dialog-minimize-btn"]')).not.toBeNull();
+    });
+
+    it('clicking minimize hides the dialog and shows a pill in the tray', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
+        await act(async () => { fireEvent.click(minimizeBtn); });
+
+        // Dialog content should be gone
+        expect(screen.queryByText('Enqueue AI Task')).toBeNull();
+        // Pill should appear
+        const pill = document.querySelector('[data-testid="minimized-pill-enqueue-task"]');
+        expect(pill).not.toBeNull();
+        expect(pill!.textContent).toContain('📋');
+        expect(pill!.textContent).toContain('Enqueue Task');
+        expect(pill!.textContent).toContain('Restore');
+    });
+
+    it('pill shows prompt preview when prompt has content', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'Fix the login bug' } });
+
+        const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
+        await act(async () => { fireEvent.click(minimizeBtn); });
+
+        const pill = document.querySelector('[data-testid="minimized-pill-enqueue-task"]');
+        expect(pill).not.toBeNull();
+        expect(pill!.textContent).toContain('Fix the login bug');
+    });
+
+    it('pill shows no preview when prompt is empty', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
+        await act(async () => { fireEvent.click(minimizeBtn); });
+
+        const pill = document.querySelector('[data-testid="minimized-pill-enqueue-task"]');
+        expect(pill).not.toBeNull();
+        expect(pill!.textContent).not.toContain('▪');
+    });
+
+    it('pill shows truncated preview when prompt exceeds 30 chars', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const longPrompt = 'This is a very long prompt that exceeds thirty characters';
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: longPrompt } });
+
+        const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
+        await act(async () => { fireEvent.click(minimizeBtn); });
+
+        const pill = document.querySelector('[data-testid="minimized-pill-enqueue-task"]');
+        expect(pill).not.toBeNull();
+        expect(pill!.textContent).toContain('…');
+        expect(pill!.textContent).not.toContain(longPrompt);
+    });
+
+    it('clicking Restore pill re-opens the dialog', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
+        await act(async () => { fireEvent.click(minimizeBtn); });
+
+        const pill = document.querySelector('[data-testid="minimized-pill-enqueue-task"]') as HTMLElement;
+        await act(async () => { fireEvent.click(pill); });
+
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        expect(document.querySelector('[data-testid="minimized-pill-enqueue-task"]')).toBeNull();
+    });
+
+    it('form state is preserved after minimize then restore', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'My important prompt' } });
+
+        const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
+        await act(async () => { fireEvent.click(minimizeBtn); });
+
+        const pill = document.querySelector('[data-testid="minimized-pill-enqueue-task"]') as HTMLElement;
+        await act(async () => { fireEvent.click(pill); });
+
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        expect((screen.getByPlaceholderText('Enter your prompt...') as HTMLTextAreaElement).value)
+            .toBe('My important prompt');
+    });
+
+    it('closing from pill via ✕ removes pill and closes dialog', async () => {
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
+        await act(async () => { fireEvent.click(minimizeBtn); });
+
+        const closeBtn = document.querySelector('[data-testid="minimized-pill-enqueue-task"] button') as HTMLElement;
+        expect(closeBtn).not.toBeNull();
+        await act(async () => { fireEvent.click(closeBtn); });
+
+        expect(document.querySelector('[data-testid="minimized-pill-enqueue-task"]')).toBeNull();
+        expect(screen.queryByText('Enqueue AI Task')).toBeNull();
+    });
+
+    it('minimize button is hidden while submitting', async () => {
+        const fetchSpy = vi.fn().mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            // Simulate slow submit
+            return new Promise(() => { /* never resolves */ });
+        });
+        global.fetch = fetchSpy;
+
+        await act(async () => {
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>
+            );
+        });
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'test prompt' } });
+
+        const submitBtn = screen.getByText('Enqueue');
+        await act(async () => { fireEvent.click(submitBtn); });
+
+        // While submitting, minimize button should be absent
+        expect(document.querySelector('[data-testid="dialog-minimize-btn"]')).toBeNull();
     });
 });

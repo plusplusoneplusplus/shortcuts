@@ -3,7 +3,7 @@
  * Posts to POST /api/queue/tasks with type 'follow-prompt' for both freeform and skill-based tasks.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { Dialog, FloatingDialog, Button } from '../shared';
@@ -14,6 +14,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
+import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -45,6 +46,7 @@ export function EnqueueDialog() {
     const [skills, setSkills] = useState<SkillOption[]>([]);
     const [selectedSkill, setSelectedSkill] = useState<string>('');
     const [submitting, setSubmitting] = useState(false);
+    const [minimized, setMinimized] = useState(false);
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
 
     // Sync model from preferences when loaded
@@ -173,6 +175,38 @@ export function EnqueueDialog() {
         }
     }, [submitting, handleSubmit]);
 
+    // Reset minimized state when dialog closes externally
+    useEffect(() => {
+        if (!queueState.showDialog) setMinimized(false);
+    }, [queueState.showDialog]);
+
+    const handleMinimize = useCallback(() => setMinimized(true), []);
+    const handleRestore = useCallback(() => setMinimized(false), []);
+    const handleClose = useCallback(() => {
+        setMinimized(false);
+        queueDispatch({ type: 'CLOSE_DIALOG' });
+    }, [queueDispatch]);
+
+    // Derive pill label: truncated prompt or fallback
+    const pillPreview = prompt.trim().length > 0
+        ? (prompt.trim().length > 30 ? prompt.trim().slice(0, 30) + '…' : prompt.trim())
+        : undefined;
+
+    const minimizedEntry = useMemo(() => {
+        if (!minimized || !queueState.showDialog) return null;
+        return {
+            id: 'enqueue-task',
+            icon: '📋',
+            label: 'Enqueue Task',
+            preview: pillPreview,
+            onRestore: handleRestore,
+            onClose: handleClose,
+        };
+    }, [minimized, queueState.showDialog, pillPreview, handleRestore, handleClose]);
+    useMinimizedDialog(minimizedEntry);
+
+    if (minimized) return null;
+
     const dialogContent = (
         <div className="flex flex-col gap-3">
             <div>
@@ -274,6 +308,7 @@ export function EnqueueDialog() {
             <FloatingDialog
                 open={queueState.showDialog}
                 onClose={() => queueDispatch({ type: 'CLOSE_DIALOG' })}
+                onMinimize={submitting ? undefined : handleMinimize}
                 title="Enqueue AI Task"
                 footer={footer}
                 resizable
@@ -287,6 +322,7 @@ export function EnqueueDialog() {
         <Dialog
             open={queueState.showDialog}
             onClose={() => queueDispatch({ type: 'CLOSE_DIALOG' })}
+            onMinimize={submitting ? undefined : handleMinimize}
             title="Enqueue AI Task"
             footer={footer}
         >
