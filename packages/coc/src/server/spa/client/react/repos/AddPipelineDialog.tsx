@@ -85,7 +85,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
             const result = await generatePipeline(workspaceId, trimmed || undefined, description.trim(), controller.signal);
             setGeneratedYaml(result.yaml);
             setGeneratedValid(result.valid);
-            setGenerationErrors(result.errors || []);
+            setGenerationErrors(result.validationError ? [result.validationError] : []);
             // If user didn't provide a name, use the AI-suggested name
             if (!trimmed && result.suggestedName) {
                 setName(result.suggestedName);

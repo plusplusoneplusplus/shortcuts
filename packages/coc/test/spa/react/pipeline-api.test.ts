@@ -21,6 +21,7 @@ let savePipelineContent: typeof import('../../../src/server/spa/client/react/rep
 let createPipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').createPipeline;
 let deletePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').deletePipeline;
 let generatePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').generatePipeline;
+let refinePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').refinePipeline;
 let runPipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').runPipeline;
 
 beforeEach(async () => {
@@ -31,6 +32,7 @@ beforeEach(async () => {
     createPipeline = mod.createPipeline;
     deletePipeline = mod.deletePipeline;
     generatePipeline = mod.generatePipeline;
+    refinePipeline = mod.refinePipeline;
     runPipeline = mod.runPipeline;
 });
 
@@ -241,8 +243,8 @@ describe('generatePipeline', () => {
         expect('name' in body).toBe(false);
     });
 
-    it('returns parsed { yaml, valid, errors, suggestedName } response', async () => {
-        const response = { yaml: 'name: test\ninput:\n  type: csv', valid: true, errors: [], suggestedName: 'test' };
+    it('returns parsed { yaml, valid, validationError, suggestedName } response', async () => {
+        const response = { yaml: 'name: test\ninput:\n  type: csv', valid: true, validationError: undefined, suggestedName: 'test' };
         mockFetch.mockReturnValue(okJson(response));
         const result = await generatePipeline('ws1', 'pipe', 'do stuff');
         expect(result).toEqual(response);
@@ -285,6 +287,86 @@ describe('generatePipeline', () => {
             'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/generate',
             expect.any(Object)
         );
+    });
+});
+
+// ===========================================================================
+// refinePipeline
+// ===========================================================================
+describe('refinePipeline', () => {
+    it('sends POST to correct URL with instruction and currentYaml', async () => {
+        const response = { yaml: 'name: refined', valid: true, suggestedName: 'foo' };
+        mockFetch.mockReturnValue(okJson(response));
+        const result = await refinePipeline('ws1', 'my-pipeline', 'add logging step', 'name: original');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            'http://localhost:4000/api/workspaces/ws1/pipelines/my-pipeline/refine',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instruction: 'add logging step', currentYaml: 'name: original' }),
+                signal: undefined,
+            }
+        );
+        expect(result).toEqual(response);
+    });
+
+    it('includes model in body when provided', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
+        await refinePipeline('ws1', 'p1', 'add step', 'yaml', 'gpt-4');
+
+        const call = mockFetch.mock.calls[0];
+        const body = JSON.parse(call[1].body);
+        expect(body).toEqual({ instruction: 'add step', currentYaml: 'yaml', model: 'gpt-4' });
+    });
+
+    it('omits model from body when undefined', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
+        await refinePipeline('ws1', 'p1', 'add step', 'yaml');
+
+        const call = mockFetch.mock.calls[0];
+        const body = JSON.parse(call[1].body);
+        expect(body).toEqual({ instruction: 'add step', currentYaml: 'yaml' });
+        expect('model' in body).toBe(false);
+    });
+
+    it('passes AbortSignal to fetch when provided', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
+        const controller = new AbortController();
+        await refinePipeline('ws1', 'p1', 'add step', 'yaml', undefined, controller.signal);
+
+        const call = mockFetch.mock.calls[0];
+        expect(call[1].signal).toBe(controller.signal);
+    });
+
+    it('encodes workspace ID and pipeline name in URL', async () => {
+        mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
+        await refinePipeline('ws/special', 'my pipeline', 'add step', 'yaml');
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/my%20pipeline/refine',
+            expect.any(Object)
+        );
+    });
+
+    it('throws on non-ok response with error body', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            json: () => Promise.resolve({ error: 'AI unavailable' }),
+        }));
+        await expect(refinePipeline('ws1', 'p1', 'add step', 'yaml')).rejects.toThrow('AI unavailable');
+    });
+
+    it('throws generic message when error body is unparseable', async () => {
+        mockFetch.mockReturnValue(Promise.resolve({
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            json: () => Promise.reject(new Error('not json')),
+        }));
+        await expect(refinePipeline('ws1', 'p1', 'add step', 'yaml')).rejects.toThrow('API error: 500 Internal Server Error');
     });
 });
 

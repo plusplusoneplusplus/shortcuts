@@ -18,6 +18,10 @@ function pipelineContentUrl(workspaceId: string, name: string): string {
     return `${pipelineUrl(workspaceId, name)}/content`;
 }
 
+function pipelineRefineUrl(workspaceId: string, name: string): string {
+    return `${pipelineUrl(workspaceId, name)}/refine`;
+}
+
 export async function fetchPipelines(workspaceId: string): Promise<PipelineInfo[]> {
     const res = await fetch(pipelinesUrl(workspaceId));
     if (!res.ok) {
@@ -56,7 +60,14 @@ export async function savePipelineContent(
 export interface GenerateResult {
     yaml: string;
     valid: boolean;
-    errors?: string[];
+    validationError?: string;
+    suggestedName?: string;
+}
+
+export interface RefineResult {
+    yaml: string;
+    valid: boolean;
+    validationError?: string;
     suggestedName?: string;
 }
 
@@ -79,6 +90,31 @@ export async function generatePipeline(
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `API error: ${res.status} ${res.statusText}`);
+    }
+    return res.json();
+}
+
+export async function refinePipeline(
+    workspaceId: string,
+    pipelineName: string,
+    instruction: string,
+    currentYaml: string,
+    model?: string,
+    signal?: AbortSignal
+): Promise<RefineResult> {
+    const body: Record<string, string> = { instruction, currentYaml };
+    if (model !== undefined) {
+        body.model = model;
+    }
+    const res = await fetch(pipelineRefineUrl(workspaceId, pipelineName), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+    });
+    if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `API error: ${res.status} ${res.statusText}`);
     }
     return res.json();
 }

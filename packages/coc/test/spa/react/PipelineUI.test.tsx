@@ -809,7 +809,7 @@ describe('AddPipelineDialog', () => {
         vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
             yaml: 'name: bad',
             valid: false,
-            errors: ['Missing input', 'Invalid type'],
+            validationError: 'Missing input',
         });
         render(
             <Wrap>
@@ -826,7 +826,7 @@ describe('AddPipelineDialog', () => {
             fireEvent.click(screen.getByText('Generate Pipeline ✨'));
         });
         expect(screen.getByText('⚠️ Invalid pipeline')).toBeDefined();
-        expect(screen.getByText('Validation errors (2)')).toBeDefined();
+        expect(screen.getByText('Validation errors (1)')).toBeDefined();
     });
 
     it('"← Back" returns to input with description preserved', async () => {
