@@ -23,3 +23,17 @@ export { MemoryAggregator } from './memory-aggregator';
 export type { AggregatorOptions } from './memory-aggregator';
 export { withMemory } from './with-memory';
 export type { WithMemoryOptions } from './with-memory';
+
+// Tool call cache
+export type {
+    ToolCallFilter,
+    ToolCallQAEntry,
+    ToolCallCacheIndex,
+    ConsolidatedToolCallEntry,
+    ToolCallCacheConfig,
+    ToolCallCacheStoreOptions,
+    ToolCallCacheStats,
+    ToolCallCacheStore,
+} from './tool-call-cache-types';
+
+export { FileToolCallCacheStore } from './tool-call-cache-store';
