@@ -112,6 +112,7 @@ export interface StorageStats {
  */
 export interface ProcessFilter {
     workspaceId?: string;
+    parentProcessId?: string;
     status?: AIProcessStatus | AIProcessStatus[];
     type?: AIProcessType;
     since?: Date;

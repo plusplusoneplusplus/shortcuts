@@ -132,6 +132,9 @@ export class FileProcessStore implements ProcessStore {
         if (filter?.workspaceId) {
             indexEntries = indexEntries.filter(e => e.workspaceId === filter.workspaceId);
         }
+        if (filter?.parentProcessId) {
+            indexEntries = indexEntries.filter(e => e.parentProcessId === filter.parentProcessId);
+        }
         if (filter?.status) {
             const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
             indexEntries = indexEntries.filter(e => statuses.includes(e.status as AIProcessStatus));
@@ -228,6 +231,10 @@ export class FileProcessStore implements ProcessStore {
 
                 if (filter.workspaceId) {
                     match = ie.workspaceId === filter.workspaceId;
+                }
+
+                if (match && filter.parentProcessId) {
+                    match = ie.parentProcessId === filter.parentProcessId;
                 }
 
                 if (match && filter.status) {

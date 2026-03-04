@@ -130,6 +130,71 @@ describe('FileProcessStore', () => {
         expect(all).toHaveLength(3);
     });
 
+    // --- parentProcessId filtering ---
+    it('should filter processes by parentProcessId', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('parent1'));
+        await store.addProcess(makeProcess('child1', { parentProcessId: 'parent1' }));
+        await store.addProcess(makeProcess('unrelated'));
+
+        const children = await store.getAllProcesses({ parentProcessId: 'parent1' });
+        expect(children).toHaveLength(1);
+        expect(children[0].id).toBe('child1');
+    });
+
+    it('should return empty when filtering by nonexistent parentProcessId', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p2', { parentProcessId: 'p1' }));
+
+        const result = await store.getAllProcesses({ parentProcessId: 'nonexistent' });
+        expect(result).toEqual([]);
+    });
+
+    it('should return all processes when no parentProcessId filter is set', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('parent1'));
+        await store.addProcess(makeProcess('child1', { parentProcessId: 'parent1' }));
+        await store.addProcess(makeProcess('unrelated'));
+
+        const all = await store.getAllProcesses({});
+        expect(all).toHaveLength(3);
+    });
+
+    it('should combine parentProcessId with status filter', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('parent1'));
+        await store.addProcess(makeProcess('child1', {
+            parentProcessId: 'parent1',
+            status: 'completed' as AIProcessStatus,
+        }));
+        await store.addProcess(makeProcess('child2', {
+            parentProcessId: 'parent1',
+            status: 'running' as AIProcessStatus,
+        }));
+
+        const completedChildren = await store.getAllProcesses({
+            parentProcessId: 'parent1',
+            status: 'completed',
+        });
+        expect(completedChildren).toHaveLength(1);
+        expect(completedChildren[0].id).toBe('child1');
+    });
+
+    it('should clear only processes matching parentProcessId filter', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('parent1'));
+        await store.addProcess(makeProcess('child1', { parentProcessId: 'parent1' }));
+        await store.addProcess(makeProcess('unrelated'));
+
+        const count = await store.clearProcesses({ parentProcessId: 'parent1' });
+        expect(count).toBe(1);
+
+        const remaining = await store.getAllProcesses();
+        expect(remaining).toHaveLength(2);
+        expect(remaining.map(p => p.id).sort()).toEqual(['parent1', 'unrelated']);
+    });
+
     // --- Clear by workspace ---
     it('should clear only processes matching workspace filter', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
