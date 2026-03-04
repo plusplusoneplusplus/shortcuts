@@ -1141,4 +1141,47 @@ describe('EnqueueDialog', () => {
             expect(overlay).toBeNull();
         });
     });
+
+    it('submits on Ctrl+Enter from textarea', async () => {
+        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any;
+        render(
+            <Wrap>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'ctrl enter test' } });
+        fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+
+        await waitFor(() => {
+            expect(global.fetch).toHaveBeenCalledWith(
+                expect.stringContaining('/queue/tasks'),
+                expect.objectContaining({ method: 'POST' }),
+            );
+        });
+    });
+
+    it('does not submit on Enter without Ctrl', async () => {
+        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any;
+        render(
+            <Wrap>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        fireEvent.change(textarea, { target: { value: 'plain enter test' } });
+        fireEvent.keyDown(textarea, { key: 'Enter' });
+
+        // fetch should not have been called for /queue/tasks
+        expect(global.fetch).not.toHaveBeenCalledWith(
+            expect.stringContaining('/queue/tasks'),
+            expect.anything(),
+        );
+    });
 });

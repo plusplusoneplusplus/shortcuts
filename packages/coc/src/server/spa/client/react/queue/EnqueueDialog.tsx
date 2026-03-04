@@ -166,6 +166,13 @@ export function EnqueueDialog() {
         finally { setSubmitting(false); }
     }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages]);
 
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {
+            e.preventDefault();
+            handleSubmit();
+        }
+    }, [submitting, handleSubmit]);
+
     const dialogContent = (
         <div className="flex flex-col gap-3">
             <div>
@@ -174,6 +181,7 @@ export function EnqueueDialog() {
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
                     onPaste={submitting ? undefined : addFromPaste}
+                    onKeyDown={handleKeyDown}
                     placeholder={selectedSkill ? `Additional context for ${selectedSkill} skill (optional)` : 'Enter your prompt...'}
                     rows={4}
                     className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
@@ -254,6 +262,7 @@ export function EnqueueDialog() {
                 onClick={handleSubmit}
                 loading={submitting}
                 disabled={!selectedSkill && !prompt.trim()}
+                title="Ctrl+Enter"
             >
                 Enqueue
             </Button>
