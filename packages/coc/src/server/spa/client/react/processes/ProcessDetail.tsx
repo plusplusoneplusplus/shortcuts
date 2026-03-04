@@ -284,6 +284,18 @@ export function ProcessDetail() {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            {(metadataProcess?.metadata?.pipelineName || metadataProcess?.type === 'run-pipeline') && wsId && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    data-testid="view-workflow-btn"
+                                    onClick={() => {
+                                        location.hash = '#repos/' + encodeURIComponent(wsId) + '/workflow/' + encodeURIComponent(process.id);
+                                    }}
+                                >
+                                    View Workflow →
+                                </Button>
+                            )}
                             {resumeSessionId && (
                                 <Button
                                     variant="secondary"

@@ -132,7 +132,7 @@ describe('RepoQueueTab split-panel layout', () => {
 
         it('dispatches SELECT_QUEUE_TASK for non-chat tasks', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 1200);
             expect(callbackBlock).toContain('SELECT_QUEUE_TASK');
         });
 
@@ -239,7 +239,7 @@ describe('RepoQueueTab URL deep-link support', () => {
     describe('hash update on task selection', () => {
         it('selectTask sets location.hash with task ID', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 1200);
             expect(callbackBlock).toContain('location.hash');
             expect(callbackBlock).toContain("'#repos/'");
             expect(callbackBlock).toContain("'/queue/'");
@@ -247,19 +247,19 @@ describe('RepoQueueTab URL deep-link support', () => {
 
         it('encodes workspaceId in the hash', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 1200);
             expect(callbackBlock).toContain('encodeURIComponent(workspaceId)');
         });
 
         it('encodes task ID in the hash', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 1200);
             expect(callbackBlock).toContain('encodeURIComponent(id)');
         });
 
         it('includes workspaceId in useCallback dependency array', () => {
             const callbackIdx = source.indexOf('const selectTask = useCallback');
-            const callbackBlock = source.slice(callbackIdx, callbackIdx + 800);
+            const callbackBlock = source.slice(callbackIdx, callbackIdx + 1200);
             expect(callbackBlock).toContain('workspaceId');
         });
     });

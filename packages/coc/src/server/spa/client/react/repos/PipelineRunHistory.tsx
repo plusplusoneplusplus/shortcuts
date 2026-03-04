@@ -1,6 +1,6 @@
 /**
  * PipelineRunHistory — shows a list of past runs for the selected pipeline,
- * with status badges, timestamps, durations, and click-to-expand detail.
+ * with status badges, timestamps, durations, and click-to-navigate to workflow detail.
  * Active (running/queued) tasks appear at the top via the QueueContext.
  */
 
@@ -8,7 +8,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
-import { PipelineResultCard } from '../processes/PipelineResultCard';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
 
 export interface PipelineRunHistoryProps {
@@ -21,8 +20,6 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
     const { state: queueState } = useQueue();
     const [history, setHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-    const [selectedProcess, setSelectedProcess] = useState<any | null>(null);
 
     const fetchHistory = useCallback(async () => {
         try {
@@ -52,31 +49,9 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
             )
     );
 
-    const handleSelectTask = async (task: any) => {
-        if (selectedTaskId === task.id) {
-            setSelectedTaskId(null);
-            setSelectedProcess(null);
-            return;
-        }
-        setSelectedTaskId(task.id);
-        // Fetch process detail if processId is available
+    const handleSelectTask = (task: any) => {
         const processId = task.processId || `queue_${task.id}`;
-        try {
-            const data = await fetchApi(`/processes/${encodeURIComponent(processId)}`);
-            setSelectedProcess(data.process || data);
-        } catch {
-            // Show what we have from the task itself
-            const duration = task.startedAt && task.completedAt
-                ? new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime()
-                : undefined;
-            setSelectedProcess({
-                id: processId,
-                status: task.status,
-                result: task.result,
-                metadata: { pipelineName: task.displayName?.replace(/^Run Pipeline:\s*/, '') },
-                durationMs: duration,
-            });
-        }
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
     };
 
     const isEmpty = activeTasks.length === 0 && history.length === 0 && !loading;
@@ -103,7 +78,6 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
                     <RunHistoryItem
                         key={task.id}
                         task={task}
-                        isSelected={selectedTaskId === task.id}
                         onClick={() => handleSelectTask(task)}
                     />
                 ))}
@@ -113,18 +87,10 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
                     <RunHistoryItem
                         key={task.id}
                         task={task}
-                        isSelected={selectedTaskId === task.id}
                         onClick={() => handleSelectTask(task)}
                     />
                 ))}
             </div>
-
-            {/* Expanded result card */}
-            {selectedProcess && (
-                <div className="mt-2">
-                    <PipelineResultCard process={selectedProcess} />
-                </div>
-            )}
         </div>
     );
 }
@@ -133,11 +99,10 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
 
 interface RunHistoryItemProps {
     task: any;
-    isSelected: boolean;
     onClick: () => void;
 }
 
-function RunHistoryItem({ task, isSelected, onClick }: RunHistoryItemProps) {
+function RunHistoryItem({ task, onClick }: RunHistoryItemProps) {
     const status = task.status || 'queued';
     const icon = statusIcon(status);
     const startTime = task.startedAt || task.createdAt || task.startTime;
@@ -149,10 +114,7 @@ function RunHistoryItem({ task, isSelected, onClick }: RunHistoryItemProps) {
 
     return (
         <div
-            className={
-                'flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer text-xs hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
-                + (isSelected ? ' bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]' : '')
-            }
+            className="flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer text-xs hover:bg-[#e8e8e8] dark:hover:bg-[#333]"
             role="button"
             onClick={onClick}
             data-testid="run-history-item"

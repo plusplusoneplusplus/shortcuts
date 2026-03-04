@@ -14,6 +14,7 @@ import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format'
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { usePipelineProgress } from '../hooks/usePipelineProgress';
 
 interface RepoQueueTabProps {
     workspaceId: string;
@@ -160,6 +161,11 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             appDispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: sessionId });
             appDispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chat' as any });
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(sessionId);
+            return;
+        }
+        if (task?.type === 'run-pipeline') {
+            const processId = task.processId || task.id;
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
             return;
         }
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
@@ -616,6 +622,8 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
     const name = task.displayName || task.type || 'Task';
     const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
+    const showProgress = task.type === 'run-pipeline' && status === 'running';
+    const progress = usePipelineProgress(showProgress ? (task.processId || task.id) : null);
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());
@@ -638,6 +646,19 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
             </div>
             {promptPreview && (
                 <div className="text-[10px] text-[#848484] mt-0.5 truncate">{promptPreview}</div>
+            )}
+            {showProgress && progress && progress.total > 0 && (
+                <div className="mt-1" data-testid="pipeline-progress-indicator">
+                    <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff]">
+                        ▶ Map: {progress.completed}/{progress.total}
+                    </div>
+                    <div className="mt-0.5 h-[2px] rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] overflow-hidden">
+                        <div
+                            className="h-full rounded-full bg-[#0078d4] dark:bg-[#3794ff] transition-[width] duration-300"
+                            style={{ width: `${Math.min(100, (progress.completed / progress.total) * 100)}%` }}
+                        />
+                    </div>
+                </div>
             )}
         </Card>
     );

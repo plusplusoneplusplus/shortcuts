@@ -16,13 +16,6 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
 
-// Mock PipelineResultCard
-vi.mock('../../../src/server/spa/client/react/processes/PipelineResultCard', () => ({
-    PipelineResultCard: ({ process }: { process: any }) => (
-        <div data-testid="pipeline-result-card">{process.id}</div>
-    ),
-}));
-
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
@@ -73,14 +66,12 @@ describe('PipelineRunHistory', () => {
         });
     });
 
-    it('clicking a history item fetches and shows PipelineResultCard', async () => {
-        mockFetchApi
-            .mockResolvedValueOnce({
-                history: [
-                    { id: 't1', status: 'completed', processId: 'queue_t1' },
-                ],
-            })
-            .mockResolvedValueOnce({ process: { id: 'queue_t1', status: 'completed', result: '# Done' } });
+    it('clicking a history item navigates to workflow view', async () => {
+        mockFetchApi.mockResolvedValueOnce({
+            history: [
+                { id: 't1', status: 'completed', processId: 'proc-1' },
+            ],
+        });
 
         render(
             <Wrap>
@@ -95,9 +86,53 @@ describe('PipelineRunHistory', () => {
             fireEvent.click(screen.getByTestId('run-history-item'));
         });
 
-        await waitFor(() => {
-            expect(screen.getByTestId('pipeline-result-card')).toBeDefined();
+        expect(location.hash).toBe('#repos/ws-1/workflow/proc-1');
+    });
+
+    it('clicking a history item without processId uses queue_ prefix', async () => {
+        mockFetchApi.mockResolvedValueOnce({
+            history: [
+                { id: 't2', status: 'completed' },
+            ],
         });
+
+        render(
+            <Wrap>
+                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('run-history-item')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('run-history-item'));
+        });
+
+        expect(location.hash).toBe('#repos/ws-1/workflow/queue_t2');
+    });
+
+    it('does not render PipelineResultCard after click', async () => {
+        mockFetchApi.mockResolvedValueOnce({
+            history: [
+                { id: 't1', status: 'completed', processId: 'proc-1' },
+            ],
+        });
+
+        render(
+            <Wrap>
+                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('run-history-item')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('run-history-item'));
+        });
+
+        expect(screen.queryByTestId('pipeline-result-card')).toBeNull();
     });
 
     it('re-fetches on refreshKey change', async () => {
