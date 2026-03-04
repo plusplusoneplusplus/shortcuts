@@ -257,6 +257,24 @@ describe('CommitList', () => {
         it('attaches onMouseLeave to commit rows', () => {
             expect(source).toContain('onMouseLeave');
         });
+
+        it('guards onMouseEnter with isTouchOnly check', () => {
+            expect(source).toContain('isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)');
+        });
+
+        it('guards onMouseLeave with isTouchOnly check', () => {
+            expect(source).toContain('isTouchOnly() ? undefined : handleRowMouseLeave');
+        });
+
+        it('defines isTouchOnly helper using matchMedia hover:none', () => {
+            expect(source).toContain('isTouchOnly');
+            expect(source).toContain("window.matchMedia('(hover: none)').matches");
+        });
+
+        it('adds touchstart document listener to dismiss tooltip on hybrid devices', () => {
+            expect(source).toContain("document.addEventListener('touchstart'");
+            expect(source).toContain("document.removeEventListener('touchstart'");
+        });
     });
 
     describe('keyboard navigation', () => {

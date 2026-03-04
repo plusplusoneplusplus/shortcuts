@@ -30,6 +30,11 @@ interface FileChange {
     path: string;
 }
 
+// Returns true on touch-only devices where hover events are unreliable (iOS, Android).
+// Uses CSS `(hover: none)` which matches devices with no fine pointer (mouse/trackpad).
+const isTouchOnly = (): boolean =>
+    typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
+
 const STATUS_COLORS: Record<string, string> = {
     A: 'text-[#16825d]',
     M: 'text-[#0078d4]',
@@ -148,6 +153,20 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
         setTooltipAnchorRect(null);
     }, []);
 
+    // Dismiss tooltip on touch start (handles hybrid devices that switch from mouse to touch)
+    useEffect(() => {
+        const onTouchStart = () => {
+            if (hoverTimerRef.current) {
+                clearTimeout(hoverTimerRef.current);
+                hoverTimerRef.current = null;
+            }
+            setHoveredCommit(null);
+            setTooltipAnchorRect(null);
+        };
+        document.addEventListener('touchstart', onTouchStart, { passive: true });
+        return () => document.removeEventListener('touchstart', onTouchStart);
+    }, []);
+
     // Clean up timers on unmount
     useEffect(() => {
         return () => {
@@ -212,8 +231,8 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
                                     data-hash={commit.hash}
                                     className={`commit-row w-full flex items-start gap-2 px-3 py-2 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}`}
                                     onClick={() => handleCommitClick(commit)}
-                                    onMouseEnter={(e) => handleRowMouseEnter(commit, e)}
-                                    onMouseLeave={handleRowMouseLeave}
+                                    onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
+                                    onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
                                     onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
                                     data-testid={`commit-row-${commit.shortHash}`}
                                 >
