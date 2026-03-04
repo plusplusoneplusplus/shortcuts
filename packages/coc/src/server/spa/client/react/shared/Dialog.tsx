@@ -42,7 +42,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
         : 'fixed inset-0 z-[10002] flex items-center justify-center bg-black/40 dark:bg-black/60';
 
     const panelClass = isMobile
-        ? 'w-full h-full flex flex-col p-4 overflow-y-auto'
+        ? 'w-full h-full flex flex-col p-4 overflow-hidden'
         : cn(
             hasMaxWOverride
                 ? 'relative w-full rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4'
@@ -96,7 +96,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
                         </button>
                     </div>
                 )}
-                <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">{children}</div>
+                <div className={cn('text-sm text-[#1e1e1e] dark:text-[#cccccc]', isMobile && 'flex-1 min-h-0')}>{children}</div>
                 {footer && (
                     <div className="flex justify-end gap-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
                         {footer}

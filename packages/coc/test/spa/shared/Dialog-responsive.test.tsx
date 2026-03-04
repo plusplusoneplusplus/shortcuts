@@ -116,4 +116,43 @@ describe('Dialog responsive layout', () => {
         fireEvent.click(overlay);
         expect(onClose).toHaveBeenCalledOnce();
     });
+
+    it('mobile panel uses overflow-hidden (not overflow-y-auto) to enable flex fill', () => {
+        viewportCleanup = mockViewport(375);
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="Test">
+                <p>Content</p>
+            </Dialog>
+        );
+        const overlay = document.querySelector('[data-testid="dialog-overlay"]') as HTMLElement;
+        const panel = overlay.querySelector(':scope > div') as HTMLElement;
+        expect(panel.className).toContain('overflow-hidden');
+        expect(panel.className).not.toContain('overflow-y-auto');
+    });
+
+    it('mobile children wrapper has flex-1 min-h-0 for conversation fill', () => {
+        viewportCleanup = mockViewport(375);
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="Test">
+                <p data-testid="child-content">Content</p>
+            </Dialog>
+        );
+        const childContent = document.querySelector('[data-testid="child-content"]') as HTMLElement;
+        const wrapper = childContent.parentElement as HTMLElement;
+        expect(wrapper.className).toContain('flex-1');
+        expect(wrapper.className).toContain('min-h-0');
+    });
+
+    it('desktop children wrapper does not have flex-1 min-h-0', () => {
+        viewportCleanup = mockViewport(1280);
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="Test">
+                <p data-testid="child-content">Content</p>
+            </Dialog>
+        );
+        const childContent = document.querySelector('[data-testid="child-content"]') as HTMLElement;
+        const wrapper = childContent.parentElement as HTMLElement;
+        expect(wrapper.className).not.toContain('flex-1');
+        expect(wrapper.className).not.toContain('min-h-0');
+    });
 });

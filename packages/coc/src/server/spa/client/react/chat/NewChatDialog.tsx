@@ -430,7 +430,10 @@ export function NewChatDialog({
             </div>
             {/* Follow-up input */}
             {!sessionExpired && (
-                <div className="space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-2">
+                <div
+                    className={cn("space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-2", isMobile && "pb-14")}
+                    data-testid="new-chat-followup-wrapper"
+                >
                     {suggestions.length > 0 && !isStreaming && (
                         <SuggestionChips
                             suggestions={suggestions}
