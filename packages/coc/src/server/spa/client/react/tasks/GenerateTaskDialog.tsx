@@ -7,7 +7,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { Dialog, Button, ImageLightbox } from '../shared';
+import { Dialog, FloatingDialog, Button, ImageLightbox } from '../shared';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueueTaskGeneration } from '../hooks/useQueueTaskGeneration';
 import { usePreferences } from '../hooks/usePreferences';
 import { useImagePaste } from '../hooks/useImagePaste';
@@ -99,6 +100,9 @@ export function GenerateTaskDialog({
     onSuccess,
     onClose,
 }: GenerateTaskDialogProps) {
+    // --- breakpoint ---
+    const { isMobile } = useBreakpoint();
+
     // --- preferences (persisted model + depth + effort) ---
     const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth, effort: savedEffort, setEffort: persistEffort } = usePreferences();
     const { addToast } = useGlobalToast();
@@ -252,18 +256,8 @@ export function GenerateTaskDialog({
     }
 
     // ── full dialog ─────────────────────────────────────────────────────────
-    return (
-        <Dialog
-            open
-            id="generate-task-overlay"
-            onClose={isSubmitting ? undefined : onClose}
-            onMinimize={isSubmitting ? undefined : onMinimize}
-            disableClose={isSubmitting}
-            title="Generate Task"
-            className="max-w-[600px]"
-            footer={footer}
-        >
-            <div className="flex flex-col gap-4">
+    const dialogContent = (
+        <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-[#616161] dark:text-[#999]">Prompt</label>
                     <textarea
@@ -512,6 +506,37 @@ export function GenerateTaskDialog({
                     </div>
                 )}
             </div>
+    );
+
+    if (!isMobile) {
+        return (
+            <FloatingDialog
+                open
+                id="generate-task-overlay"
+                onClose={isSubmitting ? undefined : onClose}
+                onMinimize={isSubmitting ? undefined : onMinimize}
+                disableClose={isSubmitting}
+                title="Generate Task"
+                className="max-w-[600px]"
+                footer={footer}
+            >
+                {dialogContent}
+            </FloatingDialog>
+        );
+    }
+
+    return (
+        <Dialog
+            open
+            id="generate-task-overlay"
+            onClose={isSubmitting ? undefined : onClose}
+            onMinimize={isSubmitting ? undefined : onMinimize}
+            disableClose={isSubmitting}
+            title="Generate Task"
+            className="max-w-[600px]"
+            footer={footer}
+        >
+            {dialogContent}
         </Dialog>
     );
 }

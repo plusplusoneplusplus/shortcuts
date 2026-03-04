@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { GenerateTaskDialog, EFFORT_PRESETS } from '../../../src/server/spa/client/react/tasks/GenerateTaskDialog';
 import { useQueueTaskGeneration } from '../../../src/server/spa/client/react/hooks/useQueueTaskGeneration';
 import { usePreferences } from '../../../src/server/spa/client/react/hooks/usePreferences';
+import { mockViewport } from '../../spa/helpers/viewport-mock';
 
 // ── mock useQueueTaskGeneration ─────────────────────────────────────────────
 
@@ -1574,5 +1575,52 @@ describe('GenerateTaskDialog', () => {
         expect(props.minimized).toBe(true);
         expect(typeof props.onMinimize).toBe('function');
         expect(typeof props.onRestore).toBe('function');
+    });
+
+    // ── floating vs modal dialog layout ────────────────────────────────────
+
+    describe('desktop/mobile dialog layout', () => {
+        let viewportCleanup: (() => void) | undefined;
+
+        afterEach(() => {
+            viewportCleanup?.();
+            viewportCleanup = undefined;
+        });
+
+        it('uses FloatingDialog (no backdrop) on desktop viewport', async () => {
+            viewportCleanup = mockViewport(1280);
+            await act(async () => { renderDialog(); });
+
+            // FloatingDialog renders without an inset-0 backdrop overlay
+            expect(document.querySelector('[data-testid="dialog-overlay"]')).toBeNull();
+            expect(document.querySelector('[data-testid="floating-dialog-panel"]')).not.toBeNull();
+        });
+
+        it('uses Dialog (with backdrop) on mobile viewport', async () => {
+            viewportCleanup = mockViewport(375);
+            await act(async () => { renderDialog(); });
+
+            // Standard Dialog renders with dialog-overlay
+            expect(document.querySelector('[data-testid="dialog-overlay"]')).not.toBeNull();
+            expect(document.querySelector('[data-testid="floating-dialog-panel"]')).toBeNull();
+        });
+
+        it('FloatingDialog panel has a drag handle on desktop', async () => {
+            viewportCleanup = mockViewport(1280);
+            await act(async () => { renderDialog(); });
+
+            const handle = document.querySelector('[data-testid="floating-dialog-drag-handle"]');
+            expect(handle).not.toBeNull();
+            expect((handle as HTMLElement).className).toContain('cursor-move');
+        });
+
+        it('rest of page is accessible (no backdrop) on desktop', async () => {
+            viewportCleanup = mockViewport(1280);
+            await act(async () => { renderDialog(); });
+
+            // No fixed inset-0 overlay covering the whole screen
+            const overlay = document.querySelector('.fixed.inset-0');
+            expect(overlay).toBeNull();
+        });
     });
 });

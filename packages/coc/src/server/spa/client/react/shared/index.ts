@@ -4,6 +4,8 @@ export { Card } from './Card';
 export type { CardProps } from './Card';
 export { Dialog } from './Dialog';
 export type { DialogProps } from './Dialog';
+export { FloatingDialog } from './FloatingDialog';
+export type { FloatingDialogProps } from './FloatingDialog';
 export { Badge } from './Badge';
 export type { BadgeProps } from './Badge';
 export { Spinner } from './Spinner';
