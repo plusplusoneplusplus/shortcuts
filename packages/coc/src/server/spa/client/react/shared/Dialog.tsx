@@ -59,7 +59,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
             id={id}
             data-testid="dialog-overlay"
             className={overlayClass}
-            onClick={isMobile ? undefined : onClose}
+            onClick={isMobile ? undefined : (onMinimize ?? onClose)}
         >
             <div
                 className={isMobile ? panelClass : panelClass}

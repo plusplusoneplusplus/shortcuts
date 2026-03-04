@@ -118,6 +118,20 @@ describe('Dialog', () => {
         expect(onMinimize).toHaveBeenCalledOnce();
     });
 
+    it('clicking backdrop calls onMinimize instead of onClose when onMinimize is provided', () => {
+        const onClose = vi.fn();
+        const onMinimize = vi.fn();
+        render(
+            <Dialog open={true} onClose={onClose} onMinimize={onMinimize} title="Test">
+                Content
+            </Dialog>
+        );
+        const backdrop = document.querySelector('.fixed.inset-0') as HTMLElement;
+        fireEvent.click(backdrop);
+        expect(onMinimize).toHaveBeenCalledOnce();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('Escape calls onMinimize instead of onClose when onMinimize is provided', () => {
         const onClose = vi.fn();
         const onMinimize = vi.fn();
