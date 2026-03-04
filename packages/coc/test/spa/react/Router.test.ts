@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -114,12 +114,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(true);
     });
 
+    it('includes "workflow"', () => {
+        expect(VALID_REPO_SUB_TABS.has('workflow')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 9 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(9);
+    it('has exactly 10 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(10);
     });
 });
 
@@ -1313,5 +1317,132 @@ describe('handleHash wiki deep-link dispatch simulation (repos context)', () => 
     it('dispatches SET_REPO_SUB_TAB wiki alongside wiki deep-link', () => {
         const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki');
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+    });
+});
+
+// ─── parseWorkflowDeepLink ──────────────────────────────────────
+
+describe('parseWorkflowDeepLink', () => {
+    it('parses #repos/my-repo/workflow/proc-1', () => {
+        const result = parseWorkflowDeepLink('#repos/my-repo/workflow/proc-1');
+        expect(result).toEqual({ repoId: 'my-repo', processId: 'proc-1' });
+    });
+
+    it('URL-decodes both repoId and processId', () => {
+        const result = parseWorkflowDeepLink('#repos/my%20repo/workflow/proc%2F1');
+        expect(result).toEqual({ repoId: 'my repo', processId: 'proc/1' });
+    });
+
+    it('returns null when processId is missing', () => {
+        expect(parseWorkflowDeepLink('#repos/my-repo/workflow')).toBeNull();
+    });
+
+    it('returns null for non-workflow sub-tab', () => {
+        expect(parseWorkflowDeepLink('#repos/my-repo/pipelines/pipe1')).toBeNull();
+    });
+
+    it('returns null for non-repo hash', () => {
+        expect(parseWorkflowDeepLink('#wiki/something')).toBeNull();
+    });
+
+    it('returns null for empty hash', () => {
+        expect(parseWorkflowDeepLink('#')).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        expect(parseWorkflowDeepLink('')).toBeNull();
+    });
+
+    it('handles URL-encoded repo ID', () => {
+        const result = parseWorkflowDeepLink('#repos/my%20repo/workflow/proc-1');
+        expect(result?.repoId).toBe('my repo');
+        expect(result?.processId).toBe('proc-1');
+    });
+
+    it('returns null from bare #repos', () => {
+        expect(parseWorkflowDeepLink('#repos')).toBeNull();
+    });
+
+    it('returns null from #repos/ws-abc with no sub-tab', () => {
+        expect(parseWorkflowDeepLink('#repos/ws-abc')).toBeNull();
+    });
+
+    it('returns null from #processes/some-id', () => {
+        expect(parseWorkflowDeepLink('#processes/some-id')).toBeNull();
+    });
+});
+
+// ─── workflow deep-link integration ─────────────────────────────
+
+describe('workflow deep-link integration', () => {
+    it('tabFromHash returns "repos" for #repos/ws-abc/workflow/proc-1', () => {
+        expect(tabFromHash('#repos/ws-abc/workflow/proc-1')).toBe('repos');
+    });
+
+    it('parseWorkflowDeepLink and tabFromHash compose correctly for a workflow deep link', () => {
+        const hash = '#repos/ws-abc/workflow/proc-1';
+        expect(tabFromHash(hash)).toBe('repos');
+        const result = parseWorkflowDeepLink(hash);
+        expect(result?.repoId).toBe('ws-abc');
+        expect(result?.processId).toBe('proc-1');
+    });
+});
+
+// ─── handleHash workflow dispatch simulation ────────────────────
+
+describe('handleHash workflow dispatch simulation', () => {
+    function simulateWorkflowHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+                // Workflow deep-link handling (mirrors Router.tsx)
+                if (parts[2] === 'workflow' && parts[3]) {
+                    dispatches.push({ type: 'SET_WORKFLOW_PROCESS', processId: decodeURIComponent(parts[3]) });
+                } else if (parts[2] === 'workflow') {
+                    dispatches.push({ type: 'SET_WORKFLOW_PROCESS', processId: null });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SET_WORKFLOW_PROCESS with processId for #repos/r1/workflow/proc-1', () => {
+        const dispatches = simulateWorkflowHash('#repos/r1/workflow/proc-1');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'workflow' });
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_PROCESS', processId: 'proc-1' });
+    });
+
+    it('dispatches SET_WORKFLOW_PROCESS with null for #repos/r1/workflow (no processId)', () => {
+        const dispatches = simulateWorkflowHash('#repos/r1/workflow');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'workflow' });
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_PROCESS', processId: null });
+    });
+
+    it('does not dispatch SET_WORKFLOW_PROCESS for #repos/r1/pipelines', () => {
+        const dispatches = simulateWorkflowHash('#repos/r1/pipelines');
+        expect(dispatches.find(d => d.type === 'SET_WORKFLOW_PROCESS')).toBeUndefined();
+    });
+
+    it('does not dispatch SET_WORKFLOW_PROCESS for #repos/r1 (no sub-tab)', () => {
+        const dispatches = simulateWorkflowHash('#repos/r1');
+        expect(dispatches.find(d => d.type === 'SET_WORKFLOW_PROCESS')).toBeUndefined();
+    });
+
+    it('URL-decodes the processId in dispatch', () => {
+        const dispatches = simulateWorkflowHash('#repos/r1/workflow/proc%2Fone');
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_PROCESS', processId: 'proc/one' });
+    });
+
+    it('dispatches SET_SELECTED_REPO alongside workflow process selection', () => {
+        const dispatches = simulateWorkflowHash('#repos/r1/workflow/proc-1');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_PROCESS', processId: 'proc-1' });
     });
 });

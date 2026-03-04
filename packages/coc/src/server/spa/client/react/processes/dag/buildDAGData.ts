@@ -119,6 +119,7 @@ export function buildDAGData(process: any): DAGChartData | null {
         };
 
         if (phase === 'map' && stats) {
+            node.expandable = true;
             if (stats.totalItems != null) node.totalItems = stats.totalItems;
             if (stats.successfulMaps != null) {
                 node.itemCount = stats.successfulMaps;
@@ -207,6 +208,10 @@ export function buildDAGDataFromLive(
         }
         if (liveEntry?.startedAt != null) {
             node.startedAt = liveEntry.startedAt;
+        }
+
+        if (phase === 'map') {
+            node.expandable = true;
         }
 
         // Map progress data onto the running map/job node

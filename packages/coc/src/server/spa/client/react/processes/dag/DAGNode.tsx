@@ -21,9 +21,13 @@ export interface DAGNodeProps {
     validationErrors?: string[];
     /** Pipeline total duration, for computing proportional border */
     totalDurationMs?: number;
+    /** Whether this node supports expand/collapse (shows chevron indicator). */
+    expandable?: boolean;
+    /** Whether this node is currently expanded. */
+    expanded?: boolean;
 }
 
-export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeave, elapsedMs, selected, parallelCount, validationErrors, totalDurationMs }: DAGNodeProps) {
+export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeave, elapsedMs, selected, parallelCount, validationErrors, totalDurationMs, expandable, expanded }: DAGNodeProps) {
     const colors = getNodeColors(node.state, isDark);
     const icon = getNodeIcon(node.state);
     const hasClick = typeof onClick === 'function';
@@ -178,6 +182,30 @@ export function DAGNode({ node, x, y, isDark, onClick, onMouseEnter, onMouseLeav
                     y={y}
                     errors={validationErrors}
                     isDark={isDark}
+                />
+            )}
+            {expandable && (
+                <text
+                    data-testid={`dag-expand-${node.phase}`}
+                    x={x + 110}
+                    y={y + 64}
+                    textAnchor="middle"
+                    fill={colors.text}
+                    fontSize={10}
+                    fontFamily="system-ui, sans-serif"
+                    style={{ cursor: 'pointer' }}
+                >
+                    {expanded ? '▴' : '▾'}
+                </text>
+            )}
+            {expandable && (
+                <line
+                    x1={x + 20} y1={y + 70}
+                    x2={x + 100} y2={y + 70}
+                    stroke={colors.border}
+                    strokeWidth={1}
+                    strokeDasharray="3 2"
+                    opacity={0.5}
                 />
             )}
             {node.state === 'completed' && node.durationMs != null && (

@@ -33,6 +33,10 @@ export interface PipelineDAGChartProps {
     validationErrors?: string[];
     /** When true, enables preview-mode behaviors: auto-fit on mount, unmapped errors on first node only, no legend (rendered externally). */
     previewMode?: boolean;
+    /** Callback when the map node expand/collapse is toggled. */
+    onMapNodeExpand?: (expanded: boolean) => void;
+    /** Whether the map node is currently expanded (controlled from parent). */
+    mapExpanded?: boolean;
 }
 
 const NODE_W = 120;
@@ -47,7 +51,7 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors, previewMode }: PipelineDAGChartProps) {
+export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors, previewMode, onMapNodeExpand, mapExpanded }: PipelineDAGChartProps) {
     const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
     const [hoveredPhase, setHoveredPhase] = useState<PipelinePhase | null>(null);
     const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
@@ -64,6 +68,11 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
         setHoveredPhase(null);
         setHoverAnchor(null);
         if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
+        // Toggle map node expansion
+        const clickedNode = data.nodes.find(n => n.phase === phase);
+        if (clickedNode?.expandable && onMapNodeExpand) {
+            onMapNodeExpand(!mapExpanded);
+        }
         onNodeClick?.(phase);
     };
 
@@ -223,6 +232,8 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
                         parallelCount={node.phase === 'map' ? parallelCount : undefined}
                         validationErrors={phaseErrors ? getNodeErrors(phaseErrors, node.phase, previewMode ? { previewMode: true, firstPhase: data.nodes[0]?.phase } : undefined) : undefined}
                         totalDurationMs={data.totalDurationMs}
+                        expandable={node.expandable}
+                        expanded={node.expandable ? mapExpanded : undefined}
                     />
                 );
             })}

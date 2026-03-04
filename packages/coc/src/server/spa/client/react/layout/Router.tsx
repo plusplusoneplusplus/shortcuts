@@ -111,7 +111,19 @@ export function parseGitCommitDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot']);
+export function parseWorkflowDeepLink(hash: string): { repoId: string; processId: string } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'workflow' && parts[3]) {
+        return {
+            repoId: decodeURIComponent(parts[1]),
+            processId: decodeURIComponent(parts[3]),
+        };
+    }
+    return null;
+}
+
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot', 'workflow']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -214,6 +226,12 @@ export function Router() {
                         }
                     } else if (parts[2] === 'wiki') {
                         dispatch({ type: 'SET_REPO_WIKI_ID', wikiId: null });
+                    }
+                    // Workflow detail deep-link: #repos/{id}/workflow/{processId}
+                    if (parts[2] === 'workflow' && parts[3]) {
+                        dispatch({ type: 'SET_WORKFLOW_PROCESS', processId: decodeURIComponent(parts[3]) });
+                    } else if (parts[2] === 'workflow') {
+                        dispatch({ type: 'SET_WORKFLOW_PROCESS', processId: null });
                     }
                 }
             }

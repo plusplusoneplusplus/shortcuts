@@ -31,6 +31,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wsStatus: 'closed',
         selectedGitCommitHash: null,
         selectedRepoWikiId: null,
+        selectedWorkflowProcessId: null,
         repoWikiInitialTab: null,
         repoWikiInitialAdminTab: null,
         repoWikiInitialComponentId: null,
@@ -704,6 +705,26 @@ describe('AppContext reducer', () => {
             expect(result.repoWikiInitialTab).toBeNull();
             expect(result.repoWikiInitialAdminTab).toBeNull();
             expect(result.repoWikiInitialComponentId).toBeNull();
+        });
+    });
+
+    // ── SET_WORKFLOW_PROCESS ──────────────────────────────────────
+    describe('SET_WORKFLOW_PROCESS', () => {
+        it('sets selectedWorkflowProcessId to the given processId', () => {
+            const result = appReducer(makeState(), { type: 'SET_WORKFLOW_PROCESS', processId: 'proc-1' });
+            expect(result.selectedWorkflowProcessId).toBe('proc-1');
+        });
+
+        it('clears selectedWorkflowProcessId when null', () => {
+            const state = makeState({ selectedWorkflowProcessId: 'proc-1' });
+            const result = appReducer(state, { type: 'SET_WORKFLOW_PROCESS', processId: null });
+            expect(result.selectedWorkflowProcessId).toBeNull();
+        });
+
+        it('replaces existing selectedWorkflowProcessId', () => {
+            const state = makeState({ selectedWorkflowProcessId: 'proc-1' });
+            const result = appReducer(state, { type: 'SET_WORKFLOW_PROCESS', processId: 'proc-2' });
+            expect(result.selectedWorkflowProcessId).toBe('proc-2');
         });
     });
 });

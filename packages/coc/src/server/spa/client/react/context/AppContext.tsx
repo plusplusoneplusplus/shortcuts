@@ -48,6 +48,7 @@ export interface AppContextState {
     selectedPipelineName: string | null;
     selectedChatSessionId: string | null;
     selectedGitCommitHash: string | null;
+    selectedWorkflowProcessId: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
 }
@@ -78,6 +79,7 @@ const initialState: AppContextState = {
     selectedPipelineName: null,
     selectedChatSessionId: null,
     selectedGitCommitHash: null,
+    selectedWorkflowProcessId: null,
     conversationCache: {},
     wsStatus: 'closed',
 };
@@ -124,6 +126,7 @@ export type AppAction =
     | { type: 'SET_SELECTED_PIPELINE'; name: string | null }
     | { type: 'SET_SELECTED_CHAT_SESSION'; id: string | null }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
+    | { type: 'SET_WORKFLOW_PROCESS'; processId: string | null }
     | { type: 'SET_WS_STATUS'; status: WsStatus }
     | { type: 'SET_REPO_WIKI_ID'; wikiId: string | null }
     | { type: 'SET_REPO_WIKI_DEEP_LINK'; wikiId: string; tab?: WikiProjectTab | null; adminTab?: WikiAdminTab | null; componentId?: string | null }
@@ -287,6 +290,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedChatSessionId: action.id };
         case 'SET_GIT_COMMIT_HASH':
             return { ...state, selectedGitCommitHash: action.hash };
+        case 'SET_WORKFLOW_PROCESS':
+            return { ...state, selectedWorkflowProcessId: action.processId };
         case 'SET_WS_STATUS':
             return state.wsStatus === action.status ? state : { ...state, wsStatus: action.status };
         case 'SET_REPO_WIKI_ID':
