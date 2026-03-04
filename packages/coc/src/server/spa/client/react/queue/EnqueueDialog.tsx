@@ -6,10 +6,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { Dialog, Button } from '../shared';
+import { Dialog, FloatingDialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { usePreferences } from '../hooks/usePreferences';
 import { useImagePaste } from '../hooks/useImagePaste';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
@@ -33,6 +34,7 @@ function flattenFolders(node: any, depth = 0): FolderOption[] {
 export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
+    const { isMobile } = useBreakpoint();
     const { model: savedModel, setModel: persistModel, skill: savedSkill, setSkill: persistSkill } = usePreferences();
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
@@ -164,102 +166,122 @@ export function EnqueueDialog() {
         finally { setSubmitting(false); }
     }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages]);
 
+    const dialogContent = (
+        <div className="flex flex-col gap-3">
+            <div>
+                <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
+                <textarea
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    onPaste={submitting ? undefined : addFromPaste}
+                    placeholder={selectedSkill ? `Additional context for ${selectedSkill} skill (optional)` : 'Enter your prompt...'}
+                    rows={4}
+                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
+                />
+                <ImagePreviews images={images} onRemove={removeImage} showHint />
+            </div>
+            {workspaceId && skills.length > 0 && (
+                <div>
+                    <label className="block text-xs font-medium text-[#848484] mb-1">Skill (optional)</label>
+                    <select
+                        value={selectedSkill}
+                        onChange={e => handleSkillChange(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                        data-testid="skill-select"
+                    >
+                        <option value="">None</option>
+                        {skills.map(s => (
+                            <option key={s.name} value={s.name}>
+                                ⚡ {s.name}{s.description ? ` — ${s.description}` : ''}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
+            <div>
+                <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>
+                <select
+                    value={model}
+                    onChange={e => handleModelChange(e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                >
+                    <option value="">Default</option>
+                    {models.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                    ))}
+                </select>
+            </div>
+            {appState.workspaces.length > 0 && (
+                <div>
+                    <label className="block text-xs font-medium text-[#848484] mb-1">Workspace</label>
+                    <select
+                        value={workspaceId}
+                        onChange={e => setWorkspaceId(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                    >
+                        <option value="">None</option>
+                        {appState.workspaces.map((ws: any) => (
+                            <option key={ws.id} value={ws.id}>{ws.name || ws.path || ws.id}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+            {workspaceId && folders.length > 0 && (
+                <div>
+                    <label className="block text-xs font-medium text-[#848484] mb-1">Folder</label>
+                    <select
+                        value={folderPath}
+                        onChange={e => setFolderPath(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                        data-testid="folder-select"
+                    >
+                        {folders.map(f => (
+                            <option key={f.value} value={f.value}>{f.label}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+        </div>
+    );
+
+    const footer = (
+        <>
+            <Button variant="secondary" onClick={() => queueDispatch({ type: 'CLOSE_DIALOG' })}>
+                Cancel
+            </Button>
+            <Button
+                variant="primary"
+                onClick={handleSubmit}
+                loading={submitting}
+                disabled={!selectedSkill && !prompt.trim()}
+            >
+                Enqueue
+            </Button>
+        </>
+    );
+
+    if (!isMobile) {
+        return (
+            <FloatingDialog
+                open={queueState.showDialog}
+                onClose={() => queueDispatch({ type: 'CLOSE_DIALOG' })}
+                title="Enqueue AI Task"
+                footer={footer}
+                resizable
+            >
+                {dialogContent}
+            </FloatingDialog>
+        );
+    }
+
     return (
         <Dialog
             open={queueState.showDialog}
             onClose={() => queueDispatch({ type: 'CLOSE_DIALOG' })}
             title="Enqueue AI Task"
-            footer={
-                <>
-                    <Button variant="secondary" onClick={() => queueDispatch({ type: 'CLOSE_DIALOG' })}>
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="primary"
-                        onClick={handleSubmit}
-                        loading={submitting}
-                        disabled={!selectedSkill && !prompt.trim()}
-                    >
-                        Enqueue
-                    </Button>
-                </>
-            }
+            footer={footer}
         >
-            <div className="flex flex-col gap-3">
-                <div>
-                    <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
-                    <textarea
-                        value={prompt}
-                        onChange={e => setPrompt(e.target.value)}
-                        onPaste={submitting ? undefined : addFromPaste}
-                        placeholder={selectedSkill ? `Additional context for ${selectedSkill} skill (optional)` : 'Enter your prompt...'}
-                        rows={4}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
-                    />
-                    <ImagePreviews images={images} onRemove={removeImage} showHint />
-                </div>
-                {workspaceId && skills.length > 0 && (
-                    <div>
-                        <label className="block text-xs font-medium text-[#848484] mb-1">Skill (optional)</label>
-                        <select
-                            value={selectedSkill}
-                            onChange={e => handleSkillChange(e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                            data-testid="skill-select"
-                        >
-                            <option value="">None</option>
-                            {skills.map(s => (
-                                <option key={s.name} value={s.name}>
-                                    ⚡ {s.name}{s.description ? ` — ${s.description}` : ''}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-                <div>
-                    <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>
-                    <select
-                        value={model}
-                        onChange={e => handleModelChange(e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                    >
-                        <option value="">Default</option>
-                        {models.map(m => (
-                            <option key={m} value={m}>{m}</option>
-                        ))}
-                    </select>
-                </div>
-                {appState.workspaces.length > 0 && (
-                    <div>
-                        <label className="block text-xs font-medium text-[#848484] mb-1">Workspace</label>
-                        <select
-                            value={workspaceId}
-                            onChange={e => setWorkspaceId(e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                        >
-                            <option value="">None</option>
-                            {appState.workspaces.map((ws: any) => (
-                                <option key={ws.id} value={ws.id}>{ws.name || ws.path || ws.id}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-                {workspaceId && folders.length > 0 && (
-                    <div>
-                        <label className="block text-xs font-medium text-[#848484] mb-1">Folder</label>
-                        <select
-                            value={folderPath}
-                            onChange={e => setFolderPath(e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                            data-testid="folder-select"
-                        >
-                            {folders.map(f => (
-                                <option key={f.value} value={f.value}>{f.label}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-            </div>
+            {dialogContent}
         </Dialog>
     );
 }

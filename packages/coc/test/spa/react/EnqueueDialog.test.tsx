@@ -8,6 +8,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
+import { mockViewport } from '../../spa/helpers/viewport-mock';
 
 // Re-export flattenFolders for unit testing by extracting it
 // Since flattenFolders is module-local, we replicate the logic here for unit tests
@@ -1068,5 +1069,76 @@ describe('EnqueueDialog', () => {
         // Should remain on "None" since the saved skill doesn't exist
         const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
         expect(skillSelect.value).toBe('');
+    });
+
+    // ── floating vs modal dialog layout ────────────────────────────────────
+
+    describe('desktop/mobile dialog layout', () => {
+        let viewportCleanup: (() => void) | undefined;
+
+        afterEach(() => {
+            viewportCleanup?.();
+            viewportCleanup = undefined;
+        });
+
+        it('uses FloatingDialog (no backdrop) on desktop viewport', async () => {
+            viewportCleanup = mockViewport(1280);
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>,
+            );
+            await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+            // FloatingDialog renders without an inset-0 backdrop overlay
+            expect(document.querySelector('[data-testid="dialog-overlay"]')).toBeNull();
+            expect(document.querySelector('[data-testid="floating-dialog-panel"]')).not.toBeNull();
+        });
+
+        it('uses Dialog (with backdrop) on mobile viewport', async () => {
+            viewportCleanup = mockViewport(375);
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>,
+            );
+            await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+            // Standard Dialog renders with dialog-overlay
+            expect(document.querySelector('[data-testid="dialog-overlay"]')).not.toBeNull();
+            expect(document.querySelector('[data-testid="floating-dialog-panel"]')).toBeNull();
+        });
+
+        it('FloatingDialog panel has a drag handle on desktop', async () => {
+            viewportCleanup = mockViewport(1280);
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>,
+            );
+            await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+            const handle = document.querySelector('[data-testid="floating-dialog-drag-handle"]');
+            expect(handle).not.toBeNull();
+            expect((handle as HTMLElement).className).toContain('cursor-move');
+        });
+
+        it('rest of page is accessible (no backdrop) on desktop', async () => {
+            viewportCleanup = mockViewport(1280);
+            render(
+                <Wrap>
+                    <DialogOpener />
+                    <EnqueueDialog />
+                </Wrap>,
+            );
+            await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+            // No fixed inset-0 overlay covering the whole screen
+            const overlay = document.querySelector('.fixed.inset-0');
+            expect(overlay).toBeNull();
+        });
     });
 });
