@@ -226,95 +226,19 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
 
                     {/* Expanded detail */}
                     {expandedId === schedule.id && (
-                        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2.5">
-                            {editingId === schedule.id ? (
-                                <CreateScheduleForm
-                                    workspaceId={workspaceId}
-                                    mode="edit"
-                                    scheduleId={schedule.id}
-                                    initialValues={{
-                                        name: schedule.name,
-                                        target: schedule.target,
-                                        targetType: schedule.targetType,
-                                        cron: schedule.cron,
-                                        params: { ...schedule.params },
-                                        onFailure: schedule.onFailure,
-                                    }}
-                                    onCreated={() => { setEditingId(null); fetchSchedules(); }}
-                                    onCancel={() => setEditingId(null)}
-                                />
-                            ) : (
-                                <>
-                                    {/* Actions */}
-                                    <div className="flex gap-1.5 mb-2.5">
-                                        <Button variant="primary" size="sm" onClick={() => handleRunNow(schedule.id)}>Run Now</Button>
-                                        <Button variant="secondary" size="sm" onClick={() => handlePauseResume(schedule)}>
-                                            {schedule.status === 'active' ? 'Pause' : 'Resume'}
-                                        </Button>
-                                        <Button variant="secondary" size="sm" disabled={schedule.isRunning} onClick={() => setEditingId(schedule.id)} data-testid="edit-btn">Edit</Button>
-                                        <Button variant="secondary" size="sm" onClick={() => { setDuplicateValues(schedule); setShowCreate(true); setExpandedId(null); }} data-testid="duplicate-btn">Duplicate</Button>
-                                        <Button variant="danger" size="sm" onClick={() => handleDelete(schedule.id)}>Delete</Button>
-                                    </div>
-
-                                    {/* Details */}
-                                    <div className="text-xs text-[#616161] dark:text-[#999] space-y-1 mb-2.5">
-                                        <div><span className="font-medium">Target:</span> {schedule.target}</div>
-                                        <div><span className="font-medium">Schedule:</span> {schedule.cron} · {schedule.cronDescription}</div>
-                                        {Object.keys(schedule.params).length > 0 && (
-                                            <div><span className="font-medium">Params:</span> {JSON.stringify(schedule.params)}</div>
-                                        )}
-                                        <div><span className="font-medium">On Failure:</span> {schedule.onFailure}</div>
-                                    </div>
-                                </>
-                            )}
-
-                            {/* Run History */}
-                            {history.length > 0 && (
-                                <div>
-                                    <div className="text-[10px] uppercase text-[#848484] font-medium mb-1">Run History</div>
-                                    <div className="flex flex-col gap-0.5">
-                                        {history.map(run => (
-                                            <div key={run.id} className="text-[10px] text-[#616161] dark:text-[#999] py-0.5">
-                                                <div className="flex items-center gap-2">
-                                                    <span>
-                                                        {run.status === 'completed' ? '✔' : run.status === 'failed' ? '✖' : run.status === 'running' ? '🔄' : '⚠'}
-                                                    </span>
-                                                    <span className="flex-1">{formatRelativeTime(run.startedAt)}</span>
-                                                    {run.durationMs != null && (
-                                                        <span>{Math.round(run.durationMs / 1000)}s</span>
-                                                    )}
-                                                    {run.exitCode != null && (
-                                                        <span className={run.exitCode === 0 ? 'text-green-600' : 'text-red-500'}>
-                                                            Exit: {run.exitCode}
-                                                        </span>
-                                                    )}
-                                                    <span className={cn(
-                                                        run.status === 'completed' ? 'text-green-600' :
-                                                        run.status === 'failed' ? 'text-red-500' : ''
-                                                    )}>
-                                                        {run.status}
-                                                    </span>
-                                                </div>
-                                                {(run.stdout || run.stderr) && (
-                                                    <details className="mt-0.5 ml-4">
-                                                        <summary className="cursor-pointer text-[#0078d4] hover:underline select-none">
-                                                            output
-                                                        </summary>
-                                                        <div className="mt-0.5 p-1.5 rounded bg-[#f3f3f3] dark:bg-[#1e1e1e] font-mono text-[9px] whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
-                                                            {run.stdout && <div>{run.stdout}</div>}
-                                                            {run.stderr && <div className="text-red-400">{run.stderr}</div>}
-                                                        </div>
-                                                    </details>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {history.length === 0 && (
-                                <div className="text-[10px] text-[#848484]">No runs yet</div>
-                            )}
-                        </div>
+                        <ScheduleDetail
+                            schedule={schedule}
+                            workspaceId={workspaceId}
+                            history={history}
+                            editingId={editingId}
+                            onRunNow={handleRunNow}
+                            onPauseResume={handlePauseResume}
+                            onEdit={(id) => setEditingId(id)}
+                            onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); setExpandedId(null); }}
+                            onDelete={handleDelete}
+                            onCancelEdit={() => setEditingId(null)}
+                            onSaved={() => { setEditingId(null); fetchSchedules(); }}
+                        />
                     )}
                 </Card>
             ))}
@@ -330,6 +254,114 @@ function StatusDot({ status, isRunning }: { status: string; isRunning: boolean }
         case 'stopped': return <span title="Stopped">🔴</span>;
         default: return <span>⚪</span>;
     }
+}
+
+export interface ScheduleDetailProps {
+    schedule: Schedule;
+    workspaceId: string;
+    history: RunRecord[];
+    editingId: string | null;
+    onRunNow: (scheduleId: string) => void;
+    onPauseResume: (schedule: Schedule) => void;
+    onEdit: (scheduleId: string) => void;
+    onDuplicate: (schedule: Schedule) => void;
+    onDelete: (scheduleId: string) => void;
+    onCancelEdit: () => void;
+    onSaved: () => void;
+}
+
+export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved }: ScheduleDetailProps) {
+    return (
+        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2.5">
+            {editingId === schedule.id ? (
+                <CreateScheduleForm
+                    workspaceId={workspaceId}
+                    mode="edit"
+                    scheduleId={schedule.id}
+                    initialValues={{
+                        name: schedule.name,
+                        target: schedule.target,
+                        targetType: schedule.targetType,
+                        cron: schedule.cron,
+                        params: { ...schedule.params },
+                        onFailure: schedule.onFailure,
+                    }}
+                    onCreated={onSaved}
+                    onCancel={onCancelEdit}
+                />
+            ) : (
+                <>
+                    {/* Actions */}
+                    <div className="flex gap-1.5 mb-2.5">
+                        <Button variant="primary" size="sm" onClick={() => onRunNow(schedule.id)}>Run Now</Button>
+                        <Button variant="secondary" size="sm" onClick={() => onPauseResume(schedule)}>
+                            {schedule.status === 'active' ? 'Pause' : 'Resume'}
+                        </Button>
+                        <Button variant="secondary" size="sm" disabled={schedule.isRunning} onClick={() => onEdit(schedule.id)} data-testid="edit-btn">Edit</Button>
+                        <Button variant="secondary" size="sm" onClick={() => onDuplicate(schedule)} data-testid="duplicate-btn">Duplicate</Button>
+                        <Button variant="danger" size="sm" onClick={() => onDelete(schedule.id)}>Delete</Button>
+                    </div>
+
+                    {/* Details */}
+                    <div className="text-xs text-[#616161] dark:text-[#999] space-y-1 mb-2.5">
+                        <div><span className="font-medium">Target:</span> {schedule.target}</div>
+                        <div><span className="font-medium">Schedule:</span> {schedule.cron} · {schedule.cronDescription}</div>
+                        {Object.keys(schedule.params).length > 0 && (
+                            <div><span className="font-medium">Params:</span> {JSON.stringify(schedule.params)}</div>
+                        )}
+                        <div><span className="font-medium">On Failure:</span> {schedule.onFailure}</div>
+                    </div>
+                </>
+            )}
+
+            {/* Run History */}
+            {history.length > 0 && (
+                <div>
+                    <div className="text-[10px] uppercase text-[#848484] font-medium mb-1">Run History</div>
+                    <div className="flex flex-col gap-0.5">
+                        {history.map(run => (
+                            <div key={run.id} className="text-[10px] text-[#616161] dark:text-[#999] py-0.5">
+                                <div className="flex items-center gap-2">
+                                    <span>
+                                        {run.status === 'completed' ? '✔' : run.status === 'failed' ? '✖' : run.status === 'running' ? '🔄' : '⚠'}
+                                    </span>
+                                    <span className="flex-1">{formatRelativeTime(run.startedAt)}</span>
+                                    {run.durationMs != null && (
+                                        <span>{Math.round(run.durationMs / 1000)}s</span>
+                                    )}
+                                    {run.exitCode != null && (
+                                        <span className={run.exitCode === 0 ? 'text-green-600' : 'text-red-500'}>
+                                            Exit: {run.exitCode}
+                                        </span>
+                                    )}
+                                    <span className={cn(
+                                        run.status === 'completed' ? 'text-green-600' :
+                                        run.status === 'failed' ? 'text-red-500' : ''
+                                    )}>
+                                        {run.status}
+                                    </span>
+                                </div>
+                                {(run.stdout || run.stderr) && (
+                                    <details className="mt-0.5 ml-4">
+                                        <summary className="cursor-pointer text-[#0078d4] hover:underline select-none">
+                                            output
+                                        </summary>
+                                        <div className="mt-0.5 p-1.5 rounded bg-[#f3f3f3] dark:bg-[#1e1e1e] font-mono text-[9px] whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                                            {run.stdout && <div>{run.stdout}</div>}
+                                            {run.stderr && <div className="text-red-400">{run.stderr}</div>}
+                                        </div>
+                                    </details>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {history.length === 0 && (
+                <div className="text-[10px] text-[#848484]">No runs yet</div>
+            )}
+        </div>
+    );
 }
 
 interface ScheduleTemplateParam {
