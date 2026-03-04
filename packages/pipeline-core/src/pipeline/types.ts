@@ -8,6 +8,7 @@
  */
 
 import type { OutputFormat as MROutputFormat, PromptItem as MRPromptItem } from '../map-reduce/jobs/prompt-map-job';
+import type { ToolCallCacheConfig } from '../memory/tool-call-cache-types';
 
 // Re-export execution types from map-reduce framework
 export type {
@@ -76,6 +77,8 @@ export interface PipelineConfig {
     job?: JobConfig;
     /** Top-level parameters available for template substitution in job mode */
     parameters?: PipelineParameter[];
+    /** Optional tool call cache configuration for capturing explore-like tool calls */
+    toolCallCache?: ToolCallCacheConfig;
 }
 
 /**
