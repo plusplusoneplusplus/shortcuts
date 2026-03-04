@@ -10,6 +10,30 @@ import { formatRelativeTime } from '../utils/format';
 import { fetchPipelines } from './pipeline-api';
 import type { PipelineInfo } from './repoGrouping';
 
+/** Try to reverse-parse a cron expression into a simple interval. */
+export function parseCronToInterval(cron: string): { mode: 'interval'; value: string; unit: string } | { mode: 'cron' } {
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length !== 5) return { mode: 'cron' };
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+    const minMatch = minute.match(/^\*\/(\d+)$/);
+    if (minMatch && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+        return { mode: 'interval', value: minMatch[1], unit: 'minutes' };
+    }
+
+    const hrMatch = hour.match(/^\*\/(\d+)$/);
+    if (minute === '0' && hrMatch && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+        return { mode: 'interval', value: hrMatch[1], unit: 'hours' };
+    }
+
+    const dayMatch = dayOfMonth.match(/^\*\/(\d+)$/);
+    if (minute === '0' && hour === '0' && dayMatch && month === '*' && dayOfWeek === '*') {
+        return { mode: 'interval', value: dayMatch[1], unit: 'days' };
+    }
+
+    return { mode: 'cron' };
+}
+
 interface RepoSchedulesTabProps {
     workspaceId: string;
 }
@@ -49,6 +73,8 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [history, setHistory] = useState<RunRecord[]>([]);
     const [showCreate, setShowCreate] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [duplicateValues, setDuplicateValues] = useState<Partial<Schedule> | null>(null);
 
     const fetchSchedules = useCallback(async () => {
         try {
@@ -84,9 +110,11 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     const handleToggleExpand = async (scheduleId: string) => {
         if (expandedId === scheduleId) {
             setExpandedId(null);
+            setEditingId(null);
             return;
         }
         setExpandedId(scheduleId);
+        setEditingId(null);
         try {
             const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}/history`);
             setHistory(data?.history || []);
@@ -152,8 +180,16 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             {showCreate && (
                 <CreateScheduleForm
                     workspaceId={workspaceId}
-                    onCreated={() => { setShowCreate(false); fetchSchedules(); }}
-                    onCancel={() => setShowCreate(false)}
+                    onCreated={() => { setShowCreate(false); setDuplicateValues(null); fetchSchedules(); }}
+                    onCancel={() => { setShowCreate(false); setDuplicateValues(null); }}
+                    initialValues={duplicateValues ? {
+                        name: `Copy of ${duplicateValues.name}`,
+                        target: duplicateValues.target,
+                        targetType: duplicateValues.targetType,
+                        cron: duplicateValues.cron,
+                        params: duplicateValues.params ? { ...duplicateValues.params } : undefined,
+                        onFailure: duplicateValues.onFailure,
+                    } : undefined}
                 />
             )}
 
@@ -191,24 +227,46 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                     {/* Expanded detail */}
                     {expandedId === schedule.id && (
                         <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2.5">
-                            {/* Actions */}
-                            <div className="flex gap-1.5 mb-2.5">
-                                <Button variant="primary" size="sm" onClick={() => handleRunNow(schedule.id)}>Run Now</Button>
-                                <Button variant="secondary" size="sm" onClick={() => handlePauseResume(schedule)}>
-                                    {schedule.status === 'active' ? 'Pause' : 'Resume'}
-                                </Button>
-                                <Button variant="danger" size="sm" onClick={() => handleDelete(schedule.id)}>Delete</Button>
-                            </div>
+                            {editingId === schedule.id ? (
+                                <CreateScheduleForm
+                                    workspaceId={workspaceId}
+                                    mode="edit"
+                                    scheduleId={schedule.id}
+                                    initialValues={{
+                                        name: schedule.name,
+                                        target: schedule.target,
+                                        targetType: schedule.targetType,
+                                        cron: schedule.cron,
+                                        params: { ...schedule.params },
+                                        onFailure: schedule.onFailure,
+                                    }}
+                                    onCreated={() => { setEditingId(null); fetchSchedules(); }}
+                                    onCancel={() => setEditingId(null)}
+                                />
+                            ) : (
+                                <>
+                                    {/* Actions */}
+                                    <div className="flex gap-1.5 mb-2.5">
+                                        <Button variant="primary" size="sm" onClick={() => handleRunNow(schedule.id)}>Run Now</Button>
+                                        <Button variant="secondary" size="sm" onClick={() => handlePauseResume(schedule)}>
+                                            {schedule.status === 'active' ? 'Pause' : 'Resume'}
+                                        </Button>
+                                        <Button variant="secondary" size="sm" disabled={schedule.isRunning} onClick={() => setEditingId(schedule.id)} data-testid="edit-btn">Edit</Button>
+                                        <Button variant="secondary" size="sm" onClick={() => { setDuplicateValues(schedule); setShowCreate(true); setExpandedId(null); }} data-testid="duplicate-btn">Duplicate</Button>
+                                        <Button variant="danger" size="sm" onClick={() => handleDelete(schedule.id)}>Delete</Button>
+                                    </div>
 
-                            {/* Details */}
-                            <div className="text-xs text-[#616161] dark:text-[#999] space-y-1 mb-2.5">
-                                <div><span className="font-medium">Target:</span> {schedule.target}</div>
-                                <div><span className="font-medium">Schedule:</span> {schedule.cron} · {schedule.cronDescription}</div>
-                                {Object.keys(schedule.params).length > 0 && (
-                                    <div><span className="font-medium">Params:</span> {JSON.stringify(schedule.params)}</div>
-                                )}
-                                <div><span className="font-medium">On Failure:</span> {schedule.onFailure}</div>
-                            </div>
+                                    {/* Details */}
+                                    <div className="text-xs text-[#616161] dark:text-[#999] space-y-1 mb-2.5">
+                                        <div><span className="font-medium">Target:</span> {schedule.target}</div>
+                                        <div><span className="font-medium">Schedule:</span> {schedule.cron} · {schedule.cronDescription}</div>
+                                        {Object.keys(schedule.params).length > 0 && (
+                                            <div><span className="font-medium">Params:</span> {JSON.stringify(schedule.params)}</div>
+                                        )}
+                                        <div><span className="font-medium">On Failure:</span> {schedule.onFailure}</div>
+                                    </div>
+                                </>
+                            )}
 
                             {/* Run History */}
                             {history.length > 0 && (
@@ -374,23 +432,34 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
     },
 ];
 
-function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
+function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode = 'create', scheduleId, initialValues }: {
     workspaceId: string;
     onCreated: () => void;
     onCancel: () => void;
+    mode?: 'create' | 'edit';
+    scheduleId?: string;
+    initialValues?: {
+        name?: string;
+        target?: string;
+        targetType?: 'prompt' | 'script';
+        cron?: string;
+        params?: Record<string, string>;
+        onFailure?: string;
+    };
 }) {
-    const [name, setName] = useState('');
-    const [target, setTarget] = useState('');
-    const [targetType, setTargetType] = useState<'prompt' | 'script'>('prompt');
-    const [mode, setMode] = useState<'cron' | 'interval'>('interval');
-    const [cron, setCron] = useState('0 9 * * *');
-    const [intervalValue, setIntervalValue] = useState('1');
-    const [intervalUnit, setIntervalUnit] = useState('hours');
-    const [onFailure, setOnFailure] = useState('notify');
+    const cronParsed = initialValues?.cron ? parseCronToInterval(initialValues.cron) : null;
+    const [name, setName] = useState(initialValues?.name ?? '');
+    const [target, setTarget] = useState(initialValues?.target ?? '');
+    const [targetType, setTargetType] = useState<'prompt' | 'script'>(initialValues?.targetType ?? 'prompt');
+    const [mode, setMode] = useState<'cron' | 'interval'>(cronParsed?.mode === 'interval' ? 'interval' : (initialValues?.cron ? 'cron' : 'interval'));
+    const [cron, setCron] = useState(initialValues?.cron ?? '0 9 * * *');
+    const [intervalValue, setIntervalValue] = useState(cronParsed?.mode === 'interval' ? cronParsed.value : '1');
+    const [intervalUnit, setIntervalUnit] = useState(cronParsed?.mode === 'interval' ? cronParsed.unit : 'hours');
+    const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-    const [params, setParams] = useState<Record<string, string>>({});
+    const [params, setParams] = useState<Record<string, string>>(initialValues?.params ? { ...initialValues.params } : {});
     const [pipelines, setPipelines] = useState<PipelineInfo[]>([]);
     const [pipelinesLoading, setPipelinesLoading] = useState(false);
     const [manualPipeline, setManualPipeline] = useState(false);
@@ -466,17 +535,21 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
         const cronExpr = mode === 'interval' ? intervalToCron() : cron;
 
         try {
-            const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules`, {
-                method: 'POST',
+            const payload = {
+                name: name.trim(),
+                target: target.trim(),
+                targetType,
+                cron: cronExpr,
+                params,
+                onFailure,
+            };
+            const url = formMode === 'edit' && scheduleId
+                ? getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`
+                : getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules`;
+            const res = await fetch(url, {
+                method: formMode === 'edit' ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: name.trim(),
-                    target: target.trim(),
-                    targetType,
-                    cron: cronExpr,
-                    params,
-                    onFailure,
-                }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
@@ -485,18 +558,18 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
             }
             onCreated();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create schedule');
+            setError(err instanceof Error ? err.message : `Failed to ${formMode === 'edit' ? 'update' : 'create'} schedule`);
         } finally {
             setSubmitting(false);
         }
     };
 
-    return (
-        <Card className="p-3">
-            <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-                <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">New Schedule</div>
+    const formContent = (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">{formMode === 'edit' ? 'Edit Schedule' : 'New Schedule'}</div>
 
-                {/* Template picker */}
+                {/* Template picker (create mode only) */}
+                {formMode !== 'edit' && (
                 <div className="flex gap-1.5 overflow-x-auto pb-1" data-testid="template-picker">
                     {SCHEDULE_TEMPLATES.map(tpl => (
                         <button
@@ -515,6 +588,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                         </button>
                     ))}
                 </div>
+                )}
 
                 <input
                     className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
@@ -741,15 +815,35 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel }: {
                     );
                 })()}
 
+                {/* Generic params editor (edit/duplicate mode — no template selected) */}
+                {!selectedTemplate && Object.keys(params).length > 0 && (
+                    <div className="flex flex-col gap-1.5" data-testid="edit-params">
+                        <div className="text-[10px] uppercase text-[#848484] font-medium">Parameters</div>
+                        {Object.entries(params).map(([key, value]) => (
+                            <div key={key} className="flex items-center gap-1.5 text-xs">
+                                <span className="text-[#616161] dark:text-[#999] w-20 text-right flex-shrink-0">{key}:</span>
+                                <input
+                                    className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                                    value={value}
+                                    onChange={e => setParams(prev => ({ ...prev, [key]: e.target.value }))}
+                                    data-testid={`param-${key}`}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {error && <div className="text-[10px] text-red-500">{error}</div>}
 
                 <div className="flex justify-end gap-1.5">
                     <Button variant="secondary" size="sm" onClick={onCancel}>Cancel</Button>
                     <Button variant="primary" size="sm" type="submit" disabled={submitting}>
-                        {submitting ? 'Creating...' : 'Create'}
+                        {submitting ? (formMode === 'edit' ? 'Saving...' : 'Creating...') : (formMode === 'edit' ? 'Save' : 'Create')}
                     </Button>
                 </div>
             </form>
-        </Card>
-    );
+        );
+
+    if (formMode === 'edit') return formContent;
+    return <Card className="p-3">{formContent}</Card>;
 }
