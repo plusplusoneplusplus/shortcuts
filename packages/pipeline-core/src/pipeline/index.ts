@@ -28,6 +28,7 @@ export type {
     PipelinePhaseStatus,
     PipelinePhaseEvent,
     PipelineProgressEvent,
+    ItemProcessEventData,
     PipelinePhaseInfo,
     PipelineProcessMetadata,
     // Re-exported from map-reduce

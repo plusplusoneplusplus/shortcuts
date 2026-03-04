@@ -542,6 +542,7 @@ export {
     PipelinePhaseStatus,
     PipelinePhaseEvent,
     PipelineProgressEvent,
+    ItemProcessEventData,
     PipelinePhaseInfo,
     PipelineProcessMetadata,
     // Executor

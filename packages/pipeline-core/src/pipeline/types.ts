@@ -471,6 +471,22 @@ export interface PipelineProgressEvent {
     message?: string;
 }
 
+/** Event emitted when an individual map item's child process changes state. */
+export interface ItemProcessEventData {
+    /** Zero-based index of the item within the map input array. */
+    itemIndex: number;
+    /** Process ID of the child process handling this item. */
+    processId: string;
+    /** Current status of the item process. */
+    status: 'running' | 'completed' | 'failed' | 'cancelled';
+    /** Pipeline phase the item is in (typically 'map'). */
+    phase: PipelinePhase;
+    /** Short label for UI display (e.g. first CSV column value). */
+    itemLabel?: string;
+    /** Error message when status is 'failed'. */
+    error?: string;
+}
+
 /** Post-execution metadata for a single pipeline phase. */
 export interface PipelinePhaseInfo {
     phase: PipelinePhase;

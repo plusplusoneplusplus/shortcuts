@@ -8,14 +8,14 @@
  */
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent } from './ai/process-types';
-import type { PipelinePhaseEvent, PipelineProgressEvent } from './pipeline/types';
+import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline/types';
 
 /**
  * Output event emitted during process execution.
  * Used by SSE streaming to push real-time output to clients.
  */
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'suggestions';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -46,6 +46,8 @@ export interface ProcessOutputEvent {
     pipelinePhase?: PipelinePhaseEvent;
     /** Pipeline progress event data (for 'pipeline-progress' events). */
     pipelineProgress?: PipelineProgressEvent;
+    /** Item-level process event data (for 'item-process' events). */
+    itemProcess?: ItemProcessEventData;
     /** Follow-up message suggestions (for 'suggestions' events). */
     suggestions?: string[];
 }
