@@ -4,10 +4,13 @@ import { PipelineDAGChart } from './PipelineDAGChart';
 import { buildDAGData } from './buildDAGData';
 import { MapItemGrid } from './MapItemGrid';
 import type { ChildProcess } from './MapItemGrid';
+import { ItemConversationPanel } from './ItemConversationPanel';
 import { usePipelinePhase } from '../../hooks/usePipelinePhase';
 import { useItemProcessEvents } from '../../hooks/useItemProcessEvents';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { fetchApi } from '../../hooks/useApi';
 import { formatDuration, statusIcon } from '../../utils/format';
+import { BottomSheet } from '../../shared';
 import type { PhaseDetail } from './PipelinePhasePopover';
 
 export interface WorkflowDetailViewProps {
@@ -29,8 +32,10 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
     const [error, setError] = useState<string | null>(null);
     const [expandedPhase, setExpandedPhase] = useState<PipelinePhase | null>(null);
     const [now, setNow] = useState(Date.now());
+    const [selectedItemProcessId, setSelectedItemProcessId] = useState<string | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const isDark = detectDarkMode();
+    const { isMobile } = useBreakpoint();
 
     const isRunning = process?.status === 'running';
 
@@ -182,11 +187,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
     };
 
     const handleItemClick = (itemProcessId: string) => {
-        if (onNavigateToProcess) {
-            onNavigateToProcess(itemProcessId);
-        } else {
-            location.hash = `#process/${encodeURIComponent(itemProcessId)}`;
-        }
+        setSelectedItemProcessId(itemProcessId);
     };
 
     if (loading) {
@@ -279,9 +280,19 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
                         onItemClick={handleItemClick}
                         isLive={isRunning}
                         isDark={isDark}
+                        selectedProcessId={selectedItemProcessId ?? undefined}
                     />
                 )}
             </div>
+
+            {/* Item Conversation Panel */}
+            {selectedItemProcessId && (
+                isMobile
+                    ? <BottomSheet isOpen onClose={() => setSelectedItemProcessId(null)} title="Item Conversation" height={80}>
+                        <ItemConversationPanel processId={selectedItemProcessId} onClose={() => setSelectedItemProcessId(null)} isDark={isDark} />
+                      </BottomSheet>
+                    : <ItemConversationPanel processId={selectedItemProcessId} onClose={() => setSelectedItemProcessId(null)} isDark={isDark} />
+            )}
         </div>
     );
 }

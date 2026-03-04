@@ -16,6 +16,7 @@ export interface MapItemGridProps {
     onItemClick: (processId: string) => void;
     isLive: boolean;
     isDark?: boolean;
+    selectedProcessId?: string;
 }
 
 type FilterValue = 'all' | 'completed' | 'failed' | 'running';
@@ -27,7 +28,7 @@ const FILTERS: { label: string; value: FilterValue }[] = [
     { label: 'Running', value: 'running' },
 ];
 
-export function MapItemGrid({ items, onItemClick, isLive, isDark = false }: MapItemGridProps) {
+export function MapItemGrid({ items, onItemClick, isLive, isDark = false, selectedProcessId }: MapItemGridProps) {
     const [filter, setFilter] = useState<FilterValue>('all');
 
     const completedCount = items.filter(i => i.status === 'completed').length;
@@ -79,6 +80,7 @@ export function MapItemGrid({ items, onItemClick, isLive, isDark = false }: MapI
                         process={item}
                         onClick={() => onItemClick(item.processId)}
                         isDark={isDark}
+                        selected={item.processId === selectedProcessId}
                     />
                 ))}
             </div>

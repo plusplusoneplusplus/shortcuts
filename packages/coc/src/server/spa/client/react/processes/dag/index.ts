@@ -16,3 +16,4 @@ export { ZoomControls } from './ZoomControls';
 export { WorkflowDetailView } from './WorkflowDetailView';
 export { MapItemGrid } from './MapItemGrid';
 export { MapItemCard } from './MapItemCard';
+export { ItemConversationPanel } from './ItemConversationPanel';

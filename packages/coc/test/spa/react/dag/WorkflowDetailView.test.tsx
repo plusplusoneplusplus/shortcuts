@@ -197,11 +197,22 @@ describe('WorkflowDetailView', () => {
         expect(screen.getByTestId('map-item-card-proc-1-m2')).toBeDefined();
     });
 
-    it('calls onNavigateToProcess when item card is clicked', async () => {
+    it('clicking item card opens conversation panel instead of navigating', async () => {
         const onNavigate = vi.fn();
         fetchMock.mockImplementation((url: string) => {
             if (url.includes('/children')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve(makeChildrenResponse()) });
+            }
+            if (url.includes('proc-1-m0') && !url.includes('/children')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        process: {
+                            id: 'proc-1-m0', status: 'completed', durationMs: 1000,
+                            metadata: { itemIndex: 0 }, conversationTurns: [],
+                        },
+                    }),
+                });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve(makeProcessResponse()) });
         });
@@ -218,7 +229,11 @@ describe('WorkflowDetailView', () => {
         // Click first item card
         fireEvent.click(screen.getByTestId('map-item-card-proc-1-m0'));
 
-        expect(onNavigate).toHaveBeenCalledWith('proc-1-m0');
+        // Should open conversation panel, not navigate
+        await waitFor(() => {
+            expect(screen.getByTestId('item-conversation-panel')).toBeDefined();
+        });
+        expect(onNavigate).not.toHaveBeenCalled();
     });
 
     it('shows empty state when no DAG data available', async () => {

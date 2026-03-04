@@ -14,6 +14,7 @@ export interface MapItemCardProps {
     };
     onClick: () => void;
     isDark?: boolean;
+    selected?: boolean;
 }
 
 function statusToNodeState(status: string): DAGNodeState {
@@ -24,7 +25,7 @@ function statusToNodeState(status: string): DAGNodeState {
     return 'waiting';
 }
 
-export function MapItemCard({ process, onClick, isDark = false }: MapItemCardProps) {
+export function MapItemCard({ process, onClick, isDark = false, selected = false }: MapItemCardProps) {
     const nodeState = statusToNodeState(process.status);
     const colors = getNodeColors(nodeState, isDark);
     const isRunning = process.status === 'running';
@@ -42,6 +43,7 @@ export function MapItemCard({ process, onClick, isDark = false }: MapItemCardPro
             className={cn(
                 'flex flex-col gap-1 p-3 rounded-md border cursor-pointer',
                 isRunning && 'animate-pulse',
+                selected && (isDark ? 'ring-2 ring-[#3794ff]' : 'ring-2 ring-[#0078d4]'),
             )}
             style={{ borderColor: colors.border, backgroundColor: colors.fill }}
             onClick={onClick}
