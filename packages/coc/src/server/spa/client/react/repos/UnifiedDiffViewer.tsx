@@ -33,9 +33,37 @@ function classifyLine(line: string): LineType {
     return 'context';
 }
 
+/** Extract file path from a `diff --git a/<path> b/<path>` header line. */
+export function extractFilePathFromDiffHeader(line: string): string | null {
+    const match = line.match(/^diff --git a\/.+ b\/(.+)$/);
+    return match ? match[1] : null;
+}
+
+/**
+ * Compute per-line language for syntax highlighting.
+ * When `fileName` is provided, every line uses that language.
+ * Otherwise, parses `diff --git` headers to switch language per file section.
+ */
+export function getLanguagesForLines(lines: string[], fileName: string | undefined): (string | null)[] {
+    if (fileName) {
+        const lang = getLanguageFromFileName(fileName);
+        return lines.map(() => lang);
+    }
+    const result: (string | null)[] = [];
+    let currentLang: string | null = null;
+    for (const line of lines) {
+        if (line.startsWith('diff --git ')) {
+            const filePath = extractFilePathFromDiffHeader(line);
+            currentLang = getLanguageFromFileName(filePath);
+        }
+        result.push(currentLang);
+    }
+    return result;
+}
+
 export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId }: UnifiedDiffViewerProps) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
-    const language = useMemo(() => getLanguageFromFileName(fileName), [fileName]);
+    const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
 
     return (
         <div
@@ -47,7 +75,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId }: Uni
                 if ((type === 'added' || type === 'removed' || type === 'context') && line.length > 0) {
                     const prefix = line[0];
                     const content = line.slice(1);
-                    const html = highlightLine(content, language);
+                    const html = highlightLine(content, languages[i]);
                     return (
                         <div key={i} className={`whitespace-pre px-3 ${LINE_CLASSES[type]}`}>
                             <span>{prefix}</span>

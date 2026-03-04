@@ -161,12 +161,8 @@ describe('UnifiedDiffViewer', () => {
             expect(source).toContain('fileName,');
         });
 
-        it('derives language from fileName using useMemo', () => {
-            expect(source).toContain('getLanguageFromFileName(fileName)');
-        });
-
-        it('calls highlightLine for code content', () => {
-            expect(source).toContain('highlightLine(content, language)');
+        it('calls highlightLine for code content with per-line language', () => {
+            expect(source).toContain('highlightLine(content, languages[i])');
         });
 
         it('uses dangerouslySetInnerHTML for highlighted content', () => {
@@ -176,6 +172,20 @@ describe('UnifiedDiffViewer', () => {
         it('separates prefix character from code content', () => {
             expect(source).toContain('line[0]');
             expect(source).toContain('line.slice(1)');
+        });
+    });
+
+    describe('per-file language detection exports', () => {
+        it('exports extractFilePathFromDiffHeader function', () => {
+            expect(source).toContain('export function extractFilePathFromDiffHeader');
+        });
+
+        it('exports getLanguagesForLines function', () => {
+            expect(source).toContain('export function getLanguagesForLines');
+        });
+
+        it('uses getLanguagesForLines in a useMemo', () => {
+            expect(source).toContain('getLanguagesForLines(lines, fileName)');
         });
     });
 });
