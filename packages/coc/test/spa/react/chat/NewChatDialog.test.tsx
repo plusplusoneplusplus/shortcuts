@@ -404,7 +404,7 @@ describe('NewChatDialog', () => {
         const textarea = screen.getByTestId('new-chat-input') as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: 'enter test' } });
         await act(async () => {
-            fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+            fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
         });
 
         const postCall = mockFetch.mock.calls.find(

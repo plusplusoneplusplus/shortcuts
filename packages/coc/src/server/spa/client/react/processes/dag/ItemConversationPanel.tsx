@@ -355,7 +355,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     placeholder="Follow up…"
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); }
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void sendFollowUp(); }
                     }}
                     data-testid="item-conversation-textarea"
                     className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"

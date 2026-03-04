@@ -770,7 +770,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             }
                             return;
                         }
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleStartChat(); }
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void handleStartChat(); }
                     }}
                     onPaste={initialImagePaste.addFromPaste}
                 />
@@ -1004,7 +1004,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                             }
                                             return;
                                         }
-                                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); }
+                                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void sendFollowUp(); }
                                     }}
                                     onPaste={followUpImagePaste.addFromPaste}
                                     onFocus={isMobile ? e => e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) : undefined}

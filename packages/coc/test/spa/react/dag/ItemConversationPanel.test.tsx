@@ -379,9 +379,9 @@ describe('ItemConversationPanel', () => {
         fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
         expect(fetchMock).toHaveBeenCalledTimes(1); // only initial fetch
 
-        // Enter should send
+        // Ctrl+Enter should send
         await act(async () => {
-            fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+            fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
         });
 
         // Second fetch call = POST message

@@ -368,7 +368,7 @@ export function NewChatDialog({
                             }
                             return;
                         }
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleStartChat(); }
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void handleStartChat(); }
                     }}
                     onPaste={imagePaste.addFromPaste}
                     disabled={sending}
@@ -458,7 +458,7 @@ export function NewChatDialog({
                                         }
                                         return;
                                     }
-                                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendFollowUp(); }
+                                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void sendFollowUp(); }
                                 }}
                                 onPaste={followUpImagePaste.addFromPaste}
                                 className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
@@ -505,7 +505,7 @@ export function NewChatDialog({
                 loading={sending}
                 data-testid="new-chat-start-btn"
             >
-                Start Chat <kbd className="ml-1 text-[9px] opacity-60">Enter</kbd>
+                Start Chat <kbd className="ml-1 text-[9px] opacity-60">Ctrl+Enter</kbd>
             </Button>
         </>
     ) : undefined;

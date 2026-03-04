@@ -293,7 +293,7 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
                     onChange={e => setInput(e.target.value)}
                     onFocus={() => setIsExpanded(true)}
                     onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                             e.preventDefault();
                             handleSend();
                         }
