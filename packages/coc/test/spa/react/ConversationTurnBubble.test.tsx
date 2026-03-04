@@ -687,3 +687,100 @@ describe('ConversationTurnBubble — content chunk merging', () => {
         expect(markdownViews.length).toBe(1);
     });
 });
+
+describe('ConversationTurnBubble — retry button', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders .error class on outer wrapper for isError assistant turns', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'assistant', isError: true })} />
+        );
+        const outer = container.querySelector('.chat-message');
+        expect(outer?.classList.contains('error')).toBe(true);
+    });
+
+    it('does not render .error class on non-error turns', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'assistant', isError: false })} />
+        );
+        expect(container.querySelector('.chat-message.error')).toBeNull();
+    });
+
+    it('renders .error-indicator on isError assistant turns', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'assistant', isError: true })} />
+        );
+        expect(container.querySelector('.error-indicator')).toBeTruthy();
+    });
+
+    it('does not render .error-indicator on non-error turns', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'assistant' })} />);
+        expect(container.querySelector('.error-indicator')).toBeNull();
+    });
+
+    it('renders .bubble-retry-btn when turn.isError and onRetry is provided', () => {
+        const onRetry = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'assistant', isError: true })}
+                onRetry={onRetry}
+            />
+        );
+        expect(container.querySelector('.bubble-retry-btn')).toBeTruthy();
+    });
+
+    it('does not render .bubble-retry-btn when turn.isError is false', () => {
+        const onRetry = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'assistant', isError: false })}
+                onRetry={onRetry}
+            />
+        );
+        expect(container.querySelector('.bubble-retry-btn')).toBeNull();
+    });
+
+    it('does not render .bubble-retry-btn when onRetry is not provided', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'assistant', isError: true })} />
+        );
+        expect(container.querySelector('.bubble-retry-btn')).toBeNull();
+    });
+
+    it('does not render .bubble-retry-btn for user turns even with isError', () => {
+        const onRetry = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'user', isError: true })}
+                onRetry={onRetry}
+            />
+        );
+        expect(container.querySelector('.bubble-retry-btn')).toBeNull();
+    });
+
+    it('calls onRetry when .bubble-retry-btn is clicked', async () => {
+        const onRetry = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'assistant', isError: true })}
+                onRetry={onRetry}
+            />
+        );
+        const btn = container.querySelector('.bubble-retry-btn') as HTMLButtonElement;
+        await act(async () => { fireEvent.click(btn); });
+        expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    it('has data-testid="retry-turn-btn" on the retry button', () => {
+        const onRetry = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ role: 'assistant', isError: true })}
+                onRetry={onRetry}
+            />
+        );
+        expect(container.querySelector('[data-testid="retry-turn-btn"]')).toBeTruthy();
+    });
+});

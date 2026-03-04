@@ -207,6 +207,20 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         });
     };
 
+    const markLastTurnAsError = (errorMessage?: string) => {
+        setTurnsAndCache(prev => {
+            if (prev.length === 0) return prev;
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant' && last.streaming) {
+                return [
+                    ...prev.slice(0, -1),
+                    { ...last, streaming: false, isError: true, content: errorMessage || last.content || '' }
+                ];
+            }
+            return prev;
+        });
+    };
+
     const waitForFollowUpCompletion = (pid: string) =>
         new Promise<void>(resolve => {
             const ownerChatTaskId = currentChatTaskIdRef.current;
@@ -595,8 +609,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             }
             if (!response.ok) {
                 const body = await response.json().catch(() => null);
-                setError(body?.error ?? `Failed to send message (${response.status})`);
-                removeStreamingPlaceholder();
+                markLastTurnAsError(body?.error ?? `Failed to send message (${response.status})`);
                 return;
             }
             if (chatTaskId) sessionsHook.updateSessionStatus(chatTaskId, 'running');
@@ -604,12 +617,60 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             await waitForFollowUpCompletion(processId);
             sessionsHook.refresh();
         } catch (err: any) {
-            setError(err?.message ?? 'Failed to send follow-up message.');
-            removeStreamingPlaceholder();
+            markLastTurnAsError(err?.message ?? 'Failed to send follow-up message.');
         } finally {
             setSending(false);
         }
     };
+
+    const retryLastMessage = useCallback(async () => {
+        let lastUserContent: string | undefined;
+        for (let i = turnsRef.current.length - 1; i >= 0; i--) {
+            if (turnsRef.current[i].role === 'user') {
+                lastUserContent = turnsRef.current[i].content;
+                break;
+            }
+        }
+        if (!lastUserContent || !processId || sending || sessionExpired) return;
+
+        setSending(true);
+        setError(null);
+        const timestamp = new Date().toISOString();
+        // Replace error bubble with a fresh streaming placeholder
+        setTurnsAndCache(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant' && last.isError) {
+                return [...prev.slice(0, -1), { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [] }];
+            }
+            return prev;
+        });
+
+        try {
+            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: lastUserContent }),
+            });
+            if (response.status === 410) {
+                setSessionExpired(true);
+                setError('Session expired. Start a new chat.');
+                removeStreamingPlaceholder();
+                return;
+            }
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                markLastTurnAsError(body?.error ?? `Failed to send message (${response.status})`);
+                return;
+            }
+            if (chatTaskId) sessionsHook.updateSessionStatus(chatTaskId, 'running');
+            await waitForFollowUpCompletion(processId);
+            sessionsHook.refresh();
+        } catch (err: any) {
+            markLastTurnAsError(err?.message ?? 'Failed to retry message.');
+        } finally {
+            setSending(false);
+        }
+    }, [processId, sending, sessionExpired, chatTaskId, sessionsHook, waitForFollowUpCompletion]);
 
     const handleResumeChat = async () => {
         if (!chatTaskId || resuming) return;
@@ -864,7 +925,14 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                     <div className="flex-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />
                                 </div>
                             )}
-                            <ConversationTurnBubble turn={turn} />
+                            <ConversationTurnBubble
+                                turn={turn}
+                                onRetry={
+                                    !readOnly && turn.isError && turn.role === 'assistant' && !sending
+                                        ? retryLastMessage
+                                        : undefined
+                                }
+                            />
                         </div>
                     );
                 })}

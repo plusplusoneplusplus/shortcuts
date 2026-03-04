@@ -1550,3 +1550,76 @@ describe('RepoChatTab', () => {
         });
     });
 });
+
+
+describe('RepoChatTab — retry strategy', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = require('fs').readFileSync(
+            require('path').join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'),
+            'utf-8'
+        );
+    });
+
+    it('defines markLastTurnAsError helper', () => {
+        expect(source).toContain('markLastTurnAsError');
+    });
+
+    it('defines retryLastMessage function', () => {
+        expect(source).toContain('retryLastMessage');
+    });
+
+    it('marks last turn as error on non-ok follow-up response', () => {
+        expect(source).toContain('markLastTurnAsError(body?.error ??');
+    });
+
+    it('marks last turn as error in sendFollowUp catch block', () => {
+        // sendFollowUp catch should use markLastTurnAsError, not removeStreamingPlaceholder
+        const followUpFn = source.substring(
+            source.indexOf('const sendFollowUp'),
+            source.indexOf('const retryLastMessage')
+        );
+        expect(followUpFn).toContain('markLastTurnAsError');
+        expect(followUpFn).not.toContain("setError(err?.message ?? 'Failed to send follow-up message.');");
+    });
+
+    it('passes onRetry to ConversationTurnBubble for error turns', () => {
+        expect(source).toContain('onRetry={');
+        expect(source).toContain('turn.isError');
+        expect(source).toContain('retryLastMessage');
+    });
+
+    it('guards onRetry behind readOnly check', () => {
+        const retryProp = source.substring(
+            source.indexOf('onRetry={'),
+            source.indexOf('onRetry={') + 300
+        );
+        expect(retryProp).toContain('!readOnly');
+    });
+
+    it('guards onRetry behind !sending check', () => {
+        const retryProp = source.substring(
+            source.indexOf('onRetry={'),
+            source.indexOf('onRetry={') + 300
+        );
+        expect(retryProp).toContain('!sending');
+    });
+
+    it('retryLastMessage replaces error bubble with streaming placeholder', () => {
+        const retryFn = source.substring(
+            source.indexOf('const retryLastMessage'),
+            source.indexOf('const handleResumeChat')
+        );
+        expect(retryFn).toContain("streaming: true");
+        expect(retryFn).toContain("last.isError");
+    });
+
+    it('retryLastMessage does not clear inputValue', () => {
+        const retryFn = source.substring(
+            source.indexOf('const retryLastMessage'),
+            source.indexOf('const handleResumeChat')
+        );
+        expect(retryFn).not.toContain("setInputValue('')");
+    });
+});

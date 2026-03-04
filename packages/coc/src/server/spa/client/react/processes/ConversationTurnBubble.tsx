@@ -46,6 +46,8 @@ interface ConversationTurnBubbleProps {
     turn: ClientConversationTurn;
     /** Queue task ID — when provided, enables lazy image fetching for turns with imagesCount */
     taskId?: string;
+    /** Called when the user clicks the Retry button on an error assistant bubble. */
+    onRetry?: () => void;
 }
 
 interface RenderToolCall {
@@ -499,7 +501,7 @@ function buildRawContent(turn: ClientConversationTurn): string {
 
 export { buildRawContent as _buildRawContent };
 
-export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const assistantRender = !isUser ? buildAssistantRender(turn) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
@@ -615,14 +617,17 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
         <div className={cn(
             'flex', isUser ? 'justify-end' : 'justify-start',
             'chat-message', isUser ? 'user' : 'assistant',
-            turn.streaming && 'streaming'
+            turn.streaming && 'streaming',
+            turn.isError && 'error'
         )}>
             <div
                 className={cn(
                     'group w-full max-w-[95%] rounded-lg border px-3 py-2 shadow-sm',
                     isUser
                         ? 'bg-[#e8f3ff] dark:bg-[#0f2a42] border-[#b3d7ff] dark:border-[#2a4a66]'
-                        : 'bg-[#f8f8f8] dark:bg-[#252526] border-[#e0e0e0] dark:border-[#3c3c3c]'
+                        : turn.isError
+                            ? 'bg-[#fff5f5] dark:bg-[#2a1a1a] border-[#f14c4c] dark:border-[#8b2020]'
+                            : 'bg-[#f8f8f8] dark:bg-[#252526] border-[#e0e0e0] dark:border-[#3c3c3c]'
                 )}
             >
                 <div className="flex items-center gap-2 text-[11px] text-[#848484] mb-2">
@@ -634,11 +639,24 @@ export function ConversationTurnBubble({ turn, taskId }: ConversationTurnBubbleP
                     >
                         {isUser ? 'You' : 'Assistant'}
                     </span>
+                    {turn.isError && (
+                        <span className="text-[#f14c4c] error-indicator text-[10px]">⚠ Error</span>
+                    )}
                     {turn.timestamp && (
                         <span className="ml-auto timestamp">{new Date(turn.timestamp).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })} {new Date(turn.timestamp).toLocaleTimeString()}</span>
                     )}
                     {turn.streaming && (
                         <span className="text-[#f14c4c] streaming-indicator">Live</span>
+                    )}
+                    {!isUser && turn.isError && onRetry && (
+                        <button
+                            className="bubble-retry-btn text-[#f14c4c] hover:text-[#d32f2f] transition-colors text-[10px] font-medium"
+                            title="Retry this message"
+                            onClick={onRetry}
+                            data-testid="retry-turn-btn"
+                        >
+                            ↺ Retry
+                        </button>
                     )}
                     <button
                         className="bubble-raw-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"

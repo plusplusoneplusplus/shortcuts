@@ -35,6 +35,8 @@ export interface ClientConversationTurn {
     timestamp?: string;
     turnIndex?: number;
     streaming?: boolean;
+    /** True when the last AI call for this turn failed — enables the Retry button. */
+    isError?: boolean;
     toolCalls?: ClientToolCall[];
     timeline: ClientTimelineItem[];
     /** Base64 data-URL strings for user-attached images */
