@@ -151,16 +151,14 @@ export function buildCreateTaskPromptWithName(
 Folder options: ${folderList}
 Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
 
-Create a task plan document for: ${name}${descLine}
-Include title, acceptance criteria, subtasks (if any), and notes.`;
+Create a task plan document for: ${name}${descLine}`;
         } else {
             const desc = description || '(General task)';
             return `Save location: ${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md
 Folder options: ${folderList}
 Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
 
-Create a task plan document for: ${desc}
-Include title, acceptance criteria, subtasks (if any), and notes.`;
+Create a task plan document for: ${desc}`;
         }
     }
 
