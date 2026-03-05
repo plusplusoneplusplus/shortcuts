@@ -500,6 +500,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('onSelect=');
         });
 
+        it('passes selectedFile to CommitList for active file highlighting', () => {
+            expect(source).toContain('selectedFile={selectedCommitFile}');
+        });
+
         it('passes onFileSelect to CommitList', () => {
             expect(source).toContain('onFileSelect={handleCommitFileSelect}');
         });

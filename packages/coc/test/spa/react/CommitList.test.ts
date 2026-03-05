@@ -61,6 +61,10 @@ describe('CommitList', () => {
             expect(source).toContain('onFileSelect?: (hash: string, filePath: string) => void');
         });
 
+        it('accepts optional selectedFile prop for active file highlighting', () => {
+            expect(source).toContain('selectedFile?: { hash: string; filePath: string } | null');
+        });
+
         it('accepts optional workspaceId prop', () => {
             expect(source).toContain('workspaceId?: string');
         });
@@ -183,6 +187,12 @@ describe('CommitList', () => {
 
         it('calls onFileSelect when a file is clicked', () => {
             expect(source).toContain('onFileSelect?.(commit.hash, f.path)');
+        });
+
+        it('applies selected highlight when selectedFile matches the commit + file path', () => {
+            expect(source).toContain('selectedFile?.hash === commit.hash');
+            expect(source).toContain('selectedFile?.filePath === f.path');
+            expect(source).toContain("bg-[#0078d4]/10");
         });
 
         it('shows file status badge (A/M/D)', () => {

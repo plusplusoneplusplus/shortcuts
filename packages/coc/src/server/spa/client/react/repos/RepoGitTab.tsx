@@ -380,6 +380,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     }
 
     const selectedCommit = rightPanelView?.type === 'commit' ? rightPanelView.commit : rightPanelView?.type === 'commit-file' ? commits.find(c => c.hash === rightPanelView.hash) ?? null : null;
+    const selectedCommitFile = rightPanelView?.type === 'commit-file' ? { hash: rightPanelView.hash, filePath: rightPanelView.filePath } : null;
     const selectedBranchFile = rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null;
     const selectedWorkingTreeFile = rightPanelView?.type === 'working-tree-file' ? rightPanelView.filePath : null;
 
@@ -412,6 +413,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             commits={commits}
             unpushedCount={unpushedCount}
             selectedHash={selectedCommit?.hash}
+            selectedFile={selectedCommitFile}
             onSelect={handleSelect}
             onFileSelect={handleCommitFileSelect}
             onCommitContextMenu={handleCommitContextMenu}

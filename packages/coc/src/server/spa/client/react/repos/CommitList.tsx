@@ -54,6 +54,8 @@ interface CommitListProps {
     title: string;
     commits: GitCommitItem[];
     selectedHash?: string | null;
+    /** When set, highlights the matching file row under the matching commit. */
+    selectedFile?: { hash: string; filePath: string } | null;
     onSelect?: (commit: GitCommitItem) => void;
     onFileSelect?: (hash: string, filePath: string) => void;
     onCommitContextMenu?: (e: React.MouseEvent, commitHash: string) => void;
@@ -65,7 +67,7 @@ interface CommitListProps {
     unpushedCount?: number;
 }
 
-export function CommitList({ title, commits, selectedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedFile, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     // Expanded file list state: hash -> files (cached)
@@ -254,10 +256,16 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
                                             <div className="text-[11px] text-[#848484] py-1" data-testid="commit-files-loading">Loading files...</div>
                                         ) : files && files.length > 0 ? (
                                             <div className="flex flex-col gap-0.5" data-testid="commit-file-list">
-                                                {files.map((f, i) => (
+                                                {files.map((f, i) => {
+                                                    const isActiveFile = selectedFile?.hash === commit.hash && selectedFile?.filePath === f.path;
+                                                    return (
                                                     <button
                                                         key={i}
-                                                        className="flex items-center gap-2 text-[11px] py-0.5 px-1 rounded hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e] text-left w-full transition-colors"
+                                                        className={`flex items-center gap-2 text-[11px] py-0.5 px-1 rounded text-left w-full transition-colors ${
+                                                            isActiveFile
+                                                                ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
+                                                                : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
+                                                        }`}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             onFileSelect?.(commit.hash, f.path);
@@ -272,7 +280,8 @@ export function CommitList({ title, commits, selectedHash, onSelect, onFileSelec
                                                         </span>
                                                         <TruncatedPath path={f.path} className="text-[#1e1e1e] dark:text-[#ccc]" />
                                                     </button>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         ) : files ? (
                                             <div className="text-[11px] text-[#848484] py-1">No files changed</div>
