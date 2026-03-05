@@ -163,12 +163,12 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
         // as its own command separator, so `start` only receives the `cd /d` part.
         // `windowsVerbatimArguments` prevents Node.js from C-runtime-escaping quotes.
         const resumeCmd = `copilot --yolo --resume ${quoteWindows(input.sessionId)}`;
-        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} cmd.exe /k ${resumeCmd}`;
+        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} powershell.exe -NoExit -Command ${resumeCmd}`;
         await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
         return {
             launched: true,
             command,
-            terminal: 'cmd',
+            terminal: 'powershell',
         };
     }
 
@@ -250,9 +250,9 @@ export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Pr
 
     if (platform === 'win32') {
         const freshCmd = `copilot --yolo`;
-        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} cmd.exe /k ${freshCmd}`;
+        const startLine = `/c start "" /D ${quoteWindows(input.workingDirectory)} powershell.exe -NoExit -Command ${freshCmd}`;
         await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
-        return { launched: true, command, terminal: 'cmd' };
+        return { launched: true, command, terminal: 'powershell' };
     }
 
     // Linux / Unix-like environments.

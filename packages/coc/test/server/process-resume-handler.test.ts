@@ -274,7 +274,7 @@ describe('launchResumeCommandInTerminal – Windows spawn arguments', () => {
         });
 
         expect(result.launched).toBe(true);
-        expect(result.terminal).toBe('cmd');
+        expect(result.terminal).toBe('powershell');
 
         expect(spawnMock).toHaveBeenCalledTimes(1);
         const [cmd, args, opts] = spawnMock.mock.calls[0];
@@ -285,7 +285,7 @@ describe('launchResumeCommandInTerminal – Windows spawn arguments', () => {
         const startLine = (args as string[])[0];
         expect(startLine).toContain('/c start ""');
         expect(startLine).toContain('/D "C:\\Users\\test\\project"');
-        expect(startLine).toContain('cmd.exe /k copilot --yolo --resume "sess-win-1"');
+        expect(startLine).toContain('powershell.exe -NoExit -Command copilot --yolo --resume "sess-win-1"');
 
         // windowsVerbatimArguments must be true to prevent Node.js quote escaping
         expect((opts as any).windowsVerbatimArguments).toBe(true);
@@ -464,7 +464,7 @@ describe('launchFreshChatInTerminal – Windows spawn arguments', () => {
         });
 
         expect(result.launched).toBe(true);
-        expect(result.terminal).toBe('cmd');
+        expect(result.terminal).toBe('powershell');
 
         expect(spawnMock).toHaveBeenCalledTimes(1);
         const [cmd, args, opts] = spawnMock.mock.calls[0];
@@ -474,7 +474,7 @@ describe('launchFreshChatInTerminal – Windows spawn arguments', () => {
         const startLine = (args as string[])[0];
         expect(startLine).toContain('/c start ""');
         expect(startLine).toContain('/D "C:\\Users\\test\\project"');
-        expect(startLine).toContain('cmd.exe /k copilot --yolo');
+        expect(startLine).toContain('powershell.exe -NoExit -Command copilot --yolo');
         expect(startLine).not.toContain('--resume');
 
         expect((opts as any).windowsVerbatimArguments).toBe(true);
