@@ -18,8 +18,8 @@ const SRC = fs.readFileSync(
 );
 
 describe('RepoChatTab mobile: follow-up input inline layout', () => {
-    it('wraps follow-up input area in flex items-end gap-2 relative (always inline)', () => {
-        expect(SRC).toContain('"flex items-end gap-2 relative"');
+    it('wraps follow-up input area in flex items-center gap-2 relative (always inline)', () => {
+        expect(SRC).toContain('"flex items-center gap-2 relative"');
         expect(SRC).not.toContain('isMobile ? "space-y-2"');
     });
 

@@ -1506,9 +1506,9 @@ describe('RepoChatTab', () => {
     });
 
     describe('mobile layout — follow-up input bar', () => {
-        it('always uses flex items-end gap-2 relative for the follow-up wrapper', () => {
+        it('always uses flex items-center gap-2 relative for the follow-up wrapper', () => {
             // Unified horizontal layout for both mobile and desktop
-            expect(source).toContain('"flex items-end gap-2 relative"');
+            expect(source).toContain('"flex items-center gap-2 relative"');
             expect(source).not.toContain('isMobile ? "space-y-2"');
         });
 

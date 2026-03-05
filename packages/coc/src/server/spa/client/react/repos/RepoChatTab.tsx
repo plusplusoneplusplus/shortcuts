@@ -990,7 +990,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                             />
                         )}
                         <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
-                        <div className="flex items-end gap-2 relative">
+                        <div className="flex items-center gap-2 relative">
                             <div className="flex-1 relative">
                                 <textarea
                                     rows={1}
