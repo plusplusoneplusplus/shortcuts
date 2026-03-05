@@ -6,9 +6,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act, screen } from '@testing-library/react';
 import React from 'react';
 import { ToolCallView } from '../../../src/server/spa/client/react/processes/ToolCallView';
+import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
 
 vi.mock('../../../src/server/spa/client/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
+}));
+
+let mockBreakpoint: BreakpointState = { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' };
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => mockBreakpoint,
 }));
 
 function makeTaskToolCall(overrides: Record<string, any> = {}) {
@@ -929,5 +935,146 @@ describe('ToolCallView — edit tool hover popover', () => {
         const addedLines = editEl!.querySelectorAll('.diff-line-added');
         expect(removedLines.length).toBeGreaterThan(0);
         expect(addedLines.length).toBeGreaterThan(0);
+    });
+});
+
+describe('ToolCallView — mobile tap to preview', () => {
+    beforeEach(() => {
+        mockBreakpoint = { isMobile: true, isTablet: false, isDesktop: false, breakpoint: 'mobile' };
+    });
+
+    afterEach(() => {
+        mockBreakpoint = { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' };
+    });
+
+    it('renders a preview button on mobile when tool has a result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-mobile-1',
+                toolName: 'task',
+                args: { agent_type: 'explore', description: 'Explore' },
+                status: 'completed',
+                result: 'Found results.',
+            }} />
+        );
+
+        const btn = container.querySelector('[data-testid="mobile-preview-btn"]');
+        expect(btn).toBeTruthy();
+    });
+
+    it('does not render a preview button on mobile when tool has no result', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-mobile-2',
+                toolName: 'task',
+                args: { agent_type: 'explore', description: 'Explore' },
+                status: 'running',
+                result: '',
+            }} />
+        );
+
+        const btn = container.querySelector('[data-testid="mobile-preview-btn"]');
+        expect(btn).toBeNull();
+    });
+
+    it('tapping mobile preview button shows BottomSheet immediately without delay', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-mobile-3',
+                toolName: 'task',
+                args: { agent_type: 'explore', description: 'Explore' },
+                status: 'completed',
+                result: 'Task result output.',
+            }} />
+        );
+
+        const btn = container.querySelector('[data-testid="mobile-preview-btn"]')!;
+        fireEvent.click(btn);
+
+        const popover = document.querySelector('[data-testid="tool-result-popover"]');
+        expect(popover).toBeTruthy();
+        expect(popover!.textContent).toContain('Task result output.');
+    });
+
+    it('tapping mobile preview button shows BottomSheet only once (no flicker)', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-mobile-4',
+                toolName: 'bash',
+                args: { command: 'ls', description: 'List' },
+                status: 'completed',
+                result: 'file1.ts\nfile2.ts',
+            }} />
+        );
+
+        const btn = container.querySelector('[data-testid="mobile-preview-btn"]')!;
+        fireEvent.click(btn);
+
+        // Exactly one popover rendered
+        const popovers = document.querySelectorAll('[data-testid="tool-result-popover"]');
+        expect(popovers.length).toBe(1);
+    });
+
+    it('mobile hover events do NOT trigger the popover', () => {
+        vi.useFakeTimers();
+        try {
+            const { container } = render(
+                <ToolCallView toolCall={{
+                    id: 'tc-mobile-5',
+                    toolName: 'task',
+                    args: { agent_type: 'explore', description: 'Explore' },
+                    status: 'completed',
+                    result: 'Task result.',
+                }} />
+            );
+
+            const header = container.querySelector('.tool-call-header')!;
+            fireEvent.mouseEnter(header);
+            act(() => { vi.advanceTimersByTime(500); });
+
+            // Hover should NOT trigger popover on mobile
+            expect(document.querySelector('[data-testid="tool-result-popover"]')).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('expand/collapse still works on mobile when tapping header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-mobile-6',
+                toolName: 'task',
+                args: { agent_type: 'explore', description: 'Explore' },
+                status: 'completed',
+                result: 'Done.',
+            }} />
+        );
+
+        const header = container.querySelector('.tool-call-header')!;
+        const body = container.querySelector('.tool-call-body');
+        expect(body?.classList.contains('hidden')).toBe(true);
+
+        fireEvent.click(header);
+        expect(body?.classList.contains('hidden')).toBe(false);
+    });
+
+    it('tapping preview button does not expand/collapse the tool call', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'tc-mobile-7',
+                toolName: 'task',
+                args: { agent_type: 'explore', description: 'Explore' },
+                status: 'completed',
+                result: 'Done.',
+            }} />
+        );
+
+        const btn = container.querySelector('[data-testid="mobile-preview-btn"]')!;
+        const body = container.querySelector('.tool-call-body');
+        expect(body?.classList.contains('hidden')).toBe(true);
+
+        fireEvent.click(btn);
+        // Body should remain hidden (expand not triggered)
+        expect(body?.classList.contains('hidden')).toBe(true);
     });
 });

@@ -7,6 +7,7 @@ import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn, FilePathLink, shortenFilePath } from '../shared';
 import { computeLineDiff, type DiffLine } from '../../diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 
 interface ToolCallData {
     id?: string;
@@ -339,6 +340,7 @@ export function ToolCallView({
     const headerRef = useRef<HTMLDivElement | null>(null);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { isMobile } = useBreakpoint();
 
     if (depth > 20) return null;
 
@@ -403,6 +405,15 @@ export function ToolCallView({
         setHoverVisible(false);
     }, []);
 
+    const handleMobilePreviewTap = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!hasHoverResult) return;
+        if (headerRef.current) {
+            setAnchorRect(headerRef.current.getBoundingClientRect());
+            setHoverVisible(true);
+        }
+    }, [hasHoverResult]);
+
     return (
         <div
             className={cn(
@@ -419,8 +430,8 @@ export function ToolCallView({
                     hasDetails && 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
                 )}
                 onClick={() => hasDetails && setExpanded(!expanded)}
-                onMouseEnter={handleHeaderMouseEnter}
-                onMouseLeave={handleHeaderMouseLeave}
+                onMouseEnter={!isMobile ? handleHeaderMouseEnter : undefined}
+                onMouseLeave={!isMobile ? handleHeaderMouseLeave : undefined}
             >
                 <span>{statusIndicator(toolCall.status)}</span>
                 {hasSubtools && (
@@ -453,8 +464,21 @@ export function ToolCallView({
                 {duration && (
                     <span className={cn('text-[#848484] shrink-0', !startTimeLabel && 'ml-auto')}>{duration}</span>
                 )}
+                {isMobile && hasHoverResult && (
+                    <button
+                        type="button"
+                        className={cn('text-[#848484] hover:text-[#0078d4] dark:hover:text-[#3794ff] shrink-0',
+                            !duration && !startTimeLabel && 'ml-auto')}
+                        aria-label="Preview result"
+                        title="Preview result"
+                        data-testid="mobile-preview-btn"
+                        onClick={handleMobilePreviewTap}
+                    >
+                        👁
+                    </button>
+                )}
                 {hasDetails && (
-                    <span className={cn('text-[#848484]', !duration && !startTimeLabel && 'ml-auto')}>{expanded ? '▼' : '▶'}</span>
+                    <span className={cn('text-[#848484]', !duration && !startTimeLabel && !isMobile && 'ml-auto')}>{expanded ? '▼' : '▶'}</span>
                 )}
             </div>
             {hasDetails && (
