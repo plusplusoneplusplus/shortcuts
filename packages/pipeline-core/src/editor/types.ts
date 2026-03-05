@@ -91,6 +91,54 @@ export function isUserComment(comment: MarkdownComment): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Diff comment selection & context
+// ---------------------------------------------------------------------------
+
+/**
+ * Selection range within a rendered diff view.
+ * `diffLineStart`/`diffLineEnd` are 0-based indices into the rendered diff line array.
+ * `oldLine*` / `newLine*` carry the corresponding source-file line numbers when known.
+ */
+export interface DiffCommentSelection {
+    /** 0-based start index into the rendered diff line array */
+    diffLineStart: number;
+    /** 0-based end index into the rendered diff line array (inclusive) */
+    diffLineEnd: number;
+    /** Which side of the diff the selection lives on */
+    side: 'added' | 'removed' | 'context';
+    /** Corresponding start line in the old (left) file, if applicable */
+    oldLineStart?: number;
+    /** Corresponding end line in the old (left) file, if applicable */
+    oldLineEnd?: number;
+    /** Corresponding start line in the new (right) file, if applicable */
+    newLineStart?: number;
+    /** Corresponding end line in the new (right) file, if applicable */
+    newLineEnd?: number;
+    /** 0-based start column within the line */
+    startColumn: number;
+    /** 0-based end column within the line */
+    endColumn: number;
+}
+
+/**
+ * Identifies the diff that a comment belongs to.
+ * `oldRef` / `newRef` follow the same string conventions as the git CLI
+ * (commit hash, branch name, "HEAD", "INDEX", etc.).
+ */
+export interface DiffCommentContext {
+    /** Stable repository identifier (e.g. remote URL or local root path) */
+    repositoryId: string;
+    /** Repo-relative file path */
+    filePath: string;
+    /** Base ref for the diff (left side) */
+    oldRef: string;
+    /** Target ref for the diff (right side) */
+    newRef: string;
+    /** Resolved commit hash when the comment was created (for durability) */
+    commitHash?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Settings & configuration
 // ---------------------------------------------------------------------------
 

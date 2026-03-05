@@ -18,7 +18,9 @@ export {
     CommentsSettings,
     CommentsConfig,
     DEFAULT_COMMENTS_SETTINGS,
-    DEFAULT_COMMENTS_CONFIG
+    DEFAULT_COMMENTS_CONFIG,
+    DiffCommentSelection,
+    DiffCommentContext,
 } from './types';
 
 // Message protocol
