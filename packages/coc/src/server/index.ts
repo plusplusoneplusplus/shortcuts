@@ -22,6 +22,7 @@ import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
 import { registerAdminRoutes } from './admin-handler';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
+import { registerDiffCommentsRoutes } from './diff-comments-handler';
 import { registerWikiRoutes } from './wiki';
 import { registerMemoryRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
@@ -232,6 +233,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
+    registerDiffCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
     registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence });
     registerScheduleRoutes(routes, scheduleManager);
 
@@ -571,6 +573,8 @@ export { registerPreferencesRoutes, readPreferences, writePreferences, validateP
 export type { UserPreferences } from './preferences-handler';
 export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments-handler';
 export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
+export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
+export type { DiffCommentsStorage } from './diff-comments-handler';
 export { registerAdminRoutes, resetWipeToken } from './admin-handler';
 export type { AdminRouteOptions } from './admin-handler';
 export { DataWiper } from './data-wiper';

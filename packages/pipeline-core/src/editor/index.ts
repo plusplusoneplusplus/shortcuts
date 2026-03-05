@@ -21,6 +21,8 @@ export {
     DEFAULT_COMMENTS_CONFIG,
     DiffCommentSelection,
     DiffCommentContext,
+    DiffCommentReply,
+    DiffComment,
 } from './types';
 
 // Message protocol

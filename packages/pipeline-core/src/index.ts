@@ -977,7 +977,12 @@ export {
     createAnchorData,
     relocateAnchorPosition,
     needsRelocationCheck,
-    batchRelocateAnchors
+    batchRelocateAnchors,
+    // Diff comment types
+    DiffCommentSelection,
+    DiffCommentContext,
+    DiffCommentReply,
+    DiffComment,
 } from './editor';
 
 // ============================================================================
