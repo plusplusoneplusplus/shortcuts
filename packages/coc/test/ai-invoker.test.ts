@@ -214,4 +214,45 @@ describe('AI Invoker', () => {
             expect(sendOptions.mcpServers).toEqual(mcpServers);
         });
     });
+
+    // ========================================================================
+    // onToolEvent forwarding
+    // ========================================================================
+
+    describe('onToolEvent forwarding', () => {
+        beforeEach(() => {
+            mockSendMessageCapture.mockReset();
+            mockSendMessageCapture.mockResolvedValue({ success: true, response: 'ok' });
+        });
+
+        it('should forward onToolEvent from invokerOptions to SendMessageOptions', async () => {
+            const handler = vi.fn();
+            const invoker = createCLIAIInvoker({});
+            await invoker('prompt', { onToolEvent: handler });
+
+            expect(mockSendMessageCapture).toHaveBeenCalledOnce();
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.onToolEvent).toBe(handler);
+        });
+
+        it('should pass onToolEvent: undefined to SendMessageOptions when not provided', async () => {
+            const invoker = createCLIAIInvoker({});
+            await invoker('prompt');
+
+            expect(mockSendMessageCapture).toHaveBeenCalledOnce();
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.onToolEvent).toBeUndefined();
+        });
+
+        it('should forward onToolEvent when other invokerOptions fields are also set', async () => {
+            const handler = vi.fn();
+            const invoker = createCLIAIInvoker({});
+            await invoker('prompt', { model: 'gpt-4', onToolEvent: handler });
+
+            expect(mockSendMessageCapture).toHaveBeenCalledOnce();
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.model).toBe('gpt-4');
+            expect(sendOptions.onToolEvent).toBe(handler);
+        });
+    });
 });

@@ -305,6 +305,8 @@ export interface AIInvokerOptions {
     timeoutMs?: number;
     /** Custom tools to register on the AI session (SDK-native tools, not MCP). */
     tools?: import('../copilot-sdk-wrapper/types').Tool<any>[];
+    /** Callback invoked for each tool event during the AI session. */
+    onToolEvent?: (event: import('../copilot-sdk-wrapper/types').ToolEvent) => void;
 }
 
 /**

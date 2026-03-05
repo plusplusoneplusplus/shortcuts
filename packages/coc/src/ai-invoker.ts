@@ -112,6 +112,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 mcpServers: options.mcpServers,
                 onStreamingChunk: options.onChunk,
                 tools: options.tools,
+                onToolEvent: invokerOptions?.onToolEvent,
             };
 
             const result = await service.sendMessage(sendOptions);
