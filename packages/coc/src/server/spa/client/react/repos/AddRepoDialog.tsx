@@ -9,8 +9,12 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { hashString, normalizeRemoteUrl } from './repoGrouping';
 import type { RepoData } from './repoGrouping';
+import { resolveAutoColor } from './colorUtils';
+
+const AUTO_VALUE = 'auto';
 
 const COLOR_PALETTE = [
+    { label: 'Auto', value: AUTO_VALUE },
     { label: 'Blue', value: '#0078d4' },
     { label: 'Green', value: '#107c10' },
     { label: 'Orange', value: '#d83b01' },
@@ -19,6 +23,9 @@ const COLOR_PALETTE = [
     { label: 'Dark Green', value: '#004b1c' },
     { label: 'Grey', value: '#848484' },
 ];
+
+/** Palette entries excluding the virtual 'auto' entry */
+const REAL_PALETTE = COLOR_PALETTE.filter(c => c.value !== AUTO_VALUE);
 
 interface AddRepoDialogProps {
     open: boolean;
@@ -73,7 +80,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
     const [path, setPath] = useState('');
     const [name, setName] = useState('');
-    const [color, setColor] = useState('#0078d4');
+    const [color, setColor] = useState(AUTO_VALUE);
     const [validation, setValidation] = useState<{ msg: string; ok: boolean } | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
@@ -95,7 +102,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         } else if (open) {
             setPath('');
             setName('');
-            setColor('#0078d4');
+            setColor(AUTO_VALUE);
         }
         setValidation(null);
         setShowBrowser(false);
@@ -145,12 +152,18 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         setSubmitting(true);
         setValidation(null);
 
+        // Resolve 'auto' to a concrete hex color before submitting
+        const existingColors = repos.map(r => r.workspace.color).filter(Boolean) as string[];
+        const resolvedColor = color === AUTO_VALUE
+            ? resolveAutoColor(existingColors, REAL_PALETTE)
+            : color;
+
         try {
             if (isEdit && editId) {
                 await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(editId), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name.trim(), color }),
+                    body: JSON.stringify({ name: name.trim(), color: resolvedColor }),
                 });
             } else {
                 const wsName = name.trim() || getPathLeaf(trimmedPath) || 'repo';
@@ -158,7 +171,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                 const res = await fetch(getApiBase() + '/workspaces', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, name: wsName, rootPath: trimmedPath, color }),
+                    body: JSON.stringify({ id, name: wsName, rootPath: trimmedPath, color: resolvedColor }),
                 });
 
                 if (!res.ok) {
@@ -302,18 +315,36 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
 
                 {/* Color */}
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Color</label>
-                <div className="flex gap-1.5" id="repo-color-picker" data-testid="repo-color-picker">
-                    {COLOR_PALETTE.map(c => (
-                        <button
-                            key={c.value}
-                            className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c.value ? 'border-[#0078d4] scale-110' : 'border-transparent'}`}
-                            style={{ background: c.value }}
-                            onClick={() => setColor(c.value)}
-                            title={c.label}
-                            type="button"
-                            data-value={c.value}
-                        />
-                    ))}
+                <div className="flex gap-1.5 items-center" id="repo-color-picker" data-testid="repo-color-picker">
+                    {COLOR_PALETTE.map(c => {
+                        const isSelected = color === c.value;
+                        if (c.value === AUTO_VALUE) {
+                            return (
+                                <button
+                                    key={c.value}
+                                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[9px] font-bold transition-transform ${isSelected ? 'border-[#0078d4] scale-110 text-[#0078d4]' : 'border-dashed border-[#848484] text-[#848484]'}`}
+                                    style={{ background: 'transparent' }}
+                                    onClick={() => setColor(c.value)}
+                                    title="Auto (picks least-used color)"
+                                    type="button"
+                                    data-value={c.value}
+                                >
+                                    A
+                                </button>
+                            );
+                        }
+                        return (
+                            <button
+                                key={c.value}
+                                className={`w-6 h-6 rounded-full border-2 transition-transform ${isSelected ? 'border-[#0078d4] scale-110' : 'border-transparent'}`}
+                                style={{ background: c.value }}
+                                onClick={() => setColor(c.value)}
+                                title={c.label}
+                                type="button"
+                                data-value={c.value}
+                            />
+                        );
+                    })}
                 </div>
 
                 {/* Validation */}
