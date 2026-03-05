@@ -19,6 +19,7 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const branch = repo.gitInfo?.branch || 'n/a';
+    const gitInfoLoading = repo.gitInfoLoading ?? false;
     const pipelineCount = repo.pipelines?.length || 0;
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const truncPath = truncatePath(ws.rootPath || '', 24);
@@ -43,7 +44,15 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
                 <span className="repo-item-name text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
                     {ws.name}
                 </span>
-                {branch !== 'n/a' && (
+                {gitInfoLoading ? (
+                    <span
+                        data-testid="git-info-loading"
+                        className="text-[10px] px-1 py-px rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-transparent animate-pulse flex-shrink-0 select-none"
+                        aria-label="Loading branch info"
+                    >
+                        {'···'}
+                    </span>
+                ) : branch !== 'n/a' && (
                     <span className="text-[10px] px-1 py-px rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999] flex-shrink-0">
                         {branch}
                     </span>

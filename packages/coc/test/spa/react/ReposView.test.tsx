@@ -342,6 +342,35 @@ describe('RepoCard', () => {
         expect(document.querySelector('[data-testid="repo-card-queue-running"]')?.textContent).toBe('⏳2');
         expect(document.querySelector('[data-testid="repo-card-queue-queued"]')?.textContent).toBe('⏸3');
     });
+
+    it('shows loading skeleton when gitInfoLoading is true', () => {
+        const loadingRepo = makeRepo({
+            workspace: { id: 'ws-loading', name: 'Loading Repo', rootPath: '/path' },
+            gitInfoLoading: true,
+            gitInfo: undefined,
+        });
+        render(<Wrap><RepoCard repo={loadingRepo} isSelected={false} onClick={() => {}} /></Wrap>);
+        expect(document.querySelector('[data-testid="git-info-loading"]')).not.toBeNull();
+        // Branch badge should NOT be visible while loading
+        expect(screen.queryByText('main')).toBeNull();
+    });
+
+    it('hides loading skeleton and shows branch badge when gitInfoLoading is false', () => {
+        const loadedRepo = makeRepo({
+            workspace: { id: 'ws-loaded', name: 'Loaded Repo', rootPath: '/path' },
+            gitInfoLoading: false,
+            gitInfo: { branch: 'feature', dirty: false, isGitRepo: true },
+        });
+        render(<Wrap><RepoCard repo={loadedRepo} isSelected={false} onClick={() => {}} /></Wrap>);
+        expect(document.querySelector('[data-testid="git-info-loading"]')).toBeNull();
+        expect(screen.getByText('feature')).toBeDefined();
+    });
+
+    it('hides loading skeleton when gitInfoLoading is undefined (default)', () => {
+        render(<Wrap><RepoCard repo={repo} isSelected={false} onClick={() => {}} /></Wrap>);
+        expect(document.querySelector('[data-testid="git-info-loading"]')).toBeNull();
+        expect(screen.getByText('main')).toBeDefined();
+    });
 });
 
 describe('ReposGrid', () => {
@@ -840,5 +869,62 @@ describe('ReposView — process event throttling', () => {
         const depsMatch = source.match(/const fetchRepos = useCallback\(async[\s\S]*?\}, \[([^\]]*)\]\)/);
         expect(depsMatch).not.toBeNull();
         expect(depsMatch![1].trim()).toBe('dispatch');
+    });
+});
+
+// ============================================================================
+// ReposView source-level tests: async git-info two-phase fetch
+// ============================================================================
+
+describe('ReposView — async git-info', () => {
+    let source: string;
+
+    beforeEach(() => {
+        const fs = require('fs');
+        const path = require('path');
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ReposView.tsx'),
+            'utf-8',
+        );
+    });
+
+    it('calls setLoading(false) and setRepos before git-info fetches (phase 1 renders first)', () => {
+        const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
+        const fetchReposEnd = source.indexOf('}, [dispatch]);', fetchReposStart);
+        const fetchReposBody = source.substring(fetchReposStart, fetchReposEnd);
+        // setRepos and setLoading(false) should appear before the phase-2 git-info loop
+        const setReposIdx = fetchReposBody.indexOf('setRepos(enriched)');
+        const setLoadingIdx = fetchReposBody.indexOf('setLoading(false)');
+        const phase2Idx = fetchReposBody.indexOf('Phase 2');
+        expect(setReposIdx).toBeGreaterThan(-1);
+        expect(setLoadingIdx).toBeGreaterThan(-1);
+        expect(phase2Idx).toBeGreaterThan(-1);
+        expect(setReposIdx).toBeLessThan(phase2Idx);
+        expect(setLoadingIdx).toBeLessThan(phase2Idx);
+    });
+
+    it('sets gitInfoLoading: true on each repo in phase 1', () => {
+        expect(source).toContain('gitInfoLoading: true');
+    });
+
+    it('updates each repo with gitInfoLoading: false after git-info arrives', () => {
+        expect(source).toContain('gitInfoLoading: false');
+        // The per-repo update should use setRepos with a mapping function
+        expect(source).toContain('setRepos(prev => prev.map(r =>');
+    });
+
+    it('does not include git-info in the initial parallel fetch (phase 1)', () => {
+        const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
+        const phase2Idx = source.indexOf('Phase 2', fetchReposStart);
+        const phase1Body = source.substring(fetchReposStart, phase2Idx);
+        // git-info endpoint should NOT appear in phase 1
+        expect(phase1Body).not.toContain('/git-info');
+    });
+
+    it('fetches git-info per-workspace in phase 2', () => {
+        const phase2Idx = source.indexOf('Phase 2');
+        expect(phase2Idx).toBeGreaterThan(-1);
+        const phase2Body = source.substring(phase2Idx, phase2Idx + 500);
+        expect(phase2Body).toContain('/git-info');
     });
 });

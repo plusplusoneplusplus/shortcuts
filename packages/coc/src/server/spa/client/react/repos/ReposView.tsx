@@ -55,11 +55,10 @@ export function ReposView() {
             // Update global workspace list
             dispatch({ type: 'WORKSPACES_LOADED', workspaces });
 
-            // Enrich each workspace in parallel
+            // Phase 1: Fetch pipelines/tasks/processes (fast) in parallel — skip git-info
             const enriched: RepoData[] = await Promise.all(
                 workspaces.map(async (ws: any) => {
-                    const [gitInfo, pipelinesRes, tasksRes] = await Promise.all([
-                        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/git-info`).catch(() => null),
+                    const [pipelinesRes, tasksRes] = await Promise.all([
                         fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/pipelines`).catch(() => null),
                         fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks`).catch(() => null),
                     ]);
@@ -75,7 +74,7 @@ export function ReposView() {
 
                     return {
                         workspace: ws,
-                        gitInfo: gitInfo || undefined,
+                        gitInfoLoading: true,
                         pipelines: pipelinesRes?.pipelines || [],
                         stats,
                         taskCount: countTasks(tasksRes),
@@ -83,7 +82,9 @@ export function ReposView() {
                 })
             );
 
+            // Render cards immediately (git-info still loading)
             setRepos(enriched);
+            setLoading(false);
 
             // Seed per-repo queue stats for card badges
             seedRepoQueueStats(enriched);
@@ -92,10 +93,24 @@ export function ReposView() {
             if (selectedRepoIdRef.current && !enriched.find(r => r.workspace.id === selectedRepoIdRef.current)) {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
             }
+
+            // Phase 2: Fetch git-info per workspace progressively
+            for (const repoData of enriched) {
+                const wsId = repoData.workspace.id;
+                fetchApi(`/workspaces/${encodeURIComponent(wsId)}/git-info`)
+                    .catch(() => null)
+                    .then((gitInfo: any) => {
+                        setRepos(prev => prev.map(r =>
+                            r.workspace.id === wsId
+                                ? { ...r, gitInfo: gitInfo || undefined, gitInfoLoading: false }
+                                : r
+                        ));
+                    });
+            }
         } catch {
             setRepos([]);
+            setLoading(false);
         }
-        setLoading(false);
     }, [dispatch]);
 
     // Seed repoQueueMap from /api/queue/repos (single call for all repos)

@@ -21,6 +21,7 @@ export interface RepoData {
         ahead?: number;
         behind?: number;
     };
+    gitInfoLoading?: boolean;
     pipelines?: PipelineInfo[];
     stats?: { success: number; failed: number; running: number };
     taskCount?: number;
