@@ -1280,7 +1280,9 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Update process store with the enriched prompt
         const processId = `queue_${task.id}`;
-        const preview = aiPrompt.length > 80 ? aiPrompt.substring(0, 77) + '...' : aiPrompt;
+        const commentCount = Array.isArray(payload.commentIds) ? payload.commentIds.length : 0;
+        const targetFile = payload.filePath || payload.documentUri || 'document';
+        const preview = `Resolve ${commentCount} comment(s) in ${targetFile}`;
         try {
             await this.store.updateProcess(processId, {
                 fullPrompt: aiPrompt,

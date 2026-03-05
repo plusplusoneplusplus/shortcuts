@@ -229,6 +229,30 @@ describe('Queue Resolved Prompt Endpoint', () => {
         expect(body.planFileContent).toBeUndefined();
         expect(body.promptFileContent).toBeUndefined();
     });
+
+    it('should return resolved prompt for resolve-comments task using promptTemplate', async () => {
+        const srv = await startServer();
+
+        const task = await enqueueTask(srv, {
+            type: 'resolve-comments',
+            payload: {
+                documentUri: 'docs/readme.md',
+                commentIds: ['comment-1'],
+                promptTemplate: '# Document Revision Request\n\nUse full prompt content.',
+                documentContent: '# Old',
+                filePath: 'docs/readme.md',
+                workingDirectory: tmpDir,
+            },
+        });
+
+        const res = await httpRequest(`${srv.url}/api/queue/${task.id}/resolved-prompt`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.taskId).toBe(task.id);
+        expect(body.type).toBe('resolve-comments');
+        expect(body.resolvedPrompt).toContain('=== Prompt ===');
+        expect(body.resolvedPrompt).toContain('Use full prompt content.');
+    });
 });
 
 // ============================================================================

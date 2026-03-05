@@ -2437,7 +2437,7 @@ describe('CLITaskExecutor', () => {
                 'queue_resolve-5',
                 expect.objectContaining({
                     fullPrompt: longPrompt,
-                    promptPreview: longPrompt.substring(0, 77) + '...',
+                    promptPreview: 'Resolve 1 comment(s) in task.md',
                 })
             );
         });

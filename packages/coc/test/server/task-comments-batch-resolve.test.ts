@@ -157,6 +157,37 @@ describe('buildBatchResolvePrompt', () => {
         expect(prompt).toContain('resolve_comment');
         expect(prompt).toContain('Do NOT call `resolve_comment`');
     });
+
+    it('includes optional author/category/tags/replies/aiResponse fields when present', () => {
+        const prompt = buildBatchResolvePrompt(
+            [
+                makeComment({
+                    author: 'Alice',
+                    category: 'style',
+                    tags: ['docs', 'clarity'],
+                    aiResponse: 'Consider simplifying this sentence.',
+                    replies: [
+                        {
+                            id: 'reply-1',
+                            author: 'Bob',
+                            text: 'I agree with this.',
+                            createdAt: '2026-01-02T00:00:00.000Z',
+                        },
+                    ],
+                }),
+            ],
+            '# Doc',
+            'file.md'
+        );
+
+        expect(prompt).toContain('**Author:** Alice');
+        expect(prompt).toContain('**Category:** style');
+        expect(prompt).toContain('**Tags:** docs, clarity');
+        expect(prompt).toContain('**Previous AI Response:**');
+        expect(prompt).toContain('Consider simplifying this sentence.');
+        expect(prompt).toContain('**Replies:**');
+        expect(prompt).toContain('> Bob: I agree with this.');
+    });
 });
 
 // ============================================================================

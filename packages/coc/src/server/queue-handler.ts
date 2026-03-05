@@ -1178,6 +1178,8 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 parts.push('=== Prompt Content ===\n' + payload.promptContent);
             } else if (payload?.prompt) {
                 parts.push('=== Prompt ===\n' + payload.prompt);
+            } else if (payload?.promptTemplate) {
+                parts.push('=== Prompt ===\n' + payload.promptTemplate);
             }
             if (parts.length > 0) {
                 result.resolvedPrompt = parts.join('\n\n');

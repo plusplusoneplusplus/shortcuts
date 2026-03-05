@@ -172,6 +172,35 @@ describe('PendingTaskInfoPanel', () => {
         });
     });
 
+    it('renders resolve-comments payload with document, comments, and prompt', async () => {
+        const task = makePendingTask({
+            type: 'resolve-comments',
+            payload: {
+                workingDirectory: '/home/user/project',
+                filePath: 'docs/readme.md',
+                commentIds: ['c-1', 'c-2'],
+                promptTemplate: '# Document Revision Request\n\nPlease address these comments.',
+            },
+        });
+        setupFetchForTask(task);
+
+        render(
+            <Wrap>
+                <SeededQueueTaskDetail task={task} />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Resolve Comments Details')).toBeTruthy();
+            expect(screen.getByText('Document')).toBeTruthy();
+            expect(screen.getByText('Comments')).toBeTruthy();
+            expect(screen.getByText('2 (c-1, c-2)')).toBeTruthy();
+            expect(screen.getByText('Prompt')).toBeTruthy();
+            expect(screen.getByText(/Document Revision Request/)).toBeTruthy();
+            expect(screen.getByText(/Please address these comments\./)).toBeTruthy();
+        });
+    });
+
     it('renders commitSha and "Diff Type" for code-review task type', async () => {
         const task = makePendingTask({
             type: 'code-review',

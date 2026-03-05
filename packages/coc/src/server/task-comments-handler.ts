@@ -938,6 +938,31 @@ export function buildBatchResolvePrompt(
         prompt += c.selectedText;
         prompt += '\n```\n\n';
         prompt += `**Comment:** ${c.comment}\n\n`;
+        if (c.author?.trim()) {
+            prompt += `**Author:** ${c.author.trim()}\n\n`;
+        }
+        if (c.category?.trim()) {
+            prompt += `**Category:** ${c.category.trim()}\n\n`;
+        }
+        if (Array.isArray(c.tags) && c.tags.length > 0) {
+            const tags = c.tags.map(tag => tag.trim()).filter(Boolean);
+            if (tags.length > 0) {
+                prompt += `**Tags:** ${tags.join(', ')}\n\n`;
+            }
+        }
+        if (c.aiResponse?.trim()) {
+            prompt += '**Previous AI Response:**\n';
+            prompt += `${c.aiResponse}\n\n`;
+        }
+        if (Array.isArray(c.replies) && c.replies.length > 0) {
+            const replies = c.replies
+                .filter(reply => reply.text?.trim())
+                .map(reply => `> ${reply.author || 'Anonymous'}: ${reply.text}`);
+            if (replies.length > 0) {
+                prompt += '**Replies:**\n';
+                prompt += `${replies.join('\n')}\n\n`;
+            }
+        }
         prompt += '**Requested Action:** Revise this section to address the comment.\n\n';
     });
 
