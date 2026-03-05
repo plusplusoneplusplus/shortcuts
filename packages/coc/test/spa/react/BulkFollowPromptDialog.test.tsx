@@ -689,4 +689,136 @@ describe('BulkFollowPromptDialog', () => {
             expect(body.payload.promptFilePath).not.toContain('/');
         });
     });
+
+    it('renders additional info textarea with placeholder', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        await act(async () => {
+            renderDialog();
+        });
+        const textarea = document.getElementById('bfp-additional-info') as HTMLTextAreaElement;
+        expect(textarea).toBeDefined();
+        expect(textarea.tagName).toBe('TEXTAREA');
+        expect(textarea.placeholder).toContain('Extra context');
+        expect(textarea.value).toBe('');
+    });
+
+    it('includes additionalInfo in POST body when non-empty', async () => {
+        const onClose = vi.fn();
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        const singleFileFolder = makeFolder({
+            singleDocuments: [
+                { baseName: 'task', fileName: 'task.md', relativePath: 'feature1', isArchived: false },
+            ],
+        });
+
+        await act(async () => {
+            renderDialog(singleFileFolder, onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        const textarea = document.getElementById('bfp-additional-info') as HTMLTextAreaElement;
+        await act(async () => {
+            fireEvent.change(textarea, { target: { value: '  output in JSON  ' } });
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.additionalInfo).toBe('output in JSON');
+        });
+    });
+
+    it('does not include additionalInfo when textarea is empty', async () => {
+        const onClose = vi.fn();
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        const singleFileFolder = makeFolder({
+            singleDocuments: [
+                { baseName: 'task', fileName: 'task.md', relativePath: 'feature1', isArchived: false },
+            ],
+        });
+
+        await act(async () => {
+            renderDialog(singleFileFolder, onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.additionalInfo).toBeUndefined();
+        });
+    });
 });

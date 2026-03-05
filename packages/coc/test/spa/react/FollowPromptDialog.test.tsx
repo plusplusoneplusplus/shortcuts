@@ -508,4 +508,175 @@ describe('FollowPromptDialog', () => {
             expect(body.payload.promptFilePath).toBe('D:\\projects\\shortcuts\\.vscode\\impl.prompt.md');
         });
     });
+
+    it('renders additional info textarea with placeholder', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        await act(async () => {
+            renderDialog();
+        });
+        const textarea = document.getElementById('fp-additional-info') as HTMLTextAreaElement;
+        expect(textarea).toBeDefined();
+        expect(textarea.tagName).toBe('TEXTAREA');
+        expect(textarea.placeholder).toContain('Extra context');
+        expect(textarea.value).toBe('');
+    });
+
+    it('includes additionalInfo in POST body when non-empty', async () => {
+        const onClose = vi.fn();
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog(onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        // Type in the textarea
+        const textarea = document.getElementById('fp-additional-info') as HTMLTextAreaElement;
+        await act(async () => {
+            fireEvent.change(textarea, { target: { value: '  focus on auth module  ' } });
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.additionalInfo).toBe('focus on auth module');
+        });
+    });
+
+    it('does not include additionalInfo when textarea is empty', async () => {
+        const onClose = vi.fn();
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog(onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.additionalInfo).toBeUndefined();
+        });
+    });
+
+    it('disables additional info textarea while submitting', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/prompts')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                // Delay to keep submitting state active
+                return new Promise(resolve => setTimeout(() => resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                }), 200));
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return new Promise(resolve => setTimeout(() => resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ id: 'q-1' }),
+                }), 200));
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        const textarea = document.getElementById('fp-additional-info') as HTMLTextAreaElement;
+        expect(textarea.disabled).toBe(false);
+
+        // Click to start submission (don't await completion)
+        act(() => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+
+        // Textarea should be disabled while submitting
+        expect(textarea.disabled).toBe(true);
+    });
 });

@@ -87,6 +87,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [additionalInfo, setAdditionalInfo] = useState('');
 
     const taskFiles = useMemo(() => collectMarkdownFiles(folder), [folder]);
 
@@ -146,6 +147,11 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                     };
                 }
 
+                const trimmed = additionalInfo.trim();
+                if (trimmed) {
+                    payload.additionalInfo = trimmed;
+                }
+
                 const body: any = {
                     type: 'follow-prompt',
                     priority: 'normal',
@@ -178,7 +184,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
         } finally {
             setSubmitting(false);
         }
-    }, [selectedWsId, taskFiles, model, state.workspaces, addToast, onClose, trackUsage]);
+    }, [selectedWsId, taskFiles, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage]);
 
     return (
         <Dialog open onClose={onClose} title="Follow Prompt" id="bulk-follow-prompt-dialog">
@@ -225,6 +231,22 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                             <option key={ws.id} value={ws.id}>{ws.name || ws.rootPath || ws.id}</option>
                         ))}
                     </select>
+                </div>
+
+                {/* Additional info */}
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-[#616161] dark:text-[#999]">
+                        Additional info <span className="text-[#848484]">(optional)</span>
+                    </label>
+                    <textarea
+                        id="bfp-additional-info"
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] resize-y"
+                        rows={3}
+                        placeholder="Extra context for the AI (e.g. &quot;focus on auth module&quot;)"
+                        value={additionalInfo}
+                        onChange={e => setAdditionalInfo(e.target.value)}
+                        disabled={submitting}
+                    />
                 </div>
 
                 {/* Last Used section */}
