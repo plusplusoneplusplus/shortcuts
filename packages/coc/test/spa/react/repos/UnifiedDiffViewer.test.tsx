@@ -463,4 +463,26 @@ describe('UnifiedDiffViewer — comment badges and highlights', () => {
         const badge = lineDiv.querySelector<HTMLElement>('[data-testid="comment-badge"]')!;
         expect(badge.textContent).toBe('2');
     });
+
+    it('no badge rendered for orphaned comment on a line', () => {
+        const orphaned = { ...makeComment({ diffLineStart: 6, diffLineEnd: 6, status: 'open' }), status: 'orphaned' as any };
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={[orphaned]} />
+        );
+        const lineDiv = container.querySelector<HTMLElement>('[data-diff-line-index="6"]')!;
+        expect(lineDiv.querySelector('[data-testid="comment-badge"]')).toBeNull();
+    });
+
+    it('badge present for open comment when orphaned comment is also on same line', () => {
+        const open = makeComment({ id: 'open', diffLineStart: 6, diffLineEnd: 6, status: 'open' });
+        const orphaned = { ...makeComment({ id: 'orph', diffLineStart: 6, diffLineEnd: 6, status: 'open' }), status: 'orphaned' as any };
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={[open, orphaned]} />
+        );
+        const lineDiv = container.querySelector<HTMLElement>('[data-diff-line-index="6"]')!;
+        const badge = lineDiv.querySelector<HTMLElement>('[data-testid="comment-badge"]')!;
+        // Only the open comment should count
+        expect(badge).toBeTruthy();
+        expect(badge.textContent).toBe('1');
+    });
 });

@@ -277,3 +277,59 @@ describe('CommentSidebar', () => {
         });
     });
 });
+
+// ============================================================================
+// Orphaned comment badge tests
+// ============================================================================
+
+describe('CommentSidebar — orphaned comments', () => {
+    it('renders ⚠️ Location lost badge for orphaned comment', () => {
+        const orphaned = { ...makeComment({ id: 'o1' }), status: 'orphaned' as any };
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[orphaned]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+            />
+        );
+        expect(screen.getByTestId('orphaned-badge')).toBeTruthy();
+        expect(screen.getByTestId('orphaned-badge').textContent).toContain('Location lost');
+    });
+
+    it('does not render orphaned badge for open comment', () => {
+        const open = makeComment({ id: 'o', status: 'open' });
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[open]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+            />
+        );
+        expect(screen.queryByTestId('orphaned-badge')).toBeNull();
+    });
+
+    it('does not render orphaned badge for resolved comment', () => {
+        const resolved = makeComment({ id: 'r', status: 'resolved' });
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[resolved]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+            />
+        );
+        expect(screen.queryByTestId('orphaned-badge')).toBeNull();
+    });
+
+    it('renders badge only for the orphaned entry in a mixed list', () => {
+        const open = makeComment({ id: 'o1', status: 'open' });
+        const orphaned = { ...makeComment({ id: 'o2' }), status: 'orphaned' as any };
+        render(
+            <CommentSidebar
+                taskId="task1" filePath="task1.md" comments={[open, orphaned]} loading={false}
+                onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                onAskAI={noop} onCommentClick={noop}
+            />
+        );
+        expect(screen.getAllByTestId('orphaned-badge')).toHaveLength(1);
+    });
+});

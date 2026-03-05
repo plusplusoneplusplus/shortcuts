@@ -180,8 +180,16 @@ export function CommentSidebar({
                     </div>
                 )}
                 {filtered.map(comment => (
-                    <CommentCard
-                        key={comment.id}
+                    <div key={comment.id} className={cn((comment as any).status === 'orphaned' && 'opacity-50 italic')}>
+                        {(comment as any).status === 'orphaned' && (
+                            <span
+                                className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 px-2 py-0.5"
+                                data-testid="orphaned-badge"
+                            >
+                                ⚠️ Location lost
+                            </span>
+                        )}
+                        <CommentCard
                         comment={comment}
                         onResolve={() => onResolve(comment.id)}
                         onUnresolve={() => onUnresolve(comment.id)}
@@ -196,6 +204,7 @@ export function CommentSidebar({
                         fixLoading={resolvingCommentId === comment.id}
                         disabled={resolving}
                     />
+                    </div>
                 ))}
             </div>
         </div>

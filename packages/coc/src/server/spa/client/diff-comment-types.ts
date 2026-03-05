@@ -16,7 +16,7 @@ export type { DiffCommentSelection, DiffCommentContext } from '@plusplusoneplusp
 // ============================================================================
 
 /** Comment status values. */
-export type DiffCommentStatus = 'open' | 'resolved';
+export type DiffCommentStatus = 'open' | 'resolved' | 'orphaned';
 
 /** Comment categories. */
 export type DiffCommentCategory = 'bug' | 'question' | 'suggestion' | 'praise' | 'nitpick' | 'general';

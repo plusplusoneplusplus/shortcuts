@@ -37,7 +37,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
     const diffContext = { repositoryId: workspaceId, filePath, oldRef: 'branch-base', newRef: 'branch-head' };
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
-            resolveComment, unresolveComment } = useDiffComments(workspaceId, diffContext);
+            resolveComment, unresolveComment, runRelocation } = useDiffComments(workspaceId, diffContext);
 
     const fetchDiff = useCallback(() => {
         setLoading(true);
@@ -116,6 +116,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                             enableComments
                             showLineNumbers
                             comments={comments}
+                            onLinesReady={runRelocation}
                             onAddComment={handleAddComment}
                             onCommentClick={handleCommentClick}
                             data-testid="branch-file-diff-content"

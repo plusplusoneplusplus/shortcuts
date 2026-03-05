@@ -294,7 +294,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                             {enableComments && (
                                 <span className="inline-flex w-5 shrink-0 items-center justify-center">
                                     {(() => {
-                                        const lc = lineCommentMap.get(i);
+                                        const lc = (lineCommentMap.get(i) ?? []).filter(c => c.status !== 'orphaned');
                                         if (!lc || lc.length === 0) return <span className="w-4 h-4" />;
                                         return (
                                             <button
@@ -338,7 +338,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                         {enableComments && (
                             <span className="inline-flex w-5 shrink-0 items-center justify-center">
                                 {(() => {
-                                    const lc = lineCommentMap.get(i);
+                                    const lc = (lineCommentMap.get(i) ?? []).filter(c => c.status !== 'orphaned');
                                     if (!lc || lc.length === 0) return <span className="w-4 h-4" />;
                                     return (
                                         <button

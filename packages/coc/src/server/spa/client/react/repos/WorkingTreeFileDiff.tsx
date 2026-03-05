@@ -46,7 +46,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
         : null;
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
-            resolveComment, unresolveComment } = useDiffComments(workspaceId, diffContext);
+            resolveComment, unresolveComment, runRelocation } = useDiffComments(workspaceId, diffContext);
 
     const fetchDiff = useCallback(() => {
         if (stage === 'untracked') {
@@ -133,6 +133,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                             enableComments
                             showLineNumbers
                             comments={comments}
+                            onLinesReady={runRelocation}
                             onAddComment={handleAddComment}
                             onCommentClick={handleCommentClick}
                             data-testid="working-tree-file-diff-content"

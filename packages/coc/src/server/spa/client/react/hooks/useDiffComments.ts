@@ -9,6 +9,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getApiBase, getWsPath } from '../utils/config';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../diff-comment-types';
+import type { DiffLine } from '../repos/UnifiedDiffViewer';
+import { relocateDiffAnchor } from '../utils/relocateDiffAnchor';
 
 // ============================================================================
 // Request/Response Types
@@ -18,6 +20,7 @@ export interface UpdateDiffCommentRequest {
     comment?: string;
     status?: 'open' | 'resolved';
     category?: string;
+    selection?: Partial<DiffCommentSelection>;
 }
 
 export interface AskAIOptions {
@@ -51,6 +54,7 @@ export interface UseDiffCommentsReturn {
     resolving: boolean;
     resolvingCommentId: string | null;
     refresh: () => Promise<void>;
+    runRelocation: (lines: DiffLine[]) => Promise<void>;
     // TODO: resolveWithAI / fixWithAI / copyResolvePrompt — omitted until a
     // document write-back path is defined for diff comments.
 }
@@ -140,6 +144,8 @@ export function useDiffComments(
     const mountedRef  = useRef(true);
     const contextRef  = useRef(context);
     contextRef.current = context; // always up-to-date without being a dep
+    const commentsRef = useRef<DiffComment[]>([]);
+    commentsRef.current = comments; // always up-to-date
 
     useEffect(() => {
         mountedRef.current = true;
@@ -322,6 +328,39 @@ export function useDiffComments(
     }, []);
 
     // ------------------------------------------------------------------
+    // runRelocation — re-match each comment's anchor against new DiffLines
+    // Called from onLinesReady when the diff is re-fetched.
+    // ------------------------------------------------------------------
+
+    const runRelocation = useCallback(async (lines: DiffLine[]): Promise<void> => {
+        for (const comment of commentsRef.current) {
+            if (!comment.anchor) continue;
+
+            const newIndex = relocateDiffAnchor(comment, lines);
+
+            if (newIndex === null) {
+                // Mark orphaned locally — no server round-trip needed for status
+                if (mountedRef.current) {
+                    setComments((prev) =>
+                        prev.map((c) =>
+                            c.id === comment.id ? { ...c, status: 'orphaned' as const } : c
+                        )
+                    );
+                }
+            } else if (newIndex !== comment.selection.diffLineStart) {
+                // Persist updated position via PATCH
+                const span = comment.selection.diffLineEnd - comment.selection.diffLineStart;
+                await updateCommentFn(comment.id, {
+                    selection: {
+                        diffLineStart: newIndex,
+                        diffLineEnd: newIndex + span,
+                    },
+                });
+            }
+        }
+    }, [wsId, updateCommentFn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ------------------------------------------------------------------
     // refresh
     // ------------------------------------------------------------------
 
@@ -373,5 +412,6 @@ export function useDiffComments(
         resolving,
         resolvingCommentId,
         refresh,
+        runRelocation,
     };
 }

@@ -42,7 +42,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
         : null;
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
-            resolveComment, unresolveComment } = useDiffComments(workspaceId, diffContext);
+            resolveComment, unresolveComment, runRelocation } = useDiffComments(workspaceId, diffContext);
 
     // Always fetch diff on mount / hash / filePath change
     useEffect(() => {
@@ -120,6 +120,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
                             enableComments={!!filePath}
                             showLineNumbers={!!filePath}
                             comments={comments}
+                            onLinesReady={filePath ? runRelocation : undefined}
                             onAddComment={filePath ? handleAddComment : undefined}
                             onCommentClick={filePath ? handleCommentClick : undefined}
                             data-testid="diff-content"
