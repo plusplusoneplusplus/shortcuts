@@ -45,6 +45,7 @@ describe('TABS constant', () => {
         expect(labels).toContain('Repos');
         expect(labels).toContain('Processes');
         expect(labels).toContain('Wiki');
+        expect(labels).toContain('Memory');
     });
 
     it('has matching tab identifiers', () => {
@@ -52,10 +53,11 @@ describe('TABS constant', () => {
         expect(tabs).toContain('repos');
         expect(tabs).toContain('processes');
         expect(tabs).toContain('wiki');
+        expect(tabs).toContain('memory');
     });
 
-    it('has exactly 3 entries', () => {
-        expect(TABS).toHaveLength(3);
+    it('has exactly 4 entries', () => {
+        expect(TABS).toHaveLength(4);
     });
 });
 
