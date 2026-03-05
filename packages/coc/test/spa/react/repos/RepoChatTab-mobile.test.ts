@@ -1,14 +1,17 @@
 /**
- * Tests for RepoChatTab mobile responsiveness improvements.
+ * Tests for RepoChatTab mobile two-level navigation.
  *
  * Validates:
- * - Chat sidebar uses ResponsiveSidebar (drawer on mobile, fixed on desktop)
- * - Mobile sessions toggle button in conversation header and start screen
- * - mobileSidebarOpen state management
- * - Session selection closes mobile drawer
+ * - Chat tab uses mobileShowDetail state for two-level nav (list vs detail)
+ * - "← Back" button in conversation header and start screen on mobile
+ * - Session selection sets mobileShowDetail(true)
+ * - New chat sets mobileShowDetail(true)
+ * - Deep-link sets mobileShowDetail(true)
+ * - Desktop layout is unchanged (sidebar + conversation side-by-side)
+ * - No ResponsiveSidebar or hamburger menu in chat
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -17,43 +20,42 @@ const REPO_CHAT_TAB_SOURCE = fs.readFileSync(
     'utf-8',
 );
 
-describe('RepoChatTab mobile: imports', () => {
-    it('imports ResponsiveSidebar', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain("import { ResponsiveSidebar } from '../shared/ResponsiveSidebar'");
+describe('RepoChatTab mobile: two-level nav state', () => {
+    it('has mobileShowDetail state (not mobileSidebarOpen)', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('const [mobileShowDetail, setMobileShowDetail] = useState(false)');
+        expect(REPO_CHAT_TAB_SOURCE).not.toContain('mobileSidebarOpen');
     });
 
-    it('imports useBreakpoint', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
-    });
-});
-
-describe('RepoChatTab mobile: breakpoint and state', () => {
     it('destructures isMobile from useBreakpoint', () => {
         expect(REPO_CHAT_TAB_SOURCE).toContain('const { isMobile } = useBreakpoint()');
     });
+});
 
-    it('has mobileSidebarOpen state', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)');
+describe('RepoChatTab mobile: no ResponsiveSidebar or hamburger', () => {
+    it('does not import ResponsiveSidebar', () => {
+        expect(REPO_CHAT_TAB_SOURCE).not.toContain('ResponsiveSidebar');
+    });
+
+    it('does not render hamburger icon', () => {
+        expect(REPO_CHAT_TAB_SOURCE).not.toContain('☰');
+    });
+
+    it('does not have chat-mobile-sessions-btn test IDs', () => {
+        expect(REPO_CHAT_TAB_SOURCE).not.toContain('chat-mobile-sessions-btn');
     });
 });
 
-describe('RepoChatTab mobile: ResponsiveSidebar integration', () => {
-    it('renders ResponsiveSidebar on mobile', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('<ResponsiveSidebar');
+describe('RepoChatTab mobile: two-level conditional render', () => {
+    it('renders mobile list vs detail based on mobileShowDetail', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('mobileShowDetail ?');
     });
 
-    it('passes mobileSidebarOpen as isOpen prop', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('isOpen={mobileSidebarOpen}');
+    it('renders chat-mobile-list test ID for the list view', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('data-testid="chat-mobile-list"');
     });
 
-    it('passes setMobileSidebarOpen(false) as onClose', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('onClose={() => setMobileSidebarOpen(false)}');
-    });
-
-    it('conditionally renders ResponsiveSidebar based on isMobile', () => {
-        // On mobile: use ResponsiveSidebar; on desktop: render sidebar directly
-        expect(REPO_CHAT_TAB_SOURCE).toContain('isMobile ? (');
-        expect(REPO_CHAT_TAB_SOURCE).toContain('sidebarContent');
+    it('has early return for mobile layout (separate from desktop)', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('if (isMobile) {');
     });
 
     it('sidebar content is extracted into sidebarContent variable', () => {
@@ -69,52 +71,87 @@ describe('RepoChatTab mobile: ResponsiveSidebar integration', () => {
     });
 });
 
-describe('RepoChatTab mobile: sessions toggle button', () => {
-    it('renders mobile sessions button in conversation header', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('data-testid="chat-mobile-sessions-btn"');
+describe('RepoChatTab mobile: back button', () => {
+    it('renders back button with chat-detail-back-btn test ID', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('data-testid="chat-detail-back-btn"');
     });
 
-    it('renders mobile sessions button in start screen', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('data-testid="chat-mobile-sessions-btn-start"');
+    it('back button calls setMobileShowDetail(false)', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('onClick={() => setMobileShowDetail(false)}');
     });
 
-    it('sessions button opens mobile sidebar', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('setMobileSidebarOpen(true)');
+    it('back button shows ← Back text', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('← Back');
     });
 
-    it('sessions button has hamburger icon', () => {
-        const btnIdx = REPO_CHAT_TAB_SOURCE.indexOf('chat-mobile-sessions-btn"');
-        const nearby = REPO_CHAT_TAB_SOURCE.substring(btnIdx, btnIdx + 200);
-        expect(nearby).toContain('☰');
-    });
-
-    it('sessions buttons are only shown on mobile', () => {
-        // Both buttons are guarded by isMobile conditional rendering
-        // The pattern: {isMobile && (<button ... data-testid="chat-mobile-sessions-btn"
+    it('back button is only shown on mobile', () => {
         const normalized = REPO_CHAT_TAB_SOURCE.replace(/\r\n/g, '\n');
-        const matches = normalized.match(/\{isMobile && \(\s*<button/g);
+        const matches = normalized.match(/\{isMobile && \(\s*<button[\s\S]*?chat-detail-back-btn/g);
         expect(matches).toBeTruthy();
-        expect(matches!.length).toBeGreaterThanOrEqual(2);
+        expect(matches!.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('back button styled consistently with queue detail back button', () => {
+        expect(REPO_CHAT_TAB_SOURCE).toContain('text-[#0078d4]');
+        expect(REPO_CHAT_TAB_SOURCE).toContain('hover:text-[#005a9e]');
     });
 });
 
-describe('RepoChatTab mobile: session selection closes drawer', () => {
-    it('handleSelectSession calls setMobileSidebarOpen(false)', () => {
+describe('RepoChatTab mobile: session selection sets detail view', () => {
+    it('handleSelectSession calls setMobileShowDetail(true) on mobile', () => {
         const handler = REPO_CHAT_TAB_SOURCE.substring(
             REPO_CHAT_TAB_SOURCE.indexOf('const handleSelectSession'),
             REPO_CHAT_TAB_SOURCE.indexOf('const handleNewChat')
         );
-        expect(handler).toContain('setMobileSidebarOpen(false)');
+        expect(handler).toContain('if (isMobile) setMobileShowDetail(true)');
     });
 });
 
-describe('RepoChatTab mobile: right panel full-width', () => {
+describe('RepoChatTab mobile: new chat navigates to detail', () => {
+    it('handleNewChat calls setMobileShowDetail(true) on mobile', () => {
+        const handler = REPO_CHAT_TAB_SOURCE.substring(
+            REPO_CHAT_TAB_SOURCE.indexOf('const handleNewChat'),
+            REPO_CHAT_TAB_SOURCE.indexOf('// Trigger new chat from external')
+        );
+        expect(handler).toContain('if (isMobile) setMobileShowDetail(true)');
+    });
+});
+
+describe('RepoChatTab mobile: deep link support', () => {
+    it('sets mobileShowDetail(true) when initialSessionId is provided', () => {
+        const autoSelect = REPO_CHAT_TAB_SOURCE.substring(
+            REPO_CHAT_TAB_SOURCE.indexOf('// --- auto-select on mount'),
+            REPO_CHAT_TAB_SOURCE.indexOf('// Reset auto-select when workspace')
+        );
+        expect(autoSelect).toContain('if (isMobile) setMobileShowDetail(true)');
+    });
+});
+
+describe('RepoChatTab desktop: layout unchanged', () => {
     it('right panel uses flex-1 to fill available width', () => {
         expect(REPO_CHAT_TAB_SOURCE).toContain('"flex-1 min-w-0 overflow-hidden flex flex-col"');
     });
 
     it('chat-split-panel root is still present', () => {
         expect(REPO_CHAT_TAB_SOURCE).toContain('data-testid="chat-split-panel"');
+    });
+
+    it('desktop renders sidebarContent directly (not in ResponsiveSidebar)', () => {
+        // Desktop path: {sidebarContent} directly inside the flex container
+        const desktopReturn = REPO_CHAT_TAB_SOURCE.substring(
+            REPO_CHAT_TAB_SOURCE.lastIndexOf('data-testid="chat-split-panel"')
+        );
+        expect(desktopReturn).toContain('{sidebarContent}');
+    });
+});
+
+describe('RepoChatTab mobile: workspace change resets detail', () => {
+    it('resets mobileShowDetail on workspace change', () => {
+        const resetBlock = REPO_CHAT_TAB_SOURCE.substring(
+            REPO_CHAT_TAB_SOURCE.indexOf('// Reset auto-select when workspace'),
+            REPO_CHAT_TAB_SOURCE.indexOf('// Refresh session list')
+        );
+        expect(resetBlock).toContain('setMobileShowDetail(false)');
     });
 });
 

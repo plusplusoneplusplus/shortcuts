@@ -11,7 +11,6 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Button, Spinner, SuggestionChips } from '../shared';
-import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { useImagePaste } from '../hooks/useImagePaste';
@@ -81,7 +80,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const { model: savedModel, setModel: persistModel } = usePreferences();
     const { isMobile } = useBreakpoint();
     const keyboardHeight = useVisualViewport();
-    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+    const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [chatTaskId, setChatTaskId] = useState<string | null>(null);
@@ -333,6 +332,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             autoSelectedRef.current = true;
             setSelectedTaskId(initialSessionId);
             loadSession(initialSessionId);
+            if (isMobile) setMobileShowDetail(true);
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(initialSessionId);
             return;
         }
@@ -355,6 +355,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setTurnsAndCache([]);
         setError(null);
         setSessionExpired(false);
+        setMobileShowDetail(false);
     }, [workspaceId]);
 
     // Refresh session list when per-repo queue state changes via WebSocket.
@@ -461,8 +462,8 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         const session = sessionsHook.sessions.find(s => s.id === taskId);
         if (session?.turnCount != null) readState.markRead(taskId, session.turnCount);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(taskId);
-        setMobileSidebarOpen(false);
-    }, [isStreaming, loadSession, workspaceId, sessionsHook.sessions, readState]);
+        if (isMobile) setMobileShowDetail(true);
+    }, [isStreaming, loadSession, workspaceId, sessionsHook.sessions, readState, isMobile]);
 
     const handleNewChat = useCallback((initialReadOnly = false) => {
         if (isStreaming) stopStreaming();
@@ -481,8 +482,9 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         setReadOnly(initialReadOnly);
         initialImagePaste.clearImages();
         followUpImagePaste.clearImages();
+        if (isMobile) setMobileShowDetail(true);
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat';
-    }, [isStreaming, initialImagePaste, followUpImagePaste, workspaceId]);
+    }, [isStreaming, initialImagePaste, followUpImagePaste, workspaceId, isMobile]);
 
     // Trigger new chat from external source (e.g. top-bar button)
     const localTriggerRef = useRef(0);
@@ -743,12 +745,11 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
             {isMobile && (
                 <button
-                    className="self-start p-1 rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] text-[#616161] dark:text-[#999] text-sm"
-                    onClick={() => setMobileSidebarOpen(true)}
-                    data-testid="chat-mobile-sessions-btn-start"
-                    title="Show sessions"
+                    className="self-start text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]"
+                    onClick={() => setMobileShowDetail(false)}
+                    data-testid="chat-detail-back-btn"
                 >
-                    ☰ Sessions
+                    ← Back
                 </button>
             )}
             <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat with this repository</div>
@@ -851,12 +852,11 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 <div className="flex items-center gap-2">
                     {isMobile && (
                         <button
-                            className="p-1 rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] text-[#616161] dark:text-[#999]"
-                            onClick={() => setMobileSidebarOpen(true)}
-                            data-testid="chat-mobile-sessions-btn"
-                            title="Show sessions"
+                            className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
+                            onClick={() => setMobileShowDetail(false)}
+                            data-testid="chat-detail-back-btn"
                         >
-                            ☰
+                            ← Back
                         </button>
                     )}
                     <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
@@ -1054,19 +1054,26 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         />
     );
 
+    if (isMobile) {
+        return (
+            <div className="flex flex-col h-full overflow-hidden" data-testid="chat-split-panel">
+                {mobileShowDetail ? (
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        {!chatTaskId ? renderStartScreen() : renderConversation()}
+                    </div>
+                ) : (
+                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="chat-mobile-list">
+                        {sidebarContent}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="flex h-full overflow-hidden" data-testid="chat-split-panel">
-            {/* Left sidebar — ResponsiveSidebar (drawer on mobile, fixed on desktop) */}
-            {isMobile ? (
-                <ResponsiveSidebar
-                    isOpen={mobileSidebarOpen}
-                    onClose={() => setMobileSidebarOpen(false)}
-                >
-                    {sidebarContent}
-                </ResponsiveSidebar>
-            ) : (
-                sidebarContent
-            )}
+            {/* Left sidebar */}
+            {sidebarContent}
             {/* Right panel — grows to fill */}
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
                 {!chatTaskId ? renderStartScreen() : renderConversation()}
