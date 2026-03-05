@@ -848,7 +848,10 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const renderConversation = () => (
         <div className="flex flex-col min-h-0 flex-1" style={isMobile && keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}>
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <div className={cn(
+                "px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]",
+                isMobile ? "flex flex-col gap-1.5" : "flex items-center justify-between"
+            )} data-testid="chat-conversation-header">
                 <div className="flex items-center gap-2">
                     {isMobile && (
                         <button
@@ -870,7 +873,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                         </span>
                     )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className={cn("flex items-center gap-2", isMobile && "flex-wrap")}>
                     {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
                     {task?.status === 'queued' && (
                         <Button size="sm" variant="secondary" onClick={() => void handleCancelChat()} data-testid="cancel-chat-header-btn">
@@ -889,9 +892,12 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                     )}
                     {(task?.config?.model || task?.metadata?.model) && (
                         <span
-                            className="text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484] whitespace-nowrap"
+                            className={cn(
+                                "text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484]",
+                                isMobile ? "truncate max-w-[160px]" : "whitespace-nowrap"
+                            )}
                             data-testid="chat-model-badge"
-                            title="Model used for this chat session"
+                            title={task.config?.model || task.metadata?.model}
                         >
                             {task.config?.model || task.metadata?.model}
                         </span>
@@ -906,7 +912,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                 setTimeout(() => setCopied(false), 2000);
                             });
                         }}
-                        className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                     >
                         {copied ? (
                             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
