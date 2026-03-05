@@ -12,11 +12,6 @@ import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
 import { toNativePath } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 
-interface PromptItem {
-    name: string;
-    relativePath: string;
-}
-
 interface SkillItem {
     name: string;
     description?: string;
@@ -50,7 +45,6 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
 
     const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
-    const [prompts, setPrompts] = useState<PromptItem[]>([]);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -61,14 +55,12 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         let cancelled = false;
         (async () => {
             try {
-                const [modelsRes, promptRes, skillRes] = await Promise.all([
+                const [modelsRes, skillRes] = await Promise.all([
                     fetch(getApiBase() + '/queue/models').then(r => r.ok ? r.json() : []),
-                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/prompts`).then(r => r.ok ? r.json() : null),
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
                 ]);
                 if (cancelled) return;
                 setModels(modelsRes?.models ?? (Array.isArray(modelsRes) ? modelsRes : []));
-                setPrompts(promptRes?.prompts ?? []);
                 setSkills(skillRes?.skills ?? []);
             } catch {
                 // ignore
@@ -219,32 +211,15 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                     {/* Prompts and Skills list */}
                     {loading ? (
                         <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
-                            <Spinner size="sm" /> Loading prompts and skills…
+                            <Spinner size="sm" /> Loading skills…
                         </div>
-                    ) : prompts.length === 0 && skills.length === 0 ? (
+                    ) : skills.length === 0 ? (
                         <div className="text-xs text-[#848484] py-2">
-                            <p>No prompts or skills found in this workspace.</p>
-                            <p className="mt-1 text-[10px]">Create .prompt.md files in .vscode/pipelines/ or skills in .github/skills/</p>
+                            <p>No skills found in this workspace.</p>
+                            <p className="mt-1 text-[10px]">Create skills in .github/skills/</p>
                         </div>
                     ) : (
                         <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-                            {prompts.length > 0 && (
-                                <div>
-                                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Prompts</div>
-                                    {prompts.map(p => (
-                                        <button
-                                            key={p.relativePath}
-                                            className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
-                                            data-name={p.name}
-                                            disabled={submitting}
-                                            onClick={() => handleSubmit('prompt', p.name, p.relativePath)}
-                                        >
-                                            <span>📝</span>
-                                            <span className="truncate">{p.name}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
                             {skills.length > 0 && (
                                 <div>
                                     <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>

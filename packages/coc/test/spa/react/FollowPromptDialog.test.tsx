@@ -87,46 +87,14 @@ describe('FollowPromptDialog', () => {
         });
     });
 
-    it('renders prompt items when prompts exist', async () => {
-        mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: '.vscode/review.prompt.md' }] }),
-                });
-            }
-            if (url.includes('/skills')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-        });
-
-        await act(async () => {
-            renderDialog();
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('review')).toBeDefined();
-        });
-    });
-
-    it('submits to /api/queue/tasks on prompt click', async () => {
+    it('submits to /api/queue/tasks on skill click', async () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement changes.' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -160,7 +128,7 @@ describe('FollowPromptDialog', () => {
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.type).toBe('follow-prompt');
-            expect(body.payload.promptFilePath).toContain('impl.prompt.md');
+            expect(body.payload.skillName).toBe('impl');
         });
     });
 
@@ -246,16 +214,10 @@ describe('FollowPromptDialog', () => {
                     json: () => Promise.resolve({ models: ['gpt-4', 'claude-sonnet'] }),
                 });
             }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: '.github/prompts/review.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'review', description: 'Review changes.' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -292,12 +254,12 @@ describe('FollowPromptDialog', () => {
             fireEvent.change(modelSelect, { target: { value: 'gpt-4' } });
         });
 
-        // Wait for prompt items to appear
+        // Wait for skill items to appear
         await waitFor(() => {
             expect(screen.getByText('review')).toBeDefined();
         });
 
-        // Click prompt to submit
+        // Click skill to submit
         await act(async () => {
             fireEvent.click(screen.getByText('review'));
         });
@@ -325,12 +287,6 @@ describe('FollowPromptDialog', () => {
                             { type: 'skill', name: 'impl', timestamp: 900 },
                         ],
                     }),
-                });
-            }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
                 });
             }
             if (url.includes('/skills')) {
@@ -362,16 +318,10 @@ describe('FollowPromptDialog', () => {
                     json: () => Promise.resolve({}),
                 });
             }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'my-skill' }] }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -382,7 +332,7 @@ describe('FollowPromptDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('review')).toBeDefined();
+            expect(screen.getByText('my-skill')).toBeDefined();
         });
 
         expect(screen.queryByText('Last Used')).toBeNull();
@@ -400,12 +350,6 @@ describe('FollowPromptDialog', () => {
                             { type: 'prompt', name: 'review', path: '.vscode/review.prompt.md', timestamp: 1000 },
                         ],
                     }),
-                });
-            }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: '.vscode/review.prompt.md' }] }),
                 });
             }
             if (url.includes('/skills')) {
@@ -458,10 +402,14 @@ describe('FollowPromptDialog', () => {
         const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
+            if (url.includes('/preferences') && !opts?.method) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
+                    json: () => Promise.resolve({
+                        recentFollowPrompts: [
+                            { type: 'prompt', name: 'impl', path: '.vscode/impl.prompt.md', timestamp: 1000 },
+                        ],
+                    }),
                 });
             }
             if (url.includes('/skills')) {
@@ -487,11 +435,12 @@ describe('FollowPromptDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('impl')).toBeDefined();
+            expect(screen.getByText('Last Used')).toBeDefined();
         });
 
+        const recentButtons = document.querySelectorAll('.fp-recent-item');
         await act(async () => {
-            fireEvent.click(screen.getByText('impl'));
+            fireEvent.click(recentButtons[0]);
         });
 
         await waitFor(() => {
@@ -528,16 +477,10 @@ describe('FollowPromptDialog', () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement changes.' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -584,16 +527,10 @@ describe('FollowPromptDialog', () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement changes.' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -632,16 +569,10 @@ describe('FollowPromptDialog', () => {
 
     it('disables additional info textarea while submitting', async () => {
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement changes.' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
