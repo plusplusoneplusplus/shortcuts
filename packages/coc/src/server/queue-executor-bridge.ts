@@ -41,7 +41,9 @@ import {
     buildDeepModePrompt,
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
+    EXPLORE_FILTER,
     executePipeline,
+    FileToolCallCacheStore,
     gatherFeatureContext,
     getCopilotSDKService,
     getLogger,
@@ -54,6 +56,7 @@ import {
     TaskExecutor,
     TaskQueueManager,
     toNativePath,
+    ToolCallCapture,
 } from '@plusplusoneplusplus/pipeline-core';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -151,6 +154,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
     /** Optional queue manager for re-activating parent tasks during follow-ups */
     private queueManager?: TaskQueueManager;
+    /** Shared store for tool-call Q&A capture (explore cache). */
+    private readonly toolCallCacheStore: FileToolCallCacheStore;
 
     constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number; followUpSuggestions?: { enabled: boolean; count: number }; getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined } = {}) {
         this.store = store;
@@ -161,6 +166,9 @@ export class CLITaskExecutor implements TaskExecutor {
         this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
         this.followUpSuggestions = options.followUpSuggestions ?? { enabled: true, count: 3 };
         this.getWsServer = options.getWsServer;
+        this.toolCallCacheStore = new FileToolCallCacheStore(
+            this.dataDir ? { dataDir: path.join(this.dataDir, 'memory') } : undefined,
+        );
     }
 
     /** Inject the queue manager (called by createQueueExecutorBridge after construction). */
@@ -923,37 +931,17 @@ export class CLITaskExecutor implements TaskExecutor {
             const workingDirectory = this.getWorkingDirectory(task);
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
 
-            const result = await this.aiService.sendMessage({
-                prompt,
-                model: task.config.model,
-                workingDirectory,
-                timeoutMs,
-                keepAlive: true,
-                attachments,
-                tools: options?.tools,
-                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
-                onSessionCreated: (sessionId: string) => {
-                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
-                        // Non-fatal: store may be a stub
-                    });
-                },
-                // Stream response chunks to the process store for real-time UI updates
-                onStreamingChunk: (chunk: string) => {
-                    // Accumulate output for disk persistence
-                    const existing = this.outputBuffers.get(processId) ?? '';
-                    this.outputBuffers.set(processId, existing + chunk);
-                    // Append content timeline item
-                    this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
-                    try {
-                        this.store.emitProcessOutput(processId, chunk);
-                    } catch {
-                        // Non-fatal: store may be a stub
-                    }
-                    // Check throttle conditions and flush if necessary
-                    this.checkThrottleAndFlush(processId);
-                },
-                // Emit tool lifecycle events for real-time tool card rendering in the SPA
-                onToolEvent: (event: ToolEvent) => {
+            // Capture read-only tool calls for the memory cache.
+            // Create capture handler defensively — errors must not break task execution.
+            let captureHandler: ((event: ToolEvent) => void) | undefined;
+            try {
+                const capture = new ToolCallCapture(this.toolCallCacheStore, EXPLORE_FILTER);
+                captureHandler = capture.createToolEventHandler();
+            } catch (err) {
+                getLogger().warn(LogCategory.AI, `[QueueExecutor] ToolCallCapture setup failed: ${err}`);
+            }
+
+            const existingToolEventHandler = (event: ToolEvent) => {
                     // Intercept suggestion tool completions — emit as dedicated SSE event
                     if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
                         try {
@@ -1009,8 +997,46 @@ export class CLITaskExecutor implements TaskExecutor {
                     }
                     // Trigger throttled flush so tool-only sessions persist timeline
                     this.checkThrottleAndFlush(processId);
+            };
+
+            const result = await this.aiService.sendMessage({
+                prompt,
+                model: task.config.model,
+                workingDirectory,
+                timeoutMs,
+                keepAlive: true,
+                attachments,
+                tools: options?.tools,
+                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
+                onSessionCreated: (sessionId: string) => {
+                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
+                        // Non-fatal: store may be a stub
+                    });
                 },
+                // Stream response chunks to the process store for real-time UI updates
+                onStreamingChunk: (chunk: string) => {
+                    // Accumulate output for disk persistence
+                    const existing = this.outputBuffers.get(processId) ?? '';
+                    this.outputBuffers.set(processId, existing + chunk);
+                    // Append content timeline item
+                    this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
+                    try {
+                        this.store.emitProcessOutput(processId, chunk);
+                    } catch {
+                        // Non-fatal: store may be a stub
+                    }
+                    // Check throttle conditions and flush if necessary
+                    this.checkThrottleAndFlush(processId);
+                },
+                // Emit tool lifecycle events for real-time tool card rendering in the SPA
+                onToolEvent: captureHandler
+                    ? (event: ToolEvent) => {
+                        try { existingToolEventHandler(event); } catch { /* non-fatal */ }
+                        try { captureHandler!(event); } catch { /* non-fatal */ }
+                    }
+                    : existingToolEventHandler,
             });
+            // TODO(004): trigger ToolCallCacheAggregator.aggregateIfNeeded() after sendMessage
 
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');
