@@ -150,16 +150,7 @@ export function ChatSessionSidebar({
             data-testid="chat-session-card"
         >
             <div className="flex items-start gap-1.5 text-sm md:text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                {isPinned ? (
-                    <button
-                        className="flex-shrink-0 text-[#0078d4] cursor-pointer"
-                        title="Unpin chat"
-                        data-testid="pin-icon-active"
-                        onClick={(e) => { e.stopPropagation(); onTogglePin?.(session.id); }}
-                    >📌</button>
-                ) : (
-                    <span className="flex-shrink-0">{statusIcon(session.status)}</span>
-                )}
+                <span className="flex-shrink-0">{statusIcon(session.status)}</span>
                 {showUnread && (
                     <span className="w-2 h-2 rounded-full bg-[#3794ff] flex-shrink-0 mt-1" data-testid="unread-dot" />
                 )}
@@ -168,6 +159,14 @@ export function ChatSessionSidebar({
                         ? (session.title || session.firstMessage).slice(0, 60) + '…'
                         : session.title || session.firstMessage || 'Chat session'}
                 </span>
+                {isPinned && onTogglePin && (
+                    <button
+                        className="flex-shrink-0 ml-auto text-[#0078d4] cursor-pointer"
+                        title="Unpin chat"
+                        data-testid="pin-icon-active"
+                        onClick={(e) => { e.stopPropagation(); onTogglePin(session.id); }}
+                    >📌</button>
+                )}
                 {!isPinned && onTogglePin && (
                     <button
                         className={cn(
