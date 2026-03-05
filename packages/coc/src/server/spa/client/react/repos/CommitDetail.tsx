@@ -8,6 +8,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer } from './UnifiedDiffViewer';
+import { useDiffComments } from '../hooks/useDiffComments';
+import { CommentSidebar } from '../tasks/comments/CommentSidebar';
+import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
+import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
+import type { TaskCommentCategory } from '../../task-comments-types';
+
+type PopupState = {
+    position: { top: number; left: number };
+    selection: DiffCommentSelection;
+    selectedText: string;
+} | null;
 
 export interface CommitDetailProps {
     workspaceId: string;
@@ -19,10 +30,19 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
     const [diff, setDiff] = useState<string | null>(null);
     const [diffLoading, setDiffLoading] = useState(true);
     const [diffError, setDiffError] = useState<string | null>(null);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [popupState, setPopupState] = useState<PopupState>(null);
 
     const diffUrl = filePath
         ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
         : `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`;
+
+    const diffContext = filePath
+        ? { repositoryId: workspaceId, filePath, oldRef: `${hash}^`, newRef: hash }
+        : null;
+
+    const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
+            resolveComment, unresolveComment } = useDiffComments(workspaceId, diffContext);
 
     // Always fetch diff on mount / hash / filePath change
     useEffect(() => {
@@ -44,32 +64,95 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
             .finally(() => setDiffLoading(false));
     }, [diffUrl]);
 
+    const handleAddComment = useCallback(
+        (selection: DiffCommentSelection, selectedText: string, position: { top: number; left: number }) => {
+            setPopupState({ position, selection, selectedText });
+        },
+        [],
+    );
+
+    const handleCommentClick = useCallback((_comment: DiffComment) => {
+        setSidebarOpen(true);
+    }, []);
+
+    const handlePopupSubmit = useCallback(
+        async (text: string, category: TaskCommentCategory) => {
+            if (!popupState) return;
+            await addComment(popupState.selection, popupState.selectedText, text, category);
+            setPopupState(null);
+        },
+        [popupState, addComment],
+    );
+
     return (
-        <div className="commit-detail flex flex-col h-full overflow-y-auto" data-testid="commit-detail">
-            {/* Diff label */}
+        <div className="commit-detail flex flex-col h-full overflow-hidden" data-testid="commit-detail">
+            {/* Diff label with comment toggle */}
             {filePath && (
-                <div className="px-4 py-2 text-xs font-mono text-[#616161] dark:text-[#999] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="diff-file-path">
-                    {filePath}
+                <div className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between" data-testid="diff-file-path">
+                    <span className="text-xs font-mono text-[#616161] dark:text-[#999]">{filePath}</span>
+                    <button
+                        onClick={() => setSidebarOpen(o => !o)}
+                        title="Toggle comments"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        data-testid="toggle-comments-btn"
+                    >
+                        💬 {comments.length > 0 ? comments.length : ''}
+                    </button>
                 </div>
             )}
 
-            {/* Diff view — always visible */}
-            <div className="px-4 py-3 flex-1 min-h-0" data-testid="diff-section">
-                {diffLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
-                        <Spinner size="sm" /> Loading diff...
-                    </div>
-                ) : diffError ? (
-                    <div className="flex items-center gap-2" data-testid="diff-error">
-                        <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{diffError}</span>
-                        <Button variant="secondary" size="sm" onClick={handleRetryDiff} data-testid="retry-diff-btn">Retry</Button>
-                    </div>
-                ) : diff ? (
-                    <UnifiedDiffViewer diff={diff} fileName={filePath} data-testid="diff-content" />
-                ) : (
-                    <div className="text-xs text-[#848484]" data-testid="diff-empty">(empty diff)</div>
+            {/* Diff view + sidebar */}
+            <div className="flex flex-1 min-h-0">
+                <div className="flex-1 overflow-auto px-4 py-3" data-testid="diff-section">
+                    {diffLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
+                            <Spinner size="sm" /> Loading diff...
+                        </div>
+                    ) : diffError ? (
+                        <div className="flex items-center gap-2" data-testid="diff-error">
+                            <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{diffError}</span>
+                            <Button variant="secondary" size="sm" onClick={handleRetryDiff} data-testid="retry-diff-btn">Retry</Button>
+                        </div>
+                    ) : diff ? (
+                        <UnifiedDiffViewer
+                            diff={diff}
+                            fileName={filePath}
+                            enableComments={!!filePath}
+                            showLineNumbers={!!filePath}
+                            comments={comments}
+                            onAddComment={filePath ? handleAddComment : undefined}
+                            onCommentClick={filePath ? handleCommentClick : undefined}
+                            data-testid="diff-content"
+                        />
+                    ) : (
+                        <div className="text-xs text-[#848484]" data-testid="diff-empty">(empty diff)</div>
+                    )}
+                </div>
+
+                {sidebarOpen && filePath && (
+                    <CommentSidebar
+                        taskId={workspaceId}
+                        filePath={filePath}
+                        comments={comments as any}
+                        loading={commentsLoading}
+                        onResolve={(id) => { void resolveComment(id); }}
+                        onUnresolve={(id) => { void unresolveComment(id); }}
+                        onDelete={(id) => { void deleteComment(id); }}
+                        onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
+                        onAskAI={() => {}}
+                        onCommentClick={() => {}}
+                        data-testid="diff-comment-sidebar"
+                    />
                 )}
             </div>
+
+            {popupState && (
+                <InlineCommentPopup
+                    position={popupState.position}
+                    onSubmit={handlePopupSubmit}
+                    onCancel={() => setPopupState(null)}
+                />
+            )}
         </div>
     );
 }

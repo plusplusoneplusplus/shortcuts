@@ -225,7 +225,7 @@ describe('BranchFileDiff', () => {
         });
 
         it('uses full-height flex layout like CommitDetail', () => {
-            expect(source).toContain('flex flex-col h-full overflow-y-auto');
+            expect(source).toContain('flex flex-col h-full overflow-hidden');
         });
 
         it('has diff section data-testid', () => {
