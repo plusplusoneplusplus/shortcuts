@@ -6,8 +6,10 @@
  * Code content lines are syntax-highlighted using highlight.js token spans.
  */
 
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { getLanguageFromFileName, highlightLine } from './useSyntaxHighlight';
+import { SelectionToolbar } from '../tasks/comments/SelectionToolbar';
+import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -16,6 +18,13 @@ export interface UnifiedDiffViewerProps {
     enableComments?: boolean;
     showLineNumbers?: boolean;
     onLinesReady?: (lines: DiffLine[]) => void;
+    comments?: DiffComment[];
+    onAddComment?: (
+        selection: DiffCommentSelection,
+        selectedText: string,
+        position: { top: number; left: number }
+    ) => void;
+    onCommentClick?: (comment: DiffComment) => void;
 }
 
 type LineType = 'added' | 'removed' | 'hunk-header' | 'meta' | 'context';
@@ -110,7 +119,21 @@ export function getLanguagesForLines(lines: string[], fileName: string | undefin
     return result;
 }
 
-export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady }: UnifiedDiffViewerProps) {
+/** Walk node ancestors up to (but not including) boundary to find the nearest element with data-diff-line-index. */
+function findLineElement(node: Node, boundary: Element | null): Element | null {
+    let current: Node | null = node;
+    while (current) {
+        if (current === boundary) return null;
+        if (current.nodeType === Node.ELEMENT_NODE) {
+            const el = current as Element;
+            if (el.hasAttribute('data-diff-line-index')) return el;
+        }
+        current = current.parentNode;
+    }
+    return null;
+}
+
+export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment }: UnifiedDiffViewerProps) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -119,8 +142,95 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
         onLinesReady?.(diffLines);
     }, [diffLines, onLinesReady]);
 
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const [toolbar, setToolbar] = useState<{
+        visible: boolean;
+        position: { top: number; left: number };
+        selection: DiffCommentSelection | null;
+        selectedText: string;
+    }>({ visible: false, position: { top: 0, left: 0 }, selection: null, selectedText: '' });
+
+    const handleMouseUp = useCallback(() => {
+        if (!enableComments) return;
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+            setToolbar(t => ({ ...t, visible: false }));
+            return;
+        }
+        const range = sel.getRangeAt(0);
+        const boundary = containerRef.current;
+        const startEl = findLineElement(range.startContainer, boundary);
+        const endEl   = findLineElement(range.endContainer, boundary);
+        if (!startEl || !endEl) {
+            setToolbar(t => ({ ...t, visible: false }));
+            return;
+        }
+
+        const startIdx = parseInt(startEl.getAttribute('data-diff-line-index') ?? '-1', 10);
+        const endIdx   = parseInt(endEl.getAttribute('data-diff-line-index')   ?? '-1', 10);
+        if (startIdx < 0 || endIdx < 0) {
+            setToolbar(t => ({ ...t, visible: false }));
+            return;
+        }
+
+        const startType = startEl.getAttribute('data-line-type');
+        const endType   = endEl.getAttribute('data-line-type');
+        if (startType === 'hunk-header' || endType === 'hunk-header') {
+            setToolbar(t => ({ ...t, visible: false }));
+            return;
+        }
+
+        const minIdx = Math.min(startIdx, endIdx);
+        const maxIdx = Math.max(startIdx, endIdx);
+        const lineEls = containerRef.current?.querySelectorAll<HTMLElement>('[data-diff-line-index]') ?? [];
+        for (const el of Array.from(lineEls)) {
+            const idx = parseInt(el.getAttribute('data-diff-line-index') ?? '-1', 10);
+            if (idx >= minIdx && idx <= maxIdx && el.getAttribute('data-line-type') === 'meta') {
+                const text = el.textContent ?? '';
+                if (text.startsWith('diff --git') || text.startsWith('diff ')) {
+                    setToolbar(t => ({ ...t, visible: false }));
+                    return;
+                }
+            }
+        }
+
+        const [firstEl, lastEl] = startIdx <= endIdx ? [startEl, endEl] : [endEl, startEl];
+        const selection: DiffCommentSelection = {
+            diffLineStart: minIdx,
+            diffLineEnd:   maxIdx,
+            side: (firstEl.getAttribute('data-line-type') as 'added' | 'removed' | 'context') ?? 'context',
+            oldLineStart: parseInt(firstEl.getAttribute('data-old-line') ?? '0', 10),
+            oldLineEnd:   parseInt(lastEl.getAttribute('data-old-line')  ?? '0', 10),
+            newLineStart: parseInt(firstEl.getAttribute('data-new-line') ?? '0', 10),
+            newLineEnd:   parseInt(lastEl.getAttribute('data-new-line')  ?? '0', 10),
+            startColumn: range.startOffset,
+            endColumn:   range.endOffset,
+        };
+
+        const rect = range.getBoundingClientRect();
+        const position = { top: rect.top - 40, left: rect.left + rect.width / 2 };
+
+        setToolbar({
+            visible: true,
+            position,
+            selection,
+            selectedText: sel.toString(),
+        });
+    }, [enableComments]);
+
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        if (!(e.target as Element).closest('[data-testid="selection-toolbar"]')) {
+            setToolbar(t => ({ ...t, visible: false }));
+        }
+    }, []);
+
     return (
+        <>
         <div
+            ref={containerRef}
+            onMouseUp={enableComments ? handleMouseUp : undefined}
+            onMouseDown={enableComments ? handleMouseDown : undefined}
             className="overflow-x-auto font-mono text-xs bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
             data-testid={testId}
         >
@@ -178,5 +288,18 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                 );
             })}
         </div>
+        {enableComments && (
+            <SelectionToolbar
+                visible={toolbar.visible}
+                position={toolbar.position}
+                onAddComment={() => {
+                    if (toolbar.selection) {
+                        onAddComment?.(toolbar.selection, toolbar.selectedText, toolbar.position);
+                    }
+                    setToolbar(t => ({ ...t, visible: false }));
+                }}
+            />
+        )}
+        </>
     );
 }
