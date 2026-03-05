@@ -149,7 +149,13 @@ function AppInner() {
                 if (msg.process) appDispatch({ type: 'PROCESS_ADDED', process: msg.process });
                 break;
             case 'process-updated':
-                if (msg.process) appDispatch({ type: 'PROCESS_UPDATED', process: msg.process });
+                if (msg.process) {
+                    appDispatch({ type: 'PROCESS_UPDATED', process: msg.process });
+                    const terminalStatuses = ['completed', 'failed', 'cancelled'];
+                    if (terminalStatuses.includes(msg.process.status)) {
+                        appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
+                    }
+                }
                 break;
             case 'process-removed':
                 if (msg.processId) appDispatch({ type: 'PROCESS_REMOVED', processId: msg.processId });

@@ -124,7 +124,7 @@ export function ProcessDetail() {
         return () => {
             cancelled = true;
         };
-    }, [selectedId, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [selectedId, process?.status, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // SSE streaming for running processes
     useEffect(() => {
@@ -182,7 +182,15 @@ export function ProcessDetail() {
             try {
                 const data = JSON.parse(e.data);
                 dispatch({ type: 'PROCESS_UPDATED', process: { id: selectedId, status: data.status } });
+                const terminalStatuses = ['completed', 'failed', 'cancelled'];
+                if (terminalStatuses.includes(data.status)) {
+                    setTurns(prev => prev.map(t => t.streaming ? { ...t, streaming: false } : t));
+                }
             } catch { /* ignore */ }
+        });
+
+        es.addEventListener('done', () => {
+            setTurns(prev => prev.map(t => t.streaming ? { ...t, streaming: false } : t));
         });
 
         es.onerror = () => {
