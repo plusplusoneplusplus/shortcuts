@@ -52,6 +52,8 @@ export interface AppContextState {
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
+    /** Per-repo remembered sub-tab (in-memory only, resets on page refresh). */
+    repoTabState: Record<string, RepoSubTab>;
 }
 
 const initialState: AppContextState = {
@@ -84,6 +86,7 @@ const initialState: AppContextState = {
     conversationCache: {},
     wsStatus: 'closed',
     activeMemorySubTab: 'entries',
+    repoTabState: {},
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -180,10 +183,20 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, searchQuery: action.value };
         case 'SET_ACTIVE_TAB':
             return { ...state, activeTab: action.tab };
-        case 'SET_SELECTED_REPO':
-            return { ...state, selectedRepoId: action.id };
-        case 'SET_REPO_SUB_TAB':
-            return { ...state, activeRepoSubTab: action.tab };
+        case 'SET_SELECTED_REPO': {
+            // Save current repo's active sub-tab before switching
+            const savedTabState = state.selectedRepoId
+                ? { ...state.repoTabState, [state.selectedRepoId]: state.activeRepoSubTab }
+                : state.repoTabState;
+            const restoredTab = action.id ? (savedTabState[action.id] ?? 'info') : state.activeRepoSubTab;
+            return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab };
+        }
+        case 'SET_REPO_SUB_TAB': {
+            const updatedRepoTabState = state.selectedRepoId
+                ? { ...state.repoTabState, [state.selectedRepoId]: action.tab }
+                : state.repoTabState;
+            return { ...state, activeRepoSubTab: action.tab, repoTabState: updatedRepoTabState };
+        }
         case 'TOGGLE_REPOS_SIDEBAR': {
             const next = !state.reposSidebarCollapsed;
             try { localStorage.setItem(SIDEBAR_KEY, String(next)); } catch { /* SSR / test */ }

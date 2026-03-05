@@ -35,6 +35,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoWikiInitialTab: null,
         repoWikiInitialAdminTab: null,
         repoWikiInitialComponentId: null,
+        repoTabState: {},
         ...overrides,
     };
 }
@@ -271,6 +272,63 @@ describe('AppContext reducer', () => {
         it('SET_REPO_SUB_TAB switches to schedules', () => {
             const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
             expect(result.activeRepoSubTab).toBe('schedules');
+        });
+    });
+
+    // ── Per-repo tab state persistence ─────────────────────────────
+    describe('per-repo tab state', () => {
+        it('restores last active sub-tab when switching back to a repo', () => {
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'info' });
+            // Switch to chat on repo-a
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'chat' });
+            // Switch to repo-b — saves repo-a's tab, defaults to info for repo-b
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            expect(state.activeRepoSubTab).toBe('info');
+            // Switch to wiki on repo-b
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+            // Switch back to repo-a — should restore chat
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-a' });
+            expect(state.activeRepoSubTab).toBe('chat');
+            // Switch back to repo-b — should restore wiki
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            expect(state.activeRepoSubTab).toBe('wiki');
+        });
+
+        it('defaults to info when visiting a repo for the first time', () => {
+            const state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'queue' });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-new' });
+            expect(result.activeRepoSubTab).toBe('info');
+        });
+
+        it('SET_REPO_SUB_TAB records tab in repoTabState for the current repo', () => {
+            const state = makeState({ selectedRepoId: 'repo-x' });
+            const result = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'git' });
+            expect(result.repoTabState['repo-x']).toBe('git');
+        });
+
+        it('SET_REPO_SUB_TAB does not record when no repo is selected', () => {
+            const state = makeState({ selectedRepoId: null });
+            const result = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'git' });
+            expect(result.activeRepoSubTab).toBe('git');
+            expect(Object.keys(result.repoTabState)).toHaveLength(0);
+        });
+
+        it('SET_SELECTED_REPO to null preserves repoTabState but keeps current tab', () => {
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'pipelines' });
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: null });
+            expect(state.repoTabState['repo-a']).toBe('pipelines');
+            expect(state.activeRepoSubTab).toBe('pipelines');
+        });
+
+        it('explicit SET_REPO_SUB_TAB after SET_SELECTED_REPO overrides the restored tab', () => {
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'info' });
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'chat' });
+            state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            // Router dispatches explicit sub-tab from deep-link
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+            expect(state.activeRepoSubTab).toBe('wiki');
+            expect(state.repoTabState['repo-b']).toBe('wiki');
         });
     });
 

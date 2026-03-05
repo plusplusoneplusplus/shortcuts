@@ -39,6 +39,7 @@ function defaultAppState(): AppContextState {
         selectedPipelineName: null,
         conversationCache: {},
         wsStatus: 'closed',
+        repoTabState: {},
     };
 }
 
