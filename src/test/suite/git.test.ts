@@ -1105,6 +1105,60 @@ suite('Git View Tests', () => {
             const item = new GitCommitItem(commit);
             assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
         });
+
+        test('GitCommitItem description should not include comment count when zero', () => {
+            const commit: GitCommit = {
+                hash: 'abc123',
+                shortHash: 'abc',
+                subject: 'Fix',
+                authorName: 'John',
+                authorEmail: 'john@test.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2h ago',
+                parentHashes: 'parent123',
+                refs: [],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+            const item = new GitCommitItem(commit, 0);
+            assert.ok(!(item.description as string).includes('💬'));
+        });
+
+        test('GitCommitItem description should include comment count when non-zero', () => {
+            const commit: GitCommit = {
+                hash: 'abc123',
+                shortHash: 'abc',
+                subject: 'Fix',
+                authorName: 'John',
+                authorEmail: 'john@test.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2h ago',
+                parentHashes: 'parent123',
+                refs: [],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+            const item = new GitCommitItem(commit, 3);
+            assert.ok((item.description as string).includes('💬 3'));
+        });
+
+        test('GitCommitItem no activeCommentCount defaults to zero (no badge)', () => {
+            const commit: GitCommit = {
+                hash: 'abc123',
+                shortHash: 'abc',
+                subject: 'Fix',
+                authorName: 'John',
+                authorEmail: 'john@test.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2h ago',
+                parentHashes: 'parent123',
+                refs: [],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+            const item = new GitCommitItem(commit);
+            assert.ok(!(item.description as string).includes('💬'));
+        });
     });
 
     // ============================================

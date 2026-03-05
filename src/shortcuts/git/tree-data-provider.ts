@@ -480,9 +480,12 @@ export class GitTreeDataProvider
      * Get commit items for the Commits section
      */
     private getCommitItems(): vscode.TreeItem[] {
-        const items: vscode.TreeItem[] = this.loadedCommits.map(
-            commit => new GitCommitItem(commit)
-        );
+        const items: vscode.TreeItem[] = this.loadedCommits.map(commit => {
+            const activeCommentCount = this.diffCommentsManager
+                ? this.diffCommentsManager.getActiveCommentCountByCommit(commit.hash)
+                : 0;
+            return new GitCommitItem(commit, activeCommentCount);
+        });
 
         // Add "Load More" button if there are more commits
         if (this.hasMoreCommits) {

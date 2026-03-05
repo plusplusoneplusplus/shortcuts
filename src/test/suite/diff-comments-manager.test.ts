@@ -1165,4 +1165,56 @@ suite('DiffCommentsManager Tests', () => {
             assert.strictEqual(manager.getAllComments().length, 2);
         });
     });
+
+    suite('getActiveCommentCountByCommit', () => {
+        test('should return 0 for empty comment list', async () => {
+            await manager.initialize();
+            assert.strictEqual(manager.getActiveCommentCountByCommit('abc1234'), 0);
+        });
+
+        test('should return 0 for empty commitHash', async () => {
+            await manager.initialize();
+            assert.strictEqual(manager.getActiveCommentCountByCommit(''), 0);
+        });
+
+        test('should count open comments matching the commit hash', async () => {
+            await manager.initialize();
+            const ctx: DiffGitContext = { ...createTestGitContext(tempDir), commitHash: 'deadbeef' };
+            await manager.addComment('file.ts', createTestSelection(), 'T', 'C1', ctx);
+            await manager.addComment('file.ts', createTestSelection(), 'T', 'C2', ctx);
+            assert.strictEqual(manager.getActiveCommentCountByCommit('deadbeef'), 2);
+        });
+
+        test('should not count resolved comments', async () => {
+            await manager.initialize();
+            const ctx: DiffGitContext = { ...createTestGitContext(tempDir), commitHash: 'deadbeef' };
+            const comment = await manager.addComment('file.ts', createTestSelection(), 'T', 'C1', ctx);
+            await manager.resolveComment(comment.id);
+            assert.strictEqual(manager.getActiveCommentCountByCommit('deadbeef'), 0);
+        });
+
+        test('should not count comments for a different commit hash', async () => {
+            await manager.initialize();
+            const ctx: DiffGitContext = { ...createTestGitContext(tempDir), commitHash: 'aaa111' };
+            await manager.addComment('file.ts', createTestSelection(), 'T', 'C', ctx);
+            assert.strictEqual(manager.getActiveCommentCountByCommit('bbb222'), 0);
+        });
+
+        test('should not count pending (unstaged) comments with no commitHash', async () => {
+            await manager.initialize();
+            // No commitHash → staged/unstaged comment
+            await manager.addComment('file.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+            assert.strictEqual(manager.getActiveCommentCountByCommit('any-hash'), 0);
+        });
+
+        test('should return correct count with mixed open and resolved comments', async () => {
+            await manager.initialize();
+            const ctx: DiffGitContext = { ...createTestGitContext(tempDir), commitHash: 'cafebabe' };
+            const c1 = await manager.addComment('a.ts', createTestSelection(), 'T', 'C1', ctx);
+            await manager.addComment('a.ts', createTestSelection(), 'T', 'C2', ctx);
+            await manager.resolveComment(c1.id);
+            // 1 open remains
+            assert.strictEqual(manager.getActiveCommentCountByCommit('cafebabe'), 1);
+        });
+    });
 });

@@ -431,6 +431,19 @@ export class DiffCommentsManager extends CommentsManagerBase<
     }
 
     /**
+     * Get the count of active (open/unresolved) comments for a specific commit hash.
+     * Returns 0 if commitHash is falsy or no matching open comments exist.
+     */
+    getActiveCommentCountByCommit(commitHash: string): number {
+        if (!commitHash) {
+            return 0;
+        }
+        return this.config.comments.filter(
+            c => c.gitContext.commitHash === commitHash && c.status !== 'resolved'
+        ).length;
+    }
+
+    /**
      * Get the list of obsolete comments without removing them
      * Useful for previewing what would be cleaned up
      * 

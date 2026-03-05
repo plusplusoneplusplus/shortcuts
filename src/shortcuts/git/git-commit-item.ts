@@ -23,8 +23,9 @@ export class GitCommitItem extends vscode.TreeItem {
     /**
      * Create a new commit tree item
      * @param commit The git commit to display
+     * @param activeCommentCount Number of open/unresolved diff comments for this commit
      */
-    constructor(commit: GitCommit) {
+    constructor(commit: GitCommit, activeCommentCount: number = 0) {
         // Label: "abc1234 Fix bug in parser"
         const truncatedSubject = commit.subject.length > MAX_SUBJECT_LENGTH
             ? commit.subject.substring(0, MAX_SUBJECT_LENGTH - 3) + '...'
@@ -36,7 +37,7 @@ export class GitCommitItem extends vscode.TreeItem {
         this.commit = commit;
 
         // Description: "John Doe • 2 hours ago (main, origin/main)"
-        this.description = this.createDescription();
+        this.description = this.createDescription(activeCommentCount);
 
         // Tooltip with full details
         this.tooltip = this.createTooltip();
@@ -56,7 +57,7 @@ export class GitCommitItem extends vscode.TreeItem {
     /**
      * Create the description text showing author and time
      */
-    private createDescription(): string {
+    private createDescription(activeCommentCount: number = 0): string {
         const parts: string[] = [];
 
         // Author name
@@ -82,6 +83,11 @@ export class GitCommitItem extends vscode.TreeItem {
             if (displayRefs.length > 0) {
                 parts.push(`(${displayRefs.join(', ')})`);
             }
+        }
+
+        // Active comment count (only shown when > 0)
+        if (activeCommentCount > 0) {
+            parts.push(`💬 ${activeCommentCount}`);
         }
 
         return parts.join(' • ');
