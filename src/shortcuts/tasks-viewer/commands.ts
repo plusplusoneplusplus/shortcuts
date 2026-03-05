@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { TaskManager, updateTaskStatus } from './task-manager';
 import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskItem } from './task-item';
@@ -80,8 +81,23 @@ export class TasksCommands {
      * Create a new task
      */
     private async createTask(): Promise<void> {
+        // Determine target folder: use first selected TaskFolderItem if available
+        let targetFolder: string | undefined;
+        const selection = this.tasksTreeView?.selection;
+        if (selection && selection.length > 0) {
+            const firstSelected = selection[0];
+            if (firstSelected instanceof TaskFolderItem) {
+                targetFolder = firstSelected.folder.folderPath;
+            }
+        }
+
+        const tasksRoot = this.taskManager.getTasksFolder();
+        const folderLabel = targetFolder
+            ? `(in folder: ${path.relative(tasksRoot, targetFolder).replace(/\\/g, '/')})` 
+            : '(in tasks root)';
+
         const name = await vscode.window.showInputBox({
-            prompt: 'Enter task name',
+            prompt: `Enter task name ${folderLabel}`,
             placeHolder: 'My new task',
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
@@ -99,7 +115,12 @@ export class TasksCommands {
         }
 
         try {
-            const filePath = await this.taskManager.createTask(name.trim());
+            let filePath: string;
+            if (targetFolder) {
+                filePath = await this.taskManager.createTaskInFolder(targetFolder, name.trim());
+            } else {
+                filePath = await this.taskManager.createTask(name.trim());
+            }
             this.treeDataProvider.refresh();
 
             // Open the new task in Markdown Review Editor

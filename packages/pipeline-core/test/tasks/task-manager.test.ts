@@ -265,6 +265,37 @@ describe('createTask', () => {
     });
 });
 
+describe('createTaskInFolder', () => {
+    it('creates file in the specified sub-folder', async () => {
+        const mgr = createManager();
+        const featurePath = await mgr.createFeature('coc');
+        const subPath = await mgr.createSubfolder(featurePath, 'git');
+
+        const filePath = await mgr.createTaskInFolder(subPath, 'My Sub Task');
+        expect(fs.existsSync(filePath)).toBe(true);
+        expect(filePath).toContain(path.join('coc', 'git'));
+        const content = fs.readFileSync(filePath, 'utf-8');
+        expect(content).toContain('# My Sub Task');
+    });
+
+    it('does NOT create file in tasks root when folder is a sub-folder', async () => {
+        const mgr = createManager();
+        const featurePath = await mgr.createFeature('feature');
+        const filePath = await mgr.createTaskInFolder(featurePath, 'Scoped Task');
+        const tasksRoot = mgr.getTasksFolder();
+        // File should be in feature folder, not in tasks root
+        expect(path.dirname(filePath)).toBe(featurePath);
+        expect(path.dirname(filePath)).not.toBe(tasksRoot);
+    });
+
+    it('throws on duplicate within the folder', async () => {
+        const mgr = createManager();
+        const featurePath = await mgr.createFeature('feat');
+        await mgr.createTaskInFolder(featurePath, 'Dup');
+        await expect(mgr.createTaskInFolder(featurePath, 'Dup')).rejects.toThrow(/already exists/);
+    });
+});
+
 describe('createFeature', () => {
     it('creates folder with placeholder', async () => {
         const mgr = createManager();

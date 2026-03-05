@@ -166,6 +166,10 @@ export class TaskManager {
         return taskOps.createTask(this.getTasksFolder(), name);
     }
 
+    async createTaskInFolder(folderPath: string, name: string): Promise<string> {
+        return taskOps.createTask(folderPath, name);
+    }
+
     async createFeature(name: string): Promise<string> {
         this.ensureFoldersExist();
         return taskOps.createFeature(this.getTasksFolder(), name);

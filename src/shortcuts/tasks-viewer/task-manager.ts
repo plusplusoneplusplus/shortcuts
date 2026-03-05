@@ -60,6 +60,7 @@ export class TaskManager implements vscode.Disposable {
     // ========================================================================
 
     async createTask(name: string): Promise<string> { return this.createCore().createTask(name); }
+    async createTaskInFolder(folderPath: string, name: string): Promise<string> { return this.createCore().createTaskInFolder(folderPath, name); }
     async createFeature(name: string): Promise<string> { return this.createCore().createFeature(name); }
     async createSubfolder(parentFolderPath: string, name: string): Promise<string> { return this.createCore().createSubfolder(parentFolderPath, name); }
     async renameTask(oldPath: string, newName: string): Promise<string> { return this.createCore().renameTask(oldPath, newName); }
