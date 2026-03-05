@@ -203,4 +203,23 @@ describe('formatConversationAsText', () => {
         const output = formatConversationAsText(turns);
         expect(output).toContain('→ error: File not found');
     });
+
+    it('uses .name field when .toolName is absent (snapshot replay path)', () => {
+        const turns = [
+            {
+                role: 'assistant' as const,
+                content: 'Searching',
+                timeline: [],
+                toolCalls: [{
+                    name: 'grep',
+                    args: { pattern: 'foo' },
+                    result: 'bar',
+                    status: 'completed' as const,
+                }] as any[],
+            },
+        ];
+        const output = formatConversationAsText(turns);
+        expect(output).toContain('[tool: grep]');
+        expect(output).not.toContain('undefined');
+    });
 });

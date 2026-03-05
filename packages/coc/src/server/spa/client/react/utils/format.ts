@@ -102,7 +102,8 @@ export interface ConversationTurnLike {
     role: 'user' | 'assistant';
     content: string;
     toolCalls?: Array<{
-        toolName: string;
+        toolName?: string;
+        name?: string;
         args: any;
         result?: string;
         error?: string;
@@ -161,13 +162,14 @@ export function formatConversationAsText(turns: ConversationTurnLike[], truncate
             for (const tc of turn.toolCalls) {
                 const argsJson = JSON.stringify(tc.args ?? {});
                 const argsStr = truncate(argsJson, truncateAt);
+                const toolName = tc.toolName || tc.name;
                 if (tc.status === 'pending' || tc.status === 'running') {
-                    lines.push(`[tool: ${tc.toolName}] args: ${argsStr}`);
+                    lines.push(`[tool: ${toolName}] args: ${argsStr}`);
                 } else if (tc.error != null) {
-                    lines.push(`[tool: ${tc.toolName}] args: ${argsStr} → error: ${truncate(tc.error, truncateAt)}`);
+                    lines.push(`[tool: ${toolName}] args: ${argsStr} → error: ${truncate(tc.error, truncateAt)}`);
                 } else {
                     const resultStr = tc.result != null ? truncate(tc.result, truncateAt) : '';
-                    lines.push(`[tool: ${tc.toolName}] args: ${argsStr} → result: ${resultStr}`);
+                    lines.push(`[tool: ${toolName}] args: ${argsStr} → result: ${resultStr}`);
                 }
             }
         }

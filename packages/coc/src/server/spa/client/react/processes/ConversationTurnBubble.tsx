@@ -468,13 +468,13 @@ function buildRawContent(turn: ClientConversationTurn): string {
                 continue;
             }
             if (id) seen.add(id);
-            allCalls.push({ toolName: tc.toolName || 'unknown', status: tc.status, args: tc.args, result: tc.result, error: tc.error, _id: id } as any);
+            allCalls.push({ toolName: (tc as any).name || tc.toolName || 'unknown', status: tc.status, args: tc.args, result: tc.result, error: tc.error, _id: id } as any);
         }
     }
 
     if (allCalls.length === 0) {
         for (const tc of toolCalls) {
-            allCalls.push({ toolName: tc.toolName || 'unknown', status: tc.status, args: tc.args, result: tc.result, error: tc.error });
+            allCalls.push({ toolName: (tc as any).name || tc.toolName || 'unknown', status: tc.status, args: tc.args, result: tc.result, error: tc.error });
         }
     }
 
