@@ -188,6 +188,13 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 return handleAPIError(res, invalidJSON());
             }
 
+            // Reject empty body (no editable keys)
+            const editableKeys = ['model', 'parallel', 'timeout', 'output'];
+            const hasEditableKey = editableKeys.some(k => k in body);
+            if (!hasEditableKey) {
+                return handleAPIError(res, badRequest('Request body must contain at least one editable field: model, parallel, timeout, output'));
+            }
+
             // Validate editable fields
             const errors: string[] = [];
 
