@@ -507,8 +507,10 @@ export class CLITaskExecutor implements TaskExecutor {
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         try {
-            const suggestTools = this.followUpSuggestions.enabled ? [createSuggestFollowUpsTool()] : [];
-            const followUpMessage = this.followUpSuggestions.enabled
+            // Only attach follow-up suggestions tool on the first AI response (no prior assistant turns)
+            const isFirstTurn = !(process.conversationTurns?.some(t => t.role === 'assistant'));
+            const suggestTools = (this.followUpSuggestions.enabled && isFirstTurn) ? [createSuggestFollowUpsTool()] : [];
+            const followUpMessage = (this.followUpSuggestions.enabled && isFirstTurn)
                 ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : message;
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, followUpMessage, {

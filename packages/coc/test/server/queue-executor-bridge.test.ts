@@ -6367,7 +6367,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.tools).toBeUndefined();
     });
 
-    it('should include suggest_follow_ups tool for follow-up messages', async () => {
+    it('should NOT include suggest_follow_ups tool for follow-up messages (only first turn gets it)', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-1', 'sess-fu-1');
         store.processes.set(process.id, process);
         mockCanResumeSession.mockResolvedValue(true);
@@ -6379,6 +6379,45 @@ describe('suggest_follow_ups tool wiring', () => {
 
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('queue_suggest-fu-1', 'follow-up question');
+
+        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendFollowUp.mock.calls[0][2];
+        expect(callOpts.tools).toBeUndefined();
+    });
+
+    it('should NOT append follow-up suggestion instruction to follow-up messages', async () => {
+        const process = createCompletedProcessWithSession('queue_suggest-fu-noinstr', 'sess-fu-noinstr');
+        store.processes.set(process.id, process);
+        mockCanResumeSession.mockResolvedValue(true);
+        mockSendFollowUp.mockResolvedValue({
+            success: true,
+            response: 'Follow-up response',
+            sessionId: 'sess-fu-noinstr',
+        });
+
+        const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: true, count: 3 } });
+        await executor.executeFollowUp('queue_suggest-fu-noinstr', 'follow-up question');
+
+        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
+        const sentMessage = mockSendFollowUp.mock.calls[0][1];
+        expect(sentMessage).not.toContain('When suggesting follow-ups');
+    });
+
+    it('should include suggest_follow_ups tool on first turn with no prior assistant turns', async () => {
+        // Process with only a user turn (no assistant response yet — simulates first turn)
+        const process = createCompletedProcessWithSession('queue_suggest-fu-first', 'sess-fu-first', [
+            { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+        ]);
+        store.processes.set(process.id, process);
+        mockCanResumeSession.mockResolvedValue(true);
+        mockSendFollowUp.mockResolvedValue({
+            success: true,
+            response: 'First response',
+            sessionId: 'sess-fu-first',
+        });
+
+        const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: true, count: 3 } });
+        await executor.executeFollowUp('queue_suggest-fu-first', 'first message');
 
         expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
         const callOpts = mockSendFollowUp.mock.calls[0][2];
