@@ -12,6 +12,9 @@ import {
     approveAllPermissions,
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
+    ToolCallCapture,
+    FileToolCallCacheStore,
+    EXPLORE_FILTER,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     AIInvoker,
@@ -47,6 +50,10 @@ export interface CLIAIInvokerOptions {
     onChunk?: (chunk: string) => void;
     /** Custom tools to expose to the AI session */
     tools?: Tool<any>[];
+    /** Override for the cache store data dir; defaults to ~/.coc/memory */
+    cacheDataDir?: string;
+    /** Current git HEAD hash for staleness tracking; optional — cache still works without it */
+    gitHash?: string;
 }
 
 /**
@@ -131,7 +138,23 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
         }
     };
 
-    return invoker;
+    const store = new FileToolCallCacheStore(
+        options.cacheDataDir ? { dataDir: options.cacheDataDir } : undefined
+    );
+    const capture = new ToolCallCapture(store, EXPLORE_FILTER, {
+        gitHash: options.gitHash,
+    });
+    const captureHandler = capture.createToolEventHandler();
+
+    return (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
+        const mergedOptions: AIInvokerOptions = {
+            ...invokerOptions,
+            onToolEvent: invokerOptions?.onToolEvent
+                ? (event) => { invokerOptions.onToolEvent!(event); captureHandler(event); }
+                : captureHandler,
+        };
+        return invoker(prompt, mergedOptions);
+    };
 }
 
 /**

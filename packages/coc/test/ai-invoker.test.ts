@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import {
     createDryRunAIInvoker,
     createCLIAIInvoker,
@@ -20,11 +23,24 @@ const mockServiceCapture = {
     isAvailable: mockIsAvailableCapture,
 };
 
+// Spy to track ToolCallCapture constructor calls
+const mockCaptureConstructor = vi.fn();
+
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+    const RealCapture = actual.ToolCallCapture;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpyToolCallCapture = class extends RealCapture {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        constructor(...args: any[]) {
+            super(...(args as ConstructorParameters<typeof RealCapture>));
+            mockCaptureConstructor(...args);
+        }
+    };
     return {
         ...actual,
         getCopilotSDKService: () => mockServiceCapture,
+        ToolCallCapture: SpyToolCallCapture,
     };
 });
 
@@ -232,16 +248,21 @@ describe('AI Invoker', () => {
 
             expect(mockSendMessageCapture).toHaveBeenCalledOnce();
             const [sendOptions] = mockSendMessageCapture.mock.calls[0];
-            expect(sendOptions.onToolEvent).toBe(handler);
+            // onToolEvent is now a composed function; verify caller's handler is invoked
+            expect(typeof sendOptions.onToolEvent).toBe('function');
+            const mockEvent = { type: 'tool-start' as const, toolName: 'grep', toolCallId: 'c1', parameters: {} };
+            sendOptions.onToolEvent(mockEvent);
+            expect(handler).toHaveBeenCalledWith(mockEvent);
         });
 
-        it('should pass onToolEvent: undefined to SendMessageOptions when not provided', async () => {
+        it('should pass onToolEvent as capture handler to SendMessageOptions when not provided', async () => {
             const invoker = createCLIAIInvoker({});
             await invoker('prompt');
 
             expect(mockSendMessageCapture).toHaveBeenCalledOnce();
             const [sendOptions] = mockSendMessageCapture.mock.calls[0];
-            expect(sendOptions.onToolEvent).toBeUndefined();
+            // onToolEvent is now always set to the captureHandler
+            expect(typeof sendOptions.onToolEvent).toBe('function');
         });
 
         it('should forward onToolEvent when other invokerOptions fields are also set', async () => {
@@ -252,7 +273,108 @@ describe('AI Invoker', () => {
             expect(mockSendMessageCapture).toHaveBeenCalledOnce();
             const [sendOptions] = mockSendMessageCapture.mock.calls[0];
             expect(sendOptions.model).toBe('gpt-4');
-            expect(sendOptions.onToolEvent).toBe(handler);
+            // onToolEvent is composed; verify caller's handler is invoked
+            expect(typeof sendOptions.onToolEvent).toBe('function');
+            const mockEvent = { type: 'tool-start' as const, toolName: 'grep', toolCallId: 'c1', parameters: {} };
+            sendOptions.onToolEvent(mockEvent);
+            expect(handler).toHaveBeenCalledWith(mockEvent);
+        });
+    });
+
+    // ========================================================================
+    // ToolCallCapture wiring
+    // ========================================================================
+
+    describe('ToolCallCapture wiring', () => {
+        let tmpDir: string;
+
+        beforeEach(async () => {
+            mockSendMessageCapture.mockReset();
+            mockSendMessageCapture.mockResolvedValue({ success: true, response: 'ok' });
+            mockCaptureConstructor.mockReset();
+            tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-invoker-capture-'));
+        });
+
+        afterEach(async () => {
+            await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+        });
+
+        it('ToolCallCapture is instantiated once per factory call', () => {
+            createCLIAIInvoker({ cacheDataDir: tmpDir });
+            createCLIAIInvoker({ cacheDataDir: tmpDir });
+            expect(mockCaptureConstructor).toHaveBeenCalledTimes(2);
+        });
+
+        it('explore tool-complete event writes a raw file', async () => {
+            const invoker = createCLIAIInvoker({ cacheDataDir: tmpDir });
+            await invoker('test prompt');
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const onToolEvent = sendOptions.onToolEvent as (e: any) => void;
+
+            onToolEvent({ type: 'tool-start', toolName: 'grep', toolCallId: 'tc1', parameters: { pattern: 'foo' } });
+            onToolEvent({ type: 'tool-complete', toolName: 'grep', toolCallId: 'tc1', result: 'some result' });
+
+            await new Promise(r => setTimeout(r, 200));
+
+            const rawDir = path.join(tmpDir, 'explore-cache', 'raw');
+            const files = await fs.readdir(rawDir);
+            expect(files.filter(f => f.endsWith('.json')).length).toBeGreaterThan(0);
+        });
+
+        it('non-explore tool events are NOT written', async () => {
+            const invoker = createCLIAIInvoker({ cacheDataDir: tmpDir });
+            await invoker('test prompt');
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const onToolEvent = sendOptions.onToolEvent as (e: any) => void;
+
+            onToolEvent({ type: 'tool-start', toolName: 'edit_file', toolCallId: 'tc2', parameters: { path: '/tmp/f.txt' } });
+            onToolEvent({ type: 'tool-complete', toolName: 'edit_file', toolCallId: 'tc2', result: 'done' });
+
+            await new Promise(r => setTimeout(r, 200));
+
+            const rawDir = path.join(tmpDir, 'explore-cache', 'raw');
+            let files: string[] = [];
+            try { files = await fs.readdir(rawDir); } catch { /* dir may not exist */ }
+            expect(files.filter(f => f.endsWith('.json')).length).toBe(0);
+        });
+
+        it('caller-supplied onToolEvent is also called and raw file is written', async () => {
+            const callerHandler = vi.fn();
+            const invoker = createCLIAIInvoker({ cacheDataDir: tmpDir });
+            await invoker('test prompt', { onToolEvent: callerHandler });
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const onToolEvent = sendOptions.onToolEvent as (e: any) => void;
+
+            onToolEvent({ type: 'tool-start', toolName: 'grep', toolCallId: 'tc3', parameters: { pattern: 'bar' } });
+            onToolEvent({ type: 'tool-complete', toolName: 'grep', toolCallId: 'tc3', result: 'result' });
+
+            expect(callerHandler).toHaveBeenCalledTimes(2);
+
+            await new Promise(r => setTimeout(r, 200));
+
+            const rawDir = path.join(tmpDir, 'explore-cache', 'raw');
+            const files = await fs.readdir(rawDir);
+            expect(files.filter(f => f.endsWith('.json')).length).toBeGreaterThan(0);
+        });
+
+        it('createDryRunAIInvoker has no capture', () => {
+            createDryRunAIInvoker();
+            expect(mockCaptureConstructor).not.toHaveBeenCalled();
+        });
+
+        it('gitHash is forwarded to ToolCallCapture constructor options', () => {
+            const gitHash = 'abc123deadbeef';
+            createCLIAIInvoker({ cacheDataDir: tmpDir, gitHash });
+            expect(mockCaptureConstructor).toHaveBeenCalledOnce();
+            const constructorOptions = mockCaptureConstructor.mock.calls[0][2];
+            expect(constructorOptions).toMatchObject({ gitHash });
         });
     });
 });
+
