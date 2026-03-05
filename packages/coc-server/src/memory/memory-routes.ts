@@ -21,6 +21,7 @@ import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';
 import { FileMemoryStore } from './memory-store';
 import { handleAggregateToolCalls } from './tool-call-aggregation-handler';
+import { FileToolCallCacheStore } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -207,6 +208,21 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
     });
 
     // -- Batch aggregation ---------------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: '/api/memory/aggregate-tool-calls/stats',
+        handler: async (_req, res) => {
+            try {
+                const config = readMemoryConfig(dataDir);
+                const store = new FileToolCallCacheStore({ dataDir: config.storageDir });
+                const stats = await store.getStats();
+                sendJson(res, stats);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
 
     routes.push({
         method: 'POST',

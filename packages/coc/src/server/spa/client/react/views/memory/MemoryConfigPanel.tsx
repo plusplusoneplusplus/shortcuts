@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { getApiBase } from '../../utils/config';
 import { Button, Card, Spinner } from '../../shared';
+import { ExploreCachePanel } from './ExploreCachePanel';
 
 interface MemoryConfig {
     storageDir: string;
@@ -177,6 +178,7 @@ export function MemoryConfigPanel() {
                     {saveError && <span className="text-sm text-red-500">{saveError}</span>}
                 </div>
             </Card>
+            <ExploreCachePanel />
         </div>
     );
 }
