@@ -55,11 +55,11 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
         setError(null);
         try {
             await createPipeline(workspaceId, trimmed, template);
-            addToast('Pipeline created', 'success');
+            addToast('Workflow created', 'success');
             onCreated(trimmed);
             onClose();
         } catch (err: any) {
-            setError(err.message || 'Failed to create pipeline');
+            setError(err.message || 'Failed to create workflow');
         } finally {
             setSubmitting(false);
         }
@@ -115,11 +115,11 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
         setError(null);
         try {
             await createPipeline(workspaceId, trimmed, undefined, generatedYaml);
-            addToast('Pipeline created', 'success');
+            addToast('Workflow created', 'success');
             onCreated(trimmed);
             onClose();
         } catch (err: any) {
-            setError(err.message || 'Failed to create pipeline');
+            setError(err.message || 'Failed to create workflow');
         } finally {
             setSubmitting(false);
         }
@@ -135,9 +135,9 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
     }
 
     const dialogTitle =
-        phase === 'preview' ? 'Review Generated Pipeline' :
+        phase === 'preview' ? 'Review Generated Workflow' :
         phase === 'generating' ? 'Generating...' :
-        'New Pipeline';
+        'New Workflow';
 
     const footer = (() => {
         if (phase === 'generating') {
@@ -148,7 +148,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
                 <>
                     <Button variant="secondary" onClick={() => setPhase('input')}>← Back</Button>
                     <Button variant="secondary" onClick={handleGenerate}>Regenerate 🔄</Button>
-                    <Button loading={submitting} onClick={handleSave}>Save Pipeline ✓</Button>
+                    <Button loading={submitting} onClick={handleSave}>Save Workflow ✓</Button>
                 </>
             );
         }
@@ -160,7 +160,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
                         disabled={description.trim().length < 10}
                         onClick={handleGenerate}
                     >
-                        Generate Pipeline ✨
+                        Generate Workflow ✨
                     </Button>
                 </>
             );
@@ -184,7 +184,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
             {phase === 'generating' && (
                 <div className="flex flex-col items-center gap-3 py-4">
                     <Spinner size="lg" />
-                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Generating pipeline YAML...</div>
+                    <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Generating workflow YAML...</div>
                     <div className="text-xs text-[#848484]">⏱ This usually takes 10–30 seconds.</div>
                 </div>
             )}
@@ -208,9 +208,9 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
 
                     <div className="flex items-center gap-2">
                         {generatedValid ? (
-                            <Badge status="completed">✅ Valid pipeline</Badge>
+                            <Badge status="completed">✅ Valid workflow</Badge>
                         ) : (
-                            <Badge status="warning">⚠️ Invalid pipeline</Badge>
+                            <Badge status="warning">⚠️ Invalid workflow</Badge>
                         )}
                     </div>
 
@@ -260,7 +260,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
                         <>
                             <div>
                                 <label className="block text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-1">
-                                    Describe what your pipeline should do
+                                    Describe what your workflow should do
                                 </label>
                                 <textarea
                                     value={description}

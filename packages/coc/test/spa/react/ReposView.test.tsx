@@ -570,7 +570,7 @@ describe('PipelinesTab', () => {
     it('shows empty state when no pipelines', () => {
         const repo = makeRepo({ workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' }, pipelines: [] });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        expect(screen.getByText('No pipelines found')).toBeDefined();
+        expect(screen.getByText('No workflows found')).toBeDefined();
     });
 
     it('lists pipelines', () => {

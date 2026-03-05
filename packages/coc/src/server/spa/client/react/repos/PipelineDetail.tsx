@@ -53,7 +53,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
             })
             .catch(err => {
                 if (cancelled) return;
-                addToast(`Failed to load pipeline: ${err.message}`, 'error');
+                addToast(`Failed to load workflow: ${err.message}`, 'error');
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -66,10 +66,10 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
         try {
             const data = await runPipeline(workspaceId, pipeline.name);
             const taskIdShort = data.task?.id ? data.task.id.slice(0, 8) : '';
-            addToast(`Pipeline queued${taskIdShort ? ` (${taskIdShort})` : ''}`, 'success');
+            addToast(`Workflow queued${taskIdShort ? ` (${taskIdShort})` : ''}`, 'success');
             onRunSuccess?.();
         } catch (err: any) {
-            addToast(`Failed to run pipeline: ${err.message}`, 'error');
+            addToast(`Failed to run workflow: ${err.message}`, 'error');
         } finally {
             setRunning(false);
         }
@@ -77,7 +77,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
 
     async function handleSave() {
         if (editContent.trim() === '') {
-            setError('Pipeline content cannot be empty');
+            setError('Workflow content cannot be empty');
             return;
         }
         setSaving(true);
@@ -86,7 +86,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
             await savePipelineContent(workspaceId, pipeline.name, editContent);
             setContent(editContent);
             setMode('view');
-            addToast('Pipeline saved', 'success');
+            addToast('Workflow saved', 'success');
         } catch (err: any) {
             setError(err.message || 'Failed to save');
         } finally {
@@ -102,7 +102,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
             setContent(newYaml);
             setEditContent(newYaml);
             setMode('view');
-            addToast('Pipeline saved', 'success');
+            addToast('Workflow saved', 'success');
         } catch (err: any) {
             setError(err.message || 'Failed to save');
         } finally {
@@ -113,10 +113,10 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
     async function handleDelete() {
         try {
             await deletePipeline(workspaceId, pipeline.name);
-            addToast('Pipeline deleted', 'success');
+            addToast('Workflow deleted', 'success');
             onDeleted();
         } catch (err: any) {
-            addToast(`Failed to delete pipeline: ${err.message}`, 'error');
+            addToast(`Failed to delete workflow: ${err.message}`, 'error');
         }
     }
 
@@ -147,7 +147,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                                 size="sm"
                                 loading={running}
                                 disabled={pipeline.isValid === false}
-                                title={pipeline.isValid === false ? 'Fix validation errors before running' : 'Run pipeline'}
+                                title={pipeline.isValid === false ? 'Fix validation errors before running' : 'Run workflow'}
                                 data-testid="pipeline-run-btn"
                                 onClick={handleRun}
                             >
@@ -196,7 +196,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                             )}
                             onClick={() => setActiveTab(tab)}
                         >
-                            {tab === 'pipeline' ? 'Pipeline' : 'Run History'}
+                            {tab === 'pipeline' ? 'Workflow' : 'Run History'}
                             {tab === 'history' && activeTaskCount > 0 && (
                                 <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="active-task-badge">{activeTaskCount}</span>
                             )}
@@ -254,7 +254,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
             <Dialog
                 open={confirmDelete}
                 onClose={() => setConfirmDelete(false)}
-                title="Delete Pipeline"
+                title="Delete Workflow"
                 footer={
                     <>
                         <Button variant="secondary" onClick={() => setConfirmDelete(false)}>Cancel</Button>

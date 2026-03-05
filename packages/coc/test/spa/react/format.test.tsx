@@ -169,7 +169,7 @@ describe('statusLabel', () => {
 describe('typeLabel', () => {
     it('returns label for known types', () => {
         expect(typeLabel('code-review')).toBe('Code Review');
-        expect(typeLabel('pipeline-execution')).toBe('Pipeline');
+        expect(typeLabel('pipeline-execution')).toBe('Workflow');
     });
 
     it('returns the type string for unknown type', () => {

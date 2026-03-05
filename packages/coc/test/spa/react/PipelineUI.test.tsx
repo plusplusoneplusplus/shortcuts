@@ -217,7 +217,7 @@ describe('PipelineDetail', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: '   ' } });
         fireEvent.click(screen.getByText('Save'));
-        expect(screen.getByText('Pipeline content cannot be empty')).toBeDefined();
+        expect(screen.getByText('Workflow content cannot be empty')).toBeDefined();
     });
 
     it('Save calls savePipelineContent and shows success toast', async () => {
@@ -235,7 +235,7 @@ describe('PipelineDetail', () => {
             fireEvent.click(screen.getByText('Save'));
         });
         expect(saveSpy).toHaveBeenCalledWith('ws-1', 'my-pipeline', 'name: updated');
-        expect(mockAddToast).toHaveBeenCalledWith('Pipeline saved', 'success');
+        expect(mockAddToast).toHaveBeenCalledWith('Workflow saved', 'success');
     });
 
     it('Save shows inline error on API failure', async () => {
@@ -261,7 +261,7 @@ describe('PipelineDetail', () => {
         );
         await waitFor(() => screen.getByText('Delete'));
         fireEvent.click(screen.getByText('Delete'));
-        expect(screen.getByText('Delete Pipeline')).toBeDefined();
+        expect(screen.getByText('Delete Workflow')).toBeDefined();
         expect(screen.getByText(/Are you sure you want to delete/)).toBeDefined();
     });
 
@@ -279,7 +279,7 @@ describe('PipelineDetail', () => {
             fireEvent.click(screen.getByText('Confirm'));
         });
         expect(deleteSpy).toHaveBeenCalledWith('ws-1', 'my-pipeline');
-        expect(mockAddToast).toHaveBeenCalledWith('Pipeline deleted', 'success');
+        expect(mockAddToast).toHaveBeenCalledWith('Workflow deleted', 'success');
         expect(onDeleted).toHaveBeenCalled();
     });
 
@@ -384,7 +384,7 @@ describe('PipelineDetail', () => {
         fireEvent.click(screen.getByTestId('pipeline-run-btn'));
         await waitFor(() => {
             expect(pipelineApi.runPipeline).toHaveBeenCalledWith('ws-1', 'my-pipeline');
-            expect(mockAddToast).toHaveBeenCalledWith('Pipeline queued (abcdef12)', 'success');
+            expect(mockAddToast).toHaveBeenCalledWith('Workflow queued (abcdef12)', 'success');
             expect(onRunSuccess).toHaveBeenCalled();
         });
     });
@@ -399,7 +399,7 @@ describe('PipelineDetail', () => {
         await waitFor(() => screen.getByText('my-pipeline'));
         fireEvent.click(screen.getByTestId('pipeline-run-btn'));
         await waitFor(() => {
-            expect(mockAddToast).toHaveBeenCalledWith('Failed to run pipeline: AI unavailable', 'error');
+            expect(mockAddToast).toHaveBeenCalledWith('Failed to run workflow: AI unavailable', 'error');
         });
     });
 
@@ -413,7 +413,7 @@ describe('PipelineDetail', () => {
         await waitFor(() => screen.getByText('my-pipeline'));
         fireEvent.click(screen.getByTestId('pipeline-run-btn'));
         await waitFor(() => {
-            expect(mockAddToast).toHaveBeenCalledWith('Pipeline queued', 'success');
+            expect(mockAddToast).toHaveBeenCalledWith('Workflow queued', 'success');
         });
     });
 
@@ -426,7 +426,7 @@ describe('PipelineDetail', () => {
             </Wrap>
         );
         await waitFor(() => screen.getByTestId('pipeline-tab-bar'));
-        expect(screen.getByText('Pipeline')).toBeDefined();
+        expect(screen.getByText('Workflow')).toBeDefined();
         expect(screen.getByText('Run History')).toBeDefined();
     });
 
@@ -516,7 +516,7 @@ describe('AddPipelineDialog', () => {
                 <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
-        expect(screen.getByText('New Pipeline')).toBeDefined();
+        expect(screen.getByText('New Workflow')).toBeDefined();
         expect(screen.getByText('Name')).toBeDefined();
         expect(screen.getByText('Template')).toBeDefined();
     });
@@ -569,7 +569,7 @@ describe('AddPipelineDialog', () => {
             fireEvent.click(screen.getByText('Create'));
         });
         expect(createSpy).toHaveBeenCalledWith('ws-1', 'test-pipeline', 'custom');
-        expect(mockAddToast).toHaveBeenCalledWith('Pipeline created', 'success');
+        expect(mockAddToast).toHaveBeenCalledWith('Workflow created', 'success');
         expect(onCreated).toHaveBeenCalledWith('test-pipeline');
         expect(onClose).toHaveBeenCalled();
     });
@@ -666,7 +666,7 @@ describe('AddPipelineDialog', () => {
         fireEvent.change(select, { target: { value: 'ai-generated' } });
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'short' } });
-        const btn = screen.getByText('Generate Pipeline ✨');
+        const btn = screen.getByText('Generate Workflow ✨');
         expect(btn.closest('button')!.disabled).toBe(true);
     });
 
@@ -680,7 +680,7 @@ describe('AddPipelineDialog', () => {
         fireEvent.change(select, { target: { value: 'ai-generated' } });
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
-        const btn = screen.getByText('Generate Pipeline ✨');
+        const btn = screen.getByText('Generate Workflow ✨');
         expect(btn.closest('button')!.disabled).toBe(false);
     });
 
@@ -718,7 +718,7 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         expect(genSpy).toHaveBeenCalledWith('ws-1', 'my-pipe', 'classify tickets by urgency', expect.any(Object));
     });
@@ -740,9 +740,9 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
-        expect(screen.getByText('Generating pipeline YAML...')).toBeDefined();
+        expect(screen.getByText('Generating workflow YAML...')).toBeDefined();
         expect(screen.getByText('Cancel')).toBeDefined();
         expect(document.querySelector('[aria-label="Loading"]')).not.toBeNull();
         // Clean up
@@ -769,7 +769,7 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Now in generating phase — click Cancel
         await act(async () => {
@@ -798,11 +798,11 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
-        expect(screen.getByText('Review Generated Pipeline')).toBeDefined();
+        expect(screen.getByText('Review Generated Workflow')).toBeDefined();
         expect(document.querySelector('pre')!.textContent).toContain('name: generated');
-        expect(screen.getByText('✅ Valid pipeline')).toBeDefined();
+        expect(screen.getByText('✅ Valid workflow')).toBeDefined();
     });
 
     it('invalid generation shows warning badge and collapsible errors', async () => {
@@ -823,9 +823,9 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
-        expect(screen.getByText('⚠️ Invalid pipeline')).toBeDefined();
+        expect(screen.getByText('⚠️ Invalid workflow')).toBeDefined();
         expect(screen.getByText('Validation errors (1)')).toBeDefined();
     });
 
@@ -845,7 +845,7 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Now in preview — click Back
         fireEvent.click(screen.getByText('← Back'));
@@ -870,7 +870,7 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         genSpy.mockClear();
         await act(async () => {
@@ -898,10 +898,10 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         await act(async () => {
-            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+            fireEvent.click(screen.getByText('Save Workflow ✓'));
         });
         expect(createSpy).toHaveBeenCalledWith('ws-1', 'my-pipe', undefined, 'name: generated-yaml');
         expect(onCreated).toHaveBeenCalledWith('my-pipe');
@@ -922,7 +922,7 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Back to input with error
         expect(screen.getByText('AI service down')).toBeDefined();
@@ -946,10 +946,10 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         await act(async () => {
-            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+            fireEvent.click(screen.getByText('Save Workflow ✓'));
         });
         expect(screen.getByText('Disk full')).toBeDefined();
         // Still in preview phase
@@ -972,10 +972,10 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Should succeed and transition to preview
-        expect(screen.getByText('Review Generated Pipeline')).toBeDefined();
+        expect(screen.getByText('Review Generated Workflow')).toBeDefined();
         expect(genSpy).toHaveBeenCalledWith('ws-1', undefined, 'classify tickets by urgency', expect.any(Object));
     });
 
@@ -995,7 +995,7 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify bugs by category' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Preview should show editable name input pre-filled with suggestedName
         const nameInput = document.querySelector('input[type="text"]') as HTMLInputElement;
@@ -1021,7 +1021,7 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Preview name should still be the user-provided name
         const nameInput = document.querySelector('input[type="text"]') as HTMLInputElement;
@@ -1047,13 +1047,13 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Edit the name in preview
         const nameInput = document.querySelector('input[type="text"]') as HTMLInputElement;
         fireEvent.change(nameInput, { target: { value: 'edited-name' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+            fireEvent.click(screen.getByText('Save Workflow ✓'));
         });
         expect(createSpy).toHaveBeenCalledWith('ws-1', 'edited-name', undefined, 'name: generated-yaml');
         expect(onCreated).toHaveBeenCalledWith('edited-name');
@@ -1074,11 +1074,11 @@ describe('AddPipelineDialog', () => {
         const textarea = document.querySelector('textarea')!;
         fireEvent.change(textarea, { target: { value: 'classify tickets by urgency' } });
         await act(async () => {
-            fireEvent.click(screen.getByText('Generate Pipeline ✨'));
+            fireEvent.click(screen.getByText('Generate Workflow ✨'));
         });
         // Name is empty (no suggestedName returned), try to save
         await act(async () => {
-            fireEvent.click(screen.getByText('Save Pipeline ✓'));
+            fireEvent.click(screen.getByText('Save Workflow ✓'));
         });
         expect(screen.getByText('Name is required')).toBeDefined();
         expect(createSpy).not.toHaveBeenCalled();
@@ -1115,7 +1115,7 @@ describe('PipelinesTab (split-panel layout)', () => {
         // Left panel has the pipeline name
         expect(screen.getByText(/my-pipeline/)).toBeDefined();
         // Right panel shows placeholder
-        expect(screen.getByText('Select a pipeline')).toBeDefined();
+        expect(screen.getByText('Select a workflow')).toBeDefined();
     });
 
     it('clicking a pipeline row selects it and renders PipelineDetail', async () => {
@@ -1164,7 +1164,7 @@ describe('PipelinesTab (split-panel layout)', () => {
         // Close detail
         fireEvent.click(screen.getByText('Close'));
         // Placeholder returns
-        expect(screen.getByText('Select a pipeline')).toBeDefined();
+        expect(screen.getByText('Select a workflow')).toBeDefined();
         expect(location.hash).toBe('#repos/ws-1/pipelines');
     });
 
@@ -1189,7 +1189,7 @@ describe('PipelinesTab (split-panel layout)', () => {
             fireEvent.click(screen.getByText('Confirm'));
         });
         // Selection cleared
-        expect(screen.getByText('Select a pipeline')).toBeDefined();
+        expect(screen.getByText('Select a workflow')).toBeDefined();
         expect(location.hash).toBe('#repos/ws-1/pipelines');
     });
 
@@ -1199,7 +1199,7 @@ describe('PipelinesTab (split-panel layout)', () => {
             pipelines: [samplePipeline],
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        expect(screen.getByText('+ New Pipeline')).toBeDefined();
+        expect(screen.getByText('+ New Workflow')).toBeDefined();
     });
 
     it('shows "New Pipeline" button in empty state', () => {
@@ -1208,7 +1208,7 @@ describe('PipelinesTab (split-panel layout)', () => {
             pipelines: [],
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        expect(screen.getByText('+ New Pipeline')).toBeDefined();
+        expect(screen.getByText('+ New Workflow')).toBeDefined();
     });
 
     it('"New Pipeline" click opens AddPipelineDialog', () => {
@@ -1217,8 +1217,8 @@ describe('PipelinesTab (split-panel layout)', () => {
             pipelines: [samplePipeline],
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        fireEvent.click(screen.getByText('+ New Pipeline'));
-        expect(screen.getByText('New Pipeline')).toBeDefined();
+        fireEvent.click(screen.getByText('+ New Workflow'));
+        expect(screen.getByText('New Workflow')).toBeDefined();
         expect(screen.getByText('Name')).toBeDefined();
     });
 
@@ -1228,7 +1228,7 @@ describe('PipelinesTab (split-panel layout)', () => {
             pipelines: [samplePipeline, { name: 'other', path: 'other.yaml' }],
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        expect(screen.getByText('2 pipelines')).toBeDefined();
+        expect(screen.getByText('2 workflows')).toBeDefined();
     });
 
     it('empty state renders within split layout without collapsing', () => {
@@ -1238,11 +1238,11 @@ describe('PipelinesTab (split-panel layout)', () => {
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
         // Empty state message in left panel
-        expect(screen.getByText('No pipelines found')).toBeDefined();
+        expect(screen.getByText('No workflows found')).toBeDefined();
         // Placeholder still visible in right panel
-        expect(screen.getByText('Select a pipeline')).toBeDefined();
+        expect(screen.getByText('Select a workflow')).toBeDefined();
         // + New Pipeline visible
-        expect(screen.getByText('+ New Pipeline')).toBeDefined();
+        expect(screen.getByText('+ New Workflow')).toBeDefined();
     });
 
     it('pipeline list remains visible when detail is shown', async () => {
@@ -1263,7 +1263,7 @@ describe('PipelinesTab (split-panel layout)', () => {
         });
         // Both pipelines still visible in the list
         expect(screen.getByText(/second-pipe/)).toBeDefined();
-        expect(screen.getByText('2 pipelines')).toBeDefined();
+        expect(screen.getByText('2 workflows')).toBeDefined();
     });
 
     it('active row has aria-selected true', () => {
@@ -1300,7 +1300,7 @@ describe('PipelinesTab (split-panel layout)', () => {
             pipelines: [samplePipeline],
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        fireEvent.click(screen.getByText('+ New Pipeline'));
+        fireEvent.click(screen.getByText('+ New Workflow'));
         const input = document.querySelector('input[type="text"]')!;
         fireEvent.change(input, { target: { value: 'new-created' } });
         await act(async () => {
@@ -1315,7 +1315,7 @@ describe('PipelinesTab (split-panel layout)', () => {
             pipelines: [],
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
-        expect(screen.getByText(/Create your first pipeline by describing what it should do/)).toBeDefined();
+        expect(screen.getByText(/Create your first workflow by describing what it should do/)).toBeDefined();
     });
 
     it('successful ▶ Run stays on Pipelines tab (no auto-navigation to queue)', async () => {

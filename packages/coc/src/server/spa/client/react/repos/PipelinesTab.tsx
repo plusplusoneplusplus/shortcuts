@@ -46,16 +46,16 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
             <div className="w-72 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between px-4 pt-3 pb-2">
                     <span className="text-xs text-[#848484]">
-                        {pipelines.length} pipeline{pipelines.length !== 1 ? 's' : ''}
+                        {pipelines.length} workflow{pipelines.length !== 1 ? 's' : ''}
                     </span>
-                    <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New Pipeline</Button>
+                    <Button variant="secondary" size="sm" onClick={() => setShowAddDialog(true)}>+ New Workflow</Button>
                 </div>
                 {pipelines.length === 0 ? (
                     <div className="empty-state p-4 text-center">
                         <div className="text-2xl mb-2">📋</div>
-                        <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">No pipelines found</div>
+                        <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">No workflows found</div>
                         <div className="text-xs text-[#848484] mt-1">
-                            Create your first pipeline by describing what it should do, or add YAML files to .vscode/pipelines/.
+                            Create your first workflow by describing what it should do, or add YAML files to .vscode/pipelines/.
                         </div>
                     </div>
                 ) : (
@@ -99,7 +99,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
                     />
                 ) : (
                     <div className="flex items-center justify-center h-full text-sm text-[#848484]">
-                        Select a pipeline
+                        Select a workflow
                     </div>
                 )}
             </div>

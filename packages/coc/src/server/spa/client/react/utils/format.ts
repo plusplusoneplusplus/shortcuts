@@ -85,8 +85,8 @@ export function typeLabel(type: string): string {
     const map: Record<string, string> = {
         'code-review': 'Code Review',
         'code-review-group': 'CR Group',
-        'pipeline-execution': 'Pipeline',
-        'pipeline-item': 'Pipeline Item',
+        'pipeline-execution': 'Workflow',
+        'pipeline-item': 'Workflow Item',
         'clarification': 'Clarification',
         'discovery': 'Discovery'
     };

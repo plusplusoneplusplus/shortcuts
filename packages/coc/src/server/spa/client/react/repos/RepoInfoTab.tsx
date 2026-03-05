@@ -54,7 +54,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                         {color}
                     </span>
                 </MetaRow>
-                <MetaRow label="Pipelines" value={String(repo.pipelines?.length || 0)} />
+                <MetaRow label="Workflows" value={String(repo.pipelines?.length || 0)} />
                 <MetaRow label="Tasks" value={String(repo.taskCount || 0)} />
                 <MetaRow label="Completed" value={String(stats.success)} />
                 <MetaRow label="Failed" value={String(stats.failed)} />

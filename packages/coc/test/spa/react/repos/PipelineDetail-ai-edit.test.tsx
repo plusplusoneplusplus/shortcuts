@@ -132,7 +132,7 @@ describe('PipelineDetail — ai-edit mode', () => {
         // AI panel is gone
         expect(screen.queryByTestId('pipeline-ai-refine-panel')).toBeNull();
         // Success toast
-        expect(mockAddToast).toHaveBeenCalledWith('Pipeline saved', 'success');
+        expect(mockAddToast).toHaveBeenCalledWith('Workflow saved', 'success');
     });
 
     it('onApply shows error on save failure', async () => {
