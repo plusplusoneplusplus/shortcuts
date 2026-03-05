@@ -34,6 +34,62 @@ export function parseCronToInterval(cron: string): { mode: 'interval'; value: st
     return { mode: 'cron' };
 }
 
+const WEEKDAY_NAMES: Record<string, string> = {
+    '0': 'Sunday', '1': 'Monday', '2': 'Tuesday', '3': 'Wednesday',
+    '4': 'Thursday', '5': 'Friday', '6': 'Saturday', '7': 'Sunday',
+};
+
+/** Human-readable description for common cron patterns. Returns '' for unrecognized. */
+export function describeCron(expr: string): string {
+    const p = expr.trim().split(/\s+/);
+    if (p.length !== 5) return '';
+    const [min, hr, dom, mon, dow] = p;
+
+    if (min === '*' && hr === '*' && dom === '*' && mon === '*' && dow === '*') return 'Every minute';
+
+    const minStep = min.match(/^\*\/(\d+)$/);
+    if (minStep && hr === '*' && dom === '*' && mon === '*' && dow === '*') {
+        return `Every ${minStep[1]} minute${minStep[1] === '1' ? '' : 's'}`;
+    }
+
+    const hrStep = hr.match(/^\*\/(\d+)$/);
+    if (min === '0' && hrStep && dom === '*' && mon === '*' && dow === '*') {
+        return `Every ${hrStep[1]} hour${hrStep[1] === '1' ? '' : 's'}`;
+    }
+
+    if (min === '0' && hr === '*' && dom === '*' && mon === '*' && dow === '*') return 'Every hour';
+
+    if (/^\d+$/.test(min) && /^\d+$/.test(hr) && dom === '*' && mon === '*') {
+        const hh = hr.padStart(2, '0');
+        const mm = min.padStart(2, '0');
+        const time = `${hh}:${mm}`;
+        if (dow === '*') return `Every day at ${time}`;
+        if (dow === '1-5') return `Weekdays at ${time}`;
+        if (WEEKDAY_NAMES[dow]) return `Every ${WEEKDAY_NAMES[dow]} at ${time}`;
+    }
+
+    if (/^\d+$/.test(min) && /^\d+$/.test(hr) && /^\d+$/.test(dom) && mon === '*' && dow === '*') {
+        const hh = hr.padStart(2, '0');
+        const mm = min.padStart(2, '0');
+        const d = parseInt(dom, 10);
+        const suffix = d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th';
+        return `${d}${suffix} of every month at ${hh}:${mm}`;
+    }
+
+    return '';
+}
+
+export const CRON_EXAMPLES: { label: string; expr: string }[] = [
+    { label: 'Every minute', expr: '* * * * *' },
+    { label: 'Every 5 minutes', expr: '*/5 * * * *' },
+    { label: 'Every hour', expr: '0 * * * *' },
+    { label: 'Every 6 hours', expr: '0 */6 * * *' },
+    { label: 'Daily at 9 AM', expr: '0 9 * * *' },
+    { label: 'Weekdays at 9 AM', expr: '0 9 * * 1-5' },
+    { label: 'Every Sunday at midnight', expr: '0 0 * * 0' },
+    { label: '1st of month at noon', expr: '0 12 1 * *' },
+];
+
 interface RepoSchedulesTabProps {
     workspaceId: string;
 }
@@ -801,12 +857,39 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                         </select>
                     </div>
                 ) : (
-                    <input
-                        className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc] font-mono"
-                        placeholder="0 9 * * *"
-                        value={cron}
-                        onChange={e => setCron(e.target.value)}
-                    />
+                    <div className="flex flex-col gap-1.5" data-testid="cron-hint-panel">
+                        <input
+                            className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc] font-mono"
+                            placeholder="0 9 * * *"
+                            value={cron}
+                            onChange={e => setCron(e.target.value)}
+                        />
+                        <div className="flex items-center gap-1" data-testid="cron-field-legend">
+                            {['min', 'hr', 'dom', 'mon', 'dow'].map(f => (
+                                <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-[#e8e8e8] dark:bg-[#333] text-[#616161] dark:text-[#999] font-mono">{f}</span>
+                            ))}
+                            <span className="text-[9px] text-[#848484] ml-1">minute · hour · day-of-month · month · day-of-week</span>
+                        </div>
+                        {cron.trim() && describeCron(cron) && (
+                            <div className="text-[10px] text-[#0078d4] dark:text-[#4fc3f7]" data-testid="cron-description">
+                                {describeCron(cron)}
+                            </div>
+                        )}
+                        <div className="flex flex-wrap gap-1" data-testid="cron-examples">
+                            {CRON_EXAMPLES.map(ex => (
+                                <button
+                                    key={ex.expr}
+                                    type="button"
+                                    className="text-[9px] px-1.5 py-0.5 rounded border border-[#d0d0d0] dark:border-[#555] bg-white dark:bg-[#2a2a2a] text-[#616161] dark:text-[#999] hover:bg-[#e8e8e8] dark:hover:bg-[#333] hover:text-[#1e1e1e] dark:hover:text-[#ccc] transition-colors"
+                                    onClick={() => setCron(ex.expr)}
+                                    title={ex.expr}
+                                    data-testid={`cron-example-${ex.expr.replace(/\s+/g, '-')}`}
+                                >
+                                    {ex.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 )}
 
                 <div className="flex items-center gap-2 text-xs">

@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { SCHEDULE_TEMPLATES } from '../../../src/server/spa/client/react/repos/RepoSchedulesTab';
+import { SCHEDULE_TEMPLATES, describeCron, CRON_EXAMPLES } from '../../../src/server/spa/client/react/repos/RepoSchedulesTab';
 
 // Mock fetch and fetchApi so the component can render without a real server
 const mockFetch = vi.fn().mockResolvedValue({
@@ -709,5 +709,175 @@ describe('Split-panel layout', () => {
         await waitFor(() => {
             expect(screen.getByText(MOCK_SCHEDULE_2.target)).toBeTruthy();
         });
+    });
+});
+
+// ============================================================================
+// describeCron unit tests
+// ============================================================================
+
+describe('describeCron', () => {
+    it('returns "Every minute" for * * * * *', () => {
+        expect(describeCron('* * * * *')).toBe('Every minute');
+    });
+
+    it('returns "Every N minutes" for */N patterns', () => {
+        expect(describeCron('*/5 * * * *')).toBe('Every 5 minutes');
+        expect(describeCron('*/1 * * * *')).toBe('Every 1 minute');
+        expect(describeCron('*/30 * * * *')).toBe('Every 30 minutes');
+    });
+
+    it('returns "Every N hours" for 0 */N patterns', () => {
+        expect(describeCron('0 */6 * * *')).toBe('Every 6 hours');
+        expect(describeCron('0 */1 * * *')).toBe('Every 1 hour');
+    });
+
+    it('returns "Every hour" for 0 * * * *', () => {
+        expect(describeCron('0 * * * *')).toBe('Every hour');
+    });
+
+    it('returns "Every day at HH:MM" for fixed time patterns', () => {
+        expect(describeCron('0 9 * * *')).toBe('Every day at 09:00');
+        expect(describeCron('30 14 * * *')).toBe('Every day at 14:30');
+        expect(describeCron('0 0 * * *')).toBe('Every day at 00:00');
+    });
+
+    it('returns "Weekdays at HH:MM" for 1-5 dow', () => {
+        expect(describeCron('0 9 * * 1-5')).toBe('Weekdays at 09:00');
+    });
+
+    it('returns weekday name for single dow', () => {
+        expect(describeCron('0 0 * * 0')).toBe('Every Sunday at 00:00');
+        expect(describeCron('0 8 * * 1')).toBe('Every Monday at 08:00');
+        expect(describeCron('0 17 * * 5')).toBe('Every Friday at 17:00');
+    });
+
+    it('returns monthly description for fixed dom', () => {
+        expect(describeCron('0 12 1 * *')).toBe('1st of every month at 12:00');
+        expect(describeCron('0 0 2 * *')).toBe('2nd of every month at 00:00');
+        expect(describeCron('0 0 3 * *')).toBe('3rd of every month at 00:00');
+        expect(describeCron('0 9 15 * *')).toBe('15th of every month at 09:00');
+    });
+
+    it('returns empty string for unrecognized patterns', () => {
+        expect(describeCron('0 9 * 1 *')).toBe('');
+        expect(describeCron('5 */2 * * 1-5')).toBe('');
+        expect(describeCron('invalid')).toBe('');
+        expect(describeCron('')).toBe('');
+    });
+
+    it('handles extra whitespace in input', () => {
+        expect(describeCron('  * * * * *  ')).toBe('Every minute');
+        expect(describeCron('0  9  *  *  *')).toBe('Every day at 09:00');
+    });
+});
+
+// ============================================================================
+// CRON_EXAMPLES data shape tests
+// ============================================================================
+
+describe('CRON_EXAMPLES', () => {
+    it('exports at least 6 examples', () => {
+        expect(CRON_EXAMPLES.length).toBeGreaterThanOrEqual(6);
+    });
+
+    it('every example has label and expr', () => {
+        for (const ex of CRON_EXAMPLES) {
+            expect(ex.label).toBeTruthy();
+            expect(ex.expr).toBeTruthy();
+        }
+    });
+
+    it('every example expression has 5 fields', () => {
+        for (const ex of CRON_EXAMPLES) {
+            expect(ex.expr.trim().split(/\s+/).length).toBe(5);
+        }
+    });
+
+    it('every example is described by describeCron (non-empty)', () => {
+        for (const ex of CRON_EXAMPLES) {
+            expect(describeCron(ex.expr)).not.toBe('');
+        }
+    });
+});
+
+// ============================================================================
+// Cron hint panel integration tests
+// ============================================================================
+
+describe('Cron hint panel UI', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockFetchApi.mockResolvedValue({ schedules: [] });
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ schedules: [] }),
+        });
+    });
+
+    it('shows cron hint panel when cron mode is active', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+
+        // Switch to cron mode
+        fireEvent.click(screen.getByText('Cron'));
+
+        expect(screen.getByTestId('cron-hint-panel')).toBeTruthy();
+        expect(screen.getByTestId('cron-field-legend')).toBeTruthy();
+        expect(screen.getByTestId('cron-examples')).toBeTruthy();
+    });
+
+    it('does not show cron hint panel in interval mode', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+
+        // Default is interval mode
+        expect(screen.queryByTestId('cron-hint-panel')).toBeNull();
+    });
+
+    it('field legend displays all 5 cron field badges', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByText('Cron'));
+
+        const legend = screen.getByTestId('cron-field-legend');
+        expect(legend.textContent).toContain('min');
+        expect(legend.textContent).toContain('hr');
+        expect(legend.textContent).toContain('dom');
+        expect(legend.textContent).toContain('mon');
+        expect(legend.textContent).toContain('dow');
+    });
+
+    it('shows human-readable description for default cron value', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByText('Cron'));
+
+        // Default cron is "0 9 * * *" which should produce "Every day at 09:00"
+        const desc = screen.getByTestId('cron-description');
+        expect(desc.textContent).toBe('Every day at 09:00');
+    });
+
+    it('clicking an example populates the cron input', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByText('Cron'));
+
+        // Click "Every 5 minutes" example
+        const exBtn = screen.getByTestId('cron-example-*/5-*-*-*-*');
+        fireEvent.click(exBtn);
+
+        const input = screen.getByPlaceholderText('0 9 * * *') as HTMLInputElement;
+        expect(input.value).toBe('*/5 * * * *');
+    });
+
+    it('renders example buttons for all CRON_EXAMPLES', async () => {
+        await renderSchedulesTab();
+        fireEvent.click(screen.getByText('+ New'));
+        fireEvent.click(screen.getByText('Cron'));
+
+        for (const ex of CRON_EXAMPLES) {
+            expect(screen.getByText(ex.label)).toBeTruthy();
+        }
     });
 });
