@@ -15,3 +15,5 @@ export type { CommitDetailProps } from './CommitDetail';
 export type { BranchFileDiffProps } from './BranchFileDiff';
 export { UnifiedDiffViewer } from './UnifiedDiffViewer';
 export type { UnifiedDiffViewerProps } from './UnifiedDiffViewer';
+export type { DiffLine } from './UnifiedDiffViewer';
+export { computeDiffLines, parseHunkHeader } from './UnifiedDiffViewer';
