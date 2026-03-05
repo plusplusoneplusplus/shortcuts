@@ -120,3 +120,23 @@ export async function waitForCommentSidebar(page: Page): Promise<void> {
 export async function getCommentCardCount(page: Page): Promise<number> {
     return page.locator('[data-testid="comment-sidebar"] [data-testid^="comment-card-"]').count();
 }
+
+/** Get a comment card locator by comment ID. */
+export function getCommentCard(page: Page, commentId: string) {
+    return page.locator(`[data-testid="comment-card-${commentId}"]`);
+}
+
+/** Fetch a single comment by ID via the collection GET endpoint. Returns null if not found. */
+export async function getCommentById(
+    serverUrl: string,
+    wsId: string,
+    filePath: string,
+    commentId: string,
+): Promise<Record<string, unknown> | null> {
+    const encodedPath = encodeURIComponent(filePath);
+    const encodedWs = encodeURIComponent(wsId);
+    const res = await request(`${serverUrl}/api/comments/${encodedWs}/${encodedPath}`);
+    if (res.status !== 200) return null;
+    const { comments } = JSON.parse(res.body);
+    return (comments as Record<string, unknown>[]).find(c => c.id === commentId) ?? null;
+}
