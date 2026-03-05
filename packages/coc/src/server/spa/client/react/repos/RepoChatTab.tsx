@@ -74,8 +74,8 @@ function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
 export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef, onOpenNewChatDialog }: RepoChatTabProps) {
     const sessionsHook = useChatSessions(workspaceId);
     const readState = useChatReadState(workspaceId);
-    const { pinnedIds, togglePin } = usePinnedChats(workspaceId);
-    const { archiveSet, toggleArchive } = useArchivedChats(workspaceId, togglePin);
+    const { pinnedIds, isPinned, togglePin } = usePinnedChats(workspaceId);
+    const { archiveSet, toggleArchive } = useArchivedChats(workspaceId, togglePin, isPinned);
     const [showArchived, setShowArchived] = useState(false);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { model: savedModel, setModel: persistModel } = usePreferences();

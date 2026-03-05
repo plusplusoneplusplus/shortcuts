@@ -18,7 +18,11 @@ export interface UseArchivedChatsResult {
     toggleArchive: (id: string) => void;
 }
 
-export function useArchivedChats(workspaceId: string, onUnpin?: (id: string) => void): UseArchivedChatsResult {
+export function useArchivedChats(
+    workspaceId: string,
+    onUnpin?: (id: string) => void,
+    isPinnedFn?: (id: string) => boolean,
+): UseArchivedChatsResult {
     const [archivedIds, setArchivedIds] = useState<string[]>([]);
     const allArchivedRef = useRef<Record<string, string[]>>({});
     const mountedRef = useRef(true);
@@ -66,15 +70,15 @@ export function useArchivedChats(workspaceId: string, onUnpin?: (id: string) => 
                     body: JSON.stringify({ archivedChats: archivedChats ?? {} }),
                 }).catch(() => { /* best-effort */ });
 
-                // Auto-unpin when archiving a session
-                if (!isCurrentlyArchived && onUnpin) {
+                // Auto-unpin when archiving a session that is actually pinned
+                if (!isCurrentlyArchived && onUnpin && (!isPinnedFn || isPinnedFn(id))) {
                     onUnpin(id);
                 }
 
                 return next;
             });
         },
-        [workspaceId, onUnpin],
+        [workspaceId, onUnpin, isPinnedFn],
     );
 
     return { archiveSet: new Set(archivedIds), isArchived, toggleArchive };

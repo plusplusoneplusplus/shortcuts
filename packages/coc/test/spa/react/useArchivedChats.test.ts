@@ -39,6 +39,10 @@ describe('useArchivedChats', () => {
             expect(source).toContain('onUnpin?: (id: string) => void');
         });
 
+        it('accepts optional isPinnedFn predicate', () => {
+            expect(source).toContain('isPinnedFn?: (id: string) => boolean');
+        });
+
         it('returns archiveSet as Set<string>', () => {
             expect(source).toContain('archiveSet: Set<string>');
         });
@@ -100,6 +104,16 @@ describe('useArchivedChats', () => {
         it('does not unpin when unarchiving', () => {
             expect(source).toContain('!isCurrentlyArchived && onUnpin');
         });
+
+        it('guards onUnpin with isPinnedFn to avoid toggling unpinned sessions', () => {
+            expect(source).toContain('isPinnedFn(id)');
+            expect(source).toContain('!isPinnedFn || isPinnedFn(id)');
+        });
+
+        it('skips onUnpin when isPinnedFn returns false (unpinned session)', () => {
+            // The guard condition ensures onUnpin is only called when isPinnedFn is absent or returns true
+            expect(source).toMatch(/!isPinnedFn\s*\|\|\s*isPinnedFn\(id\)/);
+        });
     });
 
     describe('state management', () => {
@@ -110,6 +124,10 @@ describe('useArchivedChats', () => {
         it('uses mountedRef to prevent state updates after unmount', () => {
             expect(source).toContain('mountedRef');
             expect(source).toContain('mountedRef.current = false');
+        });
+
+        it('includes isPinnedFn in toggleArchive dependency array', () => {
+            expect(source).toContain('isPinnedFn]');
         });
     });
 
