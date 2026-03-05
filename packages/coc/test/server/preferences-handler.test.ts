@@ -651,6 +651,34 @@ describe('validateGlobalPreferences', () => {
         expect(result).toEqual({ theme: 'dark' });
         expect(Object.keys(result)).toEqual(['theme']);
     });
+
+    // -- gitGroupOrder field --
+
+    it('accepts valid gitGroupOrder array of strings', () => {
+        const result = validateGlobalPreferences({ gitGroupOrder: ['github.com/a/b', 'workspace:ws-1'] });
+        expect(result).toEqual({ gitGroupOrder: ['github.com/a/b', 'workspace:ws-1'] });
+    });
+
+    it('rejects non-array gitGroupOrder', () => {
+        expect(validateGlobalPreferences({ gitGroupOrder: 'not-array' })).toEqual({});
+        expect(validateGlobalPreferences({ gitGroupOrder: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ gitGroupOrder: {} })).toEqual({});
+    });
+
+    it('filters out non-string and empty entries from gitGroupOrder', () => {
+        const result = validateGlobalPreferences({ gitGroupOrder: ['valid', 42, '', null, 'also-valid'] });
+        expect(result.gitGroupOrder).toEqual(['valid', 'also-valid']);
+    });
+
+    it('omits gitGroupOrder when all entries are invalid', () => {
+        const result = validateGlobalPreferences({ gitGroupOrder: [42, null, ''] });
+        expect(result.gitGroupOrder).toBeUndefined();
+    });
+
+    it('accepts gitGroupOrder alongside theme', () => {
+        const result = validateGlobalPreferences({ theme: 'dark', gitGroupOrder: ['github.com/a'] });
+        expect(result).toEqual({ theme: 'dark', gitGroupOrder: ['github.com/a'] });
+    });
 });
 
 // ============================================================================
@@ -884,6 +912,44 @@ describe('Preferences REST API', () => {
         const res = await patchJSON(`${baseUrl}/api/preferences`, { reposSidebarCollapsed: true });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({ theme: 'dark', reposSidebarCollapsed: true });
+    });
+
+    // -- gitGroupOrder persistence via API --
+
+    it('PATCH persists gitGroupOrder', async () => {
+        const order = ['github.com/user/repo', 'workspace:ws-abc'];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { gitGroupOrder: order });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
+    });
+
+    it('GET returns persisted gitGroupOrder', async () => {
+        const order = ['github.com/a', 'github.com/b'];
+        await patchJSON(`${baseUrl}/api/preferences`, { gitGroupOrder: order });
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
+    });
+
+    it('PATCH updates gitGroupOrder without affecting other global prefs', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        const order = ['github.com/c'];
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { gitGroupOrder: order });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.theme).toBe('dark');
+        expect(body.gitGroupOrder).toEqual(order);
+    });
+
+    it('gitGroupOrder survives server restart', async () => {
+        const order = ['github.com/x/y'];
+        await patchJSON(`${baseUrl}/api/preferences`, { gitGroupOrder: order });
+        await server.close();
+
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
+
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
     });
 });
 

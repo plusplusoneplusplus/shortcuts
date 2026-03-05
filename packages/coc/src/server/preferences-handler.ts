@@ -33,6 +33,8 @@ export interface GlobalPreferences {
     theme?: 'light' | 'dark' | 'auto';
     /** Whether the repos sidebar (left panel) is collapsed. */
     reposSidebarCollapsed?: boolean;
+    /** User-defined display order of repository groups. Each entry is a normalizedUrl (for grouped repos) or 'workspace:{id}' (for ungrouped repos). */
+    gitGroupOrder?: string[];
 }
 
 /** Per-repository UI preferences. */
@@ -87,6 +89,15 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
 
     if (typeof obj.reposSidebarCollapsed === 'boolean') {
         result.reposSidebarCollapsed = obj.reposSidebarCollapsed;
+    }
+
+    if (Array.isArray(obj.gitGroupOrder)) {
+        const order = (obj.gitGroupOrder as unknown[]).filter(
+            (k): k is string => typeof k === 'string' && k.length > 0
+        );
+        if (order.length > 0) {
+            result.gitGroupOrder = order;
+        }
     }
 
     return result;

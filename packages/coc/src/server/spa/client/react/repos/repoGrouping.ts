@@ -150,3 +150,30 @@ export function truncatePath(p: string, max: number): string {
     if (p.length <= max) return p;
     return '...' + p.slice(p.length - max + 3);
 }
+
+/**
+ * Stable key for a group:
+ * - normalizedUrl for multi-repo groups
+ * - 'workspace:{id}' for ungrouped (no remote URL) repos
+ */
+export function groupKey(group: RepoGroup): string {
+    return group.normalizedUrl ?? `workspace:${group.repos[0]?.workspace.id ?? 'unknown'}`;
+}
+
+/**
+ * Reorder groups according to a saved order array.
+ * Groups whose key appears in `order` are sorted to that position.
+ * Groups not in `order` are appended at the end in their original relative order.
+ */
+export function applyGroupOrder(groups: RepoGroup[], order: string[]): RepoGroup[] {
+    if (!order || order.length === 0) return groups;
+
+    const ranked = new Map<string, number>();
+    order.forEach((key, i) => ranked.set(key, i));
+
+    return [...groups].sort((a, b) => {
+        const ai = ranked.get(groupKey(a)) ?? Number.MAX_SAFE_INTEGER;
+        const bi = ranked.get(groupKey(b)) ?? Number.MAX_SAFE_INTEGER;
+        return ai - bi;
+    });
+}
