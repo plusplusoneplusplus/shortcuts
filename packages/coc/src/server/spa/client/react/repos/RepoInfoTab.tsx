@@ -11,6 +11,14 @@ interface RepoInfoTabProps {
     repo: RepoData;
 }
 
+interface PerRepoPreferences {
+    lastModel?: string;
+    lastDepth?: 'deep' | 'normal';
+    lastEffort?: 'low' | 'medium' | 'high';
+    lastSkill?: string;
+    recentFollowPrompts?: { type: string; name: string; timestamp: number }[];
+}
+
 const STATUS_ICON: Record<string, string> = {
     running: '⏳', completed: '✓', failed: '✗', cancelled: '🚫', queued: '⏳',
 };
@@ -32,12 +40,25 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
     const [processes, setProcesses] = useState<any[]>([]);
     const [loadingProcesses, setLoadingProcesses] = useState(true);
 
+    const [preferences, setPreferences] = useState<PerRepoPreferences | null>(null);
+    const [loadingPreferences, setLoadingPreferences] = useState(true);
+    const [preferencesError, setPreferencesError] = useState<string | null>(null);
+
     useEffect(() => {
         setLoadingProcesses(true);
         fetchApi(`/processes?workspace=${encodeURIComponent(ws.id)}&limit=10`)
             .then(res => setProcesses(res?.processes || []))
             .catch(() => setProcesses([]))
             .finally(() => setLoadingProcesses(false));
+    }, [ws.id]);
+
+    useEffect(() => {
+        setLoadingPreferences(true);
+        setPreferencesError(null);
+        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/preferences`)
+            .then(res => setPreferences(res ?? {}))
+            .catch((err: unknown) => setPreferencesError(err instanceof Error ? err.message : 'Failed to load preferences'))
+            .finally(() => setLoadingPreferences(false));
     }, [ws.id]);
 
     return (
@@ -83,6 +104,32 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+            </div>
+
+            {/* Preferences */}
+            <div id="repo-preferences-section">
+                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Preferences</h3>
+                {loadingPreferences ? (
+                    <div className="text-xs text-[#848484]">Loading...</div>
+                ) : preferencesError ? (
+                    <div className="text-xs text-red-500">{preferencesError}</div>
+                ) : !preferences || Object.keys(preferences).length === 0 || (
+                    !preferences.lastModel &&
+                    !preferences.lastDepth &&
+                    !preferences.lastEffort &&
+                    !preferences.lastSkill &&
+                    !preferences.recentFollowPrompts?.length
+                ) ? (
+                    <div className="text-xs text-[#848484]" id="repo-preferences-empty">No preferences set</div>
+                ) : (
+                    <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm" id="repo-preferences-grid">
+                        <MetaRow label="Model" value={preferences.lastModel || 'default'} />
+                        <MetaRow label="Depth" value={preferences.lastDepth || 'default'} />
+                        <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
+                        <MetaRow label="Skill" value={preferences.lastSkill || 'none'} />
+                        <MetaRow label="Recent Prompts" value={String(preferences.recentFollowPrompts?.length ?? 0)} />
                     </div>
                 )}
             </div>
