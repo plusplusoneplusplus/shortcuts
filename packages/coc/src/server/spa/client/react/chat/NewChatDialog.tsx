@@ -250,6 +250,7 @@ export function NewChatDialog({
             setProcessId(newProcessId);
             imagePaste.clearImages();
             onChatCreated?.(newTaskId);
+            onClose();
 
             const userTurn: ClientConversationTurn = {
                 role: 'user', content: prompt,
@@ -314,6 +315,7 @@ export function NewChatDialog({
                 return;
             }
             followUpImagePaste.clearImages();
+            onClose();
             await waitForCompletion(processId);
         } catch (err: any) {
             markLastTurnAsError(err?.message ?? 'Failed to send follow-up message.');

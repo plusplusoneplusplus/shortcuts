@@ -424,4 +424,126 @@ describe('NewChatDialog', () => {
         fireEvent.click(screen.getByText('Cancel'));
         expect(onClose).toHaveBeenCalledOnce();
     });
+
+    // ── Dismiss on send ────────────────────────────────────────────────
+
+    it('calls onClose after initial send succeeds', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        task: { id: 'task-dismiss', processId: 'proc-dismiss', status: 'running' },
+                    }),
+                });
+            }
+            if (url.includes('/processes/')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ process: { conversationTurns: [] } }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        const eventListeners: Record<string, Function> = {};
+        (global as any).EventSource = vi.fn().mockImplementation(() => ({
+            addEventListener: (event: string, fn: Function) => { eventListeners[event] = fn; },
+            removeEventListener: vi.fn(),
+            close: vi.fn(),
+            onerror: null,
+        }));
+
+        const onClose = vi.fn();
+        await act(async () => { renderDialog({ onClose }); });
+
+        const textarea = screen.getByTestId('new-chat-input') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'hello' } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-start-btn'));
+        });
+
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('calls onClose after Ctrl+Enter initial send succeeds', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        task: { id: 'task-ctrl', processId: 'proc-ctrl', status: 'running' },
+                    }),
+                });
+            }
+            if (url.includes('/processes/')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ process: { conversationTurns: [] } }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        const eventListeners: Record<string, Function> = {};
+        (global as any).EventSource = vi.fn().mockImplementation(() => ({
+            addEventListener: (event: string, fn: Function) => { eventListeners[event] = fn; },
+            removeEventListener: vi.fn(),
+            close: vi.fn(),
+            onerror: null,
+        }));
+
+        const onClose = vi.fn();
+        await act(async () => { renderDialog({ onClose }); });
+
+        const textarea = screen.getByTestId('new-chat-input') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'ctrl enter test' } });
+        await act(async () => {
+            fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+        });
+
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('does NOT call onClose when initial send fails', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
+            }
+            if (opts?.method === 'POST') {
+                return Promise.resolve({
+                    ok: false,
+                    status: 500,
+                    json: () => Promise.resolve({ error: 'Server error' }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        const onClose = vi.fn();
+        await act(async () => { renderDialog({ onClose }); });
+
+        const textarea = screen.getByTestId('new-chat-input') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'fail test' } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-start-btn'));
+        });
+
+        expect(onClose).not.toHaveBeenCalled();
+    });
 });
