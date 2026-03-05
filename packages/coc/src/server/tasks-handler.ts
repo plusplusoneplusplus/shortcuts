@@ -12,11 +12,25 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { TaskManager, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
+
+/**
+ * Directories outside the workspace that are trusted for **read-only** access.
+ * Writes to these directories are always denied.
+ */
+const TRUSTED_READ_ONLY_DIRS: string[] = [
+    path.join(os.homedir(), '.copilot'),
+];
+
+/** Return true when `target` is inside any of the trusted read-only directories. */
+function isWithinTrustedReadOnlyDir(target: string): boolean {
+    return TRUSTED_READ_ONLY_DIRS.some(dir => isWithinDirectory(target, dir));
+}
 
 // ============================================================================
 // Default Settings
@@ -82,10 +96,10 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
                 return sendError(res, 400, 'Missing required query parameter: path');
             }
 
-            // Resolve and validate path is within workspace
+            // Resolve and validate path is within workspace or a trusted read-only directory
             const resolvedPath = path.resolve(filePath);
             const wsRoot = path.resolve(ws.rootPath);
-            if (!isWithinDirectory(resolvedPath, wsRoot)) {
+            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 
@@ -208,9 +222,9 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore): void {
                 : '.vscode/tasks';
             const tasksFolder = path.resolve(ws.rootPath, folderParam);
 
-            // Path-traversal guard
+            // Path-traversal guard (also allow trusted read-only directories)
             const resolvedPath = path.resolve(tasksFolder, filePath);
-            if (!isWithinDirectory(resolvedPath, tasksFolder)) {
+            if (!isWithinDirectory(resolvedPath, tasksFolder) && !isWithinTrustedReadOnlyDir(resolvedPath)) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
             }
 

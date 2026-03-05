@@ -5,6 +5,7 @@
  * Business logic is delegated to EditorMessageRouter; platform calls go through VscodeEditorHost.
  */
 
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { 
@@ -176,6 +177,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
         // Add file's directory for relative image paths
         localResourceRoots.push(vscode.Uri.file(fileDir));
+
+        // Add ~/.copilot/ to allow previewing session-state files (e.g., plan.md)
+        const copilotDir = path.join(os.homedir(), '.copilot');
+        localResourceRoots.push(vscode.Uri.file(copilotDir));
 
         webviewPanel.webview.options = {
             enableScripts: true,
