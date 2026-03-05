@@ -33,7 +33,7 @@ export function usePinnedChats(workspaceId: string): UsePinnedChatsResult {
         fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences')
             .then((prefs: any) => {
                 if (!mountedRef.current) return;
-                setPinnedIds(prefs?.pinnedChats ?? []);
+                setPinnedIds(prefs?.pinnedChats?.[workspaceId] ?? []);
             })
             .catch(() => {
                 if (!mountedRef.current) return;
@@ -57,7 +57,7 @@ export function usePinnedChats(workspaceId: string): UsePinnedChatsResult {
                 fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pinnedChats: next }),
+                    body: JSON.stringify({ pinnedChats: { [workspaceId]: next } }),
                 }).catch(() => { /* best-effort */ });
 
                 return next;

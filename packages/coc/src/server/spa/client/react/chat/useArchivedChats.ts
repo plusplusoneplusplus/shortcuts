@@ -31,7 +31,7 @@ export function useArchivedChats(
         fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences')
             .then((prefs: any) => {
                 if (!mountedRef.current) return;
-                setArchivedIds(prefs?.archivedChats ?? []);
+                setArchivedIds(prefs?.archivedChats?.[workspaceId] ?? []);
             })
             .catch(() => {
                 if (!mountedRef.current) return;
@@ -55,7 +55,7 @@ export function useArchivedChats(
                 fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ archivedChats: next }),
+                    body: JSON.stringify({ archivedChats: { [workspaceId]: next } }),
                 }).catch(() => { /* best-effort */ });
 
                 // Auto-unpin when archiving a session that is actually pinned

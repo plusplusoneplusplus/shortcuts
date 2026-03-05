@@ -65,8 +65,8 @@ describe('useArchivedChats', () => {
             expect(source).toContain('archivedChats');
         });
 
-        it('uses workspace-scoped archive IDs', () => {
-            expect(source).toContain('[workspaceId]');
+        it('reads workspace-keyed archivedChats value', () => {
+            expect(source).toContain('archivedChats?.[workspaceId]');
         });
 
         it('handles fetch error gracefully', () => {
@@ -89,17 +89,12 @@ describe('useArchivedChats', () => {
             expect(source).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/preferences'");
         });
 
-        it('sends updated archivedChats array in PATCH body', () => {
-            expect(source).toContain('JSON.stringify({ archivedChats');
+        it('sends updated archivedChats as Record keyed by workspaceId', () => {
+            expect(source).toContain('JSON.stringify({ archivedChats: { [workspaceId]: next } })');
         });
 
-        it('archive/unarchive is reflected in the sent array', () => {
-            expect(source).toContain('body: JSON.stringify({ archivedChats: next })');
-        });
-
-        it('cleans up workspace key when no archives remain', () => {
-            // With per-workspace endpoint, we send the array directly (empty array = no archives)
-            expect(source).toContain('archivedChats: next');
+        it('archive/unarchive is reflected in the sent Record', () => {
+            expect(source).toContain('archivedChats: { [workspaceId]: next }');
         });
 
         it('auto-unpins when archiving a session', () => {
@@ -143,6 +138,23 @@ describe('useArchivedChats', () => {
 
         it('imports fetchApi', () => {
             expect(source).toContain("import { fetchApi } from '../hooks/useApi'");
+        });
+    });
+
+    describe('workspace-keyed contract', () => {
+        it('reads archivedChats via workspace key, not as flat array', () => {
+            expect(source).toContain('archivedChats?.[workspaceId]');
+            expect(source).not.toContain("archivedChats ?? []");
+        });
+
+        it('writes archivedChats as Record<workspaceId, string[]>', () => {
+            expect(source).toContain('{ [workspaceId]: next }');
+            // Must NOT send a flat array
+            expect(source).not.toMatch(/archivedChats:\s*next\s*[,}]/);
+        });
+
+        it('defaults to empty array when preferences have no archivedChats key', () => {
+            expect(source).toContain('?? []');
         });
     });
 });

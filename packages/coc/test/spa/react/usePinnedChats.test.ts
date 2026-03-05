@@ -61,8 +61,8 @@ describe('usePinnedChats', () => {
             expect(source).toContain('pinnedChats');
         });
 
-        it('uses workspace-scoped pin IDs', () => {
-            expect(source).toContain('[workspaceId]');
+        it('reads workspace-keyed pinnedChats value', () => {
+            expect(source).toContain('pinnedChats?.[workspaceId]');
         });
 
         it('handles fetch error gracefully', () => {
@@ -85,13 +85,13 @@ describe('usePinnedChats', () => {
             expect(source).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/preferences'");
         });
 
-        it('sends updated pinnedChats array in PATCH body', () => {
-            expect(source).toContain('JSON.stringify({ pinnedChats');
+        it('sends updated pinnedChats as Record keyed by workspaceId', () => {
+            expect(source).toContain('JSON.stringify({ pinnedChats: { [workspaceId]: next } })');
         });
 
-        it('pin/unpin is reflected in the sent array', () => {
-            // The next array (updated IDs) is what gets sent
-            expect(source).toContain('body: JSON.stringify({ pinnedChats: next })');
+        it('pin/unpin is reflected in the sent Record', () => {
+            // The next array is wrapped in a workspace-keyed Record before sending
+            expect(source).toContain('pinnedChats: { [workspaceId]: next }');
         });
     });
 
@@ -138,6 +138,25 @@ describe('usePinnedChats', () => {
 
         it('imports ChatSessionItem type', () => {
             expect(source).toContain("import type { ChatSessionItem } from '../types/dashboard'");
+        });
+    });
+
+    describe('workspace-keyed contract', () => {
+        it('reads pinnedChats via workspace key, not as flat array', () => {
+            // Must use optional chaining with workspaceId key
+            expect(source).toContain('pinnedChats?.[workspaceId]');
+            expect(source).not.toContain("pinnedChats ?? []");
+        });
+
+        it('writes pinnedChats as Record<workspaceId, string[]>', () => {
+            expect(source).toContain('{ [workspaceId]: next }');
+            // Must NOT send a flat array
+            expect(source).not.toMatch(/pinnedChats:\s*next\s*[,}]/);
+        });
+
+        it('defaults to empty array when preferences have no pinnedChats key', () => {
+            // The ?? [] fallback handles missing pinnedChats or missing workspace key
+            expect(source).toContain('?? []');
         });
     });
 });
