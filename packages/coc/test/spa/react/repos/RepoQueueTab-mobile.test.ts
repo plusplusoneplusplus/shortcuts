@@ -122,3 +122,22 @@ describe('QueueTaskDetail: onBack prop', () => {
         expect(QUEUE_TASK_DETAIL_SOURCE).toContain('← Back');
     });
 });
+
+describe('RepoQueueTab chat navigation: uses bare task.id for URL', () => {
+    it('does not use task.processId for chat session URL', () => {
+        // Extract only the chat branch from selectTask (up to the run-pipeline check)
+        const selectTask = REPO_QUEUE_TAB_SOURCE.substring(
+            REPO_QUEUE_TAB_SOURCE.indexOf("if (task?.type === 'chat')"),
+            REPO_QUEUE_TAB_SOURCE.indexOf("if (task?.type === 'run-pipeline')"),
+        );
+        expect(selectTask).not.toContain('task.processId');
+    });
+
+    it('uses task.id (bare ID) when building the chat URL', () => {
+        const selectTask = REPO_QUEUE_TAB_SOURCE.substring(
+            REPO_QUEUE_TAB_SOURCE.indexOf('const selectTask = useCallback'),
+            REPO_QUEUE_TAB_SOURCE.indexOf("}, [queueDispatch, appDispatch, workspaceId, isMobile])"),
+        );
+        expect(selectTask).toContain('const sessionId = task.id');
+    });
+});

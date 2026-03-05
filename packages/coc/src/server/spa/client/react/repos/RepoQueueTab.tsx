@@ -157,7 +157,8 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
     const selectTask = useCallback((id: string, task?: any) => {
         if (task?.type === 'chat') {
             // Navigate to Chat tab and select the session
-            const sessionId = task.processId || task.id;
+            // Always use task.id (bare ID); RepoChatTab reconstructs queue_<id> internally
+            const sessionId = task.id;
             appDispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: sessionId });
             appDispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chat' as any });
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(sessionId);
