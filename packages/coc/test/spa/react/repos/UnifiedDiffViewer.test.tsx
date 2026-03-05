@@ -4,8 +4,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { UnifiedDiffViewer } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
-import type { DiffCommentSelection } from '../../../../src/server/spa/client/diff-comment-types';
+import {
+    UnifiedDiffViewer,
+    buildLineCommentMap,
+    getLineHighlightClass,
+} from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+import type { DiffComment, DiffCommentSelection } from '../../../../src/server/spa/client/diff-comment-types';
 
 // Minimal two-line single-file diff
 const SIMPLE_DIFF = `diff --git a/foo.ts b/foo.ts
@@ -250,5 +254,213 @@ describe('UnifiedDiffViewer — selection detection', () => {
         // The key behavior is: mousedown on the container outside toolbar hides it (tested in test 8).
         // Here we verify clicking the toolbar element itself (which has stopPropagation) doesn't crash.
         expect(true).toBe(true); // toolbar click handled gracefully
+    });
+});
+
+// ============================================================================
+// Helper fixture factory
+// ============================================================================
+
+function makeComment(overrides: {
+    id?: string;
+    diffLineStart: number;
+    diffLineEnd: number;
+    status?: 'open' | 'resolved';
+}): DiffComment {
+    return {
+        id: overrides.id ?? 'c1',
+        context: { repositoryId: 'repo', filePath: 'foo.ts', oldRef: 'HEAD~1', newRef: 'HEAD' },
+        selection: {
+            diffLineStart: overrides.diffLineStart,
+            diffLineEnd: overrides.diffLineEnd,
+            side: 'added',
+            startColumn: 0,
+            endColumn: 5,
+        },
+        selectedText: 'text',
+        comment: 'A comment',
+        status: overrides.status ?? 'open',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+    };
+}
+
+// ============================================================================
+// buildLineCommentMap tests
+// ============================================================================
+
+describe('buildLineCommentMap', () => {
+    it('single-line comment maps to the correct line', () => {
+        const c = makeComment({ diffLineStart: 2, diffLineEnd: 2 });
+        const map = buildLineCommentMap([c]);
+        expect(map.get(2)).toEqual([c]);
+        expect(map.has(1)).toBe(false);
+        expect(map.has(3)).toBe(false);
+    });
+
+    it('multi-line comment populates all covered keys', () => {
+        const c = makeComment({ diffLineStart: 1, diffLineEnd: 3 });
+        const map = buildLineCommentMap([c]);
+        expect(map.get(1)).toEqual([c]);
+        expect(map.get(2)).toEqual([c]);
+        expect(map.get(3)).toEqual([c]);
+        expect(map.has(0)).toBe(false);
+        expect(map.has(4)).toBe(false);
+    });
+
+    it('multiple comments overlapping on the same line both appear', () => {
+        const c1 = makeComment({ id: 'c1', diffLineStart: 4, diffLineEnd: 6 });
+        const c2 = makeComment({ id: 'c2', diffLineStart: 5, diffLineEnd: 5 });
+        const map = buildLineCommentMap([c1, c2]);
+        expect(map.get(5)).toEqual([c1, c2]);
+        expect(map.get(4)).toEqual([c1]);
+        expect(map.get(6)).toEqual([c1]);
+    });
+});
+
+// ============================================================================
+// getLineHighlightClass tests
+// ============================================================================
+
+describe('getLineHighlightClass', () => {
+    it('returns empty string for undefined', () => {
+        expect(getLineHighlightClass(undefined)).toBe('');
+    });
+
+    it('returns empty string for empty array', () => {
+        expect(getLineHighlightClass([])).toBe('');
+    });
+
+    it('returns yellow highlight for open comment', () => {
+        const c = makeComment({ diffLineStart: 1, diffLineEnd: 1, status: 'open' });
+        expect(getLineHighlightClass([c])).toBe('bg-[#fff9c4] dark:bg-[#3d3a00]');
+    });
+
+    it('returns green highlight for resolved-only comments', () => {
+        const c = makeComment({ diffLineStart: 1, diffLineEnd: 1, status: 'resolved' });
+        expect(getLineHighlightClass([c])).toBe('bg-[#e6ffed] dark:bg-[#1a3d2b] opacity-80');
+    });
+
+    it('open takes priority over resolved in mixed array', () => {
+        const open = makeComment({ id: 'o', diffLineStart: 1, diffLineEnd: 1, status: 'open' });
+        const resolved = makeComment({ id: 'r', diffLineStart: 1, diffLineEnd: 1, status: 'resolved' });
+        expect(getLineHighlightClass([resolved, open])).toBe('bg-[#fff9c4] dark:bg-[#3d3a00]');
+    });
+});
+
+// ============================================================================
+// UnifiedDiffViewer — comment badges and highlights
+// ============================================================================
+
+// Line indices for SIMPLE_DIFF:
+//  0: diff --git ...  (meta)
+//  1: index ...       (meta)
+//  2: --- a/foo.ts   (meta)
+//  3: +++ b/foo.ts   (meta)
+//  4: @@ -1,2 ...    (hunk-header)
+//  5: -old line      (removed)
+//  6: +new line      (added)
+//  7:  context line  (context)
+
+describe('UnifiedDiffViewer — comment badges and highlights', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('no badge elements when comments prop is absent', () => {
+        const { container } = render(<UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments />);
+        expect(container.querySelectorAll('[data-testid="comment-badge"]').length).toBe(0);
+    });
+
+    it('no badge elements when enableComments is false even with comments', () => {
+        const comments = [makeComment({ diffLineStart: 6, diffLineEnd: 6 })];
+        const { container } = render(<UnifiedDiffViewer diff={SIMPLE_DIFF} comments={comments} />);
+        expect(container.querySelectorAll('[data-testid="comment-badge"]').length).toBe(0);
+    });
+
+    it('badge rendered on commented line', () => {
+        const comments = [makeComment({ diffLineStart: 6, diffLineEnd: 6 })];
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={comments} />
+        );
+        const badges = container.querySelectorAll('[data-testid="comment-badge"]');
+        expect(badges.length).toBe(1);
+        expect(badges[0].textContent).toBe('1');
+    });
+
+    it('no badge on line outside comment range', () => {
+        // comment only on line 6; line 5 should have no badge
+        const comments = [makeComment({ diffLineStart: 6, diffLineEnd: 6 })];
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={comments} />
+        );
+        const lineDiv = container.querySelector<HTMLElement>('[data-diff-line-index="5"]')!;
+        expect(lineDiv.querySelector('[data-testid="comment-badge"]')).toBeNull();
+    });
+
+    it('badge click fires onCommentClick with first comment', async () => {
+        const onCommentClick = vi.fn();
+        const c = makeComment({ diffLineStart: 6, diffLineEnd: 6 });
+        const { container } = render(
+            <UnifiedDiffViewer
+                diff={SIMPLE_DIFF}
+                enableComments
+                comments={[c]}
+                onCommentClick={onCommentClick}
+            />
+        );
+        const badge = container.querySelector<HTMLElement>('[data-testid="comment-badge"]')!;
+        await act(async () => { fireEvent.click(badge); });
+        expect(onCommentClick).toHaveBeenCalledOnce();
+        expect(onCommentClick).toHaveBeenCalledWith(c);
+    });
+
+    it('badge has bg-yellow-400 class for open comment', () => {
+        const comments = [makeComment({ diffLineStart: 6, diffLineEnd: 6, status: 'open' })];
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={comments} />
+        );
+        const badge = container.querySelector<HTMLElement>('[data-testid="comment-badge"]')!;
+        expect(badge.className).toContain('bg-yellow-400');
+    });
+
+    it('badge has bg-green-500 class for resolved comment', () => {
+        const comments = [makeComment({ diffLineStart: 6, diffLineEnd: 6, status: 'resolved' })];
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={comments} />
+        );
+        const badge = container.querySelector<HTMLElement>('[data-testid="comment-badge"]')!;
+        expect(badge.className).toContain('bg-green-500');
+    });
+
+    it('line div includes yellow highlight class for open comment', () => {
+        const comments = [makeComment({ diffLineStart: 6, diffLineEnd: 6, status: 'open' })];
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={comments} />
+        );
+        const lineDiv = container.querySelector<HTMLElement>('[data-diff-line-index="6"]')!;
+        expect(lineDiv.className).toContain('bg-[#fff9c4]');
+    });
+
+    it('line div includes green highlight and opacity-80 for resolved comment', () => {
+        const comments = [makeComment({ diffLineStart: 6, diffLineEnd: 6, status: 'resolved' })];
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={comments} />
+        );
+        const lineDiv = container.querySelector<HTMLElement>('[data-diff-line-index="6"]')!;
+        expect(lineDiv.className).toContain('bg-[#e6ffed]');
+        expect(lineDiv.className).toContain('opacity-80');
+    });
+
+    it('badge count reflects multiple comments on same line', () => {
+        const c1 = makeComment({ id: 'c1', diffLineStart: 5, diffLineEnd: 7 });
+        const c2 = makeComment({ id: 'c2', diffLineStart: 6, diffLineEnd: 6 });
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments comments={[c1, c2]} />
+        );
+        // Line 6 is covered by both c1 and c2
+        const lineDiv = container.querySelector<HTMLElement>('[data-diff-line-index="6"]')!;
+        const badge = lineDiv.querySelector<HTMLElement>('[data-testid="comment-badge"]')!;
+        expect(badge.textContent).toBe('2');
     });
 });

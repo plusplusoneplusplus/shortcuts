@@ -119,6 +119,34 @@ export function getLanguagesForLines(lines: string[], fileName: string | undefin
     return result;
 }
 
+/** Build a map from diff-line index → comments covering that line. */
+export function buildLineCommentMap(comments: DiffComment[]): Map<number, DiffComment[]> {
+    const map = new Map<number, DiffComment[]>();
+    for (const c of comments) {
+        const { diffLineStart, diffLineEnd } = c.selection;
+        for (let i = diffLineStart; i <= diffLineEnd; i++) {
+            const existing = map.get(i);
+            if (existing) existing.push(c);
+            else map.set(i, [c]);
+        }
+    }
+    return map;
+}
+
+/** Return the highlight background class for a line based on its comments. */
+export function getLineHighlightClass(lineComments: DiffComment[] | undefined): string {
+    if (!lineComments || lineComments.length === 0) return '';
+    const hasOpen = lineComments.some(c => c.status !== 'resolved');
+    if (hasOpen) return 'bg-[#fff9c4] dark:bg-[#3d3a00]';
+    return 'bg-[#e6ffed] dark:bg-[#1a3d2b] opacity-80';
+}
+
+/** Return badge background+text classes based on whether any comment is open. */
+function getBadgeClass(lineComments: DiffComment[]): string {
+    const hasOpen = lineComments.some(c => c.status !== 'resolved');
+    return hasOpen ? 'bg-yellow-400 text-white' : 'bg-green-500 text-white';
+}
+
 /** Walk node ancestors up to (but not including) boundary to find the nearest element with data-diff-line-index. */
 function findLineElement(node: Node, boundary: Element | null): Element | null {
     let current: Node | null = node;
@@ -133,10 +161,14 @@ function findLineElement(node: Node, boundary: Element | null): Element | null {
     return null;
 }
 
-export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment }: UnifiedDiffViewerProps) {
+export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, comments, onCommentClick }: UnifiedDiffViewerProps) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
+    const lineCommentMap = useMemo(
+        () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
+        [comments]
+    );
 
     useEffect(() => {
         onLinesReady?.(diffLines);
@@ -243,7 +275,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                     return (
                         <div
                             key={i}
-                            className={`whitespace-pre px-3 ${LINE_CLASSES[type]}`}
+                            className={`whitespace-pre flex ${LINE_CLASSES[type]} ${getLineHighlightClass(lineCommentMap.get(i))}`}
                             data-diff-line-index={enableComments ? i : undefined}
                             data-old-line={enableComments ? (oldLine ?? '') : undefined}
                             data-new-line={enableComments ? (newLine ?? '') : undefined}
@@ -259,15 +291,35 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                                     </span>
                                 </>
                             )}
-                            <span>{prefix}</span>
-                            <span dangerouslySetInnerHTML={{ __html: html }} />
+                            {enableComments && (
+                                <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                    {(() => {
+                                        const lc = lineCommentMap.get(i);
+                                        if (!lc || lc.length === 0) return <span className="w-4 h-4" />;
+                                        return (
+                                            <button
+                                                className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${getBadgeClass(lc)} leading-none`}
+                                                onClick={e => { e.stopPropagation(); onCommentClick?.(lc[0]); }}
+                                                title={`${lc.length} comment${lc.length > 1 ? 's' : ''}`}
+                                                data-testid="comment-badge"
+                                            >
+                                                {lc.length}
+                                            </button>
+                                        );
+                                    })()}
+                                </span>
+                            )}
+                            <span className="px-3 flex-1 min-w-0">
+                                <span>{prefix}</span>
+                                <span dangerouslySetInnerHTML={{ __html: html }} />
+                            </span>
                         </div>
                     );
                 }
                 return (
                     <div
                         key={i}
-                        className={`whitespace-pre px-3 ${LINE_CLASSES[type]}`}
+                        className={`whitespace-pre flex ${LINE_CLASSES[type]} ${getLineHighlightClass(lineCommentMap.get(i))}`}
                         data-diff-line-index={enableComments ? i : undefined}
                         data-old-line={enableComments ? (oldLine ?? '') : undefined}
                         data-new-line={enableComments ? (newLine ?? '') : undefined}
@@ -283,7 +335,25 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                                 </span>
                             </>
                         )}
-                        {line || '\u00a0'}
+                        {enableComments && (
+                            <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                {(() => {
+                                    const lc = lineCommentMap.get(i);
+                                    if (!lc || lc.length === 0) return <span className="w-4 h-4" />;
+                                    return (
+                                        <button
+                                            className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${getBadgeClass(lc)} leading-none`}
+                                            onClick={e => { e.stopPropagation(); onCommentClick?.(lc[0]); }}
+                                            title={`${lc.length} comment${lc.length > 1 ? 's' : ''}`}
+                                            data-testid="comment-badge"
+                                        >
+                                            {lc.length}
+                                        </button>
+                                    );
+                                })()}
+                            </span>
+                        )}
+                        <span className="px-3 flex-1 min-w-0">{line || '\u00a0'}</span>
                     </div>
                 );
             })}
