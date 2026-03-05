@@ -41,6 +41,7 @@ type RightPanelView =
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const { state, dispatch } = useApp();
     const initialCommitHash = state.selectedGitCommitHash;
+    const initialFilePath = state.selectedGitFilePath;
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
     const [unpushedCount, setUnpushedCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -124,7 +125,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     ? loaded.find((c: GitCommitItem) => c.hash.startsWith(initialCommitHash))
                     : null;
                 const first = target ?? (loaded.length > 0 ? loaded[0] : null);
-                setRightPanelView(first ? { type: 'commit', commit: first } : null);
+                if (target && initialFilePath) {
+                    setRightPanelView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath });
+                } else {
+                    setRightPanelView(first ? { type: 'commit', commit: first } : null);
+                }
             })
             .catch(err => setError(err.message || 'Failed to load commits'))
             .finally(() => setLoading(false));
@@ -235,6 +240,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setRightPanelView({ type: 'commit', commit });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + commit.hash;
         dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash });
+        dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
     }, [workspaceId, dispatch]);
 
     const handleFileSelect = useCallback((filePath: string) => {
@@ -243,7 +249,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const handleCommitFileSelect = useCallback((hash: string, filePath: string) => {
         setRightPanelView({ type: 'commit-file', hash, filePath });
-    }, []);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash + '/' + encodeURIComponent(filePath);
+        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
+    }, [workspaceId, dispatch]);
 
     const handleWorkingTreeFileSelect = useCallback((filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
         setRightPanelView({ type: 'working-tree-file', filePath, stage });

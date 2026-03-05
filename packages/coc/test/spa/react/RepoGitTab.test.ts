@@ -603,8 +603,36 @@ describe('RepoGitTab', () => {
             expect(source).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash })");
         });
 
+        it('handleSelect dispatches CLEAR_GIT_FILE_PATH to reset file selection', () => {
+            expect(source).toContain("dispatch({ type: 'CLEAR_GIT_FILE_PATH' })");
+        });
+
         it('handleSelect includes workspaceId and dispatch as dependencies', () => {
             expect(source).toContain('[workspaceId, dispatch]');
+        });
+
+        it('reads selectedGitFilePath from context state', () => {
+            expect(source).toContain('state.selectedGitFilePath');
+        });
+
+        it('restores commit-file view when both initialCommitHash and initialFilePath are set', () => {
+            expect(source).toContain('target && initialFilePath');
+            expect(source).toContain("setRightPanelView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath })");
+        });
+
+        it('handleCommitFileSelect updates location.hash with file path URL', () => {
+            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash + '/' + encodeURIComponent(filePath)");
+        });
+
+        it('handleCommitFileSelect dispatches SET_GIT_FILE_PATH', () => {
+            expect(source).toContain("dispatch({ type: 'SET_GIT_FILE_PATH', filePath })");
+        });
+
+        it('handleCommitFileSelect includes workspaceId and dispatch as dependencies', () => {
+            const handleBlock = source.match(/const handleCommitFileSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            expect(handleBlock).toBeTruthy();
+            expect(handleBlock![0]).toContain('workspaceId');
+            expect(handleBlock![0]).toContain('dispatch');
         });
     });
 

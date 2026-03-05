@@ -30,6 +30,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         conversationCache: {},
         wsStatus: 'closed',
         selectedGitCommitHash: null,
+        selectedGitFilePath: null,
         selectedRepoWikiId: null,
         selectedWorkflowProcessId: null,
         repoWikiInitialTab: null,
@@ -695,6 +696,46 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedRepoId: 'r1' });
             const result = appReducer(state, { type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
             expect(result.selectedRepoId).toBe('r1');
+        });
+    });
+
+    // ── SET_GIT_FILE_PATH / CLEAR_GIT_FILE_PATH ────────────────────
+    describe('SET_GIT_FILE_PATH', () => {
+        it('sets selectedGitFilePath', () => {
+            const result = appReducer(makeState(), { type: 'SET_GIT_FILE_PATH', filePath: 'src/index.ts' });
+            expect(result.selectedGitFilePath).toBe('src/index.ts');
+        });
+
+        it('overwrites existing selectedGitFilePath', () => {
+            const state = makeState({ selectedGitFilePath: 'old/file.ts' });
+            const result = appReducer(state, { type: 'SET_GIT_FILE_PATH', filePath: 'new/file.ts' });
+            expect(result.selectedGitFilePath).toBe('new/file.ts');
+        });
+
+        it('does not affect other state fields', () => {
+            const state = makeState({ selectedGitCommitHash: 'abc' });
+            const result = appReducer(state, { type: 'SET_GIT_FILE_PATH', filePath: 'src/main.ts' });
+            expect(result.selectedGitCommitHash).toBe('abc');
+        });
+    });
+
+    describe('CLEAR_GIT_FILE_PATH', () => {
+        it('clears selectedGitFilePath to null', () => {
+            const state = makeState({ selectedGitFilePath: 'src/index.ts' });
+            const result = appReducer(state, { type: 'CLEAR_GIT_FILE_PATH' });
+            expect(result.selectedGitFilePath).toBeNull();
+        });
+
+        it('is a no-op when selectedGitFilePath is already null', () => {
+            const state = makeState({ selectedGitFilePath: null });
+            const result = appReducer(state, { type: 'CLEAR_GIT_FILE_PATH' });
+            expect(result.selectedGitFilePath).toBeNull();
+        });
+
+        it('does not affect selectedGitCommitHash', () => {
+            const state = makeState({ selectedGitCommitHash: 'abc', selectedGitFilePath: 'f.ts' });
+            const result = appReducer(state, { type: 'CLEAR_GIT_FILE_PATH' });
+            expect(result.selectedGitCommitHash).toBe('abc');
         });
     });
 

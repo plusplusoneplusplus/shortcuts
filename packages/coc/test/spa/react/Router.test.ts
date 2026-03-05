@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -1019,6 +1019,56 @@ describe('git deep-link integration', () => {
     });
 });
 
+// ─── parseGitFileDeepLink ────────────────────────────────────────
+
+describe('parseGitFileDeepLink', () => {
+    it('parses commit hash and file path', () => {
+        const result = parseGitFileDeepLink('#repos/my-repo/git/abc1234/src%2Findex.ts');
+        expect(result).toEqual({ commitHash: 'abc1234', filePath: 'src/index.ts' });
+    });
+
+    it('URL-decodes the file path', () => {
+        const result = parseGitFileDeepLink('#repos/r1/git/abc/path%2Fto%2Ffile.ts');
+        expect(result).toEqual({ commitHash: 'abc', filePath: 'path/to/file.ts' });
+    });
+
+    it('handles simple file name without subdirectory', () => {
+        const result = parseGitFileDeepLink('#repos/r1/git/abc1234/README.md');
+        expect(result).toEqual({ commitHash: 'abc1234', filePath: 'README.md' });
+    });
+
+    it('returns null when file path segment is missing', () => {
+        expect(parseGitFileDeepLink('#repos/my-repo/git/abc1234')).toBeNull();
+    });
+
+    it('returns null when commit hash is missing', () => {
+        expect(parseGitFileDeepLink('#repos/my-repo/git')).toBeNull();
+    });
+
+    it('returns null for non-git sub-tab', () => {
+        expect(parseGitFileDeepLink('#repos/my-repo/pipelines/abc/file.ts')).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        expect(parseGitFileDeepLink('')).toBeNull();
+    });
+
+    it('returns null for bare #repos', () => {
+        expect(parseGitFileDeepLink('#repos')).toBeNull();
+    });
+
+    it('URL-decodes the repo ID but still parses correctly', () => {
+        const result = parseGitFileDeepLink('#repos/my%20repo/git/abc/src%2Fmain.ts');
+        expect(result).toEqual({ commitHash: 'abc', filePath: 'src/main.ts' });
+    });
+
+    it('handles deeply nested file path', () => {
+        const encoded = encodeURIComponent('a/b/c/deep.ts');
+        const result = parseGitFileDeepLink(`#repos/r1/git/sha123/${encoded}`);
+        expect(result).toEqual({ commitHash: 'sha123', filePath: 'a/b/c/deep.ts' });
+    });
+});
+
 // ─── handleHash git dispatch simulation ─────────────────────────
 
 describe('handleHash git dispatch simulation', () => {
@@ -1036,8 +1086,14 @@ describe('handleHash git dispatch simulation', () => {
                 // Git commit deep-link handling (mirrors Router.tsx)
                 if (parts[2] === 'git' && parts[3]) {
                     dispatches.push({ type: 'SET_GIT_COMMIT_HASH', hash: decodeURIComponent(parts[3]) });
+                    if (parts[4]) {
+                        dispatches.push({ type: 'SET_GIT_FILE_PATH', filePath: decodeURIComponent(parts[4]) });
+                    } else {
+                        dispatches.push({ type: 'CLEAR_GIT_FILE_PATH' });
+                    }
                 } else if (parts[2] === 'git') {
                     dispatches.push({ type: 'SET_GIT_COMMIT_HASH', hash: null });
+                    dispatches.push({ type: 'CLEAR_GIT_FILE_PATH' });
                 }
             }
         }
@@ -1075,6 +1131,35 @@ describe('handleHash git dispatch simulation', () => {
         const dispatches = simulateGitHash('#repos/r1/git/abc1234');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
         expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
+    });
+
+    it('dispatches CLEAR_GIT_FILE_PATH when only commit hash (no file segment)', () => {
+        const dispatches = simulateGitHash('#repos/r1/git/abc1234');
+        expect(dispatches).toContainEqual({ type: 'CLEAR_GIT_FILE_PATH' });
+    });
+
+    it('dispatches SET_GIT_FILE_PATH when file segment is present', () => {
+        const encoded = encodeURIComponent('src/index.ts');
+        const dispatches = simulateGitHash(`#repos/r1/git/abc1234/${encoded}`);
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'abc1234' });
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_FILE_PATH', filePath: 'src/index.ts' });
+    });
+
+    it('does not dispatch CLEAR_GIT_FILE_PATH when file segment is present', () => {
+        const encoded = encodeURIComponent('src/main.ts');
+        const dispatches = simulateGitHash(`#repos/r1/git/abc/${encoded}`);
+        expect(dispatches.find(d => d.type === 'CLEAR_GIT_FILE_PATH')).toBeUndefined();
+    });
+
+    it('URL-decodes the file path in SET_GIT_FILE_PATH dispatch', () => {
+        const encoded = encodeURIComponent('packages/core/src/utils.ts');
+        const dispatches = simulateGitHash(`#repos/r1/git/sha/${encoded}`);
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_FILE_PATH', filePath: 'packages/core/src/utils.ts' });
+    });
+
+    it('dispatches CLEAR_GIT_FILE_PATH when #repos/r1/git (no hash)', () => {
+        const dispatches = simulateGitHash('#repos/r1/git');
+        expect(dispatches).toContainEqual({ type: 'CLEAR_GIT_FILE_PATH' });
     });
 });
 

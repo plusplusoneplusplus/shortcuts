@@ -115,6 +115,18 @@ export function parseGitCommitDeepLink(hash: string): string | null {
     return null;
 }
 
+export function parseGitFileDeepLink(hash: string): { commitHash: string; filePath: string } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'git' && parts[3] && parts[4]) {
+        return {
+            commitHash: decodeURIComponent(parts[3]),
+            filePath: decodeURIComponent(parts[4]),
+        };
+    }
+    return null;
+}
+
 export function parseWorkflowDeepLink(hash: string): { repoId: string; processId: string } | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
@@ -205,8 +217,14 @@ export function Router() {
                     // Git commit deep-link handling
                     if (parts[2] === 'git' && parts[3]) {
                         dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: decodeURIComponent(parts[3]) });
+                        if (parts[4]) {
+                            dispatch({ type: 'SET_GIT_FILE_PATH', filePath: decodeURIComponent(parts[4]) });
+                        } else {
+                            dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
+                        }
                     } else if (parts[2] === 'git') {
                         dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null });
+                        dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
                     }
                     // Wiki deep-link: #repos/{id}/wiki/{wikiId} and deeper paths
                     if (parts[2] === 'wiki' && parts[3]) {
