@@ -23,6 +23,7 @@ import { registerPreferencesRoutes } from './preferences-handler';
 import { registerAdminRoutes } from './admin-handler';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerWikiRoutes } from './wiki';
+import { registerMemoryRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerPipelineRoutes, registerPipelineWriteRoutes } from './pipelines-handler';
 import { PipelineWatcher } from './pipeline-watcher';
@@ -234,7 +235,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence });
     registerScheduleRoutes(routes, scheduleManager);
 
-    // Always register wiki routes (they are safe even with no wikis registered)
+    // Register memory routes
+    registerMemoryRoutes(routes, dataDir);
+
+    // Always register wiki routes(they are safe even with no wikis registered)
     const wikiManager = registerWikiRoutes(routes, {
         wikis: options.wiki?.wikis,
         aiEnabled: options.wiki?.aiEnabled,

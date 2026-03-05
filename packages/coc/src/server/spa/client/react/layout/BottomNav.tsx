@@ -59,6 +59,22 @@ function BookOpenIconFilled() {
     );
 }
 
+function BrainIconOutline() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 2.47a.75.75 0 0 0-1.06 0C7.32 3.62 6.75 5.2 6.75 6.75c0 .98.23 1.9.63 2.7A4.5 4.5 0 0 0 3 13.5a4.5 4.5 0 0 0 3.19 4.29c.04.25.08.5.14.73A3.75 3.75 0 0 0 9.75 21h4.5a3.75 3.75 0 0 0 3.42-2.48c.06-.23.1-.48.14-.73A4.5 4.5 0 0 0 21 13.5a4.5 4.5 0 0 0-4.38-4.5c.4-.8.63-1.72.63-2.7 0-1.55-.57-3.13-1.72-4.28a.75.75 0 0 0-1.06 0C13.32 3.27 12 4.88 12 6.75c0-1.87-1.32-3.48-2.47-4.28Z" />
+        </svg>
+    );
+}
+
+function BrainIconFilled() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+            <path d="M9.53 2.47a.75.75 0 0 0-1.06 0C7.32 3.62 6.75 5.2 6.75 6.75c0 .98.23 1.9.63 2.7A4.5 4.5 0 0 0 3 13.5a4.5 4.5 0 0 0 3.19 4.29c.04.25.08.5.14.73A3.75 3.75 0 0 0 9.75 21h4.5a3.75 3.75 0 0 0 3.42-2.48c.06-.23.1-.48.14-.73A4.5 4.5 0 0 0 21 13.5a4.5 4.5 0 0 0-4.38-4.5c.4-.8.63-1.72.63-2.7 0-1.55-.57-3.13-1.72-4.28a.75.75 0 0 0-1.06 0C13.32 3.27 12 4.88 12 6.75c0-1.87-1.32-3.48-2.47-4.28Z" />
+        </svg>
+    );
+}
+
 // ── Nav items ──────────────────────────────────────────────────────────
 
 interface NavItem {
@@ -71,6 +87,7 @@ const NAV_ITEMS: NavItem[] = [
     { tab: 'repos', label: 'Repos', icon: (active) => active ? <FolderIconFilled /> : <FolderIconOutline /> },
     { tab: 'processes', label: 'Processes', icon: (active) => active ? <PlayCircleIconFilled /> : <PlayCircleIconOutline /> },
     { tab: 'wiki', label: 'Wiki', icon: (active) => active ? <BookOpenIconFilled /> : <BookOpenIconOutline /> },
+    { tab: 'memory', label: 'Memory', icon: (active) => active ? <BrainIconFilled /> : <BrainIconOutline /> },
 ];
 
 // ── Contextual repo nav items (removed — handled by MobileTabBar in RepoDetail) ──

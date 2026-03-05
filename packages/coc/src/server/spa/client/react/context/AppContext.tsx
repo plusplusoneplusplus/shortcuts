@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -51,6 +51,7 @@ export interface AppContextState {
     selectedWorkflowProcessId: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
+    activeMemorySubTab: MemorySubTab;
 }
 
 const initialState: AppContextState = {
@@ -82,6 +83,7 @@ const initialState: AppContextState = {
     selectedWorkflowProcessId: null,
     conversationCache: {},
     wsStatus: 'closed',
+    activeMemorySubTab: 'entries',
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -130,7 +132,8 @@ export type AppAction =
     | { type: 'SET_WS_STATUS'; status: WsStatus }
     | { type: 'SET_REPO_WIKI_ID'; wikiId: string | null }
     | { type: 'SET_REPO_WIKI_DEEP_LINK'; wikiId: string; tab?: WikiProjectTab | null; adminTab?: WikiAdminTab | null; componentId?: string | null }
-    | { type: 'CLEAR_REPO_WIKI_INITIAL' };
+    | { type: 'CLEAR_REPO_WIKI_INITIAL' }
+    | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -306,6 +309,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             };
         case 'CLEAR_REPO_WIKI_INITIAL':
             return { ...state, repoWikiInitialTab: null, repoWikiInitialAdminTab: null, repoWikiInitialComponentId: null };
+        case 'SET_MEMORY_SUB_TAB':
+            return { ...state, activeMemorySubTab: action.tab };
         default:
             return state;
     }

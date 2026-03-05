@@ -11,7 +11,10 @@ import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { AdminPanel } from '../admin/AdminPanel';
-import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab } from '../types/dashboard';
+import { lazy, Suspense } from 'react';
+
+const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -24,6 +27,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'wiki') return 'wiki';
     if (h === 'admin') return 'admin';
     if (h === 'reports') return 'reports';
+    if (h === 'memory') return 'memory';
     return null;
 }
 
@@ -249,6 +253,14 @@ export function Router() {
                     dispatch({ type: 'SELECT_WIKI', wikiId: null });
                 }
             }
+
+            // Parse memory sub-tab deep links: #memory/:subTab
+            if (tab === 'memory') {
+                const parts = hash.split('/');
+                if (parts.length >= 2 && (parts[1] === 'entries' || parts[1] === 'config')) {
+                    dispatch({ type: 'SET_MEMORY_SUB_TAB', tab: parts[1] as MemorySubTab });
+                }
+            }
         };
         handleHash();
         window.addEventListener('hashchange', handleHash);
@@ -301,6 +313,12 @@ export function Router() {
             return <WikiView />;
         case 'admin':
             return <AdminPanel />;
+        case 'memory':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <MemoryView />
+                </Suspense>
+            );
         case 'reports':
             return <StubView id="view-reports" label="Reports" />;
         default:
