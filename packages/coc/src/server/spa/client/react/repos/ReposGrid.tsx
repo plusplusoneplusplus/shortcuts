@@ -15,6 +15,21 @@ import type { RepoData, RepoGroup } from './repoGrouping';
 import { getApiBase } from '../utils/config';
 
 const GROUP_DRAG_MIME = 'application/x-git-group-drag';
+const GROUP_EXPANDED_KEY = 'coc-git-group-expanded-state';
+
+export function loadGroupExpandedState(): Record<string, boolean> {
+    try {
+        const raw = localStorage.getItem(GROUP_EXPANDED_KEY);
+        if (raw) return JSON.parse(raw) as Record<string, boolean>;
+    } catch { /* SSR / test */ }
+    return {};
+}
+
+export function saveGroupExpandedState(state: Record<string, boolean>): void {
+    try {
+        localStorage.setItem(GROUP_EXPANDED_KEY, JSON.stringify(state));
+    } catch { /* SSR / test */ }
+}
 
 interface ReposGridProps {
     repos: RepoData[];
@@ -23,7 +38,7 @@ interface ReposGridProps {
 
 export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const { state, dispatch } = useApp();
-    const [expandedState, setExpandedState] = useState<Record<string, boolean>>({});
+    const [expandedState, setExpandedState] = useState<Record<string, boolean>>(loadGroupExpandedState);
     const [addOpen, setAddOpen] = useState(false);
 
     // Group order (persisted via /api/preferences)
@@ -51,7 +66,11 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const groups = applyGroupOrder(rawGroups, groupOrder);
 
     const toggleGroup = (url: string) => {
-        setExpandedState(prev => ({ ...prev, [url]: prev[url] === false }));
+        setExpandedState(prev => {
+            const next = { ...prev, [url]: prev[url] === false };
+            saveGroupExpandedState(next);
+            return next;
+        });
     };
 
     const selectRepo = (id: string) => {
