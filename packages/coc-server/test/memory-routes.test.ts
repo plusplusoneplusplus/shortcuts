@@ -2,14 +2,17 @@
  * Tests for memory-routes — HTTP handler unit tests using in-process HTTP.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../src/shared/router';
 import { registerMemoryRoutes } from '../src/memory/memory-routes';
+import type { MemoryRouteOptions } from '../src/memory/memory-routes';
 import type { Route } from '../src/types';
+import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import { writeMemoryConfig, DEFAULT_MEMORY_CONFIG } from '../src/memory/memory-config-handler';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,9 +20,9 @@ let tmpDir: string;
 let server: http.Server;
 let baseUrl: string;
 
-function makeServer(dataDir: string): http.Server {
+function makeServer(dataDir: string, options?: MemoryRouteOptions): http.Server {
     const routes: Route[] = [];
-    registerMemoryRoutes(routes, dataDir);
+    registerMemoryRoutes(routes, dataDir, options);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -258,5 +261,94 @@ describe('DELETE /api/memory/entries/:id', () => {
 
         const { status } = await apiDelete('/api/memory/entries/nonexistent');
         expect(status).toBe(404);
+    });
+});
+
+// ── Helper for seeding raw files ──────────────────────────────────────────────
+
+function seedRawFiles(storageDir: string, count: number): void {
+    const rawDir = path.join(storageDir, 'explore-cache', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+    for (let i = 0; i < count; i++) {
+        const entry = {
+            id: `entry-${i}`,
+            toolName: 'grep',
+            question: `Find pattern ${i}`,
+            answer: `Result ${i}`,
+            args: { pattern: `p-${i}` },
+            timestamp: new Date(Date.now() + i * 1000).toISOString(),
+        };
+        fs.writeFileSync(
+            path.join(rawDir, `${Date.now() + i}-grep.json`),
+            JSON.stringify(entry, null, 2),
+            'utf-8',
+        );
+    }
+}
+
+function makeConsolidatedJson(count: number): string {
+    const entries = Array.from({ length: count }, (_, i) => ({
+        id: `c-${i}`,
+        question: `Q ${i}`,
+        answer: `A ${i}`,
+        topics: ['test'],
+        toolSources: ['grep'],
+        createdAt: new Date().toISOString(),
+        hitCount: 1,
+    }));
+    return JSON.stringify(entries);
+}
+
+// ── POST /api/memory/aggregate-tool-calls ─────────────────────────────────────
+
+describe('POST /api/memory/aggregate-tool-calls', () => {
+    it('returns 503 when no aiInvoker is configured (no options)', async () => {
+        // server is created with no options in beforeEach → no aiInvoker
+        const res = await fetch(`${baseUrl}/api/memory/aggregate-tool-calls`, { method: 'POST' });
+        expect(res.status).toBe(503);
+        const body = await res.json();
+        expect(body.error).toBe('AI invoker not configured');
+    });
+
+    it('returns 200 aggregated: false when raw dir is empty', async () => {
+        await stopServer();
+
+        const storageDir = path.join(tmpDir, 'storage2');
+        writeMemoryConfig(tmpDir, { ...DEFAULT_MEMORY_CONFIG, storageDir });
+
+        const mockInvoker: AIInvoker = vi.fn();
+        server = makeServer(tmpDir, { aggregateToolCallsAIInvoker: mockInvoker });
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/memory/aggregate-tool-calls`, { method: 'POST' });
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.aggregated).toBe(false);
+        expect(body.reason).toBe('no raw entries');
+        expect(mockInvoker).not.toHaveBeenCalled();
+    });
+
+    it('returns 200 aggregated: true when raw files exist', async () => {
+        await stopServer();
+
+        const storageDir = path.join(tmpDir, 'storage3');
+        writeMemoryConfig(tmpDir, { ...DEFAULT_MEMORY_CONFIG, storageDir });
+
+        const N = 3;
+        seedRawFiles(storageDir, N);
+
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: makeConsolidatedJson(2),
+        });
+        server = makeServer(tmpDir, { aggregateToolCallsAIInvoker: mockInvoker });
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/memory/aggregate-tool-calls`, { method: 'POST' });
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.aggregated).toBe(true);
+        expect(body.rawCount).toBe(N);
+        expect(typeof body.consolidatedCount).toBe('number');
     });
 });

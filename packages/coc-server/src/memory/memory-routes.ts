@@ -15,10 +15,24 @@
  */
 
 import * as url from 'url';
+import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';
 import { FileMemoryStore } from './memory-store';
+import { handleAggregateToolCalls } from './tool-call-aggregation-handler';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface MemoryRouteOptions {
+    /**
+     * AI invoker for the POST /api/memory/aggregate-tool-calls endpoint.
+     * When absent the endpoint returns 503 Service Unavailable.
+     */
+    aggregateToolCallsAIInvoker?: AIInvoker;
+}
 
 // ============================================================================
 // Registration
@@ -30,8 +44,9 @@ import { FileMemoryStore } from './memory-store';
  *
  * @param routes  - Shared route table
  * @param dataDir - CoC data directory (e.g. ~/.coc)
+ * @param options - Optional configuration (e.g. AI invoker for aggregation)
  */
-export function registerMemoryRoutes(routes: Route[], dataDir: string): void {
+export function registerMemoryRoutes(routes: Route[], dataDir: string, options?: MemoryRouteOptions): void {
 
     // -- Config endpoints ----------------------------------------------------
 
@@ -188,6 +203,16 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string): void {
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }
+        },
+    });
+
+    // -- Batch aggregation ---------------------------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: '/api/memory/aggregate-tool-calls',
+        handler: async (req, res) => {
+            await handleAggregateToolCalls(req, res, dataDir, options?.aggregateToolCallsAIInvoker);
         },
     });
 }

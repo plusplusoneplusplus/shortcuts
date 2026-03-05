@@ -46,6 +46,7 @@ import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
 import { resolveConfig } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/pipeline-core';
+import { createCLIAIInvoker } from '../ai-invoker';
 
 // ============================================================================
 // Stub Process Store
@@ -238,7 +239,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerScheduleRoutes(routes, scheduleManager);
 
     // Register memory routes
-    registerMemoryRoutes(routes, dataDir);
+    registerMemoryRoutes(routes, dataDir, {
+        aggregateToolCallsAIInvoker: createCLIAIInvoker({ approvePermissions: true }),
+    });
 
     // Always register wiki routes(they are safe even with no wikis registered)
     const wikiManager = registerWikiRoutes(routes, {
