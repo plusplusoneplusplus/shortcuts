@@ -9,7 +9,7 @@ import { BottomSheet } from '../shared/BottomSheet';
 import { cn } from '../shared';
 import type { RepoSubTab } from '../types/dashboard';
 
-const DEFAULT_PINNED: RepoSubTab[] = ['tasks', 'queue', 'chat'];
+const DEFAULT_PINNED: RepoSubTab[] = ['tasks', 'queue', 'chat', 'git'];
 
 export interface MobileTabBarProps {
     activeTab: RepoSubTab;
@@ -20,6 +20,7 @@ export interface MobileTabBarProps {
     queueRunningCount?: number;
     queueQueuedCount?: number;
     chatPendingCount?: number;
+    gitPendingCount?: number;
 }
 
 export function MobileTabBar({
@@ -31,7 +32,8 @@ export function MobileTabBar({
     queueRunningCount = 0,
     queueQueuedCount = 0,
     chatPendingCount = 0,
-}: MobileTabBarProps) {
+    gitPendingCount = 0,
+}: MobileTabBarProps){
     const [moreOpen, setMoreOpen] = useState(false);
 
     const pinnedTabItems = tabs.filter(t => pinnedTabs.includes(t.key));
@@ -42,6 +44,7 @@ export function MobileTabBar({
         if (key === 'tasks') return taskCount;
         if (key === 'queue') return queueRunningCount + queueQueuedCount;
         if (key === 'chat') return chatPendingCount;
+        if (key === 'git') return gitPendingCount;
         return 0;
     };
 

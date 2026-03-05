@@ -17,7 +17,7 @@ const ALL_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'chat', label: 'Chat' },
 ];
 
-const DEFAULT_PINNED: RepoSubTab[] = ['tasks', 'queue', 'chat'];
+const DEFAULT_PINNED: RepoSubTab[] = ['tasks', 'queue', 'chat', 'git'];
 
 function renderBar(overrides: Partial<Parameters<typeof MobileTabBar>[0]> = {}) {
     const onTabChange = overrides.onTabChange ?? vi.fn();
@@ -40,12 +40,13 @@ describe('MobileTabBar: basic render', () => {
         expect(screen.getByTestId('mobile-tab-bar')).toBeTruthy();
     });
 
-    it('renders pinned tabs by default (Tasks, Queue, Chat)', () => {
+    it('renders pinned tabs by default (Tasks, Queue, Chat, Git)', () => {
         renderBar();
         const nav = screen.getByTestId('mobile-tab-bar');
         expect(nav.querySelector('[data-tab="tasks"]')).toBeTruthy();
         expect(nav.querySelector('[data-tab="queue"]')).toBeTruthy();
         expect(nav.querySelector('[data-tab="chat"]')).toBeTruthy();
+        expect(nav.querySelector('[data-tab="git"]')).toBeTruthy();
     });
 
     it('renders More button for non-pinned tabs', () => {
@@ -159,11 +160,11 @@ describe('MobileTabBar: More sheet', () => {
         expect(screen.getByTestId('mobile-tab-more-sheet')).toBeTruthy();
     });
 
-    it('sheet lists non-pinned tabs (Info, Git, Pipelines, Schedules)', () => {
+    it('sheet lists non-pinned tabs (Info, Pipelines, Schedules)', () => {
         renderBar();
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
         expect(screen.getByTestId('mobile-tab-more-item-info')).toBeTruthy();
-        expect(screen.getByTestId('mobile-tab-more-item-git')).toBeTruthy();
+        expect(screen.queryByTestId('mobile-tab-more-item-git')).toBeNull();
         expect(screen.getByTestId('mobile-tab-more-item-pipelines')).toBeTruthy();
         expect(screen.getByTestId('mobile-tab-more-item-schedules')).toBeTruthy();
     });
@@ -174,14 +175,15 @@ describe('MobileTabBar: More sheet', () => {
         expect(screen.queryByTestId('mobile-tab-more-item-tasks')).toBeNull();
         expect(screen.queryByTestId('mobile-tab-more-item-queue')).toBeNull();
         expect(screen.queryByTestId('mobile-tab-more-item-chat')).toBeNull();
+        expect(screen.queryByTestId('mobile-tab-more-item-git')).toBeNull();
     });
 
     it('selecting a tab from the sheet calls onTabChange', () => {
         const onTabChange = vi.fn();
         renderBar({ onTabChange });
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
-        fireEvent.click(screen.getByTestId('mobile-tab-more-item-git'));
-        expect(onTabChange).toHaveBeenCalledWith('git');
+        fireEvent.click(screen.getByTestId('mobile-tab-more-item-info'));
+        expect(onTabChange).toHaveBeenCalledWith('info');
     });
 
     it('selecting a tab from the sheet closes the sheet', () => {
@@ -201,10 +203,10 @@ describe('MobileTabBar: More sheet', () => {
     });
 
     it('active "more" tab is highlighted in the sheet', () => {
-        renderBar({ activeTab: 'git' });
+        renderBar({ activeTab: 'info' });
         fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
-        const gitBtn = screen.getByTestId('mobile-tab-more-item-git');
-        expect(gitBtn.className).toContain('text-[#0078d4]');
+        const infoBtn = screen.getByTestId('mobile-tab-more-item-info');
+        expect(infoBtn.className).toContain('text-[#0078d4]');
     });
 
     it('inactive "more" tabs are not highlighted in the sheet', () => {
@@ -272,6 +274,17 @@ describe('MobileTabBar: badge display', () => {
         expect(screen.getByTestId('mobile-tab-badge-tasks').textContent).toBe('5');
         expect(screen.getByTestId('mobile-tab-badge-queue').textContent).toBe('1');
         expect(screen.getByTestId('mobile-tab-badge-chat').textContent).toBe('3');
+    });
+
+    it('shows git badge when gitPendingCount > 0', () => {
+        renderBar({ gitPendingCount: 4 });
+        expect(screen.getByTestId('mobile-tab-badge-git')).toBeTruthy();
+        expect(screen.getByTestId('mobile-tab-badge-git').textContent).toBe('4');
+    });
+
+    it('hides git badge when gitPendingCount is 0', () => {
+        renderBar({ gitPendingCount: 0 });
+        expect(screen.queryByTestId('mobile-tab-badge-git')).toBeNull();
     });
 });
 
