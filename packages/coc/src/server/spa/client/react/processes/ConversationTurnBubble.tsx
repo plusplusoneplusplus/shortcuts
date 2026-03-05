@@ -10,7 +10,7 @@ import { mergeConsecutiveContentItems } from './timeline-utils';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { fetchApi } from '../hooks/useApi';
-import { copyToClipboard } from '../utils/format';
+import { copyToClipboard, splitMarkdownSections } from '../utils/format';
 import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import type { ToolGroupCategory } from './toolGroupUtils';
@@ -510,6 +510,15 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
     const [copied, setCopied] = useState(false);
     const { showReportIntent, toolCompactness } = useDisplaySettings();
 
+    // Pre-compute section markdown slices for section-level copy buttons on assistant turns.
+    const sectionMarkdown = useMemo(() => {
+        if (isUser || !turn.content) return undefined;
+        const sections = splitMarkdownSections(turn.content);
+        // Only show section copy when there are multiple sections with headings.
+        const headingSections = sections.filter(s => s.level > 0);
+        return headingSections.length >= 1 ? sections : undefined;
+    }, [isUser, turn.content]);
+
     const displayChunks = useMemo(() => {
         if (!assistantRender) return [];
         if (toolCompactness < 1) return assistantRender.chunks;
@@ -739,7 +748,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
                         let accKey = '';
                         const flushContent = () => {
                             if (accKey && accHtml) {
-                                nodes.push(<MarkdownView key={accKey} html={accHtml} />);
+                                nodes.push(<MarkdownView key={accKey} html={accHtml} sectionMarkdown={sectionMarkdown} hideSectionCopy={!!turn.streaming} />);
                                 accHtml = '';
                                 accKey = '';
                             }

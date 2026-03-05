@@ -110,6 +110,49 @@ export interface ConversationTurnLike {
     }>;
 }
 
+export interface MarkdownSection {
+    heading: string;
+    level: number;
+    body: string;
+}
+
+/**
+ * Split markdown content into sections delimited by H2/H3 headings.
+ * Each section contains the heading line and all content up to the next same-or-higher-level heading.
+ * Content before the first heading (preamble) is returned with heading='' and level=0.
+ */
+export function splitMarkdownSections(content: string): MarkdownSection[] {
+    if (!content || !content.trim()) return [];
+
+    const lines = content.split('\n');
+    const sections: MarkdownSection[] = [];
+    let currentHeading = '';
+    let currentLevel = 0;
+    let currentLines: string[] = [];
+
+    const flush = () => {
+        const body = currentLines.join('\n');
+        if (currentHeading || body.trim()) {
+            sections.push({ heading: currentHeading, level: currentLevel, body });
+        }
+    };
+
+    for (const line of lines) {
+        const match = line.match(/^(#{2,3})\s+(.+)$/);
+        if (match) {
+            flush();
+            currentHeading = line;
+            currentLevel = match[1].length;
+            currentLines = [];
+        } else {
+            currentLines.push(line);
+        }
+    }
+    flush();
+
+    return sections;
+}
+
 export function formatConversationAsText(turns: ConversationTurnLike[], truncateAt = 100): string {
     if (!turns || turns.length === 0) return '';
     return turns.map(turn => {
