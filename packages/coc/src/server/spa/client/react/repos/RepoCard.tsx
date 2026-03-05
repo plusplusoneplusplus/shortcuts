@@ -21,7 +21,7 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
     const branch = repo.gitInfo?.branch || 'n/a';
     const pipelineCount = repo.pipelines?.length || 0;
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
-    const truncPath = truncatePath(ws.rootPath || '', 30);
+    const truncPath = truncatePath(ws.rootPath || '', 24);
     const taskCount = repo.taskCount || 0;
     const queueStats = useRepoQueueStats(ws.id);
 
@@ -29,12 +29,12 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
         <Card
             onClick={onClick}
             className={cn(
-                'repo-item p-2',
+                'repo-item p-1.5',
                 inGroup && 'ml-4',
                 isSelected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]'
             )}
         >
-            {/* Name row */}
+            {/* Line 1 — identity: dot + name + branch badge + task count */}
             <div className="flex items-center gap-1.5">
                 <span
                     className="repo-color-dot inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -43,33 +43,28 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
                 <span className="repo-item-name text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
                     {ws.name}
                 </span>
-                {inGroup && branch !== 'n/a' && (
+                {branch !== 'n/a' && (
                     <span className="text-[10px] px-1 py-px rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999] flex-shrink-0">
                         {branch}
                     </span>
                 )}
+                {taskCount > 0 && (
+                    <span className="text-[10px] text-[#848484] flex-shrink-0">· {taskCount}</span>
+                )}
             </div>
 
-            {/* Path */}
-            <div
-                className="text-[10px] text-[#848484] truncate mt-0.5"
-                title={ws.rootPath || ''}
-            >
-                {truncPath}
-            </div>
-
-            {/* Stats row — single line */}
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-[#848484]">
-                <span>{inGroup ? (taskCount > 0 ? `· ${taskCount}` : '') : `${branch}${taskCount > 0 ? ` · ${taskCount}` : ''}`}</span>
-                <span>Pipelines: {pipelineCount}</span>
+            {/* Line 2 — path + stats */}
+            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-[#848484]">
+                <span className="truncate min-w-0" title={ws.rootPath || ''}>{truncPath}</span>
+                <span className="flex-shrink-0">Pipelines: {pipelineCount}</span>
                 {(queueStats.running > 0 || queueStats.queued > 0) && (
-                    <span className="queue-status" data-testid="repo-card-queue-status">
+                    <span className="queue-status flex-shrink-0" data-testid="repo-card-queue-status">
                         {queueStats.running > 0 && <span data-testid="repo-card-queue-running">⏳{queueStats.running}</span>}
                         {queueStats.running > 0 && queueStats.queued > 0 && ' '}
                         {queueStats.queued > 0 && <span data-testid="repo-card-queue-queued">⏸{queueStats.queued}</span>}
                     </span>
                 )}
-                <span className="repo-stat-counts ml-auto">
+                <span className="repo-stat-counts ml-auto flex-shrink-0">
                     ✓{stats.success} ✗{stats.failed} ⏗{stats.running}
                 </span>
             </div>
