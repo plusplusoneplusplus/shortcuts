@@ -36,10 +36,10 @@ export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { isMobile } = useBreakpoint();
-    const { model: savedModel, setModel: persistModel, skill: savedSkill, setSkill: persistSkill } = usePreferences();
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
+    const { model: savedModel, setModel: persistModel, skill: savedSkill, setSkill: persistSkill } = usePreferences(workspaceId);
     const [models, setModels] = useState<string[]>([]);
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');

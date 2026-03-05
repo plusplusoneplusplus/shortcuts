@@ -77,7 +77,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const { archiveSet, toggleArchive } = useArchivedChats(workspaceId, togglePin, isPinned);
     const [showArchived, setShowArchived] = useState(false);
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const { model: savedModel, setModel: persistModel } = usePreferences();
+    const { model: savedModel, setModel: persistModel } = usePreferences(workspaceId);
     const { isMobile } = useBreakpoint();
     const keyboardHeight = useVisualViewport();
     const [mobileShowDetail, setMobileShowDetail] = useState(false);

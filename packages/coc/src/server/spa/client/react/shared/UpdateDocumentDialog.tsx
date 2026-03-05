@@ -33,7 +33,7 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 
 export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: UpdateDocumentDialogProps) {
     const { state } = useApp();
-    const { model, setModel } = usePreferences();
+    const { model, setModel } = usePreferences(wsId);
     const { addToast } = useGlobalToast();
 
     const [models, setModels] = useState<string[]>([]);

@@ -39,8 +39,8 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 
 export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: FollowPromptDialogProps) {
     const { state } = useApp();
-    const { model, setModel, loaded: prefsLoaded } = usePreferences();
-    const { recentItems, trackUsage } = useRecentPrompts();
+    const { model, setModel, loaded: prefsLoaded } = usePreferences(wsId);
+    const { recentItems, trackUsage } = useRecentPrompts(wsId);
     const { addToast } = useGlobalToast();
 
     const [models, setModels] = useState<string[]>([]);

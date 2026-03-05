@@ -163,11 +163,11 @@ describe('exportAllData', () => {
     // ========================================================================
 
     it('includes preferences when present', async () => {
-        writeJSON(path.join(dataDir, 'preferences.json'), { lastModel: 'gpt-4' });
+        writeJSON(path.join(dataDir, 'preferences.json'), { global: { theme: 'dark' } });
 
         const payload = await exportAllData({ store, dataDir });
 
-        expect(payload.preferences).toEqual({ lastModel: 'gpt-4' });
+        expect(payload.preferences).toEqual({ global: { theme: 'dark' } });
 
         const validation = validateExportPayload(payload);
         expect(validation).toEqual({ valid: true });

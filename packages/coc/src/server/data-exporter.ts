@@ -48,7 +48,7 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
     const imageBlobs = readBlobFiles(dataDir);
 
     // Gather preferences
-    const preferences = readPreferences(dataDir);
+    const preferences = readPreferences(dataDir) as any;
 
     // Gather server config (optional)
     const configPath = path.join(dataDir, 'config.yaml');

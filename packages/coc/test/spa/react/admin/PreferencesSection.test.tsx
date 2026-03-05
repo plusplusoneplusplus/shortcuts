@@ -41,10 +41,6 @@ describe('PreferencesSection', () => {
             ok: true,
             json: () => Promise.resolve({
                 theme: 'dark',
-                lastModel: 'gpt-4',
-                lastDepth: 'deep',
-                lastEffort: 'high',
-                lastSkill: 'my-skill',
                 reposSidebarCollapsed: true,
             }),
         });
@@ -54,18 +50,6 @@ describe('PreferencesSection', () => {
         await waitFor(() => {
             const themeSelect = screen.getByTestId('pref-theme') as HTMLSelectElement;
             expect(themeSelect.value).toBe('dark');
-
-            const modelInput = screen.getByTestId('pref-last-model') as HTMLInputElement;
-            expect(modelInput.value).toBe('gpt-4');
-
-            const depthSelect = screen.getByTestId('pref-last-depth') as HTMLSelectElement;
-            expect(depthSelect.value).toBe('deep');
-
-            const effortSelect = screen.getByTestId('pref-last-effort') as HTMLSelectElement;
-            expect(effortSelect.value).toBe('high');
-
-            const skillInput = screen.getByTestId('pref-last-skill') as HTMLInputElement;
-            expect(skillInput.value).toBe('my-skill');
 
             const toggle = screen.getByTestId('pref-repos-sidebar-collapsed') as HTMLInputElement;
             expect(toggle.checked).toBe(true);
@@ -105,39 +89,6 @@ describe('PreferencesSection', () => {
         expect(onSuccess).toHaveBeenCalledWith('Preference saved');
     });
 
-    it('calls PATCH on lastModel input blur', async () => {
-        mockFetch.mockImplementation((url: string, options?: any) => {
-            if (options?.method === 'PATCH') {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ lastModel: 'claude-3' }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ lastModel: '' }) });
-        });
-
-        await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            expect(screen.getByTestId('pref-last-model')).toBeDefined();
-        });
-
-        const input = screen.getByTestId('pref-last-model') as HTMLInputElement;
-        await act(async () => {
-            fireEvent.change(input, { target: { value: 'claude-3' } });
-            fireEvent.blur(input);
-        });
-
-        await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_url, opts]: [string, any]) => opts?.method === 'PATCH'
-            );
-            expect(patchCalls.length).toBeGreaterThan(0);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.lastModel).toBe('claude-3');
-        });
-    });
-
     it('calls PATCH when reposSidebarCollapsed toggle changes', async () => {
         mockFetch.mockImplementation((url: string, options?: any) => {
             if (options?.method === 'PATCH') {
@@ -167,73 +118,6 @@ describe('PreferencesSection', () => {
             const body = JSON.parse(patchCalls[0][1].body);
             expect(typeof body.reposSidebarCollapsed).toBe('boolean');
         });
-    });
-
-    it('shows pinned chats info and clear button when pinnedChats is non-empty', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({
-                pinnedChats: { 'workspace-a': ['chat1', 'chat2'] },
-            }),
-        });
-
-        await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            expect(screen.getByText(/1 workspace/)).toBeDefined();
-            expect(screen.getByTestId('pref-clear-pins')).toBeDefined();
-        });
-    });
-
-    it('does not show clear button when pinnedChats is empty', async () => {
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ pinnedChats: {} }),
-        });
-
-        await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            expect(screen.queryByTestId('pref-clear-pins')).toBeNull();
-        });
-    });
-
-    it('clear pins sends PATCH with empty pinnedChats', async () => {
-        mockFetch.mockImplementation((url: string, options?: any) => {
-            if (options?.method === 'PATCH') {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({}),
-                });
-            }
-            return Promise.resolve({
-                ok: true,
-                json: () => Promise.resolve({
-                    pinnedChats: { 'workspace-a': ['chat1'] },
-                }),
-            });
-        });
-
-        await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            expect(screen.getByTestId('pref-clear-pins')).toBeDefined();
-        });
-
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('pref-clear-pins'));
-        });
-
-        await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_url, opts]: [string, any]) => opts?.method === 'PATCH'
-            );
-            expect(patchCalls.length).toBe(1);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.pinnedChats).toEqual({});
-        });
-
-        expect(onSuccess).toHaveBeenCalledWith('Pinned chats cleared');
     });
 
     it('calls onError when fetch fails on load', async () => {

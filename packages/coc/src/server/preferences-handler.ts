@@ -1,8 +1,9 @@
 /**
  * Preferences REST API Handler
  *
- * HTTP API routes for persisting user UI preferences (e.g. last-selected model).
+ * HTTP API routes for persisting user UI preferences.
  * Stores preferences in a JSON file under the CoC data directory (~/.coc/preferences.json).
+ * File format: { global?: GlobalPreferences, repos?: Record<string, PerRepoPreferences> }
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -26,8 +27,16 @@ export interface RecentFollowPromptEntry {
     timestamp: number;
 }
 
-/** User UI preferences persisted on disk. */
-export interface UserPreferences {
+/** Global (cross-repo) UI preferences. */
+export interface GlobalPreferences {
+    /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
+    theme?: 'light' | 'dark' | 'auto';
+    /** Whether the repos sidebar (left panel) is collapsed. */
+    reposSidebarCollapsed?: boolean;
+}
+
+/** Per-repository UI preferences. */
+export interface PerRepoPreferences {
     /** Last-selected AI model in the SPA (empty string = default). */
     lastModel?: string;
     /** Last-selected generation depth in the SPA ('deep' | 'normal'). */
@@ -36,14 +45,21 @@ export interface UserPreferences {
     lastEffort?: 'low' | 'medium' | 'high';
     /** Last-selected skill name in the Enqueue AI Task dialog (empty string = none). */
     lastSkill?: string;
-    /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
-    theme?: 'light' | 'dark' | 'auto';
     /** Recently-used prompts/skills in Follow Prompt dialog (max 10, newest first). */
     recentFollowPrompts?: RecentFollowPromptEntry[];
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
     pinnedChats?: Record<string, string[]>;
     /** Archived chat session IDs per workspace. */
     archivedChats?: Record<string, string[]>;
+}
+
+/** backward-compat alias */
+export type UserPreferences = PerRepoPreferences;
+
+/** Top-level structure of the preferences file on disk. */
+export interface PreferencesFile {
+    global?: GlobalPreferences;
+    repos?: Record<string, PerRepoPreferences>;
 }
 
 // ============================================================================
@@ -54,49 +70,35 @@ export interface UserPreferences {
 export const PREFERENCES_FILE_NAME = 'preferences.json';
 
 // ============================================================================
-// Persistence Helpers
+// Validation
 // ============================================================================
 
-/**
- * Read preferences from disk.
- * Returns an empty object when the file doesn't exist or is invalid.
- */
-export function readPreferences(dataDir: string): UserPreferences {
-    const filePath = path.join(dataDir, PREFERENCES_FILE_NAME);
-    try {
-        if (!fs.existsSync(filePath)) {
-            return {};
-        }
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        return validatePreferences(parsed);
-    } catch {
-        return {};
-    }
-}
-
-/**
- * Write preferences to disk atomically (write-then-rename pattern).
- * Creates the data directory if it doesn't exist.
- */
-export function writePreferences(dataDir: string, prefs: UserPreferences): void {
-    fs.mkdirSync(dataDir, { recursive: true });
-    const filePath = path.join(dataDir, PREFERENCES_FILE_NAME);
-    const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, JSON.stringify(prefs, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, filePath);
-}
-
-/**
- * Validate and sanitize a preferences object.
- * Unknown keys are silently dropped.
- */
-export function validatePreferences(raw: unknown): UserPreferences {
+/** Validate and sanitize global preferences. Unknown keys are silently dropped. */
+export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
     if (typeof raw !== 'object' || raw === null) {
         return {};
     }
     const obj = raw as Record<string, unknown>;
-    const result: UserPreferences = {};
+    const result: GlobalPreferences = {};
+
+    if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {
+        result.theme = obj.theme;
+    }
+
+    if (typeof obj.reposSidebarCollapsed === 'boolean') {
+        result.reposSidebarCollapsed = obj.reposSidebarCollapsed;
+    }
+
+    return result;
+}
+
+/** Validate and sanitize per-repo preferences. Unknown keys are silently dropped. */
+export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
+    if (typeof raw !== 'object' || raw === null) {
+        return {};
+    }
+    const obj = raw as Record<string, unknown>;
+    const result: PerRepoPreferences = {};
 
     if (typeof obj.lastModel === 'string') {
         result.lastModel = obj.lastModel;
@@ -112,10 +114,6 @@ export function validatePreferences(raw: unknown): UserPreferences {
 
     if (typeof obj.lastSkill === 'string') {
         result.lastSkill = obj.lastSkill;
-    }
-
-    if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {
-        result.theme = obj.theme;
     }
 
     if (Array.isArray(obj.recentFollowPrompts)) {
@@ -176,6 +174,81 @@ export function validatePreferences(raw: unknown): UserPreferences {
     return result;
 }
 
+/** backward-compat alias for validatePerRepoPreferences */
+export function validatePreferences(raw: unknown): PerRepoPreferences {
+    return validatePerRepoPreferences(raw);
+}
+
+// ============================================================================
+// Persistence Helpers
+// ============================================================================
+
+/**
+ * Read the full preferences file from disk.
+ * Returns an empty object when the file doesn't exist or is invalid.
+ */
+export function readPreferences(dataDir: string): PreferencesFile {
+    const filePath = path.join(dataDir, PREFERENCES_FILE_NAME);
+    try {
+        if (!fs.existsSync(filePath)) {
+            return {};
+        }
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (typeof parsed !== 'object' || parsed === null) {
+            return {};
+        }
+        const obj = parsed as Record<string, unknown>;
+        const result: PreferencesFile = {};
+
+        if (typeof obj.global === 'object' && obj.global !== null) {
+            const g = validateGlobalPreferences(obj.global);
+            if (Object.keys(g).length > 0) {
+                result.global = g;
+            }
+        }
+
+        if (typeof obj.repos === 'object' && obj.repos !== null && !Array.isArray(obj.repos)) {
+            const repos: Record<string, PerRepoPreferences> = {};
+            for (const [key, value] of Object.entries(obj.repos as Record<string, unknown>)) {
+                repos[key] = validatePerRepoPreferences(value);
+            }
+            if (Object.keys(repos).length > 0) {
+                result.repos = repos;
+            }
+        }
+
+        return result;
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Write the full preferences file to disk atomically (write-then-rename).
+ * Creates the data directory if it doesn't exist.
+ */
+export function writePreferences(dataDir: string, data: PreferencesFile): void {
+    fs.mkdirSync(dataDir, { recursive: true });
+    const filePath = path.join(dataDir, PREFERENCES_FILE_NAME);
+    const tmpPath = filePath + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+// ============================================================================
+// Internal helpers
+// ============================================================================
+
+function isEmptyObjectBody(body: unknown, key: string): boolean {
+    if (typeof body !== 'object' || body === null || !(key in (body as object))) {
+        return false;
+    }
+    const val = (body as Record<string, unknown>)[key];
+    return typeof val === 'object' && val !== null && !Array.isArray(val) &&
+        Object.keys(val as object).length === 0;
+}
+
 // ============================================================================
 // Route Registration
 // ============================================================================
@@ -190,19 +263,19 @@ export function validatePreferences(raw: unknown): UserPreferences {
 export function registerPreferencesRoutes(routes: Route[], dataDir: string): void {
 
     // ------------------------------------------------------------------
-    // GET /api/preferences — Read current preferences
+    // GET /api/preferences — Read global preferences
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
         pattern: '/api/preferences',
         handler: async (_req, res) => {
-            const prefs = readPreferences(dataDir);
-            sendJSON(res, 200, prefs);
+            const file = readPreferences(dataDir);
+            sendJSON(res, 200, file.global ?? {});
         },
     });
 
     // ------------------------------------------------------------------
-    // PUT /api/preferences — Replace preferences
+    // PUT /api/preferences — Replace global preferences
     // ------------------------------------------------------------------
     routes.push({
         method: 'PUT',
@@ -215,14 +288,15 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
                 return sendError(res, 400, 'Invalid JSON');
             }
 
-            const prefs = validatePreferences(body);
-            writePreferences(dataDir, prefs);
-            sendJSON(res, 200, prefs);
+            const global = validateGlobalPreferences(body);
+            const existing = readPreferences(dataDir);
+            writePreferences(dataDir, { ...existing, global });
+            sendJSON(res, 200, global);
         },
     });
 
     // ------------------------------------------------------------------
-    // PATCH /api/preferences — Merge partial updates into preferences
+    // PATCH /api/preferences — Merge partial updates into global preferences
     // ------------------------------------------------------------------
     routes.push({
         method: 'PATCH',
@@ -236,30 +310,81 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             }
 
             const existing = readPreferences(dataDir);
-            const patch = validatePreferences(body);
-            const merged: UserPreferences = { ...existing, ...patch };
-            // Explicitly clear pinnedChats when the body sends an empty object
-            // (all pins removed — validatePreferences drops empty objects so the
-            // spread alone would leave the old value intact).
-            if (
-                typeof body === 'object' && body !== null &&
-                'pinnedChats' in body &&
-                typeof body.pinnedChats === 'object' && body.pinnedChats !== null &&
-                !Array.isArray(body.pinnedChats) &&
-                Object.keys(body.pinnedChats as object).length === 0
-            ) {
+            const patch = validateGlobalPreferences(body);
+            const merged: GlobalPreferences = { ...(existing.global ?? {}), ...patch };
+            writePreferences(dataDir, { ...existing, global: merged });
+            sendJSON(res, 200, merged);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/preferences — Read per-repo preferences
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/preferences$/,
+        handler: async (_req, res, match) => {
+            const repoId = decodeURIComponent(match![1]);
+            const file = readPreferences(dataDir);
+            sendJSON(res, 200, file.repos?.[repoId] ?? {});
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PUT /api/workspaces/:id/preferences — Replace per-repo preferences
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/workspaces\/([^/]+)\/preferences$/,
+        handler: async (req, res, match) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const repoId = decodeURIComponent(match![1]);
+            const repoPrefs = validatePerRepoPreferences(body);
+            const existing = readPreferences(dataDir);
+            const repos = { ...(existing.repos ?? {}), [repoId]: repoPrefs };
+            writePreferences(dataDir, { ...existing, repos });
+            sendJSON(res, 200, repoPrefs);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PATCH /api/workspaces/:id/preferences — Merge into per-repo preferences
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/preferences$/,
+        handler: async (req, res, match) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const repoId = decodeURIComponent(match![1]);
+            const existing = readPreferences(dataDir);
+            const existingRepo = existing.repos?.[repoId] ?? {};
+            const patch = validatePerRepoPreferences(body);
+            const merged: PerRepoPreferences = { ...existingRepo, ...patch };
+
+            // Explicitly clear pinnedChats/archivedChats when the body sends {}
+            // (validatePerRepoPreferences drops empty objects so the spread would
+            // leave the old value intact).
+            if (isEmptyObjectBody(body, 'pinnedChats')) {
                 delete merged.pinnedChats;
             }
-            if (
-                typeof body === 'object' && body !== null &&
-                'archivedChats' in body &&
-                typeof body.archivedChats === 'object' && body.archivedChats !== null &&
-                !Array.isArray(body.archivedChats) &&
-                Object.keys(body.archivedChats as object).length === 0
-            ) {
+            if (isEmptyObjectBody(body, 'archivedChats')) {
                 delete merged.archivedChats;
             }
-            writePreferences(dataDir, merged);
+
+            const repos = { ...(existing.repos ?? {}), [repoId]: merged };
+            writePreferences(dataDir, { ...existing, repos });
             sendJSON(res, 200, merged);
         },
     });

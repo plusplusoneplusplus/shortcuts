@@ -113,7 +113,7 @@ async function replaceImport(
 
     // 7. Restore preferences
     try {
-        writePreferences(dataDir, payload.preferences);
+        writePreferences(dataDir, payload.preferences as any);
     } catch (err: any) {
         result.errors.push(`Failed to write preferences: ${err.message}`);
     }
@@ -194,7 +194,7 @@ async function mergeImport(
     // 5. Merge preferences
     try {
         const existing = readPreferences(dataDir);
-        writePreferences(dataDir, { ...existing, ...payload.preferences });
+        writePreferences(dataDir, { ...existing, ...(payload.preferences as any) });
     } catch (err: any) {
         result.errors.push(`Failed to merge preferences: ${err.message}`);
     }

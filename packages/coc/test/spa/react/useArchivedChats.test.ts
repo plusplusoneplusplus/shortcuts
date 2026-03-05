@@ -57,8 +57,8 @@ describe('useArchivedChats', () => {
     });
 
     describe('preferences fetch', () => {
-        it('fetches preferences on mount', () => {
-            expect(source).toContain("fetchApi('/preferences')");
+        it('fetches per-workspace preferences on mount', () => {
+            expect(source).toContain("fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences')");
         });
 
         it('extracts archivedChats from preferences', () => {
@@ -84,17 +84,22 @@ describe('useArchivedChats', () => {
             expect(source).toContain('prev.filter(a => a !== id)');
         });
 
-        it('persists via PATCH /preferences', () => {
+        it('persists via PATCH to workspace preferences', () => {
             expect(source).toContain("method: 'PATCH'");
-            expect(source).toContain("'/preferences'");
+            expect(source).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/preferences'");
         });
 
-        it('sends archivedChats in PATCH body', () => {
+        it('sends updated archivedChats array in PATCH body', () => {
             expect(source).toContain('JSON.stringify({ archivedChats');
         });
 
+        it('archive/unarchive is reflected in the sent array', () => {
+            expect(source).toContain('body: JSON.stringify({ archivedChats: next })');
+        });
+
         it('cleans up workspace key when no archives remain', () => {
-            expect(source).toContain('delete updated[workspaceId]');
+            // With per-workspace endpoint, we send the array directly (empty array = no archives)
+            expect(source).toContain('archivedChats: next');
         });
 
         it('auto-unpins when archiving a session', () => {
@@ -117,10 +122,6 @@ describe('useArchivedChats', () => {
     });
 
     describe('state management', () => {
-        it('tracks all-workspace archives in a ref', () => {
-            expect(source).toContain('allArchivedRef');
-        });
-
         it('uses mountedRef to prevent state updates after unmount', () => {
             expect(source).toContain('mountedRef');
             expect(source).toContain('mountedRef.current = false');

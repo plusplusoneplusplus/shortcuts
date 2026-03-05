@@ -21,8 +21,11 @@ import {
     readPreferences,
     writePreferences,
     validatePreferences,
+    validatePerRepoPreferences,
+    validateGlobalPreferences,
     PREFERENCES_FILE_NAME,
 } from '../../src/server/preferences-handler';
+import type { PreferencesFile } from '../../src/server/preferences-handler';
 
 // ============================================================================
 // HTTP Helpers
@@ -102,16 +105,36 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs).toEqual({});
     });
 
-    it('round-trips preferences through write and read', () => {
-        const original = { lastModel: 'claude-sonnet-4.6' };
-        writePreferences(tmpDir, original);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
+    it('round-trips per-repo preferences', () => {
+        const data: PreferencesFile = { repos: { 'repo-1': { lastModel: 'claude-sonnet-4.6' } } };
+        writePreferences(tmpDir, data);
+        const result = readPreferences(tmpDir);
+        expect(result.repos?.['repo-1']?.lastModel).toBe('claude-sonnet-4.6');
+    });
+
+    it('round-trips global preferences', () => {
+        const data: PreferencesFile = { global: { theme: 'dark' } };
+        writePreferences(tmpDir, data);
+        const result = readPreferences(tmpDir);
+        expect(result.global?.theme).toBe('dark');
+    });
+
+    it('round-trips full PreferencesFile', () => {
+        const data: PreferencesFile = {
+            global: { theme: 'dark', reposSidebarCollapsed: true },
+            repos: { 'repo-1': { lastModel: 'gpt-4', lastDepth: 'deep' } },
+        };
+        writePreferences(tmpDir, data);
+        const result = readPreferences(tmpDir);
+        expect(result.global?.theme).toBe('dark');
+        expect(result.global?.reposSidebarCollapsed).toBe(true);
+        expect(result.repos?.['repo-1']?.lastModel).toBe('gpt-4');
+        expect(result.repos?.['repo-1']?.lastDepth).toBe('deep');
     });
 
     it('creates data directory if needed', () => {
         const nested = path.join(tmpDir, 'a', 'b');
-        writePreferences(nested, { lastModel: 'gpt-5.2' });
+        writePreferences(nested, { global: { theme: 'auto' } });
         expect(fs.existsSync(path.join(nested, PREFERENCES_FILE_NAME))).toBe(true);
     });
 
@@ -127,169 +150,186 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs).toEqual({});
     });
 
-    it('strips unknown keys during read', () => {
+    it('strips unknown keys in repos during read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ lastModel: 'gpt-5.2', unknownKey: 42 }),
+            JSON.stringify({ repos: { 'repo-1': { lastModel: 'gpt-5.2', unknownKey: 42 } } }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs).toEqual({ lastModel: 'gpt-5.2' });
-        expect((prefs as any).unknownKey).toBeUndefined();
+        expect(prefs.repos?.['repo-1']).toEqual({ lastModel: 'gpt-5.2' });
+        expect((prefs.repos?.['repo-1'] as any)?.unknownKey).toBeUndefined();
+    });
+
+    it('strips unknown keys in global during read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({ global: { theme: 'dark', unknownKey: 42 } }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.global).toEqual({ theme: 'dark' });
+        expect((prefs.global as any)?.unknownKey).toBeUndefined();
     });
 
     it('writes formatted JSON (pretty-printed)', () => {
-        writePreferences(tmpDir, { lastModel: 'test' });
+        writePreferences(tmpDir, { global: { theme: 'dark' } });
         const raw = fs.readFileSync(path.join(tmpDir, PREFERENCES_FILE_NAME), 'utf-8');
         expect(raw).toContain('\n'); // pretty-printed
     });
 
     it('overwrites existing file', () => {
-        writePreferences(tmpDir, { lastModel: 'first' });
-        writePreferences(tmpDir, { lastModel: 'second' });
+        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'first' } } });
+        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'second' } } });
         const prefs = readPreferences(tmpDir);
-        expect(prefs.lastModel).toBe('second');
+        expect(prefs.repos?.['r']?.lastModel).toBe('second');
     });
 
-    it('handles empty lastModel string', () => {
-        writePreferences(tmpDir, { lastModel: '' });
+    it('handles empty lastModel string in repos', () => {
+        writePreferences(tmpDir, { repos: { 'r': { lastModel: '' } } });
         const prefs = readPreferences(tmpDir);
-        expect(prefs.lastModel).toBe('');
+        expect(prefs.repos?.['r']?.lastModel).toBe('');
     });
 
-    it('round-trips theme through write and read', () => {
-        const original = { lastModel: 'gpt-5.2', theme: 'dark' as const };
-        writePreferences(tmpDir, original);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
-    });
-
-    it('strips invalid theme on read', () => {
+    it('strips invalid theme in global on read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ theme: 'invalid' }),
+            JSON.stringify({ global: { theme: 'invalid' } }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs.theme).toBeUndefined();
+        expect(prefs.global?.theme).toBeUndefined();
     });
 
     it('round-trips lastDepth through write and read', () => {
-        const original = { lastDepth: 'deep' as const };
-        writePreferences(tmpDir, original);
+        const data: PreferencesFile = { repos: { 'r': { lastDepth: 'deep' } } };
+        writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
+        expect(loaded.repos?.['r']?.lastDepth).toBe('deep');
     });
 
     it('round-trips lastDepth normal through write and read', () => {
-        const original = { lastModel: 'gpt-5.2', lastDepth: 'normal' as const };
-        writePreferences(tmpDir, original);
+        const data: PreferencesFile = { repos: { 'r': { lastModel: 'gpt-5.2', lastDepth: 'normal' } } };
+        writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
+        expect(loaded.repos?.['r']?.lastDepth).toBe('normal');
     });
 
-    it('strips invalid lastDepth on read', () => {
+    it('strips invalid lastDepth in repos on read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ lastDepth: 'shallow' }),
+            JSON.stringify({ repos: { 'r': { lastDepth: 'shallow' } } }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs.lastDepth).toBeUndefined();
+        expect(prefs.repos?.['r']?.lastDepth).toBeUndefined();
     });
 
     it('round-trips lastEffort through write and read', () => {
         for (const level of ['low', 'medium', 'high'] as const) {
-            const original = { lastEffort: level };
-            writePreferences(tmpDir, original);
+            const data: PreferencesFile = { repos: { 'r': { lastEffort: level } } };
+            writePreferences(tmpDir, data);
             const loaded = readPreferences(tmpDir);
-            expect(loaded).toEqual(original);
+            expect(loaded.repos?.['r']?.lastEffort).toBe(level);
         }
     });
 
-    it('strips invalid lastEffort on read', () => {
+    it('strips invalid lastEffort in repos on read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ lastEffort: 'extreme' }),
+            JSON.stringify({ repos: { 'r': { lastEffort: 'extreme' } } }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs.lastEffort).toBeUndefined();
+        expect(prefs.repos?.['r']?.lastEffort).toBeUndefined();
     });
 
     it('round-trips lastSkill through write and read', () => {
-        const original = { lastSkill: 'impl' };
-        writePreferences(tmpDir, original);
+        const data: PreferencesFile = { repos: { 'r': { lastSkill: 'impl' } } };
+        writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
+        expect(loaded.repos?.['r']?.lastSkill).toBe('impl');
     });
 
-    it('handles empty lastSkill string', () => {
-        writePreferences(tmpDir, { lastSkill: '' });
+    it('handles empty lastSkill string in repos', () => {
+        writePreferences(tmpDir, { repos: { 'r': { lastSkill: '' } } });
         const prefs = readPreferences(tmpDir);
-        expect(prefs.lastSkill).toBe('');
+        expect(prefs.repos?.['r']?.lastSkill).toBe('');
     });
 
     it('round-trips recentFollowPrompts through write and read', () => {
-        const original = {
-            recentFollowPrompts: [
-                { type: 'prompt' as const, name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-                { type: 'skill' as const, name: 'impl', description: 'Implement', timestamp: 900 },
-            ],
-        };
-        writePreferences(tmpDir, original);
+        const entries = [
+            { type: 'prompt' as const, name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+            { type: 'skill' as const, name: 'impl', description: 'Implement', timestamp: 900 },
+        ];
+        writePreferences(tmpDir, { repos: { 'r': { recentFollowPrompts: entries } } });
         const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
+        expect(loaded.repos?.['r']?.recentFollowPrompts).toEqual(entries);
     });
 
     it('strips invalid recentFollowPrompts entries on read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
             JSON.stringify({
-                recentFollowPrompts: [
-                    { type: 'prompt', name: 'valid', timestamp: 1000 },
-                    { type: 'invalid', name: 'bad', timestamp: 900 },
-                ],
+                repos: { 'r': {
+                    recentFollowPrompts: [
+                        { type: 'prompt', name: 'valid', timestamp: 1000 },
+                        { type: 'invalid', name: 'bad', timestamp: 900 },
+                    ],
+                } },
             }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs.recentFollowPrompts!.length).toBe(1);
-        expect(prefs.recentFollowPrompts![0].name).toBe('valid');
+        expect(prefs.repos?.['r']?.recentFollowPrompts!.length).toBe(1);
+        expect(prefs.repos?.['r']?.recentFollowPrompts![0].name).toBe('valid');
     });
 
     it('round-trips pinnedChats through write and read', () => {
-        const original = { pinnedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } };
-        writePreferences(tmpDir, original);
+        const data: PreferencesFile = { repos: { 'r': { pinnedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } } } };
+        writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
+        expect(loaded.repos?.['r']?.pinnedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
     });
 
     it('strips invalid pinnedChats entries on read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ pinnedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
+            JSON.stringify({ repos: { 'r': { pinnedChats: { ws1: ['valid', 42, ''], ws2: [null] } } } }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs.pinnedChats).toEqual({ ws1: ['valid'] });
+        expect(prefs.repos?.['r']?.pinnedChats).toEqual({ ws1: ['valid'] });
     });
 
     it('round-trips archivedChats through write and read', () => {
-        const original = { archivedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } };
-        writePreferences(tmpDir, original);
+        const data: PreferencesFile = { repos: { 'r': { archivedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } } } };
+        writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
-        expect(loaded).toEqual(original);
+        expect(loaded.repos?.['r']?.archivedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
     });
 
     it('strips invalid archivedChats entries on read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ archivedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
+            JSON.stringify({ repos: { 'r': { archivedChats: { ws1: ['valid', 42, ''], ws2: [null] } } } }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs.archivedChats).toEqual({ ws1: ['valid'] });
+        expect(prefs.repos?.['r']?.archivedChats).toEqual({ ws1: ['valid'] });
+    });
+
+    it('multiple repos are stored independently', () => {
+        const data: PreferencesFile = {
+            repos: {
+                'repo-a': { lastModel: 'gpt-4' },
+                'repo-b': { lastModel: 'claude-3' },
+            },
+        };
+        writePreferences(tmpDir, data);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded.repos?.['repo-a']?.lastModel).toBe('gpt-4');
+        expect(loaded.repos?.['repo-b']?.lastModel).toBe('claude-3');
     });
 });
 
@@ -329,24 +369,12 @@ describe('validatePreferences', () => {
     });
 
     // -- theme field --
+    // (theme is a GlobalPreferences field; validatePreferences/validatePerRepoPreferences
+    //  intentionally drops it — tested in validateGlobalPreferences below)
 
-    it('accepts valid theme values', () => {
-        expect(validatePreferences({ theme: 'dark' })).toEqual({ theme: 'dark' });
-        expect(validatePreferences({ theme: 'light' })).toEqual({ theme: 'light' });
-        expect(validatePreferences({ theme: 'auto' })).toEqual({ theme: 'auto' });
-    });
-
-    it('rejects invalid theme values', () => {
-        expect(validatePreferences({ theme: 'blue' })).toEqual({});
-        expect(validatePreferences({ theme: 42 })).toEqual({});
-        expect(validatePreferences({ theme: true })).toEqual({});
-        expect(validatePreferences({ theme: null })).toEqual({});
-        expect(validatePreferences({ theme: '' })).toEqual({});
-    });
-
-    it('accepts theme alongside lastModel', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', theme: 'dark' });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
+    it('does not include theme (per-repo field only)', () => {
+        expect(validatePreferences({ theme: 'dark' })).toEqual({});
+        expect(validatePreferences({ lastModel: 'x', theme: 'dark' })).toEqual({ lastModel: 'x' });
     });
 
     // -- lastDepth field --
@@ -364,9 +392,9 @@ describe('validatePreferences', () => {
         expect(validatePreferences({ lastDepth: '' })).toEqual({});
     });
 
-    it('accepts lastDepth alongside lastModel and theme', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', lastDepth: 'deep', theme: 'dark' });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', theme: 'dark' });
+    it('accepts lastDepth alongside lastModel', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.2', lastDepth: 'deep' });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep' });
     });
 
     // -- lastEffort field --
@@ -386,8 +414,8 @@ describe('validatePreferences', () => {
     });
 
     it('accepts lastEffort alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', lastEffort: 'high', lastDepth: 'deep', theme: 'dark' });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', lastEffort: 'high', theme: 'dark' });
+        const result = validatePreferences({ lastModel: 'gpt-5.2', lastEffort: 'high', lastDepth: 'deep' });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', lastEffort: 'high' });
     });
 
     // -- lastSkill field --
@@ -407,8 +435,8 @@ describe('validatePreferences', () => {
     });
 
     it('accepts lastSkill alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', lastSkill: 'go-deep', theme: 'dark' });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'go-deep', theme: 'dark' });
+        const result = validatePreferences({ lastModel: 'gpt-5.2', lastSkill: 'go-deep' });
+        expect(result).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'go-deep' });
     });
 
     // -- recentFollowPrompts field --
@@ -572,7 +600,61 @@ describe('validatePreferences', () => {
 });
 
 // ============================================================================
-// Integration Tests — REST API
+// Unit Tests — validateGlobalPreferences
+// ============================================================================
+
+describe('validateGlobalPreferences', () => {
+    it('returns empty object for null', () => {
+        expect(validateGlobalPreferences(null)).toEqual({});
+    });
+
+    it('returns empty object for non-object', () => {
+        expect(validateGlobalPreferences('hello')).toEqual({});
+        expect(validateGlobalPreferences(42)).toEqual({});
+    });
+
+    it('returns empty object for empty object', () => {
+        expect(validateGlobalPreferences({})).toEqual({});
+    });
+
+    it('accepts valid theme values', () => {
+        expect(validateGlobalPreferences({ theme: 'dark' })).toEqual({ theme: 'dark' });
+        expect(validateGlobalPreferences({ theme: 'light' })).toEqual({ theme: 'light' });
+        expect(validateGlobalPreferences({ theme: 'auto' })).toEqual({ theme: 'auto' });
+    });
+
+    it('rejects invalid theme values', () => {
+        expect(validateGlobalPreferences({ theme: 'blue' })).toEqual({});
+        expect(validateGlobalPreferences({ theme: 42 })).toEqual({});
+        expect(validateGlobalPreferences({ theme: null })).toEqual({});
+        expect(validateGlobalPreferences({ theme: '' })).toEqual({});
+    });
+
+    it('accepts reposSidebarCollapsed boolean', () => {
+        expect(validateGlobalPreferences({ reposSidebarCollapsed: true })).toEqual({ reposSidebarCollapsed: true });
+        expect(validateGlobalPreferences({ reposSidebarCollapsed: false })).toEqual({ reposSidebarCollapsed: false });
+    });
+
+    it('rejects non-boolean reposSidebarCollapsed', () => {
+        expect(validateGlobalPreferences({ reposSidebarCollapsed: 'true' })).toEqual({});
+        expect(validateGlobalPreferences({ reposSidebarCollapsed: 1 })).toEqual({});
+        expect(validateGlobalPreferences({ reposSidebarCollapsed: null })).toEqual({});
+    });
+
+    it('accepts theme alongside reposSidebarCollapsed', () => {
+        const result = validateGlobalPreferences({ theme: 'dark', reposSidebarCollapsed: true });
+        expect(result).toEqual({ theme: 'dark', reposSidebarCollapsed: true });
+    });
+
+    it('strips unknown keys', () => {
+        const result = validateGlobalPreferences({ theme: 'dark', lastModel: 'gpt-4', bogus: true });
+        expect(result).toEqual({ theme: 'dark' });
+        expect(Object.keys(result)).toEqual(['theme']);
+    });
+});
+
+// ============================================================================
+// Integration Tests — REST API (Global Preferences)
 // ============================================================================
 
 describe('Preferences REST API', () => {
@@ -599,44 +681,54 @@ describe('Preferences REST API', () => {
         expect(JSON.parse(res.body)).toEqual({});
     });
 
-    it('GET returns saved preferences', async () => {
-        writePreferences(tmpDir, { lastModel: 'gpt-5.2' });
+    it('GET returns saved global preferences', async () => {
+        writePreferences(tmpDir, { global: { theme: 'dark' } });
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
+    });
+
+    it('GET does not return per-repo preferences', async () => {
+        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'gpt-4' } } });
+        const res = await getJSON(`${baseUrl}/api/preferences`);
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({});
     });
 
     // -- PUT /api/preferences --
 
-    it('PUT replaces preferences and returns result', async () => {
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6' });
+    it('PUT replaces global preferences and returns result', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
 
-        // Verify persisted
         const get = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(get.body)).toEqual({ lastModel: 'claude-sonnet-4.6' });
+        expect(JSON.parse(get.body)).toEqual({ theme: 'dark' });
     });
 
-    it('PUT replaces all fields (not merge)', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'model-a' });
-        const res = await putJSON(`${baseUrl}/api/preferences`, {});
+    it('PUT replaces all global fields (not merge)', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark', reposSidebarCollapsed: true });
+        const res = await putJSON(`${baseUrl}/api/preferences`, { theme: 'light' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({});
-
-        const get = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(get.body)).toEqual({});
+        expect(JSON.parse(res.body)).toEqual({ theme: 'light' });
+        expect(JSON.parse(res.body).reposSidebarCollapsed).toBeUndefined();
     });
 
     it('PUT validates input (strips unknown keys)', async () => {
         const res = await putJSON(`${baseUrl}/api/preferences`, {
-            lastModel: 'valid',
+            theme: 'dark',
             hacker: true,
         });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body).toEqual({ lastModel: 'valid' });
+        expect(body).toEqual({ theme: 'dark' });
         expect(body.hacker).toBeUndefined();
+    });
+
+    it('PUT strips per-repo fields (lastModel is not global)', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-4' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({});
     });
 
     it('PUT returns 400 for invalid JSON', async () => {
@@ -648,33 +740,33 @@ describe('Preferences REST API', () => {
         expect(res.status).toBe(400);
     });
 
-    it('PUT handles empty lastModel (resets to Default)', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'some-model' });
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: '' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: '' });
+    it('PUT does not overwrite existing per-repo prefs', async () => {
+        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'gpt-4' } } });
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        const file = readPreferences(tmpDir);
+        expect(file.repos?.['r']?.lastModel).toBe('gpt-4');
     });
 
     // -- PATCH /api/preferences --
 
-    it('PATCH merges into existing preferences', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'original' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastModel: 'updated' });
+    it('PATCH merges into existing global preferences', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { reposSidebarCollapsed: true });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'updated' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark', reposSidebarCollapsed: true });
     });
 
-    it('PATCH creates preferences when none exist', async () => {
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastModel: 'new-model' });
+    it('PATCH creates global preferences when none exist', async () => {
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { theme: 'auto' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'new-model' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'auto' });
     });
 
-    it('PATCH with empty body preserves existing preferences', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'keep-me' });
+    it('PATCH with empty body preserves existing global preferences', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
         const res = await patchJSON(`${baseUrl}/api/preferences`, {});
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'keep-me' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
     });
 
     it('PATCH returns 400 for invalid JSON', async () => {
@@ -686,37 +778,38 @@ describe('Preferences REST API', () => {
         expect(res.status).toBe(400);
     });
 
-    it('PATCH strips unknown keys from patch body', async () => {
+    it('PATCH strips unknown and per-repo keys', async () => {
         const res = await patchJSON(`${baseUrl}/api/preferences`, {
-            lastModel: 'valid',
+            theme: 'dark',
+            lastModel: 'gpt-4',
             unknownField: 'ignored',
         });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body).toEqual({ lastModel: 'valid' });
+        expect(body).toEqual({ theme: 'dark' });
+        expect(body.lastModel).toBeUndefined();
         expect(body.unknownField).toBeUndefined();
     });
 
     // -- File persistence --
 
     it('preferences file is created in dataDir after PUT', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'test' });
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
         const filePath = path.join(tmpDir, PREFERENCES_FILE_NAME);
         expect(fs.existsSync(filePath)).toBe(true);
         const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        expect(content.lastModel).toBe('test');
+        expect(content.global.theme).toBe('dark');
     });
 
-    it('preferences survive server restart (persisted to disk)', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'persistent' });
+    it('global preferences survive server restart', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
         await server.close();
 
-        // Restart with same data dir
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
         baseUrl = server.url;
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'persistent' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
     });
 
     // -- CORS --
@@ -744,18 +837,18 @@ describe('Preferences REST API', () => {
         expect(JSON.parse(get.body)).toEqual({ theme: 'dark' });
     });
 
-    it('PATCH merges theme into existing preferences', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
+    it('PATCH merges theme into existing global preferences', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { reposSidebarCollapsed: true });
         const res = await patchJSON(`${baseUrl}/api/preferences`, { theme: 'light' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', theme: 'light' });
+        expect(JSON.parse(res.body)).toEqual({ reposSidebarCollapsed: true, theme: 'light' });
     });
 
-    it('PATCH updates theme without affecting lastModel', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', theme: 'dark' });
+    it('PATCH updates theme without affecting reposSidebarCollapsed', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { reposSidebarCollapsed: true, theme: 'dark' });
         const res = await patchJSON(`${baseUrl}/api/preferences`, { theme: 'auto' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', theme: 'auto' });
+        expect(JSON.parse(res.body)).toEqual({ reposSidebarCollapsed: true, theme: 'auto' });
     });
 
     it('PUT strips invalid theme values', async () => {
@@ -765,325 +858,274 @@ describe('Preferences REST API', () => {
     });
 
     it('theme survives server restart', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', theme: 'dark' });
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
         baseUrl = server.url;
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', theme: 'dark' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
     });
 
-    // -- lastDepth persistence via API --
+    // -- reposSidebarCollapsed persistence via API --
 
-    it('PUT persists lastDepth field', async () => {
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastDepth: 'deep' });
+    it('PUT persists reposSidebarCollapsed field', async () => {
+        const res = await putJSON(`${baseUrl}/api/preferences`, { reposSidebarCollapsed: true });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastDepth: 'deep' });
+        expect(JSON.parse(res.body)).toEqual({ reposSidebarCollapsed: true });
 
         const get = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(get.body)).toEqual({ lastDepth: 'deep' });
+        expect(JSON.parse(get.body)).toEqual({ reposSidebarCollapsed: true });
     });
 
-    it('PATCH merges lastDepth into existing preferences', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastDepth: 'normal' });
+    it('PATCH updates reposSidebarCollapsed without affecting theme', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark', reposSidebarCollapsed: false });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { reposSidebarCollapsed: true });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'normal' });
+        expect(JSON.parse(res.body)).toEqual({ theme: 'dark', reposSidebarCollapsed: true });
+    });
+});
+
+// ============================================================================
+// Integration Tests — Per-Repo Preferences REST API
+// ============================================================================
+
+describe('Per-Repo Preferences REST API', () => {
+    let server: ExecutionServer;
+    let baseUrl: string;
+    let tmpDir: string;
+
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-prefs-'));
+        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
+        baseUrl = server.url;
     });
 
-    it('PATCH updates lastDepth without affecting other fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', lastDepth: 'deep', theme: 'dark' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastDepth: 'normal' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', lastDepth: 'normal', theme: 'dark' });
+    afterEach(async () => {
+        await server.close();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('PUT strips invalid lastDepth values', async () => {
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastDepth: 'shallow' });
+    const repoId = encodeURIComponent('/home/user/my-project');
+    const repoId2 = encodeURIComponent('/home/user/other-project');
+
+    function repoUrl(id: string) {
+        return `${baseUrl}/api/workspaces/${id}/preferences`;
+    }
+
+    // -- GET --
+
+    it('GET returns empty object initially', async () => {
+        const res = await getJSON(repoUrl(repoId));
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({});
     });
 
-    it('lastDepth survives server restart', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', lastDepth: 'deep' });
-        await server.close();
-
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
-
-        const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep' });
+    it('GET includes CORS headers', async () => {
+        const res = await getJSON(repoUrl(repoId));
+        expect(res.headers['access-control-allow-origin']).toBe('*');
     });
 
-    // -- lastEffort persistence via API --
+    // -- PUT --
 
-    it('PUT persists lastEffort field', async () => {
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastEffort: 'high' });
+    it('PUT replaces per-repo prefs and returns result', async () => {
+        const res = await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', lastDepth: 'deep' });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastEffort: 'high' });
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
 
-        const get = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(get.body)).toEqual({ lastEffort: 'high' });
+        const get = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(get.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
     });
 
-    it('PATCH merges lastEffort into existing preferences', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastEffort: 'low' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastEffort: 'low' });
-    });
-
-    it('PATCH updates lastEffort without affecting other fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', lastEffort: 'medium', theme: 'dark' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastEffort: 'high' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', lastEffort: 'high', theme: 'dark' });
-    });
-
-    it('PUT strips invalid lastEffort values', async () => {
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastEffort: 'extreme' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({});
-    });
-
-    it('lastEffort survives server restart', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', lastEffort: 'high' });
-        await server.close();
-
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
-
-        const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastEffort: 'high' });
-    });
-
-    // -- lastSkill persistence via API --
-
-    it('PATCH persists lastSkill field', async () => {
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastSkill: 'impl' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastSkill: 'impl' });
-
-        const get = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(get.body)).toEqual({ lastSkill: 'impl' });
-    });
-
-    it('PATCH merges lastSkill into existing preferences', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastSkill: 'go-deep' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'go-deep' });
-    });
-
-    it('PATCH updates lastSkill without affecting other fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'claude-sonnet-4.6', lastSkill: 'impl', theme: 'dark' });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { lastSkill: 'go-deep' });
-        expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6', lastSkill: 'go-deep', theme: 'dark' });
-    });
-
-    it('lastSkill survives server restart', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', lastSkill: 'impl' });
-        await server.close();
-
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
-
-        const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'impl' });
-    });
-
-    // -- recentFollowPrompts persistence via API --
-
-    it('PATCH persists recentFollowPrompts', async () => {
-        const entries = [
-            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-        ];
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { recentFollowPrompts: entries });
+    it('PUT validates and strips unknown/global fields', async () => {
+        const res = await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', theme: 'dark', bogus: true });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body.recentFollowPrompts).toEqual(entries);
-
-        const get = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(get.body).recentFollowPrompts).toEqual(entries);
+        expect(body).toEqual({ lastModel: 'gpt-4' });
+        expect(body.theme).toBeUndefined();
     });
 
-    it('PATCH merges recentFollowPrompts with existing fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
-        const entries = [{ type: 'skill', name: 'impl', timestamp: 1000 }];
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { recentFollowPrompts: entries });
+    it('PUT returns 400 for invalid JSON', async () => {
+        const res = await request(repoUrl(repoId), {
+            method: 'PUT',
+            body: '{{bad',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        expect(res.status).toBe(400);
+    });
+
+    it('PUT replaces all fields (not merge)', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', lastDepth: 'deep' });
+        const res = await putJSON(repoUrl(repoId), { lastModel: 'claude-3' });
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-3' });
+        expect(JSON.parse(res.body).lastDepth).toBeUndefined();
+    });
+
+    // -- PATCH --
+
+    it('PATCH merges per-repo prefs', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), { lastDepth: 'deep' });
         expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.lastModel).toBe('gpt-5.2');
-        expect(body.recentFollowPrompts).toEqual(entries);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
     });
 
-    it('PUT with recentFollowPrompts replaces all', async () => {
-        const entries = [{ type: 'prompt', name: 'review', timestamp: 1000 }];
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'x', recentFollowPrompts: entries });
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'y' });
+    it('PATCH creates prefs when none exist', async () => {
+        const res = await patchJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
         expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.recentFollowPrompts).toBeUndefined();
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4' });
     });
 
-    it('recentFollowPrompts survive server restart', async () => {
-        const entries = [
-            { type: 'prompt', name: 'review', path: 'r.md', timestamp: 1000 },
-            { type: 'skill', name: 'impl', description: 'Implement', timestamp: 900 },
-        ];
-        await putJSON(`${baseUrl}/api/preferences`, { recentFollowPrompts: entries });
+    it('PATCH returns 400 for invalid JSON', async () => {
+        const res = await request(repoUrl(repoId), {
+            method: 'PATCH',
+            body: 'bad-json',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        expect(res.status).toBe(400);
+    });
+
+    it('PATCH with empty body preserves existing prefs', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), {});
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4' });
+    });
+
+    // -- Isolation --
+
+    it('two repos have independent preferences', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+        await putJSON(repoUrl(repoId2), { lastModel: 'claude-3' });
+
+        const res1 = await getJSON(repoUrl(repoId));
+        const res2 = await getJSON(repoUrl(repoId2));
+        expect(JSON.parse(res1.body).lastModel).toBe('gpt-4');
+        expect(JSON.parse(res2.body).lastModel).toBe('claude-3');
+    });
+
+    it('global and per-repo prefs are stored independently', async () => {
+        await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+
+        const globalRes = await getJSON(`${baseUrl}/api/preferences`);
+        expect(JSON.parse(globalRes.body)).toEqual({ theme: 'dark' });
+        expect(JSON.parse(globalRes.body).lastModel).toBeUndefined();
+
+        const repoRes = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(repoRes.body)).toEqual({ lastModel: 'gpt-4' });
+        expect(JSON.parse(repoRes.body).theme).toBeUndefined();
+    });
+
+    // -- Persistence --
+
+    it('per-repo prefs survive server restart', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', lastDepth: 'deep' });
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
         baseUrl = server.url;
 
-        const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body).recentFollowPrompts).toEqual(entries);
+        const res = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
     });
 
-    // -- pinnedChats persistence via API --
+    // -- pinnedChats --
 
     it('PATCH persists pinnedChats', async () => {
         const pinnedChats = { ws1: ['id-a', 'id-b'] };
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats });
+        const res = await patchJSON(repoUrl(repoId), { pinnedChats });
         expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.pinnedChats).toEqual(pinnedChats);
+        expect(JSON.parse(res.body).pinnedChats).toEqual(pinnedChats);
 
-        const get = await getJSON(`${baseUrl}/api/preferences`);
+        const get = await getJSON(repoUrl(repoId));
         expect(JSON.parse(get.body).pinnedChats).toEqual(pinnedChats);
     });
 
-    it('PATCH merges pinnedChats with existing fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
-        const pinnedChats = { ws1: ['id-a'] };
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats });
+    it('PATCH with pinnedChats:{} clears existing pins', async () => {
+        await patchJSON(repoUrl(repoId), { pinnedChats: { ws1: ['id-a'] } });
+
+        const res = await patchJSON(repoUrl(repoId), { pinnedChats: {} });
         expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.lastModel).toBe('gpt-5.2');
-        expect(body.pinnedChats).toEqual(pinnedChats);
-    });
+        expect(JSON.parse(res.body).pinnedChats).toBeUndefined();
 
-    it('PUT with pinnedChats replaces all', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'x', pinnedChats: { ws1: ['id-a'] } });
-        const res = await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'y' });
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.pinnedChats).toBeUndefined();
-    });
-
-    it('PATCH strips invalid pinnedChats values', async () => {
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: { ws1: [42, ''] } });
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.pinnedChats).toBeUndefined();
-    });
-
-    it('PATCH with pinnedChats:{} clears existing pins (unpin last chat)', async () => {
-        // Simulate pinning a chat
-        await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: { ws1: ['id-a'] } });
-
-        // Simulate unpinning the last chat — frontend sends { pinnedChats: {} }
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: {} });
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.pinnedChats).toBeUndefined();
-
-        // Verify it persisted (survives a GET)
-        const get = await getJSON(`${baseUrl}/api/preferences`);
+        const get = await getJSON(repoUrl(repoId));
         expect(JSON.parse(get.body).pinnedChats).toBeUndefined();
     });
 
-    it('PATCH with pinnedChats:{} does not affect other preference fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id-a'] } });
-
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { pinnedChats: {} });
+    it('PATCH with pinnedChats:{} does not affect other fields', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', pinnedChats: { ws1: ['id-a'] } });
+        const res = await patchJSON(repoUrl(repoId), { pinnedChats: {} });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body.lastModel).toBe('gpt-5.2');
+        expect(body.lastModel).toBe('gpt-4');
         expect(body.pinnedChats).toBeUndefined();
     });
 
-    it('pinnedChats survive server restart', async () => {
-        const pinnedChats = { ws1: ['id-a', 'id-b'], ws2: ['id-c'] };
-        await putJSON(`${baseUrl}/api/preferences`, { pinnedChats });
-        await server.close();
-
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
-
-        const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body).pinnedChats).toEqual(pinnedChats);
-    });
-
-    // -- archivedChats persistence via API --
+    // -- archivedChats --
 
     it('PATCH persists archivedChats', async () => {
         const archivedChats = { ws1: ['id-a', 'id-b'] };
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats });
+        const res = await patchJSON(repoUrl(repoId), { archivedChats });
         expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.archivedChats).toEqual(archivedChats);
+        expect(JSON.parse(res.body).archivedChats).toEqual(archivedChats);
 
-        const get = await getJSON(`${baseUrl}/api/preferences`);
+        const get = await getJSON(repoUrl(repoId));
         expect(JSON.parse(get.body).archivedChats).toEqual(archivedChats);
     });
 
-    it('PATCH merges archivedChats with existing fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2' });
-        const archivedChats = { ws1: ['id-a'] };
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats });
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.lastModel).toBe('gpt-5.2');
-        expect(body.archivedChats).toEqual(archivedChats);
-    });
-
     it('PATCH with archivedChats:{} clears existing archives', async () => {
-        await patchJSON(`${baseUrl}/api/preferences`, { archivedChats: { ws1: ['id-a'] } });
+        await patchJSON(repoUrl(repoId), { archivedChats: { ws1: ['id-a'] } });
 
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats: {} });
+        const res = await patchJSON(repoUrl(repoId), { archivedChats: {} });
         expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.archivedChats).toBeUndefined();
+        expect(JSON.parse(res.body).archivedChats).toBeUndefined();
 
-        const get = await getJSON(`${baseUrl}/api/preferences`);
+        const get = await getJSON(repoUrl(repoId));
         expect(JSON.parse(get.body).archivedChats).toBeUndefined();
     });
 
-    it('PATCH with archivedChats:{} does not affect other preference fields', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, { lastModel: 'gpt-5.2', archivedChats: { ws1: ['id-a'] } });
-
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { archivedChats: {} });
+    it('PATCH with archivedChats:{} does not affect other fields', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4', archivedChats: { ws1: ['id-a'] } });
+        const res = await patchJSON(repoUrl(repoId), { archivedChats: {} });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body.lastModel).toBe('gpt-5.2');
+        expect(body.lastModel).toBe('gpt-4');
         expect(body.archivedChats).toBeUndefined();
     });
 
-    it('archivedChats and pinnedChats persist independently', async () => {
-        await putJSON(`${baseUrl}/api/preferences`, {
-            pinnedChats: { ws1: ['p1'] },
-            archivedChats: { ws1: ['a1'] },
-        });
-        const res = await getJSON(`${baseUrl}/api/preferences`);
-        const body = JSON.parse(res.body);
-        expect(body.pinnedChats).toEqual({ ws1: ['p1'] });
-        expect(body.archivedChats).toEqual({ ws1: ['a1'] });
+    // -- lastModel/lastDepth/lastEffort/lastSkill persistence --
+
+    it('PUT persists lastModel', async () => {
+        const res = await putJSON(repoUrl(repoId), { lastModel: 'claude-sonnet-4.6' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'claude-sonnet-4.6' });
     });
 
-    it('archivedChats survive server restart', async () => {
-        const archivedChats = { ws1: ['id-a', 'id-b'], ws2: ['id-c'] };
-        await putJSON(`${baseUrl}/api/preferences`, { archivedChats });
-        await server.close();
+    it('PATCH persists lastDepth', async () => {
+        await putJSON(repoUrl(repoId), { lastModel: 'gpt-4' });
+        const res = await patchJSON(repoUrl(repoId), { lastDepth: 'deep' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
+    });
 
-        server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+    it('PATCH persists lastEffort', async () => {
+        const res = await patchJSON(repoUrl(repoId), { lastEffort: 'high' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastEffort: 'high' });
+    });
 
-        const res = await getJSON(`${baseUrl}/api/preferences`);
-        expect(JSON.parse(res.body).archivedChats).toEqual(archivedChats);
+    it('PATCH persists lastSkill', async () => {
+        const res = await patchJSON(repoUrl(repoId), { lastSkill: 'impl' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastSkill: 'impl' });
+    });
+
+    it('PATCH persists recentFollowPrompts', async () => {
+        const entries = [{ type: 'prompt', name: 'review', path: 'r.md', timestamp: 1000 }];
+        const res = await patchJSON(repoUrl(repoId), { recentFollowPrompts: entries });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).recentFollowPrompts).toEqual(entries);
     });
 });

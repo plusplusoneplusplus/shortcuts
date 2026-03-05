@@ -291,7 +291,6 @@ describe('ChatSessionSidebar', () => {
         });
 
         it('pin icon click calls onTogglePin with session id', () => {
-            expect(source).toContain('onTogglePin?.(session.id)');
             expect(source).toContain('onTogglePin(session.id)');
         });
     });

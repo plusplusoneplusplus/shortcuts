@@ -1,8 +1,8 @@
 /**
  * useArchivedChats — custom hook for managing archived chat sessions.
  *
- * Fetches archived IDs from user preferences, provides archive/unarchive
- * operations, and persists state per-workspace via PATCH /api/preferences.
+ * Fetches archived IDs from per-workspace preferences, provides archive/unarchive
+ * operations, and persists state per-workspace via PATCH /api/workspaces/:id/preferences.
  * Mirrors the usePinnedChats pattern.
  */
 
@@ -24,17 +24,14 @@ export function useArchivedChats(
     isPinnedFn?: (id: string) => boolean,
 ): UseArchivedChatsResult {
     const [archivedIds, setArchivedIds] = useState<string[]>([]);
-    const allArchivedRef = useRef<Record<string, string[]>>({});
     const mountedRef = useRef(true);
 
     useEffect(() => {
         mountedRef.current = true;
-        fetchApi('/preferences')
+        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences')
             .then((prefs: any) => {
                 if (!mountedRef.current) return;
-                const all = prefs?.archivedChats ?? {};
-                allArchivedRef.current = all;
-                setArchivedIds(all[workspaceId] ?? []);
+                setArchivedIds(prefs?.archivedChats ?? []);
             })
             .catch(() => {
                 if (!mountedRef.current) return;
@@ -54,20 +51,11 @@ export function useArchivedChats(
                 const isCurrentlyArchived = prev.includes(id);
                 const next = isCurrentlyArchived ? prev.filter(a => a !== id) : [id, ...prev];
 
-                const updated = { ...allArchivedRef.current };
-                if (next.length > 0) {
-                    updated[workspaceId] = next;
-                } else {
-                    delete updated[workspaceId];
-                }
-                allArchivedRef.current = updated;
-
                 // Fire-and-forget PATCH
-                const archivedChats = Object.keys(updated).length > 0 ? updated : undefined;
-                fetchApi('/preferences', {
+                fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ archivedChats: archivedChats ?? {} }),
+                    body: JSON.stringify({ archivedChats: next }),
                 }).catch(() => { /* best-effort */ });
 
                 // Auto-unpin when archiving a session that is actually pinned

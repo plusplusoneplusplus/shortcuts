@@ -1,5 +1,7 @@
 /**
  * useRecentPrompts — reads and persists recently-used prompts/skills from preferences.
+ * When wsId is provided, uses per-repo preferences at /api/workspaces/:id/preferences.
+ * When wsId is empty/undefined, falls back to global /api/preferences.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -21,15 +23,18 @@ export interface UseRecentPromptsResult {
 
 const MAX_RECENT = 10;
 
-export function useRecentPrompts(): UseRecentPromptsResult {
+export function useRecentPrompts(wsId?: string): UseRecentPromptsResult {
     const [recentItems, setRecentItems] = useState<RecentFollowPromptEntry[]>([]);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
+        const url = wsId
+            ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
+            : getApiBase() + '/preferences';
         (async () => {
             try {
-                const res = await fetch(getApiBase() + '/preferences');
+                const res = await fetch(url);
                 if (!res.ok) return;
                 const prefs = await res.json();
                 if (!cancelled && Array.isArray(prefs.recentFollowPrompts)) {
@@ -42,7 +47,7 @@ export function useRecentPrompts(): UseRecentPromptsResult {
             }
         })();
         return () => { cancelled = true; };
-    }, []);
+    }, [wsId]);
 
     const trackUsage = useCallback((type: 'prompt' | 'skill', name: string, path?: string, description?: string) => {
         setRecentItems(prev => {
@@ -54,7 +59,10 @@ export function useRecentPrompts(): UseRecentPromptsResult {
             const updated = [entry, ...filtered].slice(0, MAX_RECENT);
 
             // Fire-and-forget persistence
-            fetch(getApiBase() + '/preferences', {
+            const url = wsId
+                ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
+                : getApiBase() + '/preferences';
+            fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ recentFollowPrompts: updated }),
@@ -62,7 +70,7 @@ export function useRecentPrompts(): UseRecentPromptsResult {
 
             return updated;
         });
-    }, []);
+    }, [wsId]);
 
     return { recentItems, trackUsage, loaded };
 }

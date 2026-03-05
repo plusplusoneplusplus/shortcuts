@@ -77,7 +77,7 @@ function collectMarkdownFiles(folder: TaskFolder): TaskFile[] {
 
 export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowPromptDialogProps) {
     const { state } = useApp();
-    const { model, setModel } = usePreferences();
+    const { model, setModel } = usePreferences(wsId);
     const { recentItems, trackUsage } = useRecentPrompts();
     const { addToast } = useGlobalToast();
 

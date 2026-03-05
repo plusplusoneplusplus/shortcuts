@@ -11,224 +11,290 @@ beforeEach(() => {
 });
 
 describe('usePreferences', () => {
-    it('loads model from GET /api/preferences', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastModel: 'gpt-4' }),
+    describe('with repoId', () => {
+        it('loads model from GET /api/workspaces/:id/preferences', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastModel: 'gpt-4' }),
+            });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.model).toBe('gpt-4');
+            });
+
+            expect(mockFetch.mock.calls[0][0]).toContain('/workspaces/my-repo/preferences');
         });
 
-        const { result } = renderHook(() => usePreferences());
+        it('defaults to empty string when API fails', async () => {
+            mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-            expect(result.current.model).toBe('gpt-4');
-        });
-    });
+            const { result } = renderHook(() => usePreferences('my-repo'));
 
-    it('defaults to empty string when API fails', async () => {
-        mockFetch.mockRejectedValueOnce(new Error('Network error'));
-
-        const { result } = renderHook(() => usePreferences());
-
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-            expect(result.current.model).toBe('');
-        });
-    });
-
-    it('setModel updates model state immediately', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastModel: 'gpt-4' }),
-        });
-        // PATCH call
-        mockFetch.mockResolvedValueOnce({ ok: true });
-
-        const { result } = renderHook(() => usePreferences());
-
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.model).toBe('');
+            });
         });
 
-        act(() => {
-            result.current.setModel('gpt-3.5');
+        it('setModel updates model state immediately', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastModel: 'gpt-4' }),
+            });
+            // PATCH call
+            mockFetch.mockResolvedValueOnce({ ok: true });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
+
+            act(() => {
+                result.current.setModel('gpt-3.5');
+            });
+
+            expect(result.current.model).toBe('gpt-3.5');
         });
 
-        expect(result.current.model).toBe('gpt-3.5');
-    });
+        it('setModel fires PATCH /api/workspaces/:id/preferences', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastModel: '' }),
+            });
+            mockFetch.mockResolvedValueOnce({ ok: true });
 
-    it('setModel fires PATCH /api/preferences', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastModel: '' }),
-        });
-        mockFetch.mockResolvedValueOnce({ ok: true });
+            const { result } = renderHook(() => usePreferences('my-repo'));
 
-        const { result } = renderHook(() => usePreferences());
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
 
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-        });
+            act(() => {
+                result.current.setModel('claude-3');
+            });
 
-        act(() => {
-            result.current.setModel('claude-3');
-        });
-
-        await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'PATCH'
-            );
-            expect(patchCalls.length).toBe(1);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.lastModel).toBe('claude-3');
-        });
-    });
-
-    // -- depth support --
-
-    it('loads depth from GET /api/preferences', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastModel: 'gpt-4', lastDepth: 'normal' }),
+            await waitFor(() => {
+                const patchCalls = mockFetch.mock.calls.filter(
+                    ([url, opts]: [string, any]) => opts?.method === 'PATCH' && url.includes('/workspaces/')
+                );
+                expect(patchCalls.length).toBe(1);
+                const body = JSON.parse(patchCalls[0][1].body);
+                expect(body.lastModel).toBe('claude-3');
+            });
         });
 
-        const { result } = renderHook(() => usePreferences());
+        // -- depth support --
 
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
+        it('loads depth from GET /api/workspaces/:id/preferences', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastModel: 'gpt-4', lastDepth: 'normal' }),
+            });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.depth).toBe('normal');
+            });
+        });
+
+        it('defaults depth to empty string when API fails', async () => {
+            mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.depth).toBe('');
+            });
+        });
+
+        it('setDepth updates depth state immediately', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastDepth: 'deep' }),
+            });
+            mockFetch.mockResolvedValueOnce({ ok: true });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
+
+            act(() => {
+                result.current.setDepth('normal');
+            });
+
             expect(result.current.depth).toBe('normal');
         });
+
+        it('setDepth fires PATCH /api/workspaces/:id/preferences with lastDepth', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastDepth: 'deep' }),
+            });
+            mockFetch.mockResolvedValueOnce({ ok: true });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
+
+            act(() => {
+                result.current.setDepth('normal');
+            });
+
+            await waitFor(() => {
+                const patchCalls = mockFetch.mock.calls.filter(
+                    ([url, opts]: [string, any]) => opts?.method === 'PATCH' && url.includes('/workspaces/')
+                );
+                expect(patchCalls.length).toBe(1);
+                const body = JSON.parse(patchCalls[0][1].body);
+                expect(body.lastDepth).toBe('normal');
+            });
+        });
+
+        // -- skill support --
+
+        it('loads skill from GET /api/workspaces/:id/preferences', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastSkill: 'impl' }),
+            });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.skill).toBe('impl');
+            });
+        });
+
+        it('defaults skill to empty string when API fails', async () => {
+            mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.skill).toBe('');
+            });
+        });
+
+        it('setSkill updates skill state immediately', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastSkill: 'impl' }),
+            });
+            mockFetch.mockResolvedValueOnce({ ok: true });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
+
+            act(() => {
+                result.current.setSkill('go-deep');
+            });
+
+            expect(result.current.skill).toBe('go-deep');
+        });
+
+        it('setSkill fires PATCH /api/workspaces/:id/preferences with lastSkill', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastSkill: '' }),
+            });
+            mockFetch.mockResolvedValueOnce({ ok: true });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
+
+            act(() => {
+                result.current.setSkill('impl');
+            });
+
+            await waitFor(() => {
+                const patchCalls = mockFetch.mock.calls.filter(
+                    ([url, opts]: [string, any]) => opts?.method === 'PATCH' && url.includes('/workspaces/')
+                );
+                expect(patchCalls.length).toBe(1);
+                const body = JSON.parse(patchCalls[0][1].body);
+                expect(body.lastSkill).toBe('impl');
+            });
+        });
+
+        it('re-fetches when repoId changes', async () => {
+            mockFetch
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ lastModel: 'model-a' }) })
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ lastModel: 'model-b' }) });
+
+            const { result, rerender } = renderHook(({ id }) => usePreferences(id), {
+                initialProps: { id: 'repo-a' },
+            });
+
+            await waitFor(() => {
+                expect(result.current.model).toBe('model-a');
+            });
+
+            rerender({ id: 'repo-b' });
+
+            await waitFor(() => {
+                expect(result.current.model).toBe('model-b');
+            });
+
+            expect(mockFetch.mock.calls[1][0]).toContain('/workspaces/repo-b/preferences');
+        });
     });
 
-    it('defaults depth to empty string when API fails', async () => {
-        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    describe('without repoId', () => {
+        it('returns loaded=true immediately without fetching', async () => {
+            const { result } = renderHook(() => usePreferences());
 
-        const { result } = renderHook(() => usePreferences());
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
 
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+
+        it('returns empty defaults without fetching', async () => {
+            const { result } = renderHook(() => usePreferences());
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
+
+            expect(result.current.model).toBe('');
             expect(result.current.depth).toBe('');
-        });
-    });
-
-    it('setDepth updates depth state immediately', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastDepth: 'deep' }),
-        });
-        mockFetch.mockResolvedValueOnce({ ok: true });
-
-        const { result } = renderHook(() => usePreferences());
-
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-        });
-
-        act(() => {
-            result.current.setDepth('normal');
-        });
-
-        expect(result.current.depth).toBe('normal');
-    });
-
-    it('setDepth fires PATCH /api/preferences with lastDepth', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastDepth: 'deep' }),
-        });
-        mockFetch.mockResolvedValueOnce({ ok: true });
-
-        const { result } = renderHook(() => usePreferences());
-
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-        });
-
-        act(() => {
-            result.current.setDepth('normal');
-        });
-
-        await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'PATCH'
-            );
-            expect(patchCalls.length).toBe(1);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.lastDepth).toBe('normal');
-        });
-    });
-
-    // -- skill support --
-
-    it('loads skill from GET /api/preferences', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastSkill: 'impl' }),
-        });
-
-        const { result } = renderHook(() => usePreferences());
-
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-            expect(result.current.skill).toBe('impl');
-        });
-    });
-
-    it('defaults skill to empty string when API fails', async () => {
-        mockFetch.mockRejectedValueOnce(new Error('Network error'));
-
-        const { result } = renderHook(() => usePreferences());
-
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
+            expect(result.current.effort).toBe('');
             expect(result.current.skill).toBe('');
         });
-    });
 
-    it('setSkill updates skill state immediately', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastSkill: 'impl' }),
-        });
-        mockFetch.mockResolvedValueOnce({ ok: true });
+        it('setModel updates local state but does not persist', async () => {
+            const { result } = renderHook(() => usePreferences());
 
-        const { result } = renderHook(() => usePreferences());
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+            });
 
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-        });
+            act(() => {
+                result.current.setModel('gpt-4');
+            });
 
-        act(() => {
-            result.current.setSkill('go-deep');
-        });
-
-        expect(result.current.skill).toBe('go-deep');
-    });
-
-    it('setSkill fires PATCH /api/preferences with lastSkill', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: () => Promise.resolve({ lastSkill: '' }),
-        });
-        mockFetch.mockResolvedValueOnce({ ok: true });
-
-        const { result } = renderHook(() => usePreferences());
-
-        await waitFor(() => {
-            expect(result.current.loaded).toBe(true);
-        });
-
-        act(() => {
-            result.current.setSkill('impl');
-        });
-
-        await waitFor(() => {
-            const patchCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'PATCH'
-            );
-            expect(patchCalls.length).toBe(1);
-            const body = JSON.parse(patchCalls[0][1].body);
-            expect(body.lastSkill).toBe('impl');
+            expect(result.current.model).toBe('gpt-4');
+            expect(mockFetch).not.toHaveBeenCalled();
         });
     });
 });

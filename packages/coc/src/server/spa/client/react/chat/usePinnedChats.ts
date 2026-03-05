@@ -1,9 +1,9 @@
 /**
  * usePinnedChats — custom hook for managing pinned chat sessions.
  *
- * Fetches pinned IDs from user preferences, provides pin/unpin operations,
+ * Fetches pinned IDs from per-workspace preferences, provides pin/unpin operations,
  * and partitions sessions into pinned vs unpinned groups.
- * Pins are persisted per-workspace via PATCH /api/preferences.
+ * Pins are persisted per-workspace via PATCH /api/workspaces/:id/preferences.
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -26,17 +26,14 @@ export interface UsePinnedChatsResult {
 
 export function usePinnedChats(workspaceId: string): UsePinnedChatsResult {
     const [pinnedIds, setPinnedIds] = useState<string[]>([]);
-    const allPinnedRef = useRef<Record<string, string[]>>({});
     const mountedRef = useRef(true);
 
     useEffect(() => {
         mountedRef.current = true;
-        fetchApi('/preferences')
+        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences')
             .then((prefs: any) => {
                 if (!mountedRef.current) return;
-                const all = prefs?.pinnedChats ?? {};
-                allPinnedRef.current = all;
-                setPinnedIds(all[workspaceId] ?? []);
+                setPinnedIds(prefs?.pinnedChats ?? []);
             })
             .catch(() => {
                 if (!mountedRef.current) return;
@@ -56,20 +53,11 @@ export function usePinnedChats(workspaceId: string): UsePinnedChatsResult {
                 const isPinned = prev.includes(id);
                 const next = isPinned ? prev.filter(p => p !== id) : [id, ...prev];
 
-                const updated = { ...allPinnedRef.current };
-                if (next.length > 0) {
-                    updated[workspaceId] = next;
-                } else {
-                    delete updated[workspaceId];
-                }
-                allPinnedRef.current = updated;
-
                 // Fire-and-forget PATCH
-                const pinnedChats = Object.keys(updated).length > 0 ? updated : undefined;
-                fetchApi('/preferences', {
+                fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pinnedChats: pinnedChats ?? {} }),
+                    body: JSON.stringify({ pinnedChats: next }),
                 }).catch(() => { /* best-effort */ });
 
                 return next;

@@ -1131,7 +1131,7 @@ describe('RepoChatTab', () => {
         });
 
         it('destructures model and persistModel from usePreferences', () => {
-            expect(source).toContain('const { model: savedModel, setModel: persistModel } = usePreferences()');
+            expect(source).toContain('const { model: savedModel, setModel: persistModel } = usePreferences(workspaceId)');
         });
 
         it('declares model and models state variables', () => {
@@ -1236,7 +1236,7 @@ describe('RepoChatTab', () => {
 
         it('model badge has a title attribute for accessibility', () => {
             const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
-            expect(headerSection).toContain('title="Model used for this chat session"');
+            expect(headerSection).toContain('title={task.config?.model || task.metadata?.model}');
         });
     });
 

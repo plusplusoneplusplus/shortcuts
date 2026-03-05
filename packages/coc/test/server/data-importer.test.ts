@@ -204,13 +204,13 @@ describe('importData', () => {
 
         it('restores preferences', async () => {
             const payload = buildPayload({
-                preferences: { lastModel: 'gpt-4' },
+                preferences: { global: { theme: 'dark' } },
             });
 
             await importData(payload, baseOptions());
 
             const prefs = readPreferences(dataDir);
-            expect(prefs).toEqual({ lastModel: 'gpt-4' });
+            expect(prefs).toEqual({ global: { theme: 'dark' } });
         });
 
         it('resets queue manager when provided', async () => {
@@ -423,27 +423,27 @@ describe('importData', () => {
         });
 
         it('merges preferences with existing', async () => {
-            writePreferences(dataDir, { lastModel: 'gpt-3.5' });
+            writePreferences(dataDir, { global: { theme: 'light' } });
 
             const payload = buildPayload({
-                preferences: { lastModel: 'gpt-4' },
+                preferences: { global: { theme: 'dark' } },
             });
 
             await importData(payload, baseOptions({ mode: 'merge' }));
 
             const prefs = readPreferences(dataDir);
-            expect(prefs.lastModel).toBe('gpt-4');
+            expect(prefs.global?.theme).toBe('dark');
         });
 
         it('preserves existing preferences when payload has empty prefs', async () => {
-            writePreferences(dataDir, { lastModel: 'gpt-3.5' });
+            writePreferences(dataDir, { global: { theme: 'light' } });
 
             const payload = buildPayload({ preferences: {} });
 
             await importData(payload, baseOptions({ mode: 'merge' }));
 
             const prefs = readPreferences(dataDir);
-            expect(prefs.lastModel).toBe('gpt-3.5');
+            expect(prefs.global?.theme).toBe('light');
         });
 
         it('adds all items when store is empty', async () => {

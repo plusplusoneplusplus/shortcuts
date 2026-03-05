@@ -53,8 +53,8 @@ describe('usePinnedChats', () => {
     });
 
     describe('preferences fetch', () => {
-        it('fetches preferences on mount', () => {
-            expect(source).toContain("fetchApi('/preferences')");
+        it('fetches per-workspace preferences on mount', () => {
+            expect(source).toContain("fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/preferences')");
         });
 
         it('extracts pinnedChats from preferences', () => {
@@ -80,17 +80,18 @@ describe('usePinnedChats', () => {
             expect(source).toContain('prev.filter(p => p !== id)');
         });
 
-        it('persists via PATCH /preferences', () => {
+        it('persists via PATCH to workspace preferences', () => {
             expect(source).toContain("method: 'PATCH'");
-            expect(source).toContain("'/preferences'");
+            expect(source).toContain("'/workspaces/' + encodeURIComponent(workspaceId) + '/preferences'");
         });
 
-        it('sends pinnedChats in PATCH body', () => {
+        it('sends updated pinnedChats array in PATCH body', () => {
             expect(source).toContain('JSON.stringify({ pinnedChats');
         });
 
-        it('cleans up workspace key when no pins remain', () => {
-            expect(source).toContain('delete updated[workspaceId]');
+        it('pin/unpin is reflected in the sent array', () => {
+            // The next array (updated IDs) is what gets sent
+            expect(source).toContain('body: JSON.stringify({ pinnedChats: next })');
         });
     });
 
@@ -116,10 +117,6 @@ describe('usePinnedChats', () => {
     });
 
     describe('state management', () => {
-        it('tracks all-workspace pins in a ref', () => {
-            expect(source).toContain('allPinnedRef');
-        });
-
         it('uses mountedRef to prevent state updates after unmount', () => {
             expect(source).toContain('mountedRef');
             expect(source).toContain('mountedRef.current = false');

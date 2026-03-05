@@ -104,7 +104,7 @@ export function GenerateTaskDialog({
     const { isMobile } = useBreakpoint();
 
     // --- preferences (persisted model + depth + effort) ---
-    const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth, effort: savedEffort, setEffort: persistEffort } = usePreferences();
+    const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth, effort: savedEffort, setEffort: persistEffort } = usePreferences(wsId);
     const { addToast } = useGlobalToast();
 
     // --- form state ---

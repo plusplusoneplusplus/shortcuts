@@ -71,7 +71,7 @@ export function NewChatDialog({
     onChatCreated,
 }: NewChatDialogProps) {
     const { isMobile } = useBreakpoint();
-    const { model: savedModel, setModel: persistModel } = usePreferences();
+    const { model: savedModel, setModel: persistModel } = usePreferences(workspaceId);
 
     // Chat state
     const [inputValue, setInputValue] = useState('');
