@@ -50,7 +50,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - If a plan markdown file is provided with task checkboxes, mark tasks complete as you finish them.
 
 9. **Commit when clean**
-   - Only create a commit after the build succeeds and all tests pass (step 6).
+   - Only create a commit after the build succeeds and all related tests pass (step 6).
    - Write a clear commit message describing the change and the test additions.
 
 10. **Archive the task file (if applicable)**
@@ -65,7 +65,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 
 - Prefer existing repo commands rather than introducing new tooling.
 - If the change impacts multiple packages/workspaces, ensure the build and tests for each affected package pass — not just the root-level command.
-- Never commit if the build or any test is broken. Fix the issue first.
+- Pause commits if the build or any tests are failing. Resolve the issues first, verify that the build and tests pass, and then proceed with committing the changes.
 
 ## Scripts
 
