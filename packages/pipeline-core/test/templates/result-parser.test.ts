@@ -127,4 +127,131 @@ describe('parseReplicateResponse', () => {
 
         expect(files[0].content).toBe(content);
     });
+
+    it('ignores preamble text before the first file block', () => {
+        const input = [
+            'Sure, here are the changes:',
+            '',
+            '=== FILE: src/a.ts (new) ===',
+            'export const a = 1;',
+            '=== END FILE ===',
+        ].join('\n');
+
+        const { files } = parseReplicateResponse(input);
+
+        expect(files).toHaveLength(1);
+        expect(files[0].path).toBe('src/a.ts');
+        expect(files[0].content).toBe('export const a = 1;');
+    });
+
+    it('ignores trailing text after the last END FILE marker', () => {
+        const input = [
+            '=== FILE: src/a.ts (new) ===',
+            'content',
+            '=== END FILE ===',
+            '=== SUMMARY ===',
+            'Done.',
+            '',
+            'Let me know if you need anything else!',
+        ].join('\n');
+
+        const { files } = parseReplicateResponse(input);
+
+        expect(files).toHaveLength(1);
+    });
+
+    it('ignores text between file blocks', () => {
+        const input = [
+            '=== FILE: a.ts (new) ===',
+            'file a',
+            '=== END FILE ===',
+            '',
+            'Here is the second file:',
+            '',
+            '=== FILE: b.ts (new) ===',
+            'file b',
+            '=== END FILE ===',
+        ].join('\n');
+
+        const { files } = parseReplicateResponse(input);
+
+        expect(files).toHaveLength(2);
+        expect(files[0].path).toBe('a.ts');
+        expect(files[1].path).toBe('b.ts');
+    });
+
+    it('returns empty array for output with no file blocks', () => {
+        const input = 'Here is my analysis of the code. No changes needed.';
+
+        const { files } = parseReplicateResponse(input);
+
+        expect(files).toEqual([]);
+    });
+
+    it('preserves file order from AI output', () => {
+        const input = [
+            '=== FILE: a.ts (new) ===',
+            'a',
+            '=== END FILE ===',
+            '=== FILE: b.ts (modified) ===',
+            'b',
+            '=== END FILE ===',
+            '=== FILE: c.ts (deleted) ===',
+            '=== END FILE ===',
+        ].join('\n');
+
+        const { files } = parseReplicateResponse(input);
+
+        expect(files[0].path).toBe('a.ts');
+        expect(files[1].path).toBe('b.ts');
+        expect(files[2].path).toBe('c.ts');
+    });
+
+    it('each FileChange has required path and action fields', () => {
+        const input = [
+            '=== FILE: src/x.ts (new) ===',
+            'x',
+            '=== END FILE ===',
+            '=== FILE: src/y.ts (modified) ===',
+            'y',
+            '=== END FILE ===',
+        ].join('\n');
+
+        const { files } = parseReplicateResponse(input);
+
+        for (const f of files) {
+            expect(typeof f.path).toBe('string');
+            expect(f.path.length).toBeGreaterThan(0);
+            expect(['new', 'modified', 'deleted']).toContain(f.status);
+        }
+    });
+
+    it('content is a string for new and modified files', () => {
+        const input = [
+            '=== FILE: src/x.ts (new) ===',
+            'export const x = 1;',
+            '=== END FILE ===',
+        ].join('\n');
+
+        const { files } = parseReplicateResponse(input);
+
+        expect(typeof files[0].content).toBe('string');
+        expect(files[0].content.length).toBeGreaterThan(0);
+    });
+
+    it('extracts multi-line summary', () => {
+        const input = [
+            '=== FILE: a.ts (new) ===',
+            'a',
+            '=== END FILE ===',
+            '=== SUMMARY ===',
+            'Created a new file.',
+            'It does something interesting.',
+        ].join('\n');
+
+        const { summary } = parseReplicateResponse(input);
+
+        expect(summary).toContain('Created a new file.');
+        expect(summary).toContain('It does something interesting.');
+    });
 });

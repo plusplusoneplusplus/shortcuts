@@ -134,4 +134,54 @@ describe('replicateCommit', () => {
         expect(promptIdx).toBeLessThan(aiIdx);
         expect(aiIdx).toBeLessThan(parseIdx);
     });
+
+    it('passes template hints through to the prompt', async () => {
+        const repoRoot = getRepoRoot();
+        const hash = getHeadHash();
+
+        const template: CommitTemplate = {
+            name: 'test',
+            kind: 'commit',
+            commitHash: hash,
+            hints: ['Focus on error handling', 'Use TypeScript'],
+        };
+        const options: ReplicateOptions = {
+            template,
+            repoRoot,
+            instruction: 'Do something',
+        };
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: CANNED_RESPONSE,
+        });
+
+        await replicateCommit(options, mockInvoker);
+
+        const promptArg = (mockInvoker as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+        expect(promptArg).toContain('Focus on error handling');
+        expect(promptArg).toContain('Use TypeScript');
+    });
+
+    it('returns empty files array when AI returns no file blocks', async () => {
+        const repoRoot = getRepoRoot();
+        const hash = getHeadHash();
+
+        const template: CommitTemplate = {
+            name: 'test',
+            kind: 'commit',
+            commitHash: hash,
+        };
+        const options: ReplicateOptions = {
+            template,
+            repoRoot,
+            instruction: 'Do something',
+        };
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: 'I could not generate any changes for this instruction.',
+        });
+
+        const result = await replicateCommit(options, mockInvoker);
+        expect(result.files).toEqual([]);
+    });
 });

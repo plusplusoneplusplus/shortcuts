@@ -85,4 +85,53 @@ describe('buildReplicatePrompt', () => {
 
         expect(result).toBe(result.trimEnd());
     });
+
+    it('contains the Template Commit section header', () => {
+        const result = buildReplicatePrompt(commit, 'diff', [], 'instruction');
+        expect(result).toContain('## Template Commit');
+    });
+
+    it('contains the Instruction section', () => {
+        const result = buildReplicatePrompt(commit, 'diff', [], 'instruction');
+        expect(result).toContain('## Instruction');
+    });
+
+    it('contains the Output Format section', () => {
+        const result = buildReplicatePrompt(commit, 'diff', [], 'instruction');
+        expect(result).toContain('## Output Format');
+    });
+
+    it('includes each file path in the file list', () => {
+        const files = [
+            makeFile('src/a.ts', 'added'),
+            makeFile('src/b.ts', 'modified'),
+            makeFile('lib/c.ts', 'deleted'),
+        ];
+        const result = buildReplicatePrompt(commit, 'diff', files, 'instruction');
+        expect(result).toContain('src/a.ts');
+        expect(result).toContain('src/b.ts');
+        expect(result).toContain('lib/c.ts');
+    });
+
+    it('produces valid prompt when description/instruction is empty string', () => {
+        const result = buildReplicatePrompt(commit, 'diff', [], '');
+        expect(result).toBeTruthy();
+        expect(result).not.toContain('undefined');
+    });
+
+    it('handles a large diff without truncation', () => {
+        const largeDiff = 'x'.repeat(50_000);
+        const result = buildReplicatePrompt(commit, largeDiff, [], 'instruction');
+        expect(result).toContain(largeDiff);
+    });
+
+    it('includes all files even with a large diff', () => {
+        const largeDiff = 'y'.repeat(50_000);
+        const fileNames = Array.from({ length: 20 }, (_, i) => `src/file-${i}.ts`);
+        const files = fileNames.map((f) => makeFile(f, 'modified'));
+        const result = buildReplicatePrompt(commit, largeDiff, files, 'instruction');
+        for (const name of fileNames) {
+            expect(result).toContain(name);
+        }
+    });
 });
