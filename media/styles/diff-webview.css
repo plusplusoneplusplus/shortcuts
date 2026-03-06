@@ -379,7 +379,7 @@ html, body {
     width: 12px;
     flex-shrink: 0;
     text-align: center;
-    font-weight: 600;
+    font-weight: normal;
 }
 
 /* Comment indicator */
@@ -678,7 +678,7 @@ body.vscode-high-contrast .diff-line-hunk .hunk-gutter {
     width: 12px;
     flex-shrink: 0;
     text-align: center;
-    font-weight: 600;
+    font-weight: normal;
 }
 
 /* Comment indicator in inline view */
