@@ -8,11 +8,19 @@ import { useTheme } from './ThemeProvider';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
-export const TABS: { label: string; tab: DashboardTab }[] = [
+/** Set to `true` to re-enable the top-level Wiki tab in navigation. */
+export const SHOW_WIKI_TAB = false;
+
+export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Repos', tab: 'repos' },
     { label: 'Processes', tab: 'processes' },
+    { label: 'Wiki', tab: 'wiki' },
     { label: 'Memory', tab: 'memory' },
 ];
+
+export const TABS: { label: string; tab: DashboardTab }[] = SHOW_WIKI_TAB
+    ? ALL_TABS
+    : ALL_TABS.filter(t => t.tab !== 'wiki');
 
 const themeEmoji: Record<string, string> = {
     auto: '🌗',

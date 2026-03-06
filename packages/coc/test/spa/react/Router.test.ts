@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parsePipelineRunDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -50,7 +51,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#session')).toBe('processes');
     });
 
-    it('returns null for #wiki (wiki is only available under repos)', () => {
+    it('returns null for #wiki (wiki tab hidden via SHOW_WIKI_TAB)', () => {
+        expect(SHOW_WIKI_TAB).toBe(false);
         expect(tabFromHash('#wiki')).toBeNull();
     });
 
@@ -465,10 +467,12 @@ describe('parseWikiDeepLink — admin sub-tabs', () => {
 });
 
 // ─── wiki tab deep-link integration ─────────────────────────────
-// Top-level #wiki route removed; wiki is only accessible under #repos/:id/wiki.
+// Top-level #wiki route is hidden (SHOW_WIKI_TAB = false); wiki is only
+// accessible under #repos/:id/wiki. The code remains for future re-enabling.
 
 describe('wiki tab deep-link integration', () => {
-    it('tabFromHash returns null for all wiki routes (top-level wiki tab removed)', () => {
+    it('tabFromHash returns null for all wiki routes when SHOW_WIKI_TAB is false', () => {
+        expect(SHOW_WIKI_TAB).toBe(false);
         expect(tabFromHash('#wiki/my-wiki/browse')).toBeNull();
         expect(tabFromHash('#wiki/my-wiki/ask')).toBeNull();
         expect(tabFromHash('#wiki/my-wiki/graph')).toBeNull();
@@ -541,9 +545,10 @@ describe('parsePipelineDeepLink', () => {
 });
 
 // ─── handleHash wiki dispatch simulation ────────────────────────
-// The top-level #wiki route has been removed; wiki is now only accessible
-// under #repos/:id/wiki. These tests verify that #wiki hashes no longer
-// trigger any dispatches.
+// The top-level #wiki route is hidden (SHOW_WIKI_TAB = false); wiki is
+// accessible under #repos/:id/wiki. The dispatch code remains for future
+// re-enabling. These tests verify that #wiki hashes produce no dispatches
+// while SHOW_WIKI_TAB is false.
 
 describe('handleHash wiki dispatch simulation', () => {
     function simulateWikiHashDispatch(rawHash: string): Array<{ type: string; [key: string]: any }> {
@@ -569,7 +574,8 @@ describe('handleHash wiki dispatch simulation', () => {
         return dispatches;
     }
 
-    it('dispatches nothing for #wiki hashes (top-level wiki tab removed)', () => {
+    it('dispatches nothing for #wiki hashes (wiki tab hidden via SHOW_WIKI_TAB)', () => {
+        expect(SHOW_WIKI_TAB).toBe(false);
         expect(simulateWikiHashDispatch('#wiki/w1/component/comp-1')).toHaveLength(0);
         expect(simulateWikiHashDispatch('#wiki/w1/ask')).toHaveLength(0);
         expect(simulateWikiHashDispatch('#wiki/w1')).toHaveLength(0);

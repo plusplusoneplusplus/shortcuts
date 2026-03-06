@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AppProvider, appReducer } from '../../../src/server/spa/client/react/context/AppContext';
 import { ThemeProvider } from '../../../src/server/spa/client/react/layout/ThemeProvider';
-import { TopBar, TABS } from '../../../src/server/spa/client/react/layout/TopBar';
+import { TopBar, TABS, ALL_TABS, SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { DashboardTab } from '../../../src/server/spa/client/react/types/dashboard';
 
 beforeEach(() => {
@@ -54,8 +54,23 @@ describe('TABS constant', () => {
         expect(tabs).toContain('memory');
     });
 
-    it('has exactly 3 entries', () => {
+    it('has exactly 3 entries (wiki hidden)', () => {
         expect(TABS).toHaveLength(3);
+    });
+
+    it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
+        expect(SHOW_WIKI_TAB).toBe(false);
+    });
+
+    it('ALL_TABS includes wiki entry', () => {
+        const tabs = ALL_TABS.map(t => t.tab);
+        expect(tabs).toContain('wiki');
+        expect(ALL_TABS).toHaveLength(4);
+    });
+
+    it('TABS excludes wiki when SHOW_WIKI_TAB is false', () => {
+        const tabs = TABS.map(t => t.tab);
+        expect(tabs).not.toContain('wiki');
     });
 });
 

@@ -9,11 +9,13 @@ import { useQueue } from '../context/QueueContext';
 import { ProcessesView } from '../processes/ProcessesView';
 import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
+import { WikiView } from '../wiki/WikiView';
 import { AdminPanel } from '../admin/AdminPanel';
 import { lazy, Suspense } from 'react';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab } from '../types/dashboard';
+import { SHOW_WIKI_TAB } from './TopBar';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -23,6 +25,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     const h = hash.replace(/^#/, '').split('/')[0];
     if (h === 'processes' || h === 'process' || h === 'session') return 'processes';
     if (h === 'repos' || h === 'tasks') return 'repos';
+    if (h === 'wiki' && SHOW_WIKI_TAB) return 'wiki';
     if (h === 'admin') return 'admin';
     if (h === 'reports') return 'reports';
     if (h === 'memory') return 'memory';
@@ -276,6 +279,20 @@ export function Router() {
                 }
             }
 
+            // Parse wiki deep links: #wiki/:id, #wiki/:id/:tab, #wiki/:id/component/:compId
+            if (tab === 'wiki') {
+                const wikiLink = parseWikiDeepLink('#' + hash);
+                if (wikiLink.wikiId) {
+                    if (wikiLink.tab) {
+                        dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId: wikiLink.wikiId, tab: wikiLink.tab, adminTab: wikiLink.adminTab, componentId: wikiLink.componentId });
+                    } else {
+                        dispatch({ type: 'SELECT_WIKI', wikiId: wikiLink.wikiId });
+                    }
+                } else {
+                    dispatch({ type: 'SELECT_WIKI', wikiId: null });
+                }
+            }
+
             // Parse memory sub-tab deep links: #memory/:subTab
             if (tab === 'memory') {
                 const parts = hash.split('/');
@@ -331,6 +348,8 @@ export function Router() {
             );
         case 'repos':
             return <ReposView />;
+        case 'wiki':
+            return <WikiView />;
         case 'admin':
             return <AdminPanel />;
         case 'memory':
