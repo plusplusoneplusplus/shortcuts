@@ -13,6 +13,7 @@ import { WorkflowsTab } from './WorkflowsTab';
 import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoQueueTab } from './RepoQueueTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
+import { RepoTemplatesTab } from './RepoTemplatesTab';
 import { RepoChatTab } from './RepoChatTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
@@ -45,6 +46,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'queue', label: 'Queue' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
+    { key: 'templates', label: 'Templates' },
     { key: 'copilot', label: 'Copilot' },
     { key: 'explorer', label: 'Explorer' },
 ];
@@ -476,11 +478,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'queue' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'queue' || activeSubTab === 'schedules' || activeSubTab === 'templates' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
+                        {activeSubTab === 'templates' && <RepoTemplatesTab workspaceId={ws.id} />}
                         {activeSubTab === 'chat' && <RepoChatTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} onOpenNewChatDialog={(readOnly) => handleNewChatFromTopBar(readOnly)} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}

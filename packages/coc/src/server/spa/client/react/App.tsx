@@ -223,6 +223,9 @@ function AppInner() {
             case 'schedule-run-complete':
                 window.dispatchEvent(new CustomEvent('schedule-changed', { detail: msg }));
                 break;
+            case 'templates-changed':
+                window.dispatchEvent(new CustomEvent('templates-changed', { detail: msg }));
+                break;
             case 'wiki-reload':
                 if (msg.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.wiki });
                 else if (msg.data?.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.data.wiki });

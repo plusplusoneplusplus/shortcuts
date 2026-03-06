@@ -152,7 +152,7 @@ export function parseWorkflowDeepLink(hash: string): { repoId: string; processId
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot', 'workflow', 'explorer']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'templates', 'chat', 'wiki', 'copilot', 'workflow', 'explorer']);
 
 export function Router() {
     const { state, dispatch } = useApp();

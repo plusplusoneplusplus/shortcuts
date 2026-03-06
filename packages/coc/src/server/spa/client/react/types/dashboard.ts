@@ -3,7 +3,7 @@
  */
 
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'admin' | 'memory';
-export type RepoSubTab = 'info' | 'workflows' | 'tasks' | 'queue' | 'schedules' | 'chat' | 'git' | 'wiki' | 'copilot' | 'workflow' | 'explorer';
+export type RepoSubTab = 'info' | 'workflows' | 'tasks' | 'queue' | 'schedules' | 'templates' | 'chat' | 'git' | 'wiki' | 'copilot' | 'workflow' | 'explorer';
 export type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
 export type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
 export type MemorySubTab = 'entries' | 'config';

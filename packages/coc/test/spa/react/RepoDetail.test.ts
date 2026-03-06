@@ -29,13 +29,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 9 entries', () => {
-        expect(SUB_TABS).toHaveLength(9);
+    it('has exactly 10 entries', () => {
+        expect(SUB_TABS).toHaveLength(10);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'tasks', 'chat', 'queue', 'workflows', 'schedules', 'copilot', 'explorer']);
+        expect(keys).toEqual(['info', 'git', 'tasks', 'chat', 'queue', 'workflows', 'schedules', 'templates', 'copilot', 'explorer']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {

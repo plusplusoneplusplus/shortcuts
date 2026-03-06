@@ -129,7 +129,7 @@ describe('VALID_REPO_SUB_TABS', () => {
     });
 
     it('has exactly 11 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(11);
+        expect(VALID_REPO_SUB_TABS.size).toBe(12);
     });
 });
 
