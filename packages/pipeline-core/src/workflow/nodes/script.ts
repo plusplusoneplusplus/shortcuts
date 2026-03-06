@@ -15,6 +15,29 @@ import { parseCSVContent } from '../../pipeline/csv-reader';
 import type { Items, ScriptNodeConfig, WorkflowExecutionOptions } from '../types';
 
 // ---------------------------------------------------------------------------
+// Shell option helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Map the `shell` config field to the value expected by `child_process.spawn`.
+ *
+ * - `'default'` / `undefined` → `true` (uses the platform default shell)
+ * - `'powershell'`            → `'powershell.exe'`
+ * - `'bash'`                  → `'bash'`
+ */
+export function getShellOption(shell: ScriptNodeConfig['shell']): string | boolean {
+    switch (shell) {
+        case 'powershell':
+            return 'powershell.exe';
+        case 'bash':
+            return 'bash';
+        case 'default':
+        default:
+            return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // CSV serialisation helper
 // ---------------------------------------------------------------------------
 
@@ -115,7 +138,7 @@ export async function executeScript(
             cwd,
             env: { ...process.env, ...config.env },
             stdio: ['pipe', 'pipe', 'inherit'],
-            shell: true,
+            shell: getShellOption(config.shell),
         });
 
         let settled = false;

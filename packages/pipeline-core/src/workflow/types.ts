@@ -161,6 +161,10 @@ export interface LoadNodeConfig extends BaseNode {
  * - `output: 'csv'` means the executor parses stdout as CSV text.
  * - `output: 'text'` means stdout is captured as a single-item result with a `text` field.
  * - `cwd` is relative to `workflowDirectory` if not absolute.
+ * - `shell` controls which shell is used to execute the command:
+ *   - `'default'` (or omitted) — `shell: true` (cmd.exe on Windows, /bin/sh on Unix).
+ *   - `'powershell'` — `shell: 'powershell.exe'` for PowerShell on Windows.
+ *   - `'bash'` — `shell: 'bash'` for Bash on Unix/WSL.
  */
 export interface ScriptNodeConfig extends BaseNode {
     type: 'script';
@@ -178,6 +182,13 @@ export interface ScriptNodeConfig extends BaseNode {
     input?: 'json' | 'csv' | 'none';
     /** How to interpret the command's stdout. Default: `'passthrough'`. */
     output?: 'json' | 'csv' | 'text' | 'passthrough';
+    /**
+     * Shell to use for executing the command.
+     * - `'default'` (or omitted) — `shell: true` (cmd.exe on Windows, /bin/sh on Unix).
+     * - `'powershell'` — uses `powershell.exe` as the shell.
+     * - `'bash'` — uses `bash` as the shell.
+     */
+    shell?: 'default' | 'powershell' | 'bash';
 }
 
 /**

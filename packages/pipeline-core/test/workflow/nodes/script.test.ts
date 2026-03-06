@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
-import { executeScript } from '../../../src/workflow/nodes/script';
+import { executeScript, getShellOption } from '../../../src/workflow/nodes/script';
 import type { ScriptNodeConfig, WorkflowExecutionOptions } from '../../../src/workflow/types';
 
 // ---------------------------------------------------------------------------
@@ -217,5 +217,27 @@ describe('executeScript', { timeout: 30_000 }, () => {
         });
         const result = await executeScript(config, [], defaultOptions);
         expect(result).toEqual([{ empty: true }]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// getShellOption unit tests
+// ---------------------------------------------------------------------------
+
+describe('getShellOption', () => {
+    it('returns true for undefined (default)', () => {
+        expect(getShellOption(undefined)).toBe(true);
+    });
+
+    it('returns true for "default"', () => {
+        expect(getShellOption('default')).toBe(true);
+    });
+
+    it('returns "powershell.exe" for "powershell"', () => {
+        expect(getShellOption('powershell')).toBe('powershell.exe');
+    });
+
+    it('returns "bash" for "bash"', () => {
+        expect(getShellOption('bash')).toBe('bash');
     });
 });
