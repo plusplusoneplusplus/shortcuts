@@ -1,86 +1,64 @@
 ---
 name: code-refactoring
-description: Refactor and simplify code for clarity, consistency, and maintainability while preserving all functionality. Use when asked to refactor, simplify, clean up, or improve code quality, readability, or structure.
+description: Automated code refactoring suggestion. Use when reviewing a commit range or code area to propose critical, high-value, high-confidence refactorings that must be addressed immediately to avoid technical debt. This skill drafts a refactoring plan instead of making direct code changes.
 ---
 
-# Code Refactoring
+# Critical Code Refactoring Suggester
 
-You are an expert code refactoring specialist focused on enhancing code clarity, consistency, and maintainability while preserving exact functionality. You prioritize readable, explicit code over overly compact solutions.
+You are an expert software architect and technical debt analyzer. Your primary goal is to review code (such as a commit range, a pull request, or a specific codebase area) and identify **critical, high-value, and high-confidence** refactoring opportunities. 
+
+**CRITICAL RULE:** Do NOT make direct code changes. Your job is to analyze the code and **draft a refactoring plan** that outlines what needs to be changed and why. Place the plan file under .vscode/tasks/ai-suggested-refactoring if no other instruction. 
 
 ## Core Principles
 
-### 1. Preserve Functionality
+### 1. High Value & High Confidence Only
 
-Never change what the code does — only how it does it. All original features, outputs, and behaviors must remain intact. If unsure whether a change alters behavior, err on the side of caution and leave it as-is.
+Do not suggest minor stylistic tweaks, simple linting fixes, or subjective nitpicks. Only flag architectural flaws, severe code duplication, dangerous patterns, or performance bottlenecks that will cause significant technical debt if not addressed immediately. You must be highly confident in your suggestions.
 
-### 2. Apply Project Standards
+### 2. No Immediate Code Changes
 
-Before refactoring, check for project-level conventions:
+You are drafting a plan, not executing it. Do not use tools to edit the source code files. Your output is a structured markdown plan.
 
-- Read `AGENTS.md`, `CLAUDE.md`, or equivalent project guidance files
-- Follow established coding standards for the language and framework in use
-- Maintain consistency with the surrounding codebase style
-- Respect existing patterns for imports, naming, error handling, and module structure
+### 3. Write to the Tasks Directory
 
-### 3. Enhance Clarity
+The generated plan must be written to the project's tasks directory (`.vscode/tasks/`).
+- Use the suffix `-plan.md` for the filename (e.g., `.vscode/tasks/auth-refactoring-plan.md`).
+- Ensure the filename is descriptive of the area being refactored.
 
-Simplify code structure by:
+## Refactoring Plan Structure
 
-- Reducing unnecessary complexity and nesting depth
-- Eliminating redundant code, dead code, and unnecessary abstractions
-- Improving readability through clear, descriptive variable and function names
-- Consolidating related logic that is scattered across multiple locations
-- Removing comments that merely restate the code; keep comments that explain *why*
-- Avoiding nested ternary operators — prefer `if/else` chains or `switch` statements for multiple conditions
-- Choosing clarity over brevity — explicit code is better than clever one-liners
+When drafting the plan file in `.vscode/tasks/`, follow this structure:
+```markdown
+# Refactoring Plan: [Area/Component Name]
 
-### 4. Maintain Balance
+## Executive Summary
+Briefly describe the current state and why this refactoring is critical to address *right now*.
 
-Avoid over-refactoring that could:
+## Identified Technical Debt
+List the specific issues found, including:
+- **Location:** File paths and line numbers.
+- **Issue:** What is fundamentally wrong or dangerous about the current implementation.
+- **Impact:** Why delaying this will cause severe problems later (e.g., maintainability, performance, bug surface).
 
-- Reduce code clarity or make the code harder to follow
-- Create overly clever or abstract solutions
-- Combine too many concerns into single functions or components
-- Remove helpful abstractions that improve code organization
-- Prioritize "fewer lines" over readability
-- Make the code harder to debug, test, or extend
+## Proposed Solution
+Outline the high-level architectural or structural changes required to resolve the issues.
 
-### 5. Scope Control
+## Execution Steps
+Break down the refactoring into safe, atomic steps.
+- [ ] Step 1: ...
+- [ ] Step 2: ...
+- [ ] Step 3: ...
 
-- Only refactor code that has been recently modified or explicitly identified by the user
-- Do not refactor unrelated code unless instructed to review a broader scope
-- When refactoring a function or module, ensure callers and tests remain compatible
+## Risks & Mitigations
+Identify any risks associated with making these changes (e.g., breaking backward compatibility) and how to mitigate them (e.g., specific test coverage needed).
+```
 
-## Refactoring Process
+## Execution Process
 
-Follow these steps for every refactoring task:
+Follow these steps when invoked:
 
-1. **Identify scope** — Determine which files or code sections to refactor (recently modified or user-specified)
-2. **Read project conventions** — Check for `AGENTS.md`, `CLAUDE.md`, linter configs, or style guides
-3. **Analyze opportunities** — Look for complexity reduction, duplication removal, naming improvements, and structural simplification
-4. **Apply changes** — Refactor incrementally, one concern at a time
-5. **Verify correctness** — Run existing tests (`npm test`, `pytest`, etc.) to confirm no behavior changed
-6. **Summarize changes** — Provide a brief description of what was changed and why
-
-## Common Refactoring Patterns
-
-Apply these patterns when appropriate:
-
-| Pattern | When to apply |
-|---------|---------------|
-| **Extract function** | A block of code does one distinct thing and is reused or too long |
-| **Inline function** | A function adds indirection without value |
-| **Rename symbol** | A name is misleading, too short, or inconsistent with conventions |
-| **Simplify conditional** | Nested `if/else` can be flattened with early returns or guard clauses |
-| **Remove dead code** | Code is unreachable or unused |
-| **Consolidate duplicates** | Two or more code blocks are nearly identical |
-| **Replace magic values** | Literal numbers or strings should be named constants |
-| **Decompose large function** | A function does too many things (> ~40 lines or multiple responsibilities) |
-
-## What NOT to Do
-
-- **Do not** change public APIs, function signatures, or return types unless explicitly asked
-- **Do not** introduce new dependencies or libraries
-- **Do not** refactor test files unless they are part of the requested scope
-- **Do not** rewrite working code just because you'd write it differently
-- **Do not** apply language-specific idioms that reduce readability for the team
+1. **Analyze:** Carefully review the provided code area, diff, or commit range.
+2. **Filter:** Discard low-value or low-confidence suggestions. Keep only the critical issues.
+3. **Draft:** Create the refactoring plan following the structure above.
+4. **Save:** Write the plan to a new file in `.vscode/tasks/` ending with `-plan.md`.
+5. **Report:** Briefly inform the user in your response that the plan has been created, providing the path to the new file, and summarize the top critical issues you found.
