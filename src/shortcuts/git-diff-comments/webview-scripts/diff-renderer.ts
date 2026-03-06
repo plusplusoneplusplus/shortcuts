@@ -4,7 +4,7 @@
 
 import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
 
-import { getCommentsForLine, getIgnoreWhitespace, getState, getViewMode } from './state';
+import { getCommentsForLine, getIgnoreWhitespace, getState, getViewMode, resetExpandedHunks, toggleHunkExpanded } from './state';
 import { DiffComment, DiffLineType } from './types';
 
 /**
@@ -30,6 +30,9 @@ let alignedDiffInfo: DiffLineInfo[] = [];
  * Key format: "old:lineNum" or "new:lineNum"
  */
 let lineToIndexMap: Map<string, number> = new Map();
+
+/** Full LCS-aligned lines for the current render — used by expand handler to retrieve hidden context */
+let fullAlignedLines: AlignedLine[] = [];
 
 /**
  * Parse content into lines
@@ -313,10 +316,12 @@ function createHunkHeaderElement(hunk: Hunk, viewMode: 'split' | 'inline'): HTML
 /**
  * Create a collapsed section placeholder showing "Show N hidden lines".
  */
-function createCollapsedSectionElement(collapsedCount: number, hunkIndex: number): HTMLElement {
+function createCollapsedSectionElement(collapsedCount: number, hunkIndex: number, startAlignedIndex: number, endAlignedIndex: number): HTMLElement {
     const container = document.createElement('div');
     container.className = 'collapsed-section';
     container.dataset.hunkIndex = String(hunkIndex);
+    container.dataset.startAlignedIndex = String(startAlignedIndex);
+    container.dataset.endAlignedIndex = String(endAlignedIndex);
 
     const textSpan = document.createElement('span');
     textSpan.className = 'collapsed-section-text';
@@ -461,6 +466,10 @@ export interface Hunk {
      * and this one. 0 for the first hunk if it starts at the top of the file.
      */
     precedingCollapsedCount: number;
+    /** Start index of this hunk in the full aligned array */
+    alignedStartIndex: number;
+    /** End index (inclusive) of this hunk in the full aligned array */
+    alignedEndIndex: number;
 }
 
 /**
@@ -559,7 +568,9 @@ export function groupIntoHunks(aligned: AlignedLine[], contextLines: number = 3)
             startNewLine,
             endOldLine,
             endNewLine,
-            precedingCollapsedCount
+            precedingCollapsedCount,
+            alignedStartIndex: start,
+            alignedEndIndex: end
         });
 
         prevEnd = end;
@@ -594,6 +605,9 @@ export function renderSplitDiff(): void {
         return;
     }
 
+    // Reset expanded hunks on re-render
+    resetExpandedHunks();
+
     // Clear existing content
     oldContainer.innerHTML = '';
     newContainer.innerHTML = '';
@@ -612,6 +626,7 @@ export function renderSplitDiff(): void {
     // Compute LCS for alignment (with optional whitespace ignoring)
     const dp = computeLCS(oldLines, newLines, ignoreWhitespace);
     const aligned = backtrackLCS(oldLines, newLines, dp, ignoreWhitespace);
+    fullAlignedLines = aligned;
 
     // ── PHASE 1: Populate data structures for ALL aligned lines ──
     let lineIndex = 0;
@@ -645,8 +660,11 @@ export function renderSplitDiff(): void {
 
         // Collapsed section BEFORE this hunk
         if (hunk.precedingCollapsedCount > 0) {
-            oldContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1));
-            newContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1));
+            const prevEnd = hunkIdx > 0 ? hunks[hunkIdx - 1].alignedEndIndex : -1;
+            const collapsedStart = prevEnd + 1;
+            const collapsedEnd = hunk.alignedStartIndex - 1;
+            oldContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1, collapsedStart, collapsedEnd));
+            newContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1, collapsedStart, collapsedEnd));
         }
 
         // Hunk header
@@ -682,19 +700,11 @@ export function renderSplitDiff(): void {
     // Trailing collapsed section after the last hunk
     if (hunks.length > 0) {
         const lastHunk = hunks[hunks.length - 1];
-        // Find the index in aligned[] where the last hunk ends
-        const lastLine = lastHunk.lines[lastHunk.lines.length - 1];
-        let lastHunkEndIdx = aligned.length - 1;
-        for (let i = aligned.length - 1; i >= 0; i--) {
-            if (aligned[i] === lastLine) {
-                lastHunkEndIdx = i;
-                break;
-            }
-        }
-        const trailingCount = aligned.length - lastHunkEndIdx - 1;
+        const trailingStart = lastHunk.alignedEndIndex + 1;
+        const trailingCount = aligned.length - trailingStart;
         if (trailingCount > 0) {
-            oldContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1));
-            newContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1));
+            oldContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1, trailingStart, aligned.length - 1));
+            newContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1, trailingStart, aligned.length - 1));
         }
     }
 
@@ -825,6 +835,9 @@ export function renderInlineDiff(): void {
         return;
     }
 
+    // Reset expanded hunks on re-render
+    resetExpandedHunks();
+
     // Clear existing content
     inlineContainer.innerHTML = '';
 
@@ -842,6 +855,7 @@ export function renderInlineDiff(): void {
     // Compute LCS for alignment (with optional whitespace ignoring)
     const dp = computeLCS(oldLines, newLines, ignoreWhitespace);
     const aligned = backtrackLCS(oldLines, newLines, dp, ignoreWhitespace);
+    fullAlignedLines = aligned;
 
     // ── PHASE 1: Populate data structures for ALL aligned lines ──
     let lineIndex = 0;
@@ -877,7 +891,10 @@ export function renderInlineDiff(): void {
 
         // Collapsed section BEFORE this hunk
         if (hunk.precedingCollapsedCount > 0) {
-            inlineContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1));
+            const prevEnd = hunkIdx > 0 ? hunks[hunkIdx - 1].alignedEndIndex : -1;
+            const collapsedStart = prevEnd + 1;
+            const collapsedEnd = hunk.alignedStartIndex - 1;
+            inlineContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1, collapsedStart, collapsedEnd));
         }
 
         // Hunk header (single element, full width of inline container)
@@ -930,17 +947,10 @@ export function renderInlineDiff(): void {
     // Trailing collapsed section after the last hunk
     if (hunks.length > 0) {
         const lastHunk = hunks[hunks.length - 1];
-        const lastLine = lastHunk.lines[lastHunk.lines.length - 1];
-        let lastHunkEndIdx = aligned.length - 1;
-        for (let i = aligned.length - 1; i >= 0; i--) {
-            if (aligned[i] === lastLine) {
-                lastHunkEndIdx = i;
-                break;
-            }
-        }
-        const trailingCount = aligned.length - lastHunkEndIdx - 1;
+        const trailingStart = lastHunk.alignedEndIndex + 1;
+        const trailingCount = aligned.length - trailingStart;
         if (trailingCount > 0) {
-            inlineContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1));
+            inlineContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1, trailingStart, aligned.length - 1));
         }
     }
 
@@ -986,6 +996,116 @@ export function initializeScrollSync(): void {
 }
 
 /**
+ * Expand a collapsed section, replacing the placeholder with the hidden lines.
+ * In split view, both panes are expanded simultaneously to maintain alignment.
+ */
+export function expandCollapsedSection(hunkIndex: number): void {
+    const viewMode = getViewMode();
+    const placeholders = document.querySelectorAll<HTMLElement>(`.collapsed-section[data-hunk-index="${hunkIndex}"]`);
+
+    if (placeholders.length === 0) return; // already expanded or invalid
+
+    // Get aligned line range from data attributes
+    const first = placeholders[0];
+    const startIdx = parseInt(first.dataset.startAlignedIndex || '0', 10);
+    const endIdx = parseInt(first.dataset.endAlignedIndex || '0', 10);
+
+    if (startIdx > endIdx || endIdx >= fullAlignedLines.length) return;
+
+    const hiddenLines = fullAlignedLines.slice(startIdx, endIdx + 1);
+    const { oldHighlighted, newHighlighted } = getHighlightedLines();
+
+    if (viewMode === 'split') {
+        // Split view: replace placeholders in both old and new panes
+        const oldContainer = document.getElementById('old-content');
+        const newContainer = document.getElementById('new-content');
+        const oldPlaceholder = oldContainer?.querySelector<HTMLElement>(`.collapsed-section[data-hunk-index="${hunkIndex}"]`);
+        const newPlaceholder = newContainer?.querySelector<HTMLElement>(`.collapsed-section[data-hunk-index="${hunkIndex}"]`);
+
+        if (oldPlaceholder && newPlaceholder) {
+            const oldFrag = document.createDocumentFragment();
+            const newFrag = document.createDocumentFragment();
+
+            for (const line of hiddenLines) {
+                // Old side
+                if (line.oldLine !== null && line.oldLineNum !== null) {
+                    const comments = getCommentsForLine('old', line.oldLineNum);
+                    const type: DiffLineType = 'context';
+                    const highlighted = oldHighlighted[line.oldLineNum - 1];
+                    oldFrag.appendChild(createLineElement(line.oldLineNum, line.oldLine, type, 'old', comments, highlighted));
+                } else {
+                    oldFrag.appendChild(createEmptyLineElement());
+                }
+
+                // New side
+                if (line.newLine !== null && line.newLineNum !== null) {
+                    const comments = getCommentsForLine('new', line.newLineNum);
+                    const type: DiffLineType = 'context';
+                    const highlighted = newHighlighted[line.newLineNum - 1];
+                    newFrag.appendChild(createLineElement(line.newLineNum, line.newLine, type, 'new', comments, highlighted));
+                } else {
+                    newFrag.appendChild(createEmptyLineElement());
+                }
+            }
+
+            // Replace both synchronously to maintain scroll-sync alignment
+            oldPlaceholder.replaceWith(oldFrag);
+            newPlaceholder.replaceWith(newFrag);
+        }
+    } else {
+        // Inline view: single placeholder
+        const placeholder = placeholders[0];
+        const frag = document.createDocumentFragment();
+
+        for (const line of hiddenLines) {
+            let highlightedContent: string | undefined;
+            let comments: DiffComment[] = [];
+            let type: DiffLineType;
+            let side: 'old' | 'new' | 'context';
+            let content: string;
+            let oldNum: number | null;
+            let newNum: number | null;
+
+            if (line.type === 'context') {
+                type = 'context';
+                side = 'context';
+                content = line.newLine || line.oldLine || '';
+                oldNum = line.oldLineNum;
+                newNum = line.newLineNum;
+                comments = line.newLineNum !== null ? getCommentsForLine('new', line.newLineNum) : [];
+                highlightedContent = line.newLineNum !== null ? newHighlighted[line.newLineNum - 1] : undefined;
+            } else if (line.type === 'deletion') {
+                type = 'deletion';
+                side = 'old';
+                content = line.oldLine || '';
+                oldNum = line.oldLineNum;
+                newNum = null;
+                comments = line.oldLineNum !== null ? getCommentsForLine('old', line.oldLineNum) : [];
+                highlightedContent = line.oldLineNum !== null ? oldHighlighted[line.oldLineNum - 1] : undefined;
+            } else {
+                type = 'addition';
+                side = 'new';
+                content = line.newLine || '';
+                oldNum = null;
+                newNum = line.newLineNum;
+                comments = line.newLineNum !== null ? getCommentsForLine('new', line.newLineNum) : [];
+                highlightedContent = line.newLineNum !== null ? newHighlighted[line.newLineNum - 1] : undefined;
+            }
+
+            frag.appendChild(createInlineLineElement(oldNum, newNum, content, type, side, comments, highlightedContent));
+        }
+
+        placeholder.replaceWith(frag);
+    }
+
+    // Mark as expanded
+    toggleHunkExpanded(hunkIndex);
+
+    // Re-scan comment indicators for newly visible lines
+    updateCommentIndicators();
+}
+
+/**
  * Scroll to the first added or deleted line in the current view.
  * Used in full-file view mode to bring the first change into view on open.
  */
@@ -1000,6 +1120,12 @@ export function scrollToFirstChange(): void {
             );
             if (firstChange) {
                 firstChange.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                // Fallback: scroll to first hunk header if no change lines in DOM
+                const firstHunkHeader = inlineContainer.querySelector<HTMLElement>('.hunk-separator');
+                if (firstHunkHeader) {
+                    firstHunkHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
             }
         }
     } else {
@@ -1016,6 +1142,16 @@ export function scrollToFirstChange(): void {
         const firstDeletion = oldContainer?.querySelector<HTMLElement>('.line-deleted');
         if (firstDeletion) {
             firstDeletion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+
+        // Fallback: scroll to first hunk header
+        const container = newContainer || oldContainer;
+        if (container) {
+            const firstHunkHeader = container.querySelector<HTMLElement>('.hunk-separator');
+            if (firstHunkHeader) {
+                firstHunkHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
     }
 }

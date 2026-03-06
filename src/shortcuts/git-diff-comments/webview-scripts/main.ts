@@ -2,10 +2,10 @@
  * Main entry point for the diff review webview
  */
 
-import { initializeScrollSync, invalidateHighlightCache, renderDiff, scrollToFirstChange, updateCommentIndicators } from './diff-renderer';
+import { initializeScrollSync, invalidateHighlightCache, renderDiff, scrollToFirstChange, updateCommentIndicators, expandCollapsedSection } from './diff-renderer';
 import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, rebuildPredefinedSubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateActionItemsSubmenu, updateContextMenuForSettings, updatePromptFileSubmenu, updateSkillSubmenu } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
-import { createInitialState, getCommentsForLine, getFullFileView, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setFullFileView, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
+import { createInitialState, getCommentsForLine, getFullFileView, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, resetExpandedHunks, setComments, setFullFileView, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
 import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendPinTab, sendReady, sendSaveContent } from './vscode-bridge';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
@@ -62,6 +62,9 @@ function initialize(): void {
 
     // Setup diff navigation buttons
     setupDiffNavigation();
+
+    // Setup expand/collapse handlers for collapsed sections
+    setupExpandCollapseHandlers();
 
     // Setup file path click handler
     setupFilePathClickHandler();
@@ -123,6 +126,7 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
                 // Invalidate highlight cache when content changes
                 // This is critical when switching between files in preview mode
                 invalidateHighlightCache();
+                resetExpandedHunks();
                 renderDiff();
                 // Auto-scroll to first change when viewing committed files in full-file mode
                 if (getFullFileView()) {
@@ -801,6 +805,33 @@ function setupDiffNavigation(): void {
     if (nextBtn) {
         nextBtn.addEventListener('click', () => navigateToDiff('next'));
     }
+}
+
+/**
+ * Setup event delegation for expand/collapse of collapsed sections.
+ * Uses event delegation on the static .diff-view-container parent so handlers survive re-renders.
+ */
+function setupExpandCollapseHandlers(): void {
+    const diffContainer = document.querySelector('.diff-view-container');
+    if (!diffContainer) return;
+
+    diffContainer.addEventListener('click', (e: Event) => {
+        const target = e.target as HTMLElement;
+
+        const expandBtn = target.closest('.expand-btn');
+        const collapsedSection = target.closest('.collapsed-section');
+
+        const section = expandBtn?.closest('.collapsed-section') || collapsedSection;
+        if (!section) return;
+
+        const hunkIndex = (section as HTMLElement).dataset.hunkIndex;
+        if (hunkIndex === undefined) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        expandCollapsedSection(parseInt(hunkIndex, 10));
+    });
 }
 
 /**

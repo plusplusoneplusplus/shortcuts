@@ -32,6 +32,8 @@ suite('Diff Hunk Grouping Tests', () => {
         endOldLine: number;
         endNewLine: number;
         precedingCollapsedCount: number;
+        alignedStartIndex: number;
+        alignedEndIndex: number;
     }
 
     // --- Pure functions copied from diff-renderer.ts ---
@@ -116,7 +118,9 @@ suite('Diff Hunk Grouping Tests', () => {
                 startNewLine,
                 endOldLine,
                 endNewLine,
-                precedingCollapsedCount
+                precedingCollapsedCount,
+                alignedStartIndex: start,
+                alignedEndIndex: end
             });
 
             prevEnd = end;

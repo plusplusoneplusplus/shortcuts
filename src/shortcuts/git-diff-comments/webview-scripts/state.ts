@@ -35,6 +35,8 @@ export interface AppState {
     fullFileView: boolean;
     /** Whether user is currently interacting with a panel (resize/drag) */
     isInteracting: boolean;
+    /** Set of hunk indices that have been expanded by the user */
+    expandedHunks: Set<number>;
 }
 
 /**
@@ -80,7 +82,8 @@ export function createInitialState(persistedViewMode?: ViewMode): AppState {
         ignoreWhitespace: false,
         isEditable: initialData.isEditable || false,
         fullFileView: initialData.fullFileView || false,
-        isInteracting: false
+        isInteracting: false,
+        expandedHunks: new Set<number>()
     };
 }
 
@@ -264,6 +267,31 @@ export function startInteraction(): void {
         interactionEndTimeout = null;
     }
     state.isInteracting = true;
+}
+
+/**
+ * Check if a hunk (by collapsed-section index) has been expanded
+ */
+export function isHunkExpanded(index: number): boolean {
+    return state.expandedHunks.has(index);
+}
+
+/**
+ * Toggle the expanded state of a hunk
+ */
+export function toggleHunkExpanded(index: number): void {
+    if (state.expandedHunks.has(index)) {
+        state.expandedHunks.delete(index);
+    } else {
+        state.expandedHunks.add(index);
+    }
+}
+
+/**
+ * Reset all expanded hunks (called on re-render / content change)
+ */
+export function resetExpandedHunks(): void {
+    state.expandedHunks = new Set<number>();
 }
 
 /**

@@ -43,6 +43,8 @@ suite('Hunk-based Split View Rendering Tests', () => {
         endOldLine: number;
         endNewLine: number;
         precedingCollapsedCount: number;
+        alignedStartIndex: number;
+        alignedEndIndex: number;
     }
 
     // ── groupIntoHunks copied from diff-renderer.ts for isolated testing ──
@@ -89,7 +91,9 @@ suite('Hunk-based Split View Rendering Tests', () => {
                 headerText: generateHunkHeader(startOldLine, countOld, startNewLine, countNew),
                 lines,
                 startOldLine, startNewLine, endOldLine, endNewLine,
-                precedingCollapsedCount: start - (prevEnd + 1)
+                precedingCollapsedCount: start - (prevEnd + 1),
+                alignedStartIndex: start,
+                alignedEndIndex: end
             });
             prevEnd = end;
         }
