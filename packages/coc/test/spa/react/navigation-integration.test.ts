@@ -45,7 +45,7 @@ describe('RepoQueueTab selectTask: run-pipeline navigation', () => {
     it('has a run-pipeline branch in selectTask that navigates to workflow', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile])')
+            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
         expect(handler).toContain("task?.type === 'run-pipeline'");
         expect(handler).toContain('/workflow/');
@@ -54,7 +54,7 @@ describe('RepoQueueTab selectTask: run-pipeline navigation', () => {
     it('run-pipeline branch returns early before SELECT_QUEUE_TASK', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile])')
+            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
         const pipelineBranch = handler.indexOf("task?.type === 'run-pipeline'");
         const returnAfterPipeline = handler.indexOf('return;', pipelineBranch);
@@ -76,7 +76,7 @@ describe('RepoQueueTab selectTask: no regression for other types', () => {
     it('chat branch is preserved before run-pipeline', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile])')
+            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
         const chatIdx = handler.indexOf("task?.type === 'chat'");
         const pipelineIdx = handler.indexOf("task?.type === 'run-pipeline'");
@@ -87,7 +87,7 @@ describe('RepoQueueTab selectTask: no regression for other types', () => {
     it('generic fallback dispatches SELECT_QUEUE_TASK after run-pipeline', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile])')
+            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
         const pipelineReturn = handler.indexOf('return;', handler.indexOf("task?.type === 'run-pipeline'"));
         const selectDispatch = handler.indexOf("'SELECT_QUEUE_TASK'");

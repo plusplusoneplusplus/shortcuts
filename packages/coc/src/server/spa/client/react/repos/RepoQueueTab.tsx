@@ -169,10 +169,14 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
             return;
         }
+        if (selectedTaskId === id) {
+            queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            return;
+        }
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/queue/' + encodeURIComponent(id);
         if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, appDispatch, workspaceId, isMobile]);
+    }, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId]);
 
     // Scroll selected task card into view (e.g. after deep-link navigation)
     useEffect(() => {

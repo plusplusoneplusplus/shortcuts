@@ -46,7 +46,7 @@ describe('RepoQueueTab mobile: selectTask sets mobileShowDetail', () => {
     it('calls setMobileShowDetail(true) inside selectTask when isMobile', () => {
         const handler = REPO_QUEUE_TAB_SOURCE.substring(
             REPO_QUEUE_TAB_SOURCE.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SOURCE.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile])')
+            REPO_QUEUE_TAB_SOURCE.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
         expect(handler).toContain('if (isMobile) setMobileShowDetail(true)');
     });
@@ -136,7 +136,7 @@ describe('RepoQueueTab chat navigation: uses bare task.id for URL', () => {
     it('uses task.id (bare ID) when building the chat URL', () => {
         const selectTask = REPO_QUEUE_TAB_SOURCE.substring(
             REPO_QUEUE_TAB_SOURCE.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SOURCE.indexOf("}, [queueDispatch, appDispatch, workspaceId, isMobile])"),
+            REPO_QUEUE_TAB_SOURCE.indexOf("}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])"),
         );
         expect(selectTask).toContain('const sessionId = task.id');
     });
