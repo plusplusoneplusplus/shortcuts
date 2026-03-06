@@ -216,6 +216,10 @@ export class CLITaskExecutor implements TaskExecutor {
                 } catch {
                     // Non-fatal: process may already be cleaned up
                 }
+                // Return the parent task from queue back to history
+                if (payload.parentTaskId && this.queueManager) {
+                    this.queueManager.returnToHistory(payload.parentTaskId);
+                }
                 if (payload.imageTempDir) {
                     cleanupTempDir(payload.imageTempDir);
                 }

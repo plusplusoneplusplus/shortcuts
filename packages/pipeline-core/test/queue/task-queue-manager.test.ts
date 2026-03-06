@@ -2188,9 +2188,11 @@ describe('TaskQueueManager.reActivate', () => {
         expect(task?.error).toBeUndefined();
     });
 
-    it('returns false for a task not in history', () => {
+    it('moves a queued task to running (e.g. requeued parent)', () => {
         const id = manager.enqueue(createTestTask());
-        expect(manager.reActivate(id)).toBe(false); // still queued, not in history
+        expect(manager.reActivate(id)).toBe(true); // now handles queued tasks
+        expect(manager.getRunning()).toHaveLength(1);
+        expect(manager.getQueued()).toHaveLength(0);
     });
 
     it('returns false for unknown task ID', () => {
@@ -2265,6 +2267,209 @@ describe('TaskQueueManager.reActivate', () => {
         manager.markStarted(id);
         // Task is running, not in history
         expect(manager.reActivate(id)).toBe(false);
+    });
+});
+
+// ============================================================================
+// requeueFromHistory
+// ============================================================================
+
+describe('TaskQueueManager.requeueFromHistory', () => {
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = createTaskQueueManager();
+    });
+
+    it('moves a completed task from history to queue', () => {
+        const id = manager.enqueue(createTestTask({ displayName: 'chat-task' }));
+        manager.markStarted(id);
+        manager.markCompleted(id, 'done');
+        expect(manager.getHistory()).toHaveLength(1);
+        expect(manager.getQueued()).toHaveLength(0);
+
+        const result = manager.requeueFromHistory(id);
+        expect(result).toBe(true);
+        expect(manager.getHistory()).toHaveLength(0);
+        expect(manager.getQueued()).toHaveLength(1);
+
+        const task = manager.getTask(id);
+        expect(task?.status).toBe('queued');
+        expect(task?.startedAt).toBeUndefined();
+        expect(task?.completedAt).toBeUndefined();
+        expect(task?.result).toBeUndefined();
+        expect(task?.error).toBeUndefined();
+    });
+
+    it('returns false for a task not in history', () => {
+        const id = manager.enqueue(createTestTask());
+        expect(manager.requeueFromHistory(id)).toBe(false); // still queued
+    });
+
+    it('returns false for unknown task ID', () => {
+        expect(manager.requeueFromHistory('nonexistent')).toBe(false);
+    });
+
+    it('is a no-op when parent is already in queue (second follow-up)', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id, 'done');
+
+        // First follow-up requeues it
+        expect(manager.requeueFromHistory(id)).toBe(true);
+        // Second follow-up: not in history anymore
+        expect(manager.requeueFromHistory(id)).toBe(false);
+        // Task is still in queue
+        expect(manager.getQueued()).toHaveLength(1);
+    });
+
+    it('emits change and taskUpdated events', () => {
+        const changeListener = vi.fn();
+        const updateListener = vi.fn();
+        manager.on('change', changeListener);
+        manager.on('taskUpdated', updateListener);
+
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id);
+        changeListener.mockClear();
+        updateListener.mockClear();
+
+        manager.requeueFromHistory(id);
+
+        expect(changeListener).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'updated', taskId: id })
+        );
+        expect(updateListener).toHaveBeenCalledWith(
+            expect.objectContaining({ id, status: 'queued' }),
+            expect.objectContaining({ status: 'queued' })
+        );
+    });
+
+    it('preserves original createdAt', () => {
+        const id = manager.enqueue(createTestTask());
+        const originalCreatedAt = manager.getTask(id)!.createdAt;
+        manager.markStarted(id);
+        manager.markCompleted(id);
+
+        manager.requeueFromHistory(id);
+
+        expect(manager.getTask(id)?.createdAt).toBe(originalCreatedAt);
+    });
+});
+
+// ============================================================================
+// returnToHistory
+// ============================================================================
+
+describe('TaskQueueManager.returnToHistory', () => {
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = createTaskQueueManager();
+    });
+
+    it('moves a queued task back to history as completed', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id, 'done');
+
+        // Requeue it
+        manager.requeueFromHistory(id);
+        expect(manager.getQueued()).toHaveLength(1);
+
+        // Return to history
+        const result = manager.returnToHistory(id);
+        expect(result).toBe(true);
+        expect(manager.getQueued()).toHaveLength(0);
+        expect(manager.getHistory()).toHaveLength(1);
+
+        const task = manager.getTask(id);
+        expect(task?.status).toBe('completed');
+        expect(task?.completedAt).toBeDefined();
+    });
+
+    it('returns false for a task not in queue', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id, 'done');
+        // Task is in history, not in queue
+        expect(manager.returnToHistory(id)).toBe(false);
+    });
+
+    it('returns false for unknown task ID', () => {
+        expect(manager.returnToHistory('nonexistent')).toBe(false);
+    });
+
+    it('emits change and taskUpdated events', () => {
+        const changeListener = vi.fn();
+        const updateListener = vi.fn();
+        manager.on('change', changeListener);
+        manager.on('taskUpdated', updateListener);
+
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id);
+        manager.requeueFromHistory(id);
+        changeListener.mockClear();
+        updateListener.mockClear();
+
+        manager.returnToHistory(id);
+
+        expect(changeListener).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'updated', taskId: id })
+        );
+        expect(updateListener).toHaveBeenCalledWith(
+            expect.objectContaining({ id, status: 'completed' }),
+            expect.objectContaining({ status: 'completed' })
+        );
+    });
+});
+
+// ============================================================================
+// reActivate (from queue)
+// ============================================================================
+
+describe('TaskQueueManager.reActivate from queue', () => {
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = createTaskQueueManager();
+    });
+
+    it('moves a requeued task from queue to running', () => {
+        const id = manager.enqueue(createTestTask({ displayName: 'chat-task' }));
+        manager.markStarted(id);
+        manager.markCompleted(id, 'done');
+
+        // Requeue it (simulates follow-up enqueued)
+        manager.requeueFromHistory(id);
+        expect(manager.getQueued()).toHaveLength(1);
+        expect(manager.getRunning()).toHaveLength(0);
+
+        // Re-activate (simulates follow-up starting execution)
+        const result = manager.reActivate(id);
+        expect(result).toBe(true);
+        expect(manager.getQueued()).toHaveLength(0);
+        expect(manager.getRunning()).toHaveLength(1);
+
+        const task = manager.getTask(id);
+        expect(task?.status).toBe('running');
+        expect(task?.startedAt).toBeDefined();
+    });
+
+    it('can complete after reActivate from queue', () => {
+        const id = manager.enqueue(createTestTask());
+        manager.markStarted(id);
+        manager.markCompleted(id, 'first');
+
+        manager.requeueFromHistory(id);
+        manager.reActivate(id);
+        manager.markCompleted(id, 'second');
+
+        expect(manager.getRunning()).toHaveLength(0);
+        expect(manager.getHistory()).toHaveLength(1);
+        expect(manager.getTask(id)?.result).toBe('second');
     });
 });
 

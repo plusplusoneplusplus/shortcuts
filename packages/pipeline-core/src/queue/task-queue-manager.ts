@@ -470,30 +470,97 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
-     * Re-activate a task from history back to running state.
-     * Used to reuse a completed task (e.g. a chat session receiving follow-ups)
-     * instead of creating a separate task for each interaction.
+     * Move a completed/failed task from history back to the queue.
+     * Used when a follow-up is enqueued for a completed chat task so the
+     * parent task appears under "Queued" while the follow-up waits.
      *
-     * @param id Task ID to re-activate
-     * @returns true if the task was found in history and moved to running
+     * @param id Task ID to requeue
+     * @returns true if the task was found in history and moved to the queue
      */
-    reActivate(id: string): boolean {
+    requeueFromHistory(id: string): boolean {
         const index = this.history.findIndex(t => t.id === id);
         if (index === -1) {
             return false;
         }
 
         const [task] = this.history.splice(index, 1);
-        task.status = 'running';
-        task.startedAt = Date.now();
+        task.status = 'queued';
+        task.startedAt = undefined;
         task.completedAt = undefined;
         task.result = undefined;
         task.error = undefined;
-        this.running.set(id, task);
+        this.insertByPriority(task);
 
         this.emitChange('updated', task);
-        this.emit('taskUpdated', task, { status: 'running', startedAt: task.startedAt });
+        this.emit('taskUpdated', task, { status: 'queued' });
         return true;
+    }
+
+    /**
+     * Move a queued task back to history as completed.
+     * Reverses requeueFromHistory — used when a follow-up is cancelled
+     * so the parent task returns to the completed section.
+     *
+     * @param id Task ID to return to history
+     * @returns true if the task was found in the queue and moved to history
+     */
+    returnToHistory(id: string): boolean {
+        const index = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
+        if (index === -1) {
+            return false;
+        }
+
+        const [item] = this.queue.splice(index, 1);
+        const task = item as QueuedTask;
+        task.status = 'completed';
+        task.completedAt = Date.now();
+        this.addToHistory(task);
+
+        this.emitChange('updated', task);
+        this.emit('taskUpdated', task, { status: 'completed' });
+        return true;
+    }
+
+    /**
+     * Re-activate a task from history (or queue) back to running state.
+     * Used to reuse a completed task (e.g. a chat session receiving follow-ups)
+     * instead of creating a separate task for each interaction.
+     *
+     * @param id Task ID to re-activate
+     * @returns true if the task was found in history/queue and moved to running
+     */
+    reActivate(id: string): boolean {
+        // Try history first (original path)
+        const histIndex = this.history.findIndex(t => t.id === id);
+        if (histIndex !== -1) {
+            const [task] = this.history.splice(histIndex, 1);
+            task.status = 'running';
+            task.startedAt = Date.now();
+            task.completedAt = undefined;
+            task.result = undefined;
+            task.error = undefined;
+            this.running.set(id, task);
+
+            this.emitChange('updated', task);
+            this.emit('taskUpdated', task, { status: 'running', startedAt: task.startedAt });
+            return true;
+        }
+
+        // Fallback: task may have been requeued via requeueFromHistory
+        const queueIndex = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
+        if (queueIndex !== -1) {
+            const [item] = this.queue.splice(queueIndex, 1);
+            const task = item as QueuedTask;
+            task.status = 'running';
+            task.startedAt = Date.now();
+            this.running.set(id, task);
+
+            this.emitChange('updated', task);
+            this.emit('taskUpdated', task, { status: 'running', startedAt: task.startedAt });
+            return true;
+        }
+
+        return false;
     }
 
     // ========================================================================

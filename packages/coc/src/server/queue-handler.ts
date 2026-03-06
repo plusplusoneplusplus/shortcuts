@@ -12,7 +12,7 @@
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/pipeline-core';
 import { READONLY_PROMPT_PREFIX } from './queue-executor-bridge';
 import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody, isChatFollowUp } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { computeRepoId } from './queue-persistence';
 import { ImageBlobStore } from './image-blob-store';
@@ -1365,9 +1365,22 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                 return sendError(res, 404, 'Task not found');
             }
 
-            const cancelled = findTaskManager(bridge, id)?.cancelTask(id) ?? false;
+            // Look up the task before cancelling to capture parentTaskId
+            const mgr = findTaskManager(bridge, id);
+            const task = mgr?.getTask(id);
+            const parentTaskId = task && isChatFollowUp(task.payload as Record<string, unknown>)
+                ? (task.payload as any)?.parentTaskId as string | undefined
+                : undefined;
+
+            const cancelled = mgr?.cancelTask(id) ?? false;
             if (!cancelled) {
                 return sendError(res, 404, 'Task not found or not cancellable');
+            }
+            // If the cancelled task was a chat follow-up, move its parent back to
+            // history (it was requeued when the follow-up was enqueued).
+            if (parentTaskId) {
+                const parentMgr = findTaskManager(bridge, parentTaskId);
+                parentMgr?.returnToHistory(parentTaskId);
             }
             sendJSON(res, 200, { cancelled: true });
         },
