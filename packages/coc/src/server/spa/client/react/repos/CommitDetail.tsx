@@ -103,7 +103,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
 
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
-                <div className="flex-1 overflow-auto px-4 py-3" data-testid="diff-section">
+                <div className="flex-1 overflow-auto px-1 py-1" data-testid="diff-section">
                     {diffLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
                             <Spinner size="sm" /> Loading diff...

@@ -112,7 +112,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
 
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
-                <div className="flex-1 overflow-auto px-4 py-3" data-testid="working-tree-file-diff-section">
+                <div className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
                     {stage === 'untracked' ? (
                         <div className="text-xs text-[#848484] italic" data-testid="working-tree-file-diff-untracked">
                             Untracked file – no diff available

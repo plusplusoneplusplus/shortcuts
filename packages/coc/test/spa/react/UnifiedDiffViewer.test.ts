@@ -90,13 +90,13 @@ describe('UnifiedDiffViewer', () => {
 
     describe('color classes', () => {
         it('has added-line green background', () => {
-            expect(source).toContain('bg-[#e6ffed]');
-            expect(source).toContain('dark:bg-[#1a3d2b]');
+            expect(source).toContain('bg-[#d1f7c4]');
+            expect(source).toContain('dark:bg-[#1a4731]');
         });
 
         it('has removed-line red background', () => {
-            expect(source).toContain('bg-[#ffeef0]');
-            expect(source).toContain('dark:bg-[#3d1a1a]');
+            expect(source).toContain('bg-[#fecaca]');
+            expect(source).toContain('dark:bg-[#4c1d1d]');
         });
 
         it('has hunk-header blue background', () => {

@@ -38,8 +38,8 @@ export interface DiffLine {
 }
 
 const LINE_CLASSES: Record<LineType, string> = {
-    added: 'bg-[#e6ffed] dark:bg-[#1a3d2b] text-[#22863a] dark:text-[#3fb950]',
-    removed: 'bg-[#ffeef0] dark:bg-[#3d1a1a] text-[#b31d28] dark:text-[#f85149]',
+    added: 'bg-[#d1f7c4] dark:bg-[#1a4731]',
+    removed: 'bg-[#fecaca] dark:bg-[#4c1d1d]',
     'hunk-header': 'bg-[#dbedff] dark:bg-[#1d3251] text-[#0550ae] dark:text-[#79c0ff]',
     meta: 'text-[#6e7681] dark:text-[#8b949e]',
     context: '',
@@ -263,7 +263,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
             ref={containerRef}
             onMouseUp={enableComments ? handleMouseUp : undefined}
             onMouseDown={enableComments ? handleMouseDown : undefined}
-            className="overflow-x-auto font-mono text-xs bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
+            className="overflow-x-auto font-mono text-xs leading-tight bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
             data-testid={testId}
         >
             {lines.map((line, i) => {
@@ -283,16 +283,16 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                         >
                             {showLineNumbers && (
                                 <>
-                                    <span className="select-none text-right w-10 inline-block text-[#6e7681] pr-1">
+                                    <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
                                         {oldLine ?? ''}
                                     </span>
-                                    <span className="select-none text-right w-10 inline-block text-[#6e7681] pr-1">
+                                    <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
                                         {newLine ?? ''}
                                     </span>
                                 </>
                             )}
                             {enableComments && (
-                                <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                <span className="inline-flex w-4 shrink-0 items-center justify-center">
                                     {(() => {
                                         const lc = (lineCommentMap.get(i) ?? []).filter(c => c.status !== 'orphaned');
                                         if (!lc || lc.length === 0) return <span className="w-4 h-4" />;
@@ -309,7 +309,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                                     })()}
                                 </span>
                             )}
-                            <span className="px-3 flex-1 min-w-0">
+                            <span className="px-1 flex-1 min-w-0">
                                 <span>{prefix}</span>
                                 <span dangerouslySetInnerHTML={{ __html: html }} />
                             </span>
@@ -327,16 +327,16 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                     >
                         {showLineNumbers && (
                             <>
-                                <span className="select-none text-right w-10 inline-block text-[#6e7681] pr-1">
+                                <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
                                     {oldLine ?? ''}
                                 </span>
-                                <span className="select-none text-right w-10 inline-block text-[#6e7681] pr-1">
+                                <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
                                     {newLine ?? ''}
                                 </span>
                             </>
                         )}
                         {enableComments && (
-                            <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                            <span className="inline-flex w-4 shrink-0 items-center justify-center">
                                 {(() => {
                                     const lc = (lineCommentMap.get(i) ?? []).filter(c => c.status !== 'orphaned');
                                     if (!lc || lc.length === 0) return <span className="w-4 h-4" />;
@@ -353,7 +353,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                                 })()}
                             </span>
                         )}
-                        <span className="px-3 flex-1 min-w-0">{line || '\u00a0'}</span>
+                        <span className="px-1 flex-1 min-w-0">{line || '\u00a0'}</span>
                     </div>
                 );
             })}

@@ -227,7 +227,7 @@ describe('UnifiedDiffViewer new props (structural)', () => {
     });
 
     it('source contains gutter class for line numbers', () => {
-        expect(source).toContain('select-none text-right w-10 inline-block');
+        expect(source).toContain('select-none text-right w-8 inline-block');
     });
 
     it('source imports useEffect from react', () => {
