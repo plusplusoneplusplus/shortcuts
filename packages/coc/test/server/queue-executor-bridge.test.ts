@@ -6076,6 +6076,68 @@ job:
                     error: 'AI model timeout',
                 });
             });
+
+            it('should populate conversationTurns with user + assistant turns when rawResponse is provided', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcessCreated?.({
+                        itemIndex: 0,
+                        processId: 'queue_cp-conv-m0',
+                        item: 'Summarize this document',
+                        phase: 'map',
+                        success: true,
+                        rawResponse: 'Here is the summary.',
+                    });
+                    return {
+                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                        output: { formattedOutput: 'Here is the summary.' },
+                        itemProcessIds: ['queue_cp-conv-m0'],
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-conv'));
+
+                const childCalls = store.addProcess.mock.calls.filter(
+                    (call: any[]) => call[0].type === 'pipeline-item'
+                );
+                const child = childCalls[0][0];
+                expect(child.result).toBe('Here is the summary.');
+                expect(child.conversationTurns).toHaveLength(2);
+                expect(child.conversationTurns[0]).toMatchObject({ role: 'user', content: 'Summarize this document', turnIndex: 0 });
+                expect(child.conversationTurns[1]).toMatchObject({ role: 'assistant', content: 'Here is the summary.', turnIndex: 1 });
+            });
+
+            it('should only have user turn in conversationTurns when rawResponse is undefined', async () => {
+                setupFsMock();
+                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcessCreated?.({
+                        itemIndex: 0,
+                        processId: 'queue_cp-noai-m0',
+                        item: 'bad input',
+                        phase: 'map',
+                        success: false,
+                        error: 'timeout',
+                        rawResponse: undefined,
+                    });
+                    return {
+                        executionStats: { totalItems: 1, successfulItems: 0, failedItems: 1, durationMs: 50 },
+                        output: { formattedOutput: '' },
+                        itemProcessIds: ['queue_cp-noai-m0'],
+                    };
+                });
+
+                const executor = new CLITaskExecutor(store);
+                await executor.execute(createPipelineTask('cp-noai'));
+
+                const childCalls = store.addProcess.mock.calls.filter(
+                    (call: any[]) => call[0].type === 'pipeline-item'
+                );
+                const child = childCalls[0][0];
+                expect(child.result).toBeUndefined();
+                expect(child.conversationTurns).toHaveLength(1);
+                expect(child.conversationTurns[0]).toMatchObject({ role: 'user', content: 'bad input', turnIndex: 0 });
+            });
         });
     });
 });

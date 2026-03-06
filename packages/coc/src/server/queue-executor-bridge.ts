@@ -1226,12 +1226,27 @@ export class CLITaskExecutor implements TaskExecutor {
             },
             onItemProcessCreated: (event) => {
                 const itemStr = typeof event.item === 'string' ? event.item : JSON.stringify(event.item);
+                const now = new Date();
+                const conversationTurns: import('@plusplusoneplusplus/pipeline-core').ConversationTurn[] = [
+                    { role: 'user', content: itemStr, timestamp: now, turnIndex: 0, timeline: [] },
+                ];
+                if (event.rawResponse) {
+                    conversationTurns.push({
+                        role: 'assistant',
+                        content: event.rawResponse,
+                        timestamp: now,
+                        turnIndex: 1,
+                        timeline: [],
+                    });
+                }
                 const childProcess: AIProcess = {
                     id: event.processId,
                     type: 'pipeline-item',
                     parentProcessId: processId,
                     promptPreview: itemStr.length > 80 ? itemStr.substring(0, 77) + '...' : itemStr,
                     fullPrompt: itemStr,
+                    result: event.rawResponse,
+                    conversationTurns,
                     status: event.success ? 'completed' : (event.error ? 'failed' : 'running'),
                     startTime: new Date(),
                     metadata: {

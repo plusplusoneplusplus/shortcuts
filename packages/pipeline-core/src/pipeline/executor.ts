@@ -169,6 +169,8 @@ export interface ItemProcessEvent {
     error?: string;
     /** SDK session ID from the AI response (for session resume) */
     sessionId?: string;
+    /** The AI's raw text response for this item (undefined if the item failed) */
+    rawResponse?: string;
 }
 
 /**
@@ -902,6 +904,7 @@ async function executeStandardMode(
                         success: innerSuccess,
                         error: innerError,
                         sessionId: (result.output as any)?.sessionId,
+                        rawResponse: innerSuccess ? (result.output as any)?.rawResponse : undefined,
                     });
                 } catch { /* callback errors don't break execution */ }
             }
