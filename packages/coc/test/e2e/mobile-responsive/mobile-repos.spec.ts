@@ -42,10 +42,11 @@ test.describe('Mobile Repos', () => {
         await page.locator('.repo-item').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
 
-        // Sub-tabs should exist
-        const subTabs = page.locator('.repo-sub-tab');
-        const count = await subTabs.count();
-        expect(count).toBeGreaterThanOrEqual(3); // At minimum info, pipelines, tasks
+        // On mobile, sub-tabs are rendered via MobileTabBar (bottom bar)
+        const mobileTabBar = page.locator('[data-testid="mobile-tab-bar"]');
+        await expect(mobileTabBar).toBeVisible({ timeout: 10000 });
+        const count = await mobileTabBar.locator('button').count();
+        expect(count).toBeGreaterThanOrEqual(3);
     });
 
     test('mobile: sub-tabs scroll horizontally', async ({ page, serverUrl }) => {
@@ -85,8 +86,8 @@ test.describe('Mobile Repos', () => {
     test('mobile: empty state renders correctly', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
 
-        // With no workspaces, empty state should show
-        const empty = page.locator('#repo-detail-empty, [data-testid="repo-detail-empty"]');
+        // With no workspaces, on mobile the repos grid shows empty state
+        const empty = page.locator('#repos-empty, [data-testid="repos-empty"], #repo-detail-empty, [data-testid="repo-detail-empty"]');
         await expect(empty.first()).toBeVisible({ timeout: 10000 });
     });
 });

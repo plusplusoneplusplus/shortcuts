@@ -84,8 +84,8 @@ test.describe('Schedule Script', () => {
 
         // Schedule card with [Script] badge should appear
         await expect(page.getByText('Echo Test')).toBeVisible({ timeout: 10_000 });
-        // Use the schedule card button text which contains "[Script]"
-        await expect(page.locator('button:has-text("[Script]")')).toBeVisible();
+        // Schedule items are <li> elements containing a [Script] badge
+        await expect(page.locator('.repo-schedule-item:has-text("[Script]")')).toBeVisible();
     });
 
     test('UI: Run Now triggers run and history entry appears', async ({ page, serverUrl }) => {
@@ -101,8 +101,8 @@ test.describe('Schedule Script', () => {
         // Confirm the schedule card is visible
         await expect(page.getByText('Run Test')).toBeVisible({ timeout: 10_000 });
 
-        // Click the card header to expand and reveal actions
-        await page.locator('button:has-text("Run Test")').first().click();
+        // Click the schedule item to expand and reveal actions
+        await page.locator('.repo-schedule-item:has-text("Run Test")').first().click();
         await expect(page.getByRole('button', { name: 'Run Now' })).toBeVisible({ timeout: 5_000 });
 
         // Trigger a manual run — handleRunNow() auto-refreshes history for expanded cards

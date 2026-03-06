@@ -17,6 +17,12 @@ interface SkillItem {
     description?: string;
 }
 
+interface PromptItem {
+    name: string;
+    path: string;
+    description?: string;
+}
+
 export interface FollowPromptDialogProps {
     wsId: string;
     taskPath: string;
@@ -46,22 +52,24 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
     const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
     const [skills, setSkills] = useState<SkillItem[]>([]);
+    const [prompts, setPrompts] = useState<PromptItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [additionalInfo, setAdditionalInfo] = useState('');
 
-    // Fetch models and prompts/skills on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
             try {
-                const [modelsRes, skillRes] = await Promise.all([
+                const [modelsRes, skillRes, promptRes] = await Promise.all([
                     fetch(getApiBase() + '/queue/models').then(r => r.ok ? r.json() : []),
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
+                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/prompts`).then(r => r.ok ? r.json() : null),
                 ]);
                 if (cancelled) return;
                 setModels(modelsRes?.models ?? (Array.isArray(modelsRes) ? modelsRes : []));
                 setSkills(skillRes?.skills ?? []);
+                setPrompts(promptRes?.prompts ?? []);
             } catch {
                 // ignore
             } finally {
@@ -220,15 +228,35 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                     {/* Prompts and Skills list */}
                     {loading ? (
                         <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
-                            <Spinner size="sm" /> Loading skills…
+                            <Spinner size="sm" /> Loading…
                         </div>
-                    ) : skills.length === 0 ? (
+                    ) : prompts.length === 0 && skills.length === 0 ? (
                         <div className="text-xs text-[#848484] py-2">
-                            <p>No skills found in this workspace.</p>
-                            <p className="mt-1 text-[10px]">Create skills in .github/skills/</p>
+                            <p>No prompts or skills found in this workspace.</p>
+                            <p className="mt-1 text-[10px]">Create prompts in .github/prompts/ or skills in .github/skills/</p>
                         </div>
                     ) : (
                         <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                            {prompts.length > 0 && (
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Prompts</div>
+                                    {prompts.map(p => (
+                                        <button
+                                            key={p.name}
+                                            className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
+                                            data-name={p.name}
+                                            disabled={submitting}
+                                            onClick={() => handleSubmit('prompt', p.name, p.path, p.description)}
+                                        >
+                                            <span>📝</span>
+                                            <span className="flex-shrink-0 font-medium">{p.name}</span>
+                                            {p.description && (
+                                                <span className="text-xs text-[#848484] truncate">{p.description}</span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             {skills.length > 0 && (
                                 <div>
                                     <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>

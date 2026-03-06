@@ -16,7 +16,7 @@ test.describe('Mobile Touch Interaction', () => {
 
         const buttons = bottomNav.locator('button');
         const count = await buttons.count();
-        expect(count).toBe(3);
+        expect(count).toBe(4);
 
         for (let i = 0; i < count; i++) {
             const box = await buttons.nth(i).boundingBox();

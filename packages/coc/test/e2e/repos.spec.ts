@@ -499,7 +499,7 @@ test.describe('Info Tab Content', () => {
         await expect(colorItem).toContainText('#107c10');
 
         // Verify pipeline and task count cells exist
-        await expect(page.locator('.meta-item', { hasText: 'Pipelines' })).toBeVisible();
+        await expect(page.locator('.meta-item', { hasText: 'Workflows' })).toBeVisible();
         await expect(page.locator('.meta-item', { hasText: 'Tasks' })).toBeVisible();
     });
 
@@ -655,6 +655,6 @@ test.describe('Pipelines Tab Content', () => {
         const subContent = page.locator('#repo-sub-tab-content');
         const emptyState = subContent.locator('.empty-state');
         await expect(emptyState).toBeVisible({ timeout: 10000 });
-        await expect(emptyState).toContainText('No pipelines found');
+        await expect(emptyState).toContainText('No workflows found');
     });
 });

@@ -8,6 +8,7 @@ import { CommentCard } from './CommentCard';
 import type { TaskComment } from '../../../task-comments-types';
 
 type StatusFilter = 'all' | 'open' | 'resolved';
+type CategoryFilter = string;
 
 export interface CommentSidebarProps {
     taskId: string;
@@ -62,12 +63,21 @@ export function CommentSidebar({
     resolving = false,
 }: CommentSidebarProps) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
     const [copied, setCopied] = useState(false);
 
     const openCount = useMemo(
         () => comments.filter(c => c.status === 'open').length,
         [comments],
     );
+
+    const categories = useMemo(() => {
+        const cats = new Set<string>();
+        for (const c of comments) {
+            if (c.category) cats.add(c.category);
+        }
+        return Array.from(cats).sort();
+    }, [comments]);
 
     useEffect(() => {
         if (!copied) return;
@@ -77,6 +87,7 @@ export function CommentSidebar({
 
     const filtered = (filteredComments ?? comments.filter(c => {
         if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+        if (categoryFilter !== 'all' && c.category !== categoryFilter) return false;
         return true;
     }));
 
@@ -143,22 +154,55 @@ export function CommentSidebar({
             )}
 
             {showFilters && (
-                <div className="flex gap-1 px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    {statusTabs.map(tab => (
-                        <button
-                            key={tab.key}
-                            onClick={() => setStatusFilter(tab.key)}
-                            className={cn(
-                                'px-2 py-0.5 text-[11px] rounded transition-colors',
-                                statusFilter === tab.key
-                                    ? 'bg-[#0078d4] text-white'
-                                    : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                            )}
-                            data-testid={`status-filter-${tab.key}`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
+                <div className="flex flex-col border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                    <div className="flex gap-1 px-2 py-1.5">
+                        {statusTabs.map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setStatusFilter(tab.key)}
+                                className={cn(
+                                    'px-2 py-0.5 text-[11px] rounded transition-colors',
+                                    statusFilter === tab.key
+                                        ? 'bg-[#0078d4] text-white'
+                                        : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                )}
+                                data-testid={`status-filter-${tab.key}`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                    {categories.length > 0 && (
+                        <div className="flex gap-1 px-2 pb-1.5 flex-wrap">
+                            <button
+                                onClick={() => setCategoryFilter('all')}
+                                className={cn(
+                                    'px-2 py-0.5 text-[11px] rounded transition-colors',
+                                    categoryFilter === 'all'
+                                        ? 'bg-[#0078d4] text-white'
+                                        : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                )}
+                                data-testid="category-filter-all"
+                            >
+                                All
+                            </button>
+                            {categories.map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setCategoryFilter(cat)}
+                                    className={cn(
+                                        'px-2 py-0.5 text-[11px] rounded transition-colors capitalize',
+                                        categoryFilter === cat
+                                            ? 'bg-[#0078d4] text-white'
+                                            : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
+                                    )}
+                                    data-testid={`category-filter-${cat}`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 

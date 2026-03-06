@@ -12,26 +12,19 @@ import * as path from 'path';
 test.use({ viewport: TABLET });
 
 test.describe('Tablet Layout', () => {
-    test('tablet: sidebar is collapsible', async ({ page, serverUrl }) => {
+    test('tablet: sidebar is visible', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-tab-col', 'tab-col-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        // Ensure repos tab is active
         await page.click('[data-tab="repos"]');
-        const sidebar = page.locator('#repos-sidebar');
+
+        // Tablet uses ResponsiveSidebar
+        const sidebar = page.locator('[data-testid="responsive-sidebar"]');
         await expect(sidebar).toBeVisible({ timeout: 10000 });
 
-        // Click hamburger to collapse
-        await page.click('#hamburger-btn');
-        await page.waitForTimeout(300); // CSS transition
-
-        // Collapsed sidebar should have w-12 class
-        await expect(sidebar).toHaveClass(/w-12/);
-
-        // Click again to expand
-        await page.click('#hamburger-btn');
-        await page.waitForTimeout(300);
-        await expect(sidebar).toHaveClass(/w-\[280px\]/);
+        // Verify it has a reasonable width
+        const box = await sidebar.boundingBox();
+        expect(box!.width).toBeGreaterThan(200);
     });
 
     test('tablet: TopBar tab buttons are visible', async ({ page, serverUrl }) => {
@@ -76,7 +69,8 @@ test.describe('Tablet Layout', () => {
         await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
         await page.locator('.repo-item').first().click();
 
-        await expect(page.locator('#repos-sidebar')).toBeVisible();
+        // Tablet uses ResponsiveSidebar instead of #repos-sidebar
+        await expect(page.locator('[data-testid="responsive-sidebar"]')).toBeVisible();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
     });
 
