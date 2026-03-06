@@ -27,7 +27,9 @@ import { registerWikiRoutes } from './wiki';
 import { registerMemoryRoutes, registerRepoRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
+import { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
 import { registerReplicateApplyRoutes } from './replicate-apply-handler';
+import { TemplateWatcher } from './template-watcher';
 import { WorkflowWatcher } from './workflow-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { generateDashboardHtml } from './spa';
@@ -234,6 +236,16 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     }, bridge, resolvedAiService);
     registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService);
+    // Template read routes
+    registerTemplateRoutes(routes, store);
+    // Template write routes with WebSocket broadcast
+    registerTemplateWriteRoutes(routes, store, (workspaceId) => {
+        wsServer.broadcastProcessEvent({
+            type: 'templates-changed',
+            workspaceId,
+            timestamp: Date.now(),
+        });
+    });
     registerReplicateApplyRoutes(routes, store);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
@@ -446,11 +458,21 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     });
 
+    // Bridge template file changes to WebSocket
+    const templateWatcher = new TemplateWatcher((workspaceId) => {
+        wsServer.broadcastProcessEvent({
+            type: 'templates-changed',
+            workspaceId,
+            timestamp: Date.now(),
+        });
+    });
+
     // Watch tasks and workflows directories for already-registered workspaces (handles server restart)
     const existingWorkspaces = await store.getWorkspaces();
     for (const ws of existingWorkspaces) {
         taskWatcher.watchWorkspace(ws.id, ws.rootPath);
         pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
+        templateWatcher.watchWorkspace(ws.id, ws.rootPath);
         // Register repo ID so bridge.getBridgeByRepoId() works for pre-existing workspaces
         bridge.registerRepoId(computeRepoId(ws.rootPath), ws.rootPath);
     }
@@ -463,12 +485,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         await originalRegister(workspace);
         taskWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+        templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         bridge.registerRepoId(computeRepoId(workspace.rootPath), workspace.rootPath);
     };
 
     store.removeWorkspace = async (id: string) => {
         taskWatcher.unwatchWorkspace(id);
         pipelineWatcher.unwatchWorkspace(id);
+        templateWatcher.unwatchWorkspace(id);
         return originalRemove(id);
     };
 
@@ -507,6 +531,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             taskWatcher.closeAll();
             // Close workflow file watchers
             pipelineWatcher.closeAll();
+            // Close template file watchers
+            templateWatcher.closeAll();
             // Dispose wiki manager (stop file watchers, destroy sessions)
             wikiManager?.disposeAll();
             // Dispose schedule manager (cancel timers)
@@ -571,6 +597,9 @@ export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
 export { WorkflowWatcher } from './workflow-watcher';
 export type { WorkflowsChangedCallback } from './workflow-watcher';
+export { TemplateWatcher } from './template-watcher';
+export type { TemplatesChangedCallback } from './template-watcher';
+export { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
 export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 export { registerWikiRoutes } from './wiki';
 export type { WikiRouteOptions } from './wiki';

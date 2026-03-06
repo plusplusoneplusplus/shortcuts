@@ -117,6 +117,7 @@ export type ServerMessage =
     | { type: 'drain-timeout'; queued: number; running: number; timeoutMs?: number }
     | { type: 'tasks-changed'; workspaceId: string; timestamp: number }
     | { type: 'workflows-changed'; workspaceId: string; timestamp: number }
+    | { type: 'templates-changed'; workspaceId: string; timestamp: number }
     | { type: 'wiki-reload'; wikiId: string; components: string[] }
     | { type: 'wiki-rebuilding'; wikiId: string; components: string[] }
     | { type: 'wiki-error'; wikiId: string; message: string }
@@ -370,6 +371,9 @@ export class ProcessWebSocketServer {
             return message.workspaceId;
         }
         if (message.type === 'workflows-changed') {
+            return message.workspaceId;
+        }
+        if (message.type === 'templates-changed') {
             return message.workspaceId;
         }
         return undefined;
