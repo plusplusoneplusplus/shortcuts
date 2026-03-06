@@ -14,6 +14,8 @@ import { getLogger, LogCategory } from '../logger';
 export interface ToolCallCaptureOptions {
     /** Stable hash of the repository root. Used to tag entries. */
     repoHash?: string;
+    /** Stable hash of the git remote URL. Used to tag entries. */
+    remoteHash?: string;
     /** Current git HEAD hash. Used for cache invalidation. */
     gitHash?: string;
     /** If true, also capture tool-failed events (default: false). */

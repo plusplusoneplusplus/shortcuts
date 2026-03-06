@@ -300,6 +300,87 @@ describe('FileToolCallCacheStore', () => {
         });
     });
 
+    // --- Level routing ---
+
+    describe('level routing', () => {
+        it('system level uses <dataDir>/explore-cache (default behaviour)', () => {
+            const s = new FileToolCallCacheStore({ dataDir: tmpDir, level: 'system' });
+            expect(s.getCacheDir()).toBe(path.join(tmpDir, 'explore-cache'));
+        });
+
+        it('git-remote level uses <dataDir>/git-remotes/<remoteHash>/explore-cache', () => {
+            const s = new FileToolCallCacheStore({
+                dataDir: tmpDir,
+                level: 'git-remote',
+                remoteHash: 'abcdef1234567890',
+            });
+            expect(s.getCacheDir()).toBe(
+                path.join(tmpDir, 'git-remotes', 'abcdef1234567890', 'explore-cache'),
+            );
+        });
+
+        it('repo level uses <dataDir>/repos/<repoHash>/explore-cache', () => {
+            const s = new FileToolCallCacheStore({
+                dataDir: tmpDir,
+                level: 'repo',
+                repoHash: 'feedbeef12345678',
+            });
+            expect(s.getCacheDir()).toBe(
+                path.join(tmpDir, 'repos', 'feedbeef12345678', 'explore-cache'),
+            );
+        });
+
+        it('git-remote level with missing remoteHash falls back to "unknown"', () => {
+            const s = new FileToolCallCacheStore({ dataDir: tmpDir, level: 'git-remote' });
+            expect(s.getCacheDir()).toBe(
+                path.join(tmpDir, 'git-remotes', 'unknown', 'explore-cache'),
+            );
+        });
+
+        it('repo level with missing repoHash falls back to "unknown"', () => {
+            const s = new FileToolCallCacheStore({ dataDir: tmpDir, level: 'repo' });
+            expect(s.getCacheDir()).toBe(
+                path.join(tmpDir, 'repos', 'unknown', 'explore-cache'),
+            );
+        });
+    });
+
+    // --- Path accessor helpers ---
+
+    describe('getGitRemoteDir / getRepoExploreDir', () => {
+        it('getGitRemoteDir computes correct path relative to dataDir', () => {
+            const s = new FileToolCallCacheStore({ dataDir: tmpDir });
+            expect(s.getGitRemoteDir('abc123')).toBe(
+                path.join(tmpDir, 'git-remotes', 'abc123', 'explore-cache'),
+            );
+        });
+
+        it('getRepoExploreDir computes correct path relative to dataDir', () => {
+            const s = new FileToolCallCacheStore({ dataDir: tmpDir });
+            expect(s.getRepoExploreDir('def456')).toBe(
+                path.join(tmpDir, 'repos', 'def456', 'explore-cache'),
+            );
+        });
+
+        it('getGitRemoteDir uses custom cacheSubDir', () => {
+            const s = new FileToolCallCacheStore({ dataDir: tmpDir, cacheSubDir: 'my-cache' });
+            expect(s.getGitRemoteDir('abc123')).toBe(
+                path.join(tmpDir, 'git-remotes', 'abc123', 'my-cache'),
+            );
+        });
+
+        it('getRepoExploreDir is stable regardless of the active level', () => {
+            const s = new FileToolCallCacheStore({
+                dataDir: tmpDir,
+                level: 'git-remote',
+                remoteHash: 'rem001',
+            });
+            expect(s.getRepoExploreDir('repo001')).toBe(
+                path.join(tmpDir, 'repos', 'repo001', 'explore-cache'),
+            );
+        });
+    });
+
     // --- Default dataDir ---
 
     describe('default dataDir', () => {

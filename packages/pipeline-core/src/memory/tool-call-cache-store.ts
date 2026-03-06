@@ -22,6 +22,8 @@ import type {
 export class FileToolCallCacheStore implements ToolCallCacheStore {
     private readonly cacheDir: string;
     private readonly rawDir: string;
+    private readonly dataDir: string;
+    private readonly cacheSubDir: string;
     private writeQueue: Promise<void>;
 
     private static DEFAULT_INDEX: ToolCallCacheIndex = {
@@ -33,7 +35,24 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
     constructor(options?: ToolCallCacheStoreOptions) {
         const dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
         const cacheSubDir = options?.cacheSubDir ?? 'explore-cache';
-        this.cacheDir = path.join(dataDir, cacheSubDir);
+        const level = options?.level ?? 'system';
+
+        this.dataDir = dataDir;
+        this.cacheSubDir = cacheSubDir;
+
+        switch (level) {
+            case 'git-remote':
+                this.cacheDir = path.join(dataDir, 'git-remotes', options?.remoteHash ?? 'unknown', cacheSubDir);
+                break;
+            case 'repo':
+                this.cacheDir = path.join(dataDir, 'repos', options?.repoHash ?? 'unknown', cacheSubDir);
+                break;
+            case 'system':
+            default:
+                this.cacheDir = path.join(dataDir, cacheSubDir);
+                break;
+        }
+
         this.rawDir = path.join(this.cacheDir, 'raw');
         this.writeQueue = Promise.resolve();
     }
@@ -70,10 +89,20 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
         return `${ts}-${tool}.json`;
     }
 
-    // --- Path accessor ---
+    // --- Path accessors ---
 
     getCacheDir(): string {
         return this.cacheDir;
+    }
+
+    /** Absolute path to the git-remote scoped explore-cache for the given remoteHash. */
+    getGitRemoteDir(remoteHash: string): string {
+        return path.join(this.dataDir, 'git-remotes', remoteHash, this.cacheSubDir);
+    }
+
+    /** Absolute path to the repo-scoped explore-cache for the given repoHash. */
+    getRepoExploreDir(repoHash: string): string {
+        return path.join(this.dataDir, 'repos', repoHash, this.cacheSubDir);
     }
 
     // --- Raw Q&A entries ---

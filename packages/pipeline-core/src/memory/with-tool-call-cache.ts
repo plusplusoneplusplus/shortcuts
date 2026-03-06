@@ -13,8 +13,7 @@
 
 import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../map-reduce/types';
 import type { ToolEvent } from '../copilot-sdk-wrapper/types';
-import type { ToolCallCacheStore, ToolCallFilter } from './tool-call-cache-types';
-import type { MemoryLevel } from './types';
+import type { ToolCallCacheStore, ToolCallFilter, ToolCallCacheLevel } from './tool-call-cache-types';
 import { ToolCallCapture } from './tool-call-capture';
 import { ToolCallCacheAggregator } from './tool-call-cache-aggregator';
 import { getLogger, LogCategory } from '../logger';
@@ -28,8 +27,10 @@ export interface WithToolCallCacheOptions {
     repoHash?: string;
     /** Current git HEAD hash for staleness tracking */
     gitHash?: string;
-    /** Memory isolation level (default: 'repo') */
-    level?: MemoryLevel;
+    /** Cache isolation level (default: 'system') */
+    level?: ToolCallCacheLevel;
+    /** Git remote URL hash. Required when level is 'git-remote'. */
+    remoteHash?: string;
     /** AI model identifier for metadata */
     model?: string;
     /** Number of raw entries before triggering aggregation (default: 10) */
@@ -62,6 +63,11 @@ export async function withToolCallCache(
     invokerOptions: AIInvokerOptionsWithToolEvent,
     cacheOptions: WithToolCallCacheOptions,
 ): Promise<AIInvokerResult> {
+    // Warn if git-remote level is requested but remoteHash is missing
+    if (cacheOptions.level === 'git-remote' && !cacheOptions.remoteHash) {
+        getLogger().warn(LogCategory.Memory, `withToolCallCache: level 'git-remote' requested but remoteHash is missing; falling back to 'system'`);
+    }
+
     // 1. Create capture instance and merge onToolEvent
     let mergedOptions: AIInvokerOptionsWithToolEvent = { ...invokerOptions };
     try {

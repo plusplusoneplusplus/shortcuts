@@ -39,6 +39,7 @@ import {
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildDeepModePrompt,
+    computeRemoteHash,
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
     TASK_FILTER,
@@ -47,6 +48,7 @@ import {
     gatherFeatureContext,
     getCopilotSDKService,
     getLogger,
+    getRemoteUrl,
     LogCategory,
     mergeConsecutiveContentItems,
     parsePipelineYAMLSync,
@@ -172,7 +174,21 @@ export class CLITaskExecutor implements TaskExecutor {
         this.followUpSuggestions = options.followUpSuggestions ?? { enabled: true, count: 3 };
         this.getWsServer = options.getWsServer;
         this.toolCallCacheStore = new FileToolCallCacheStore(
-            this.dataDir ? { dataDir: path.join(this.dataDir, 'memory') } : undefined,
+            (() => {
+                const memoryDataDir = this.dataDir ? path.join(this.dataDir, 'memory') : undefined;
+                const workDir = options.workingDirectory;
+                if (workDir) {
+                    const remoteUrl = getRemoteUrl(workDir);
+                    if (remoteUrl) {
+                        return {
+                            ...(memoryDataDir ? { dataDir: memoryDataDir } : undefined),
+                            level: 'git-remote' as const,
+                            remoteHash: computeRemoteHash(remoteUrl),
+                        };
+                    }
+                }
+                return memoryDataDir ? { dataDir: memoryDataDir } : undefined;
+            })(),
         );
     }
 

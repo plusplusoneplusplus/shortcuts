@@ -8,7 +8,22 @@
  * No VS Code dependencies — pure Node.js types for pipeline-core.
  */
 
-import { MemoryLevel } from './types';
+// MemoryLevel is no longer needed here — ToolCallCacheLevel is the dedicated type.
+
+// ---------------------------------------------------------------------------
+// Cache level
+// ---------------------------------------------------------------------------
+
+/**
+ * Isolation level for the tool-call cache.
+ *
+ * | Level        | Shared between                          | Storage path                                              |
+ * |--------------|--------------------------------------|-----------------------------------------------------------|
+ * | `system`     | All repos on the machine             | `<dataDir>/explore-cache/`                                |
+ * | `git-remote` | All local clones of the same remote  | `<dataDir>/git-remotes/<remoteHash>/explore-cache/`       |
+ * | `repo`       | Only that exact working-tree clone   | `<dataDir>/repos/<repoHash>/explore-cache/`               |
+ */
+export type ToolCallCacheLevel = 'system' | 'git-remote' | 'repo';
 
 // ---------------------------------------------------------------------------
 // Filter
@@ -108,15 +123,15 @@ export interface ToolCallCacheLookupResult {
 
 /**
  * Configuration shape for the `toolCallCache` field in pipeline YAML or
- * runtime options. Reuses `MemoryLevel` from types.ts.
+ * runtime options.
  */
 export interface ToolCallCacheConfig {
     /** Whether the cache is enabled */
     enabled: boolean;
     /** Optional filter to select which tool calls to cache */
     filter?: ToolCallFilter;
-    /** Memory level to scope caching (reuse existing MemoryLevel) */
-    level: MemoryLevel;
+    /** Cache isolation level (default: 'system') */
+    level: ToolCallCacheLevel;
 }
 
 /**
@@ -127,6 +142,12 @@ export interface ToolCallCacheStoreOptions {
     dataDir?: string;
     /** Subdirectory name under dataDir for cache data. Default: 'explore-cache' */
     cacheSubDir?: string;
+    /** Which scope this store instance operates on. Default: 'system' */
+    level?: ToolCallCacheLevel;
+    /** Required when level is 'git-remote'. 16-char remote hash. */
+    remoteHash?: string;
+    /** Required when level is 'repo'. 16-char repo hash. */
+    repoHash?: string;
 }
 
 /**

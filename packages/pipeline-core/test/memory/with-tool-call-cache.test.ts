@@ -178,4 +178,51 @@ describe('withToolCallCache', () => {
 
         expect(ToolCallCacheAggregator).toHaveBeenCalledWith(mockStore, { batchThreshold: 10 });
     });
+
+    describe('git-remote level', () => {
+        it('warns when level is git-remote but remoteHash is missing', async () => {
+            await withToolCallCache(mockInvoker, 'prompt', baseOpts, {
+                ...cacheOpts,
+                level: 'git-remote',
+                // No remoteHash
+            });
+
+            expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
+                'Memory',
+                expect.stringContaining('git-remote'),
+            );
+            expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
+                'Memory',
+                expect.stringContaining('remoteHash'),
+            );
+        });
+
+        it('does not warn when level is git-remote and remoteHash is provided', async () => {
+            await withToolCallCache(mockInvoker, 'prompt', baseOpts, {
+                ...cacheOpts,
+                level: 'git-remote',
+                remoteHash: 'abcdef1234567890',
+            });
+
+            // No warning about missing remoteHash
+            const warnCalls = mockLoggerInstance.warn.mock.calls;
+            const relevantWarns = warnCalls.filter(
+                ([, msg]: [unknown, unknown]) => typeof msg === 'string' && msg.includes('remoteHash'),
+            );
+            expect(relevantWarns).toHaveLength(0);
+        });
+
+        it('still invokes AI when level is git-remote and remoteHash is missing', async () => {
+            const expectedResult = makeResult('ok');
+            mockInvoker.mockResolvedValue(expectedResult);
+
+            const result = await withToolCallCache(mockInvoker, 'prompt', baseOpts, {
+                ...cacheOpts,
+                level: 'git-remote',
+            });
+
+            expect(mockInvoker).toHaveBeenCalledOnce();
+            expect(result).toBe(expectedResult);
+        });
+    });
 });
