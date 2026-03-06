@@ -36,6 +36,8 @@ export interface QueueContextState {
     drainQueued: number;
     drainRunning: number;
     selectedTaskId: string | null;
+    /** Incremented each time the user clicks an already-selected task to force a refresh. */
+    refreshVersion: number;
     queueInitialized: boolean;
 }
 
@@ -77,6 +79,7 @@ const initialState: QueueContextState = {
     drainQueued: 0,
     drainRunning: 0,
     selectedTaskId: null,
+    refreshVersion: 0,
     queueInitialized: false,
 };
 
@@ -98,6 +101,7 @@ export type QueueAction =
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
     | { type: 'SELECT_QUEUE_TASK'; id: string | null }
+    | { type: 'REFRESH_SELECTED_QUEUE_TASK' }
     | { type: 'CHAT_STREAMING_STARTED'; workspaceId: string }
     | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string };
 
@@ -181,6 +185,8 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return { ...state, isFollowUpStreaming: action.value, currentStreamingTurnIndex: action.turnIndex };
         case 'SELECT_QUEUE_TASK':
             return { ...state, selectedTaskId: action.id };
+        case 'REFRESH_SELECTED_QUEUE_TASK':
+            return { ...state, refreshVersion: state.refreshVersion + 1 };
         case 'CHAT_STREAMING_STARTED': {
             const prev = state.streamingChatWorkspaces[action.workspaceId] || 0;
             return {

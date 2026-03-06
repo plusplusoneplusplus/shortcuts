@@ -129,9 +129,8 @@ export function ProcessesSidebar() {
             return;
         }
 
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
-        dispatch({ type: 'SELECT_PROCESS', id: null });
-    }, [dispatch, queueDispatch]);
+        queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+    }, [queueDispatch]);
 
     const hasQueueActive = running.length > 0 || queued.length > 0;
 

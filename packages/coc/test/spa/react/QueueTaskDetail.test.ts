@@ -233,6 +233,33 @@ describe('QueueTaskDetail', () => {
         });
     });
 
+    describe('refresh-on-reclick', () => {
+        it('includes queueState.refreshVersion in the conversation-fetch effect dependency array', () => {
+            expect(source).toContain('queueState.refreshVersion');
+        });
+
+        it('declares lastFetchedRefreshVersionRef', () => {
+            expect(source).toContain('lastFetchedRefreshVersionRef');
+        });
+
+        it('uses refreshVersion to detect a forced refresh (isRefresh check)', () => {
+            expect(source).toContain('isRefresh');
+        });
+
+        it('bypasses cache when isRefresh is true', () => {
+            // Cache branch must be guarded by !isRefresh
+            expect(source).toContain('!isRefresh && cached');
+        });
+
+        it('adds queueState.refreshVersion to pending-task full-fetch dependency array', () => {
+            const pendingFetchSection = source.substring(
+                source.indexOf('if (!selectedTaskId || !isPending)'),
+                source.indexOf('if (!selectedTaskId || !isPending)') + 400,
+            );
+            expect(pendingFetchSection).toContain('queueState.refreshVersion');
+        });
+    });
+
     describe('scroll-to-bottom on task selection', () => {
         it('has a useEffect with selectedTaskId and loading in the dependency array', () => {
             expect(source).toContain('[selectedTaskId, loading]');

@@ -23,6 +23,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         drainQueued: 0,
         drainRunning: 0,
         selectedTaskId: null,
+        refreshVersion: 0,
         queueInitialized: false,
         ...overrides,
     };
@@ -466,6 +467,30 @@ describe('QueueContext reducer', () => {
             const state = makeState({ selectedTaskId: 'task-1' });
             const result = queueReducer(state, { type: 'SELECT_QUEUE_TASK', id: null });
             expect(result.selectedTaskId).toBeNull();
+        });
+    });
+
+    // ── REFRESH_SELECTED_QUEUE_TASK ────────────────────────────────
+    describe('REFRESH_SELECTED_QUEUE_TASK', () => {
+        it('increments refreshVersion from 0 to 1', () => {
+            const result = queueReducer(makeState(), { type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            expect(result.refreshVersion).toBe(1);
+        });
+
+        it('increments refreshVersion on each dispatch', () => {
+            let state = makeState();
+            state = queueReducer(state, { type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            state = queueReducer(state, { type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            state = queueReducer(state, { type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            expect(state.refreshVersion).toBe(3);
+        });
+
+        it('does not change selectedTaskId or other state', () => {
+            const state = makeState({ selectedTaskId: 'task-abc', refreshVersion: 5 });
+            const result = queueReducer(state, { type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            expect(result.selectedTaskId).toBe('task-abc');
+            expect(result.refreshVersion).toBe(6);
+            expect(result.queued).toBe(state.queued);
         });
     });
 

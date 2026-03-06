@@ -85,6 +85,7 @@ export function QueueTaskDetail({ onBack }: { onBack?: () => void } = {}) {
     const [followUpError, setFollowUpError] = useState<string | null>(null);
     const [followUpSessionExpired, setFollowUpSessionExpired] = useState(false);
     const lastFailedMessageRef = useRef<string>('');
+    const lastFetchedRefreshVersionRef = useRef(0);
     const [isScrolledUp, setIsScrolledUp] = useState(false);
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
@@ -309,7 +310,7 @@ export function QueueTaskDetail({ onBack }: { onBack?: () => void } = {}) {
         fetchApi(`/queue/${encodeURIComponent(selectedTaskId)}`)
             .then((data: any) => setFullTask(data?.task || null))
             .catch(() => setFullTask(null));
-    }, [selectedTaskId, isPending]);
+    }, [selectedTaskId, isPending, queueState.refreshVersion]);
 
     // Fetch conversation on task selection (only for non-pending tasks)
     useEffect(() => {
@@ -320,9 +321,13 @@ export function QueueTaskDetail({ onBack }: { onBack?: () => void } = {}) {
             return;
         }
 
-        // Check shared conversation cache
+        const isRefresh = queueState.refreshVersion > 0 &&
+            lastFetchedRefreshVersionRef.current !== queueState.refreshVersion;
+        lastFetchedRefreshVersionRef.current = queueState.refreshVersion;
+
+        // Check shared conversation cache (bypassed on explicit refresh)
         const cached = appState.conversationCache[selectedTaskId];
-        if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
+        if (!isRefresh && cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
             setTurnsAndCache(cached.turns);
             setLoading(false);
             fetchApi(`/processes/${encodeURIComponent(selectedProcessId || `queue_${selectedTaskId}`)}`)
@@ -341,7 +346,7 @@ export function QueueTaskDetail({ onBack }: { onBack?: () => void } = {}) {
                 .catch(() => setTurnsAndCache([]))
                 .finally(() => setLoading(false));
         }
-    }, [selectedTaskId, selectedProcessId, isPending, appDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [selectedTaskId, selectedProcessId, isPending, appDispatch, queueState.refreshVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Reset follow-up state when switching tasks.
     useEffect(() => {
