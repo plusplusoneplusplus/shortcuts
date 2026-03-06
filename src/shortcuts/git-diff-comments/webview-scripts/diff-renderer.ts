@@ -613,19 +613,9 @@ export function renderSplitDiff(): void {
     const dp = computeLCS(oldLines, newLines, ignoreWhitespace);
     const aligned = backtrackLCS(oldLines, newLines, dp, ignoreWhitespace);
 
-    // Render aligned lines
+    // ── PHASE 1: Populate data structures for ALL aligned lines ──
     let lineIndex = 0;
-    let prevOldLineNum: number | null = null;
-    let prevNewLineNum: number | null = null;
     for (const line of aligned) {
-        // Detect line number gaps and insert hunk header
-        if (hasLineNumberGap(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum)) {
-            const hunkText = buildHunkText(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum);
-            oldContainer.appendChild(createSplitHunkHeaderElement(hunkText, 'old'));
-            newContainer.appendChild(createSplitHunkHeaderElement(hunkText, 'new'));
-        }
-
-        // Track diff info for indicator bar
         const oldComments = line.oldLineNum ? getCommentsForLine('old', line.oldLineNum) : [];
         const newComments = line.newLineNum ? getCommentsForLine('new', line.newLineNum) : [];
         const hasComment = oldComments.length > 0 || newComments.length > 0;
@@ -638,59 +628,74 @@ export function renderSplitDiff(): void {
             newLineNum: line.newLineNum
         });
 
-        // Build line number to index mapping
         if (line.oldLineNum !== null) {
             lineToIndexMap.set(`old:${line.oldLineNum}`, lineIndex);
         }
         if (line.newLineNum !== null) {
             lineToIndexMap.set(`new:${line.newLineNum}`, lineIndex);
         }
-
         lineIndex++;
+    }
 
-        // Old side
-        if (line.oldLine !== null && line.oldLineNum !== null) {
-            const comments = getCommentsForLine('old', line.oldLineNum);
-            const type: DiffLineType = line.type === 'context' ? 'context' : 'deletion';
-            // Get highlighted content for this line (0-indexed)
-            const highlightedContent = oldHighlighted[line.oldLineNum - 1];
-            const lineEl = createLineElement(
-                line.oldLineNum,
-                line.oldLine,
-                type,
-                'old',
-                comments,
-                highlightedContent
-            );
-            oldContainer.appendChild(lineEl);
-        } else {
-            // Empty line for alignment
-            oldContainer.appendChild(createEmptyLineElement());
+    // ── PHASE 2: Hunk-based DOM rendering ──
+    const hunks = groupIntoHunks(aligned, 3);
+
+    for (let hunkIdx = 0; hunkIdx < hunks.length; hunkIdx++) {
+        const hunk = hunks[hunkIdx];
+
+        // Collapsed section BEFORE this hunk
+        if (hunk.precedingCollapsedCount > 0) {
+            oldContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1));
+            newContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1));
         }
 
-        // New side
-        if (line.newLine !== null && line.newLineNum !== null) {
-            const comments = getCommentsForLine('new', line.newLineNum);
-            const type: DiffLineType = line.type === 'context' ? 'context' : 'addition';
-            // Get highlighted content for this line (0-indexed)
-            const highlightedContent = newHighlighted[line.newLineNum - 1];
-            const lineEl = createLineElement(
-                line.newLineNum,
-                line.newLine,
-                type,
-                'new',
-                comments,
-                highlightedContent
-            );
-            newContainer.appendChild(lineEl);
-        } else {
-            // Empty line for alignment
-            newContainer.appendChild(createEmptyLineElement());
-        }
+        // Hunk header
+        oldContainer.appendChild(createHunkHeaderElement(hunk, 'split'));
+        newContainer.appendChild(createHunkHeaderElement(hunk, 'split'));
 
-        // Track previous line numbers for hunk detection
-        if (line.oldLineNum !== null) prevOldLineNum = line.oldLineNum;
-        if (line.newLineNum !== null) prevNewLineNum = line.newLineNum;
+        // Render each line in the hunk
+        for (const line of hunk.lines) {
+            // Old side
+            if (line.oldLine !== null && line.oldLineNum !== null) {
+                const comments = getCommentsForLine('old', line.oldLineNum);
+                const type: DiffLineType = line.type === 'context' ? 'context' : 'deletion';
+                const highlightedContent = oldHighlighted[line.oldLineNum - 1];
+                const lineEl = createLineElement(line.oldLineNum, line.oldLine, type, 'old', comments, highlightedContent);
+                oldContainer.appendChild(lineEl);
+            } else {
+                oldContainer.appendChild(createEmptyLineElement());
+            }
+
+            // New side
+            if (line.newLine !== null && line.newLineNum !== null) {
+                const comments = getCommentsForLine('new', line.newLineNum);
+                const type: DiffLineType = line.type === 'context' ? 'context' : 'addition';
+                const highlightedContent = newHighlighted[line.newLineNum - 1];
+                const lineEl = createLineElement(line.newLineNum, line.newLine, type, 'new', comments, highlightedContent);
+                newContainer.appendChild(lineEl);
+            } else {
+                newContainer.appendChild(createEmptyLineElement());
+            }
+        }
+    }
+
+    // Trailing collapsed section after the last hunk
+    if (hunks.length > 0) {
+        const lastHunk = hunks[hunks.length - 1];
+        // Find the index in aligned[] where the last hunk ends
+        const lastLine = lastHunk.lines[lastHunk.lines.length - 1];
+        let lastHunkEndIdx = aligned.length - 1;
+        for (let i = aligned.length - 1; i >= 0; i--) {
+            if (aligned[i] === lastLine) {
+                lastHunkEndIdx = i;
+                break;
+            }
+        }
+        const trailingCount = aligned.length - lastHunkEndIdx - 1;
+        if (trailingCount > 0) {
+            oldContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1));
+            newContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1));
+        }
     }
 
     // Synchronize scroll between panes
@@ -1239,9 +1244,15 @@ export function renderIndicatorBar(): void {
         viewMode === 'inline' ? '.inline-diff-line' : '.diff-line'
     );
 
-    // Helper to calculate mark position and height for a range of aligned indices
+    // Helper to calculate mark position and height for a range of aligned indices.
+    // In split view with hunk-based rendering, collapsed lines have no DOM element so the
+    // 1:1 mapping between alignedDiffInfo indices and `.diff-line` elements is broken.
+    // Always use percentage-based positioning in split view; use DOM-based positioning
+    // only for inline view where every aligned line has a DOM element.
+    const useDomPositioning = viewMode === 'inline' && useScrollRatio;
+
     const calculateMarkPosition = (startIdx: number, endIdx: number): { top: number; height: number } => {
-        if (useScrollRatio && lineElements[startIdx]) {
+        if (useDomPositioning && lineElements[startIdx]) {
             const startEl = lineElements[startIdx] as HTMLElement;
             const endEl = lineElements[endIdx] as HTMLElement;
             const lineTop = startEl.offsetTop;
@@ -1253,7 +1264,7 @@ export function renderIndicatorBar(): void {
                 height: Math.max((totalHeight / scrollHeight) * barHeight, 2)
             };
         } else {
-            // Fallback to percentage calculation
+            // Percentage-based calculation — treats the bar as a minimap of the full logical file
             return {
                 top: (startIdx / totalLines) * barHeight,
                 height: Math.max(((endIdx - startIdx + 1) / totalLines) * barHeight, 2)
@@ -1384,7 +1395,10 @@ export function renderIndicatorBar(): void {
 }
 
 /**
- * Scroll to a specific line index in the diff view
+ * Scroll to a specific line index in the diff view.
+ * In split view with hunk-based rendering, the target line may be inside a
+ * collapsed section (no DOM element). Fall back to finding the nearest visible
+ * `.diff-line` with a matching `data-line-number`.
  */
 function scrollToLineIndex(index: number): void {
     const viewMode = getViewMode();
@@ -1394,14 +1408,35 @@ function scrollToLineIndex(index: number): void {
     if (viewMode === 'inline') {
         container = document.getElementById('inline-content');
         lineElements = container?.querySelectorAll('.inline-diff-line') || null;
-    } else {
-        // For split view, use the new-content pane as reference
-        container = document.getElementById('new-content');
-        lineElements = container?.querySelectorAll('.diff-line') || null;
-    }
 
-    if (container && lineElements && lineElements[index]) {
-        lineElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (container && lineElements && lineElements[index]) {
+            lineElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+    } else {
+        // Split view — line elements may not correspond 1:1 with aligned indices
+        container = document.getElementById('new-content');
+
+        if (container) {
+            // Try to find by data-line-number attribute matching the target index's line number
+            const info = alignedDiffInfo[index];
+            if (info) {
+                const lineNum = info.newLineNum ?? info.oldLineNum;
+                if (lineNum !== null) {
+                    const targetEl = container.querySelector<HTMLElement>(`[data-line-number="${lineNum}"]`);
+                    if (targetEl) {
+                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        return;
+                    }
+                }
+            }
+
+            // Fallback: try index-based lookup (works when all lines are visible)
+            lineElements = container.querySelectorAll('.diff-line');
+            if (lineElements && lineElements[index]) {
+                lineElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
     }
 }
 
