@@ -19,6 +19,21 @@ html, body {
     background-color: var(--vscode-editor-background);
 }
 
+/* GitHub-style diff color tokens */
+body {
+    --diff-addition-bg: rgba(46, 160, 67, 0.15);
+    --diff-addition-gutter-bg: rgba(46, 160, 67, 0.25);
+    --diff-deletion-bg: rgba(248, 81, 73, 0.15);
+    --diff-deletion-gutter-bg: rgba(248, 81, 73, 0.25);
+}
+
+body.vscode-light {
+    --diff-addition-bg: #dafbe1;
+    --diff-addition-gutter-bg: #ccffd8;
+    --diff-deletion-bg: #ffebe9;
+    --diff-deletion-gutter-bg: #ffd7d5;
+}
+
 /* Main container */
 #diff-container {
     display: flex;
@@ -432,12 +447,12 @@ html, body {
 
 .diff-line-addition,
 .line-added {
-    background-color: #dafbe1;
+    background-color: var(--diff-addition-bg);
 }
 
 .diff-line-addition .line-gutter,
 .line-added .line-gutter {
-    background-color: #ccffd8;
+    background-color: var(--diff-addition-gutter-bg);
 }
 
 .diff-line-addition .line-gutter .line-prefix,
@@ -447,38 +462,17 @@ html, body {
 
 .diff-line-deletion,
 .line-deleted {
-    background-color: #ffebe9;
+    background-color: var(--diff-deletion-bg);
 }
 
 .diff-line-deletion .line-gutter,
 .line-deleted .line-gutter {
-    background-color: #ffd7d5;
+    background-color: var(--diff-deletion-gutter-bg);
 }
 
 .diff-line-deletion .line-gutter .line-prefix,
 .line-deleted .line-gutter .line-prefix {
     color: var(--vscode-gitDecoration-deletedResourceForeground, #cf222e);
-}
-
-/* Dark theme overrides */
-body.vscode-dark .diff-line-addition,
-body.vscode-dark .line-added {
-    background-color: rgba(46, 160, 67, 0.15);
-}
-
-body.vscode-dark .diff-line-addition .line-gutter,
-body.vscode-dark .line-added .line-gutter {
-    background-color: rgba(46, 160, 67, 0.25);
-}
-
-body.vscode-dark .diff-line-deletion,
-body.vscode-dark .line-deleted {
-    background-color: rgba(248, 81, 73, 0.15);
-}
-
-body.vscode-dark .diff-line-deletion .line-gutter,
-body.vscode-dark .line-deleted .line-gutter {
-    background-color: rgba(248, 81, 73, 0.25);
 }
 
 /* High contrast theme - use VS Code variables */
@@ -493,11 +487,11 @@ body.vscode-high-contrast .line-deleted {
 }
 
 .diff-line-empty {
-    background-color: var(--vscode-diffEditor-diagonalFill, rgba(128, 128, 128, 0.1));
+    background-color: transparent;
 }
 
 .diff-line-empty .line-gutter {
-    background-color: var(--vscode-diffEditor-diagonalFill, rgba(128, 128, 128, 0.1));
+    background-color: transparent;
 }
 
 /* Hunk header rows (@@ ... @@) */
@@ -702,10 +696,12 @@ body.vscode-high-contrast .diff-line-hunk .hunk-gutter {
 
 .inline-line-gutter .old-line-num {
     color: var(--vscode-editorLineNumber-foreground);
+    opacity: 1;
 }
 
 .inline-line-gutter .new-line-num {
     color: var(--vscode-editorLineNumber-foreground);
+    opacity: 1;
 }
 
 .inline-diff-line-context .inline-line-gutter .old-line-num,
@@ -727,11 +723,11 @@ body.vscode-high-contrast .diff-line-hunk .hunk-gutter {
 }
 
 .inline-diff-line-addition {
-    background-color: #dafbe1;
+    background-color: var(--diff-addition-bg);
 }
 
 .inline-diff-line-addition .inline-line-gutter {
-    background-color: #ccffd8;
+    background-color: var(--diff-addition-gutter-bg);
 }
 
 .inline-diff-line-addition .inline-line-gutter .line-prefix {
@@ -739,32 +735,15 @@ body.vscode-high-contrast .diff-line-hunk .hunk-gutter {
 }
 
 .inline-diff-line-deletion {
-    background-color: #ffebe9;
+    background-color: var(--diff-deletion-bg);
 }
 
 .inline-diff-line-deletion .inline-line-gutter {
-    background-color: #ffd7d5;
+    background-color: var(--diff-deletion-gutter-bg);
 }
 
 .inline-diff-line-deletion .inline-line-gutter .line-prefix {
     color: var(--vscode-gitDecoration-deletedResourceForeground, #cf222e);
-}
-
-/* Dark theme overrides for inline view */
-body.vscode-dark .inline-diff-line-addition {
-    background-color: rgba(46, 160, 67, 0.15);
-}
-
-body.vscode-dark .inline-diff-line-addition .inline-line-gutter {
-    background-color: rgba(46, 160, 67, 0.25);
-}
-
-body.vscode-dark .inline-diff-line-deletion {
-    background-color: rgba(248, 81, 73, 0.15);
-}
-
-body.vscode-dark .inline-diff-line-deletion .inline-line-gutter {
-    background-color: rgba(248, 81, 73, 0.25);
 }
 
 /* High contrast theme for inline view */
