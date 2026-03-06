@@ -31,6 +31,8 @@ export interface AppState {
     ignoreWhitespace: boolean;
     /** Whether the new content is editable (uncommitted changes) */
     isEditable: boolean;
+    /** Whether to render the full file (for committed diffs) and auto-scroll to first change */
+    fullFileView: boolean;
     /** Whether user is currently interacting with a panel (resize/drag) */
     isInteracting: boolean;
 }
@@ -77,6 +79,7 @@ export function createInitialState(persistedViewMode?: ViewMode): AppState {
         viewMode: persistedViewMode || 'inline' as ViewMode,
         ignoreWhitespace: false,
         isEditable: initialData.isEditable || false,
+        fullFileView: initialData.fullFileView || false,
         isInteracting: false
     };
 }
@@ -226,6 +229,20 @@ export function getIsEditable(): boolean {
  */
 export function setIsEditable(editable: boolean): void {
     state.isEditable = editable;
+}
+
+/**
+ * Get whether full file view is active (for committed diffs)
+ */
+export function getFullFileView(): boolean {
+    return state.fullFileView;
+}
+
+/**
+ * Set whether full file view is active
+ */
+export function setFullFileView(fullFileView: boolean): void {
+    state.fullFileView = fullFileView;
 }
 
 /**

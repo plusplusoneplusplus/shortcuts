@@ -2,10 +2,10 @@
  * Main entry point for the diff review webview
  */
 
-import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
+import { initializeScrollSync, invalidateHighlightCache, renderDiff, scrollToFirstChange, updateCommentIndicators } from './diff-renderer';
 import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, rebuildPredefinedSubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateActionItemsSubmenu, updateContextMenuForSettings, updatePromptFileSubmenu, updateSkillSubmenu } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
-import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
+import { createInitialState, getCommentsForLine, getFullFileView, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setFullFileView, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
 import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendPinTab, sendReady, sendSaveContent } from './vscode-bridge';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
@@ -106,6 +106,10 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
             if (message.gitContext !== undefined) {
                 updateState({ gitContext: message.gitContext });
             }
+            // Update fullFileView before rendering so scroll logic is correct
+            if (message.fullFileView !== undefined) {
+                setFullFileView(message.fullFileView);
+            }
             if (message.oldContent !== undefined && message.newContent !== undefined) {
                 updateState({
                     oldContent: message.oldContent,
@@ -115,6 +119,10 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
                 // This is critical when switching between files in preview mode
                 invalidateHighlightCache();
                 renderDiff();
+                // Auto-scroll to first change when viewing committed files in full-file mode
+                if (getFullFileView()) {
+                    scrollToFirstChange();
+                }
             }
             if (message.isEditable !== undefined) {
                 setIsEditable(message.isEditable);

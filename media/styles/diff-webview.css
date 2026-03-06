@@ -358,6 +358,7 @@ html, body {
     background-color: var(--vscode-editorGutter-background);
     border-right: 1px solid var(--vscode-panel-border);
     user-select: none;
+    user-select: none;
     flex-shrink: 0;
     display: flex;
     align-items: flex-start;
@@ -561,6 +562,7 @@ html, body {
     color: var(--vscode-editorLineNumber-foreground);
     background-color: var(--vscode-editorGutter-background);
     border-right: 1px solid var(--vscode-panel-border);
+    user-select: none;
     user-select: none;
     flex-shrink: 0;
     display: flex;

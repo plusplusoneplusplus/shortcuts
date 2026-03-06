@@ -130,6 +130,8 @@ export interface InitialData {
     gitContext: DiffGitContext;
     /** Whether the new content is editable (uncommitted changes) */
     isEditable?: boolean;
+    /** Whether to render the full file (for committed diffs) and auto-scroll to first change */
+    fullFileView?: boolean;
 }
 
 /**
@@ -149,6 +151,8 @@ export interface ExtensionMessage {
     scrollToCommentId?: string;
     /** Whether the new content is editable (uncommitted changes) */
     isEditable?: boolean;
+    /** Whether to render the full file (for committed diffs) and auto-scroll to first change */
+    fullFileView?: boolean;
     /** Prompt files for context menu */
     promptFiles?: PromptFileInfo[];
     /** Skills for context menu */

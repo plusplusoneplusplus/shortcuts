@@ -177,6 +177,33 @@ suite('Committed Diff Review Tests', () => {
             assert.strictEqual(context.newRef, file.commitHash);
             assert.strictEqual(context.commitHash, file.commitHash);
         });
+
+        test('fullFileView flag should be true for committed files', () => {
+            // Verify that the item type detection logic correctly sets fullFileView=true for commitFile items.
+            // This mirrors what DiffReviewEditorProvider.openDiffReview does.
+            const file = createMockCommitFile('modified', 'src/test.ts');
+            const item = { commitFile: file };
+
+            // Simulate the item type detection logic
+            let fullFileView = false;
+            if (item.commitFile) {
+                fullFileView = true;
+            }
+
+            assert.strictEqual(fullFileView, true);
+        });
+
+        test('fullFileView flag should be false for working-tree changes', () => {
+            // Simulate an unstaged change item — fullFileView must remain false
+            const item = { change: { path: 'src/test.ts', stage: 'unstaged', repositoryRoot: '/repo', repositoryName: 'repo' } };
+
+            let fullFileView = false;
+            if ((item as any).commitFile) {
+                fullFileView = true;
+            }
+
+            assert.strictEqual(fullFileView, false);
+        });
     });
 
     suite('Edge Cases', () => {

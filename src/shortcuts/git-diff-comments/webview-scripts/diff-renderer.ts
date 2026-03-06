@@ -750,6 +750,41 @@ export function initializeScrollSync(): void {
 }
 
 /**
+ * Scroll to the first added or deleted line in the current view.
+ * Used in full-file view mode to bring the first change into view on open.
+ */
+export function scrollToFirstChange(): void {
+    const viewMode = getViewMode();
+
+    if (viewMode === 'inline') {
+        const inlineContainer = document.getElementById('inline-content');
+        if (inlineContainer) {
+            const firstChange = inlineContainer.querySelector<HTMLElement>(
+                '.line-added, .line-deleted'
+            );
+            if (firstChange) {
+                firstChange.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+    } else {
+        // Split view — scroll new pane to first addition, fallback to first deletion in old pane
+        const newContainer = document.getElementById('new-content');
+        const oldContainer = document.getElementById('old-content');
+
+        const firstAddition = newContainer?.querySelector<HTMLElement>('.line-added');
+        if (firstAddition) {
+            firstAddition.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+
+        const firstDeletion = oldContainer?.querySelector<HTMLElement>('.line-deleted');
+        if (firstDeletion) {
+            firstDeletion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+}
+
+/**
  * Highlight a specific line (for showing comment location)
  * Works for both split and inline views
  */

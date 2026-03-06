@@ -170,6 +170,66 @@ suite('DiffReviewEditorProvider Tests', () => {
 
             assert.strictEqual(deserialized.gitContext.commitHash, 'abc123def456789');
         });
+
+        test('fullFileView should default to undefined when not set', () => {
+            const state: DiffWebviewState = {
+                filePath: 'file.ts',
+                gitContext: {
+                    repositoryRoot: '/repo',
+                    repositoryName: 'repo',
+                    oldRef: 'HEAD',
+                    newRef: ':0',
+                    wasStaged: false
+                },
+                oldContent: 'old',
+                newContent: 'new'
+            };
+
+            assert.strictEqual(state.fullFileView, undefined);
+        });
+
+        test('fullFileView should be serialized and restored correctly', () => {
+            const state: DiffWebviewState = {
+                filePath: 'file.ts',
+                gitContext: {
+                    repositoryRoot: '/repo',
+                    repositoryName: 'repo',
+                    oldRef: 'abc123^',
+                    newRef: 'abc123',
+                    wasStaged: true,
+                    commitHash: 'abc123'
+                },
+                oldContent: 'old',
+                newContent: 'new',
+                fullFileView: true
+            };
+
+            const serialized = JSON.stringify(state);
+            const deserialized: DiffWebviewState = JSON.parse(serialized);
+
+            assert.strictEqual(deserialized.fullFileView, true);
+        });
+
+        test('fullFileView=false should round-trip correctly', () => {
+            const state: DiffWebviewState = {
+                filePath: 'file.ts',
+                gitContext: {
+                    repositoryRoot: '/repo',
+                    repositoryName: 'repo',
+                    oldRef: 'HEAD',
+                    newRef: ':0',
+                    wasStaged: false
+                },
+                oldContent: '',
+                newContent: 'content',
+                fullFileView: false
+            };
+
+            const serialized = JSON.stringify(state);
+            const deserialized: DiffWebviewState = JSON.parse(serialized);
+
+            assert.strictEqual(deserialized.fullFileView, false);
+        });
     });
 
     suite('Webview State Validation', () => {

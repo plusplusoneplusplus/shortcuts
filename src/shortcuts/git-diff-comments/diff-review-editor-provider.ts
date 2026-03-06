@@ -157,7 +157,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 state.newContent,
                 state.gitContext,
                 isEditable,
-                displayRefs
+                displayRefs,
+                state.fullFileView
             );
 
             // Handle messages from webview
@@ -211,6 +212,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Track if this is a range file for special handling
         let isRangeFile = false;
         let rangeInfo: { baseRef: string; headRef: string } | undefined;
+        // Committed and range diffs show the full file with diff highlighting
+        let fullFileView = false;
 
         // Handle different item types
         if (item.change) {
@@ -233,6 +236,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             const file = item.commitFile;
             filePath = path.join(file.repositoryRoot, file.path);
             const repoName = path.basename(file.repositoryRoot);
+            fullFileView = true;
             
             // Check if this is a range file
             if (file.isRangeFile && file.range) {
@@ -287,7 +291,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     gitContext,
                     oldContent: diffResult.oldContent,
                     newContent: diffResult.newContent,
-                    isEditable
+                    isEditable,
+                    fullFileView
                 };
                 this.webviewStates.set(filePath, webviewState);
                 
@@ -296,7 +301,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     type: 'update',
                     oldContent: diffResult.oldContent,
                     newContent: diffResult.newContent,
-                    isEditable
+                    isEditable,
+                    fullFileView
                 });
             }
             
@@ -364,7 +370,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 gitContext,
                 oldContent: diffResult.oldContent,
                 newContent: diffResult.newContent,
-                isEditable
+                isEditable,
+                fullFileView
             };
             this.webviewStates.set(filePath, webviewState);
 
@@ -377,7 +384,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 diffResult.oldContent,
                 diffResult.newContent,
                 isEditable,
-                gitContext
+                gitContext,
+                fullFileView
             );
 
             // Reveal the panel
@@ -414,7 +422,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             gitContext,
             oldContent: diffResult.oldContent,
             newContent: diffResult.newContent,
-            isEditable
+            isEditable,
+            fullFileView
         };
         this.webviewStates.set(filePath, webviewState);
 
@@ -436,7 +445,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             diffResult.newContent,
             gitContext,
             isEditable,
-            displayRefs
+            displayRefs,
+            fullFileView
         );
 
         // Handle messages from webview
@@ -544,8 +554,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     ): Promise<void> {
         switch (message.type) {
             case 'ready':
-            case 'requestState':
-                this.sendStateToWebview(panel, relativeFilePath, oldContent, newContent, isEditable, gitContext);
+            case 'requestState': {
+                const storedState = this.webviewStates.get(absoluteFilePath);
+                this.sendStateToWebview(panel, relativeFilePath, oldContent, newContent, isEditable, gitContext, storedState?.fullFileView);
                 // If we need to scroll to a specific comment, send the message after state is sent
                 if (scrollToCommentId) {
                     setTimeout(() => {
@@ -556,6 +567,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     }, 100);
                 }
                 break;
+            }
 
             case 'addComment':
                 if (message.selection && message.comment && message.selectedText) {
@@ -1035,7 +1047,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         oldContent: string,
         newContent: string,
         isEditable?: boolean,
-        gitContext?: DiffGitContext
+        gitContext?: DiffGitContext,
+        fullFileView?: boolean
     ): void {
         const comments = this.commentsManager.getCommentsForFile(filePath);
         const baseSettings = this.commentsManager.getSettings();
@@ -1064,7 +1077,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             filePath,
             gitContext,
             settings,
-            isEditable
+            isEditable,
+            fullFileView
         };
 
         panel.webview.postMessage(message);
@@ -1117,7 +1131,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         newContent: string,
         gitContext: DiffGitContext,
         isEditable: boolean = false,
-        displayRefs?: { oldRef: string; newRef: string }
+        displayRefs?: { oldRef: string; newRef: string },
+        fullFileView: boolean = false
     ): string {
         // Use provided display refs or fall back to full refs
         const refsToDisplay = displayRefs || { oldRef: gitContext.oldRef, newRef: gitContext.newRef };
@@ -1354,7 +1369,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             oldContent: ${JSON.stringify(oldContent)},
             newContent: ${JSON.stringify(newContent)},
             gitContext: ${JSON.stringify(gitContext)},
-            isEditable: ${JSON.stringify(isEditable)}
+            isEditable: ${JSON.stringify(isEditable)},
+            fullFileView: ${JSON.stringify(fullFileView)}
         };
     </script>
     <!-- Load highlight.js from CDN for syntax highlighting -->

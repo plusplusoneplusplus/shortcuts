@@ -384,6 +384,8 @@ export interface DiffExtensionMessage {
     scrollToCommentId?: string;
     /** Whether the new content is editable (uncommitted changes) */
     isEditable?: boolean;
+    /** Whether to render the full file (for committed diffs) and auto-scroll to first change */
+    fullFileView?: boolean;
 }
 
 /**
@@ -400,5 +402,7 @@ export interface DiffWebviewState {
     newContent: string;
     /** Whether the new content is editable (uncommitted changes) */
     isEditable?: boolean;
+    /** Whether to render the full file (for committed diffs) */
+    fullFileView?: boolean;
 }
 
