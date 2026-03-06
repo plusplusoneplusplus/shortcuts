@@ -821,4 +821,140 @@ describe('BulkFollowPromptDialog', () => {
             expect(body.payload.additionalInfo).toBeUndefined();
         });
     });
+
+    it('excludes tasks with status "future" from count', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        const folder = makeFolder({
+            singleDocuments: [
+                { baseName: 'active', fileName: 'active.md', relativePath: 'feature1', isArchived: false },
+                { baseName: 'later', fileName: 'later.md', relativePath: 'feature1', isArchived: false, status: 'future' },
+            ],
+        });
+        await act(async () => {
+            renderDialog(folder);
+        });
+        expect(screen.getByText(/1 task will be queued/)).toBeDefined();
+    });
+
+    it('excludes tasks with status "done" from count', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        const folder = makeFolder({
+            singleDocuments: [
+                { baseName: 'active', fileName: 'active.md', relativePath: 'feature1', isArchived: false },
+                { baseName: 'finished', fileName: 'finished.md', relativePath: 'feature1', isArchived: false, status: 'done' },
+            ],
+        });
+        await act(async () => {
+            renderDialog(folder);
+        });
+        expect(screen.getByText(/1 task will be queued/)).toBeDefined();
+    });
+
+    it('includes tasks with no status (undefined)', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        const folder = makeFolder({
+            singleDocuments: [
+                { baseName: 'task1', fileName: 'task1.md', relativePath: 'feature1', isArchived: false },
+                { baseName: 'task2', fileName: 'task2.md', relativePath: 'feature1', isArchived: false, status: undefined },
+            ],
+        });
+        await act(async () => {
+            renderDialog(folder);
+        });
+        expect(screen.getByText(/2 tasks will be queued/)).toBeDefined();
+    });
+
+    it('includes tasks with active statuses like "pending" and "in-progress"', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        const folder = makeFolder({
+            singleDocuments: [
+                { baseName: 'todo', fileName: 'todo.md', relativePath: 'feature1', isArchived: false, status: 'pending' },
+                { baseName: 'wip', fileName: 'wip.md', relativePath: 'feature1', isArchived: false, status: 'in-progress' },
+            ],
+        });
+        await act(async () => {
+            renderDialog(folder);
+        });
+        expect(screen.getByText(/2 tasks will be queued/)).toBeDefined();
+    });
+
+    it('excludes inactive tasks from document groups', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        const folder = makeFolder({
+            singleDocuments: [],
+            documentGroups: [
+                {
+                    baseName: 'task1',
+                    isArchived: false,
+                    documents: [
+                        { baseName: 'task1', docType: 'plan', fileName: 'task1.plan.md', relativePath: 'feature1', isArchived: false, status: 'pending' },
+                        { baseName: 'task1', docType: 'spec', fileName: 'task1.spec.md', relativePath: 'feature1', isArchived: false, status: 'done' },
+                    ],
+                },
+            ],
+        });
+        await act(async () => {
+            renderDialog(folder);
+        });
+        expect(screen.getByText(/1 task will be queued/)).toBeDefined();
+    });
+
+    it('excludes inactive tasks from nested children', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        const folder = makeFolder({
+            singleDocuments: [
+                { baseName: 'active', fileName: 'active.md', relativePath: 'feature1', isArchived: false, status: 'pending' },
+            ],
+            children: [
+                {
+                    name: 'sub',
+                    relativePath: 'feature1/sub',
+                    children: [],
+                    documentGroups: [],
+                    singleDocuments: [
+                        { baseName: 'future-task', fileName: 'future-task.md', relativePath: 'feature1/sub', isArchived: false, status: 'future' },
+                    ],
+                },
+            ],
+        });
+        await act(async () => {
+            renderDialog(folder);
+        });
+        expect(screen.getByText(/1 task will be queued/)).toBeDefined();
+    });
+
+    it('shows 0 tasks when all are inactive', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ prompts: [], skills: [] }),
+        });
+        const folder = makeFolder({
+            singleDocuments: [
+                { baseName: 'done1', fileName: 'done1.md', relativePath: 'feature1', isArchived: false, status: 'done' },
+                { baseName: 'future1', fileName: 'future1.md', relativePath: 'feature1', isArchived: false, status: 'future' },
+            ],
+        });
+        await act(async () => {
+            renderDialog(folder);
+        });
+        expect(screen.getByText(/0 tasks will be queued/)).toBeDefined();
+    });
 });

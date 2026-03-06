@@ -49,11 +49,17 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
     }
 }
 
+const INACTIVE_STATUSES = new Set(['future', 'done']);
+
 function collectMarkdownFiles(folder: TaskFolder): TaskFile[] {
     const files: TaskFile[] = [];
 
     for (const doc of folder.singleDocuments) {
-        if (doc.fileName.toLowerCase().endsWith('.md') && !isContextFile(doc.fileName)) {
+        if (
+            doc.fileName.toLowerCase().endsWith('.md') &&
+            !isContextFile(doc.fileName) &&
+            !INACTIVE_STATUSES.has(doc.status ?? '')
+        ) {
             const rel = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
             files.push({ fileName: doc.fileName, relativePath: rel });
         }
@@ -61,7 +67,11 @@ function collectMarkdownFiles(folder: TaskFolder): TaskFile[] {
 
     for (const group of folder.documentGroups) {
         for (const doc of group.documents) {
-            if (doc.fileName.toLowerCase().endsWith('.md') && !isContextFile(doc.fileName)) {
+            if (
+                doc.fileName.toLowerCase().endsWith('.md') &&
+                !isContextFile(doc.fileName) &&
+                !INACTIVE_STATUSES.has(doc.status ?? '')
+            ) {
                 const rel = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
                 files.push({ fileName: doc.fileName, relativePath: rel });
             }
