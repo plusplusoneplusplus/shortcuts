@@ -102,7 +102,7 @@ describe('WorkflowDetailView', () => {
             expect(screen.getByTestId('workflow-detail-view')).toBeDefined();
         });
 
-        expect(screen.getByText(/Pipeline completed/)).toBeDefined();
+        expect(screen.getByText(/Workflow completed/)).toBeDefined();
     });
 
     it('renders failed status caption', async () => {
@@ -122,7 +122,7 @@ describe('WorkflowDetailView', () => {
             expect(screen.getByTestId('workflow-detail-view')).toBeDefined();
         });
 
-        expect(screen.getByText(/Pipeline failed/)).toBeDefined();
+        expect(screen.getByText(/Workflow failed/)).toBeDefined();
     });
 
     it('clicking map node reveals MapItemGrid', async () => {

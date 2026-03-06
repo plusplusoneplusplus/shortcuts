@@ -512,7 +512,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         id: 'run-pipeline',
         label: 'Run pipeline',
         emoji: '🚀',
-        name: 'Run Pipeline',
+        name: 'Run Workflow',
         target: 'pipelines/my-pipeline/pipeline.yaml',
         cronExpr: '0 9 * * *',
         intervalValue: '1',

@@ -56,7 +56,7 @@ describe('2-line layout', () => {
 
     it('renders Pipelines count on line 2', () => {
         renderCard({ repo: makeRepo({ pipelines: [{} as any, {} as any] }) });
-        expect(screen.getByText('Pipelines: 2')).toBeTruthy();
+        expect(screen.getByText('Workflows: 2')).toBeTruthy();
     });
 
     it('renders stat counts on line 2', () => {

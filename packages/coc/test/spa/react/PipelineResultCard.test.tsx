@@ -54,7 +54,7 @@ describe('PipelineResultCard', () => {
 
     it('renders fallback title when pipelineName is missing', () => {
         render(<PipelineResultCard process={makeProcess({ metadata: {} })} />);
-        expect(screen.getByText('Pipeline Execution')).toBeDefined();
+        expect(screen.getByText('Workflow Execution')).toBeDefined();
     });
 
     it('renders execution stats grid when executionStats present', () => {

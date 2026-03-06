@@ -23,7 +23,7 @@ interface RepoQueueTabProps {
 /** Primary task types surfaced as individual filter options. */
 const TASK_TYPE_LABELS: Record<string, string> = {
     'follow-prompt': 'Follow Prompt',
-    'run-pipeline': 'Run Pipeline',
+    'run-pipeline': 'Run Workflow',
     'code-review': 'Code Review',
     'chat': 'Chat',
     'custom': 'Custom',

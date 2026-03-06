@@ -62,9 +62,9 @@ describe('PipelineDAGSection', () => {
         expect(screen.getByTestId('pipeline-dag-section')).toBeDefined();
     });
 
-    it('displays Pipeline Flow header text', () => {
+    it('displays Workflow Flow header text', () => {
         render(<PipelineDAGSection process={makeProcess()} />);
-        expect(screen.getByTestId('dag-section-header').textContent).toContain('Pipeline Flow');
+        expect(screen.getByTestId('dag-section-header').textContent).toContain('Workflow Flow');
     });
 
     it('toggles collapsed state on header click', () => {
@@ -90,7 +90,7 @@ describe('PipelineDAGSection', () => {
     it('shows status caption with correct icon for completed', () => {
         const { container } = render(<PipelineDAGSection process={makeProcess()} />);
         expect(container.textContent).toContain('✅');
-        expect(container.textContent).toContain('Pipeline completed');
+        expect(container.textContent).toContain('Workflow completed');
     });
 
     it('shows running caption for running process', () => {
@@ -104,14 +104,14 @@ describe('PipelineDAGSection', () => {
         const proc = makeProcess({ status: 'failed' });
         const { container } = render(<PipelineDAGSection process={proc} />);
         expect(container.textContent).toContain('❌');
-        expect(container.textContent).toContain('Pipeline failed');
+        expect(container.textContent).toContain('Workflow failed');
     });
 
     it('shows cancelled caption for cancelled process', () => {
         const proc = makeProcess({ status: 'cancelled' });
         const { container } = render(<PipelineDAGSection process={proc} />);
         expect(container.textContent).toContain('🚫');
-        expect(container.textContent).toContain('Pipeline cancelled');
+        expect(container.textContent).toContain('Workflow cancelled');
     });
 
     it('renders DAG chart with correct node count', () => {

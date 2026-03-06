@@ -37,7 +37,7 @@ export function PipelineDAGPreview({ yamlContent, validationErrors }: PipelineDA
                 onClick={() => setExpanded(prev => !prev)}
                 data-testid="dag-preview-header"
             >
-                <span>{expanded ? '▾' : '▸'} Pipeline Flow Preview</span>
+                <span>{expanded ? '▾' : '▸'} Workflow Flow Preview</span>
             </div>
             {expanded && (
                 <div className="py-2">

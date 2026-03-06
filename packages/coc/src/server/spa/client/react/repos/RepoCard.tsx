@@ -65,7 +65,7 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
             {/* Line 2 — path + stats */}
             <div className="flex items-center gap-2 mt-0.5 text-[10px] text-[#848484]">
                 <span className="truncate min-w-0" title={ws.rootPath || ''}>{truncPath}</span>
-                <span className="flex-shrink-0">Pipelines: {pipelineCount}</span>
+                <span className="flex-shrink-0">Workflows: {pipelineCount}</span>
                 {(queueStats.running > 0 || queueStats.queued > 0) && (
                     <span className="queue-status flex-shrink-0" data-testid="repo-card-queue-status">
                         {queueStats.running > 0 && <span data-testid="repo-card-queue-running">⏳{queueStats.running}</span>}

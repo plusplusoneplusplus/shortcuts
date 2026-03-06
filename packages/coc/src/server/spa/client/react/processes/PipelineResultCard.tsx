@@ -17,7 +17,7 @@ export interface PipelineResultCardProps {
 
 export function PipelineResultCard({ process, className }: PipelineResultCardProps) {
     const cardRef = useRef<HTMLDivElement>(null);
-    const pipelineName = process.metadata?.pipelineName || 'Pipeline Execution';
+    const pipelineName = process.metadata?.pipelineName || 'Workflow Execution';
     const stats = process.metadata?.executionStats;
     const result = process.result || '';
     const status = process.status || 'running';

@@ -237,7 +237,7 @@ describe('RepoCard', () => {
 
     it('shows pipeline count', () => {
         render(<Wrap><RepoCard repo={repo} isSelected={false} onClick={() => {}} /></Wrap>);
-        expect(screen.getByText('Pipelines: 1')).toBeDefined();
+        expect(screen.getByText('Workflows: 1')).toBeDefined();
     });
 
     it('shows task count in stats', () => {
@@ -658,7 +658,7 @@ describe('RepoDetail', () => {
         const buttons = document.querySelectorAll('button');
         const tabLabels = Array.from(buttons).map(b => b.textContent?.trim());
         expect(tabLabels).toContain('Info');
-        expect(tabLabels).toContain('Pipelines');
+        expect(tabLabels).toContain('Workflows');
         expect(tabLabels).toContain('Queue');
     });
 

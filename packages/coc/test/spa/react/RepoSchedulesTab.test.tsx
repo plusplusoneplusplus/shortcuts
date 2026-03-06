@@ -171,7 +171,7 @@ describe('CreateScheduleForm template UI', () => {
         fireEvent.click(screen.getByTestId('template-run-pipeline'));
 
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
-        expect(nameInput.value).toBe('Run Pipeline');
+        expect(nameInput.value).toBe('Run Workflow');
         // Target should start empty (prompting dropdown selection)
         // No plain target input should exist — it's replaced by a dropdown/loading
     });

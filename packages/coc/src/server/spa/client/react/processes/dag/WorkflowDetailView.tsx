@@ -222,13 +222,13 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
 
     let caption = '';
     if (status === 'completed') {
-        caption = `✅ Pipeline completed${durationText ? ` in ${durationText}` : ''}`;
+        caption = `✅ Workflow completed${durationText ? ` in ${durationText}` : ''}`;
     } else if (status === 'running') {
         caption = '🔄 Running...';
     } else if (status === 'failed') {
-        caption = `❌ Pipeline failed${durationText ? ` after ${durationText}` : ''}`;
+        caption = `❌ Workflow failed${durationText ? ` after ${durationText}` : ''}`;
     } else if (status === 'cancelled') {
-        caption = '🚫 Pipeline cancelled';
+        caption = '🚫 Workflow cancelled';
     } else {
         caption = `${icon} ${status}`;
     }
