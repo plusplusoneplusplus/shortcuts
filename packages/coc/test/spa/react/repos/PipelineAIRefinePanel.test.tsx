@@ -187,6 +187,35 @@ describe('preview phase', () => {
         expect(defaultProps.onApply).toHaveBeenCalledWith('name: refined\nsteps: [retry]');
     });
 
+    it('"Apply Changes" resets to input phase after successful apply', async () => {
+        await goToPreview();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('refine-apply'));
+        });
+
+        // Should be back in input phase with empty instruction
+        expect(screen.getByText('Edit with AI')).toBeTruthy();
+        expect(screen.getByTestId('refine-instruction')).toBeTruthy();
+        const textarea = screen.getByTestId('refine-instruction') as HTMLTextAreaElement;
+        expect(textarea.value).toBe('');
+    });
+
+    it('"Apply Changes" shows error and stays in preview on failure', async () => {
+        defaultProps.onApply = vi.fn().mockRejectedValue(new Error('Save failed'));
+        await goToPreview();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('refine-apply'));
+        });
+
+        // Should stay in preview phase
+        expect(screen.getByText('Review Changes')).toBeTruthy();
+        // Error should be shown
+        expect(screen.getByTestId('refine-error')).toBeTruthy();
+        expect(screen.getByText('Save failed')).toBeTruthy();
+    });
+
     it('"Re-refine" re-submits the instruction', async () => {
         mockRefinePipeline
             .mockResolvedValueOnce({ yaml: 'name: first' })

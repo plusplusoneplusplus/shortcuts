@@ -14,7 +14,7 @@ export interface PipelineAIRefinePanelProps {
     workspaceId: string;
     pipelineName: string;
     currentYaml: string;
-    onApply: (newYaml: string) => void;
+    onApply: (newYaml: string) => void | Promise<void>;
     onCancel: () => void;
 }
 
@@ -77,9 +77,20 @@ export function PipelineAIRefinePanel({
         }
     }
 
-    function handleApply() {
+    async function handleApply() {
         setSubmitting(true);
-        onApply(refinedYaml);
+        try {
+            await Promise.resolve(onApply(refinedYaml));
+            setPhase('input');
+            setInstruction('');
+            setRefinedYaml('');
+            setDiff('');
+            setError(null);
+        } catch (err: any) {
+            setError(err.message || 'Failed to apply changes');
+        } finally {
+            setSubmitting(false);
+        }
     }
 
     const panelTitle =

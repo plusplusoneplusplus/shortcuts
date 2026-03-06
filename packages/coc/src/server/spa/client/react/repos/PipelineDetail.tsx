@@ -27,7 +27,8 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
     const { addToast } = useGlobalToast();
     const { state: queueState } = useQueue();
     const { state: appState } = useApp();
-    const [mode, setMode] = useState<'view' | 'edit' | 'ai-edit'>('view');
+    const [mode, setMode] = useState<'view' | 'edit'>('view');
+    const [aiSidebarOpen, setAiSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'pipeline' | 'history'>('pipeline');
     const selectedRunProcessId = appState.selectedPipelineRunProcessId;
     // Derive effective tab: when a run is selected, show 'run' regardless of local activeTab
@@ -107,10 +108,10 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
             await savePipelineContent(workspaceId, pipeline.name, newYaml);
             setContent(newYaml);
             setEditContent(newYaml);
-            setMode('view');
-            addToast('Workflow saved', 'success');
+            addToast('Workflow updated ✓', 'success');
         } catch (err: any) {
             setError(err.message || 'Failed to save');
+            throw err;
         } finally {
             setSaving(false);
         }
@@ -160,12 +161,17 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                                 ▶ Run
                             </Button>
                             <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
-                            <Button variant="secondary" size="sm" onClick={() => setMode('edit')}>Edit</Button>
-                            <Button variant="secondary" size="sm" onClick={() => setMode('ai-edit')}>Edit with AI ✨</Button>
+                            <Button variant="secondary" size="sm" onClick={() => { setMode('edit'); setAiSidebarOpen(false); }}>Edit</Button>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setAiSidebarOpen(prev => !prev)}
+                                data-testid="ai-sidebar-toggle"
+                            >
+                                {aiSidebarOpen ? 'Close AI ✨' : 'Edit with AI ✨'}
+                            </Button>
                             <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>Delete</Button>
                         </>
-                    ) : mode === 'ai-edit' ? (
-                        null
                     ) : (
                         <>
                             <Button variant="secondary" size="sm" onClick={() => { setMode('view'); setError(null); }}>Cancel</Button>
@@ -233,46 +239,73 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
             )}
 
             {/* Content area */}
-            <div className="flex-1 overflow-auto px-4">
-                {mode === 'view' ? (
-                    <>
-                        {effectiveTab === 'pipeline' && (
-                            <>
-                                <pre className="font-mono text-xs overflow-auto whitespace-pre-wrap bg-[#f5f5f5] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-3">
-                                    {content}
-                                </pre>
-                                {content && (
-                                    <PipelineDAGPreview yamlContent={content} validationErrors={pipeline.validationErrors} />
-                                )}
-                            </>
-                        )}
-                        {effectiveTab === 'history' && (
-                            <PipelineRunHistory
+            <div className="flex-1 flex overflow-hidden">
+                {/* Main content panel */}
+                <div className="flex-1 overflow-auto px-4 min-w-0">
+                    {mode === 'view' ? (
+                        <>
+                            {effectiveTab === 'pipeline' && (
+                                <>
+                                    <pre className="font-mono text-xs overflow-auto whitespace-pre-wrap bg-[#f5f5f5] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-3">
+                                        {content}
+                                    </pre>
+                                    {content && (
+                                        <PipelineDAGPreview yamlContent={content} validationErrors={pipeline.validationErrors} />
+                                    )}
+                                </>
+                            )}
+                            {effectiveTab === 'history' && (
+                                <PipelineRunHistory
+                                    workspaceId={workspaceId}
+                                    pipelineName={pipeline.name}
+                                    refreshKey={refreshKey}
+                                />
+                            )}
+                            {effectiveTab === 'run' && selectedRunProcessId && (
+                                <WorkflowDetailView processId={selectedRunProcessId} />
+                            )}
+                        </>
+                    ) : (
+                        <div className="flex flex-col gap-2 h-full">
+                            <textarea
+                                className="flex-1 w-full font-mono text-xs p-3 border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] rounded resize-none min-h-[200px]"
+                                value={editContent}
+                                onChange={e => setEditContent(e.target.value)}
+                            />
+                            {error && <p className="text-xs text-red-500">{error}</p>}
+                        </div>
+                    )}
+                </div>
+
+                {/* AI Edit sidebar */}
+                {aiSidebarOpen && mode === 'view' && (
+                    <div
+                        className="w-[400px] shrink-0 flex flex-col border-l border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f9f9f9] dark:bg-[#1e1e1e]"
+                        data-testid="ai-sidebar"
+                    >
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            <div className="flex flex-col">
+                                <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">✨ Edit with AI</span>
+                                <span className="text-xs text-[#848484]">{pipeline.name}</span>
+                            </div>
+                            <button
+                                className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none p-1"
+                                onClick={() => setAiSidebarOpen(false)}
+                                data-testid="ai-sidebar-close"
+                                title="Close AI sidebar"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-auto p-3">
+                            <PipelineAIRefinePanel
                                 workspaceId={workspaceId}
                                 pipelineName={pipeline.name}
-                                refreshKey={refreshKey}
+                                currentYaml={content}
+                                onApply={handleAIApply}
+                                onCancel={() => setAiSidebarOpen(false)}
                             />
-                        )}
-                        {effectiveTab === 'run' && selectedRunProcessId && (
-                            <WorkflowDetailView processId={selectedRunProcessId} />
-                        )}
-                    </>
-                ) : mode === 'ai-edit' ? (
-                    <PipelineAIRefinePanel
-                        workspaceId={workspaceId}
-                        pipelineName={pipeline.name}
-                        currentYaml={content}
-                        onApply={handleAIApply}
-                        onCancel={() => setMode('view')}
-                    />
-                ) : (
-                    <div className="flex flex-col gap-2 h-full">
-                        <textarea
-                            className="flex-1 w-full font-mono text-xs p-3 border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] rounded resize-none min-h-[200px]"
-                            value={editContent}
-                            onChange={e => setEditContent(e.target.value)}
-                        />
-                        {error && <p className="text-xs text-red-500">{error}</p>}
+                        </div>
                     </div>
                 )}
             </div>
