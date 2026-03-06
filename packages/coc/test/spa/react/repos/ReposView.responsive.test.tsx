@@ -80,11 +80,12 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
     SUB_TABS: [
         { key: 'info', label: 'Info' },
         { key: 'git', label: 'Git' },
-        { key: 'pipelines', label: 'Pipelines' },
         { key: 'tasks', label: 'Tasks' },
+        { key: 'chat', label: 'Chats' },
         { key: 'queue', label: 'Queue' },
+        { key: 'pipelines', label: 'Workflows' },
         { key: 'schedules', label: 'Schedules' },
-        { key: 'chat', label: 'Chat' },
+        { key: 'copilot', label: 'Copilot' },
     ],
 }));
 
@@ -396,7 +397,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(9);
+        expect(tabs.length).toBe(8);
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');
