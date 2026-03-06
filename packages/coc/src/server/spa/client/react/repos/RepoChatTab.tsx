@@ -110,6 +110,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const currentChatTaskIdRef = useRef<string | null>(null);
     const loadSessionCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const inputDrafts = useRef<Map<string | null, string>>(new Map());
 
@@ -997,7 +998,10 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                         {suggestions.length > 0 && !isStreaming && (
                             <SuggestionChips
                                 suggestions={suggestions}
-                                onSelect={(text) => { setSuggestions([]); void sendFollowUp(text); }}
+                                onSelect={(text) => {
+                                        setInputValue(prev => prev ? `${prev} ${text}` : text);
+                                        textareaRef.current?.focus();
+                                    }}
                                 disabled={inputDisabled || sessionExpired}
                             />
                         )}
@@ -1005,6 +1009,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                         <div className="flex items-center gap-2 relative">
                             <div className="flex-1 relative">
                                 <textarea
+                                    ref={textareaRef}
                                     rows={1}
                                     value={inputValue}
                                     disabled={inputDisabled}
@@ -1013,7 +1018,6 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                                         setInputValue(e.target.value);
                                         inputDrafts.current.set(selectedTaskId ?? null, e.target.value);
                                         slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
-                                        if (suggestions.length > 0) setSuggestions([]);
                                     }}
                                     onKeyDown={e => {
                                         if (slashCommands.handleKeyDown(e)) {
