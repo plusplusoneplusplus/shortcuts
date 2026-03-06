@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "^0.1.29",
+    "azure-devops-node-api": "^14.1.0",
     "commander": "^12.1.0",
     "js-yaml": "^4.1.0"
   },

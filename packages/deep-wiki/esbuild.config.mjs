@@ -11,6 +11,7 @@ import * as esbuild from 'esbuild';
 /** Packages that are on npm and should NOT be bundled */
 const EXTERNAL_DEPS = [
     '@github/copilot-sdk',
+    'azure-devops-node-api',
     'commander',
     'js-yaml',
 ];
