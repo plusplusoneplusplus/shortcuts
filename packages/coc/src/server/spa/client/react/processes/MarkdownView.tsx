@@ -2,8 +2,8 @@
  * MarkdownView — renders pre-rendered HTML and triggers hljs highlighting.
  * Replaces markdown-renderer.ts pattern for React usage.
  *
- * When `sectionMarkdown` is provided, H2/H3 headings get a per-section
- * copy button that appears on hover.
+ * When `sectionMarkdown` is provided and there are H2/H3 headings, a single
+ * copy button is placed on the first heading to copy the entire article.
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -18,13 +18,15 @@ export interface MarkdownSectionData {
 
 interface MarkdownViewProps {
     html: string;
-    /** Per-section markdown slices — when present, section copy buttons are shown. */
+    /** Per-section markdown slices — when present, a copy button is shown on the first heading. */
     sectionMarkdown?: MarkdownSectionData[];
+    /** Full article markdown — when provided, the copy button copies this instead of joining sections. */
+    fullMarkdown?: string;
     /** When true, section copy buttons are hidden (e.g. during streaming). */
     hideSectionCopy?: boolean;
 }
 
-export function MarkdownView({ html, sectionMarkdown, hideSectionCopy }: MarkdownViewProps) {
+export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionCopy }: MarkdownViewProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [headingPortals, setHeadingPortals] = React.useState<
         { element: HTMLElement; markdown: string; key: string }[]
@@ -39,7 +41,7 @@ export function MarkdownView({ html, sectionMarkdown, hideSectionCopy }: Markdow
         }
     }, [html]);
 
-    // Build portal targets for section copy buttons after each render.
+    // Build a single portal on the first H2/H3 heading to copy the full article.
     useEffect(() => {
         if (!containerRef.current || !sectionMarkdown || sectionMarkdown.length === 0 || hideSectionCopy) {
             setHeadingPortals([]);
@@ -47,26 +49,22 @@ export function MarkdownView({ html, sectionMarkdown, hideSectionCopy }: Markdow
         }
 
         const headings = containerRef.current.querySelectorAll('h2, h3');
-        const portals: { element: HTMLElement; markdown: string; key: string }[] = [];
+        if (headings.length === 0) {
+            setHeadingPortals([]);
+            return;
+        }
 
-        // Match DOM headings to sectionMarkdown entries that have a heading (level > 0).
         const sectionsWithHeading = sectionMarkdown.filter(s => s.level > 0);
-        headings.forEach((headingEl, i) => {
-            if (i < sectionsWithHeading.length) {
-                const sec = sectionsWithHeading[i];
-                const md = sec.heading + (sec.body ? '\n' + sec.body : '');
+        const fullText = fullMarkdown ?? sectionsWithHeading
+            .map(s => s.heading + (s.body ? '\n' + s.body : ''))
+            .join('\n\n');
 
-                // Ensure the heading element is position-relative for the absolute button.
-                const el = headingEl as HTMLElement;
-                el.style.position = 'relative';
-                el.classList.add('group/section');
+        const firstEl = headings[0] as HTMLElement;
+        firstEl.style.position = 'relative';
+        firstEl.classList.add('group/section');
 
-                portals.push({ element: el, markdown: md, key: `sec-${i}` });
-            }
-        });
-
-        setHeadingPortals(portals);
-    }, [html, sectionMarkdown, hideSectionCopy]);
+        setHeadingPortals([{ element: firstEl, markdown: fullText, key: 'article-copy' }]);
+    }, [html, sectionMarkdown, fullMarkdown, hideSectionCopy]);
 
     return (
         <>

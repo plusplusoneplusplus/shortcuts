@@ -76,7 +76,7 @@ describe('CopySectionBtn', () => {
     it('has title for accessibility', () => {
         render(<CopySectionBtn sectionMarkdown="## X" />);
         const btn = screen.getByTestId('section-copy-btn');
-        expect(btn.getAttribute('title')).toBe('Copy section to clipboard');
+        expect(btn.getAttribute('title')).toBe('Copy to clipboard');
     });
 
     it('stops event propagation on click', async () => {

@@ -28,7 +28,7 @@ export function CopySectionBtn({ sectionMarkdown }: CopySectionBtnProps) {
     return (
         <button
             className="section-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover/section:opacity-100 transition-opacity text-[10px]"
-            title="Copy section to clipboard"
+            title="Copy to clipboard"
             onClick={handleCopy}
             data-testid="section-copy-btn"
             style={{

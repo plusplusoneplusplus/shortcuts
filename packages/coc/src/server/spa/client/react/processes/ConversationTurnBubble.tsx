@@ -748,7 +748,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
                         let accKey = '';
                         const flushContent = () => {
                             if (accKey && accHtml) {
-                                nodes.push(<MarkdownView key={accKey} html={accHtml} sectionMarkdown={sectionMarkdown} hideSectionCopy={!!turn.streaming} />);
+                                nodes.push(<MarkdownView key={accKey} html={accHtml} sectionMarkdown={sectionMarkdown} fullMarkdown={turn.content ?? ''} hideSectionCopy={!!turn.streaming} />);
                                 accHtml = '';
                                 accKey = '';
                             }
