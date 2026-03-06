@@ -103,6 +103,7 @@ Runs an external command (shell, Python, Node.js, etc.) with optional stdin/stdo
   timeoutMs?: 120000             # Optional: Script timeout
   input?: json | csv | none      # How to send parent data to stdin (default: none)
   output?: json | csv | text | passthrough  # How to parse stdout (default: text)
+  shell?: default | powershell | bash       # Shell to use (default: system shell)
 ```
 
 **Input/Output modes:**
@@ -113,6 +114,13 @@ Runs an external command (shell, Python, Node.js, etc.) with optional stdin/stdo
 - `output: csv` — Parse stdout as CSV
 - `output: text` — Stdout as single item with `text` field
 - `output: passthrough` — Pass parent items through unchanged (ignore stdout)
+
+**Shell modes:**
+- `shell: default` (or omitted) — system shell: `cmd.exe` on Windows, `/bin/sh` on Unix
+- `shell: powershell` — `powershell.exe` — enables PowerShell cmdlets (`ConvertTo-Json`, `ForEach-Object`, etc.)
+- `shell: bash` — `bash` — Bash syntax on Unix/WSL
+
+> **Windows note:** When using `output: json`, the script must print a valid JSON array to stdout. On Windows with `shell: powershell`, use `ConvertTo-Json -AsArray` to produce the correct array output even when there is only one item.
 
 ---
 

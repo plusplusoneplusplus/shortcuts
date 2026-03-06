@@ -50,6 +50,7 @@ Use the `ask_user` tool to gather requirements:
    **3w. Script Nodes**
    - "Do any stages need to run external scripts or CLI tools?"
    - Options: Yes (ask for language/command), No
+   - If Yes: "Are you on Windows? PowerShell scripts are supported with `shell: powershell`."
 
    **4w. Error Handling**
    - "If a node fails, should the workflow abort or continue with empty data?"
@@ -244,9 +245,14 @@ nodes:
   enrich:
     type: script
     from: [load-bugs]
+    # Unix: uses default shell (no shell: field needed)
     run: "python3 enrich.py"
     input: json
     output: json
+    # Windows variant (PowerShell):
+    # shell: powershell
+    # run: |
+    #   $input | python enrich.py | ConvertTo-Json -AsArray
 
   classify:
     type: map
@@ -514,6 +520,7 @@ See [patterns reference](references/patterns.md) for detailed examples of:
 - Multi-Model Fanout (consensus analysis)
 - Hybrid Filtering (rule + AI filtering)
 - **Single AI Job** (one-shot prompts, Q&A, summaries — no input/map/reduce)
+- **Git-driven code review** — script node runs `git log` → map node reviews each commit in parallel with a skill
 - **DAG Workflow** (fan-out classification, ETL with scripting, multi-source merge)
 
 ## Schema Reference

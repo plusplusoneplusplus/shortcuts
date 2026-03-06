@@ -478,6 +478,7 @@ parameters:
 | "Process data through parallel branches" | DAG Fan-Out Classification |
 | "Mix scripts with AI processing" | ETL with Script Nodes |
 | "Combine data from multiple sources" | Multi-Source Merge and Compare |
+| "Review recent git commits in parallel" | Git-Driven Parallel Review |
 
 ---
 
@@ -710,6 +711,73 @@ nodes:
 - Comparing data from heterogeneous sources
 - Need a unified view across datasets
 - Benchmarking against AI-generated baseline data
+
+---
+
+## Pattern 10: Git-Driven Parallel Review
+
+**Use Case:** Use `git log` to discover recent commits and review each one in parallel with an AI skill.
+
+### Windows / PowerShell Variant
+
+```yaml
+# Git-Driven Parallel Code Review (Windows / PowerShell)
+name: "Git Commit Review"
+description: "Find recent commits matching a keyword and review each in parallel"
+
+settings:
+  concurrency: 4
+  model: "gpt-4o"
+
+nodes:
+  get-commits:
+    type: script
+    shell: powershell
+    run: |
+      git log --grep="fix" --since="7 days ago" --format="%H|||%s|||%an" |
+        ForEach-Object {
+          $p = $_ -split '\|\|\|'
+          [PSCustomObject]@{ hash=$p[0]; subject=$p[1]; author=$p[2] }
+        } | ConvertTo-Json -AsArray
+    output: json
+
+  review:
+    type: map
+    from: [get-commits]
+    skill: code-review
+    prompt: |
+      Review commit {{hash}} by {{author}}:
+      Subject: {{subject}}
+
+      Fetch the diff with: git show {{hash}}
+      Identify any issues or improvements.
+    output: [findings, severity]
+```
+
+### Unix Variant
+
+```yaml
+# Unix variant (same workflow, no shell field needed)
+nodes:
+  get-commits:
+    type: script
+    run: |
+      git log --grep="fix" --since="7 days ago" \
+        --format='{"hash":"%H","subject":"%s","author":"%an"}' | \
+        jq -s '.'
+    output: json
+```
+
+**Key Characteristics:**
+- `shell: powershell` on Windows enables `ConvertTo-Json -AsArray` for correct JSON array output
+- Unix uses `jq -s '.'` to collect newline-delimited JSON objects into an array
+- `map` node fans out over each commit for parallel review
+- `skill:` key loads a pre-built prompt from `.github/skills/`
+
+**When to Use:**
+- Automated commit review in CI/CD or periodic schedules
+- Reviewing commits that match a keyword (bugfix, feature, refactor)
+- Any workflow where git history drives the processing pipeline
 
 ---
 
