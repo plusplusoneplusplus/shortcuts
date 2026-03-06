@@ -90,7 +90,7 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `pi
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/pipeline-core`.
 
-**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session pool, MCP config, model registry), Map-reduce (executor, splitters, reducers, concurrency limiter), Pipeline (YAML executor, CSV reader, template engine, filters), Process store (`FileProcessStore` — JSON persistence, atomic writes, 500-process retention), Git CLI (`@plusplusoneplusplus/pipeline-core/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
+**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session pool, MCP config, model registry), Map-reduce (executor, splitters, reducers, concurrency limiter), Pipeline (YAML executor, CSV reader, template engine, filters), Process store (`FileProcessStore` — JSON persistence, atomic writes, 500-process retention), Git CLI (`@plusplusoneplusplus/pipeline-core/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
 
 **YAML Pipeline phases:** input (CSV) → optional filter (rule/ai/hybrid) → map (parallel AI, optional `batchSize` + `{{ITEMS}}`) → reduce (list/table/json/csv/ai). Filter operators: equals, not_equals, in, not_in, contains, not_contains, greater_than, less_than, gte, lte, matches.
 
@@ -104,7 +104,32 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplus
 
 **Wiki layer:** `WikiManager` registry, `WikiData` in-memory store, `ContextBuilder` (RAG-style retrieval), `ConversationSessionManager` (multi-turn AI), `FileWatcher`, deep-wiki integration (`dw-*` handlers for generation/exploration/ask).
 
+**Memory layer:** `FileMemoryStore` (entry CRUD with `id`, `tags`, `summary`, `source` fields), `MemoryConfig` (`storageDir`, `backend`, `maxEntries`, `ttlDays`, `autoInject`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, `GET/POST /api/memory/entries`, `GET/PATCH/DELETE /api/memory/entries/:id`, `GET /api/memory/aggregate-tool-calls/stats`, `POST /api/memory/aggregate-tool-calls`. Dashboard UI: `MemoryView` → `MemoryEntriesPanel` + `MemoryConfigPanel` + `ExploreCachePanel`.
+
 **Testing:** 7+ Vitest test files.
+
+## Memory System (`packages/pipeline-core/src/memory/`)
+
+Opt-in, two-level persistence layer that lets AI pipelines learn from past sessions. After each AI call the AI writes `write_memory` tool calls; those facts are periodically consolidated by an AI aggregation step into `consolidated.md`, which is injected into subsequent prompts.
+
+**Storage layout:** `~/.coc/memory/system/` (cross-repo) and `~/.coc/memory/repos/<16-char-sha256>/` (per-repo), each with `raw/*.md`, `consolidated.md`, `index.json`.
+
+**Key symbols in `pipeline-core`:**
+
+| Symbol | Role |
+|--------|------|
+| `MemoryStore` (interface) | Full CRUD contract |
+| `FileMemoryStore` | File-backed impl; atomic tmp→rename writes; write-queue serialization |
+| `MemoryRetriever` | Loads `consolidated.md` → formats markdown context block for prompt injection |
+| `createWriteMemoryTool()` | Factory returning an AI-callable `write_memory` tool + `getWrittenFacts()` accessor |
+| `MemoryAggregator` | Batch-threshold check; triggers AI consolidation when `rawCount >= 5` |
+| `withMemory()` | One-liner orchestrator: retrieve → inject tool → invoke AI → aggregate |
+
+**Tool Call Cache** (secondary subsystem in same folder): `ToolCallCapture`, `FileToolCallCacheStore`, `ToolCallCacheAggregator`, `ToolCallCacheRetriever`, `withToolCallCache()` — caches AI tool call Q&A pairs for replay/reuse across runs.
+
+**Integration:** Features opt in by wrapping AI calls with `withMemory()`. Wiki Ask/Explore handlers in coc-server combine TF-IDF context + memory context. Config precedence: CLI flag > pipeline YAML `memory:` field > `~/.coc/config.yaml` > default (disabled).
+
+**Implementation status:** Core pipeline-core modules, server routes, and dashboard UI are complete. CLI `coc memory` subcommands and pipeline YAML `memory:` wiring are not yet implemented.
 
 ## Development Notes
 
