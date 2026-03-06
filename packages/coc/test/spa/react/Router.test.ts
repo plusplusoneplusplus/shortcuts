@@ -50,8 +50,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#session')).toBe('processes');
     });
 
-    it('returns "wiki" for #wiki', () => {
-        expect(tabFromHash('#wiki')).toBe('wiki');
+    it('returns null for #wiki (wiki is only available under repos)', () => {
+        expect(tabFromHash('#wiki')).toBeNull();
     });
 
     it('returns "admin" for #admin', () => {
@@ -465,43 +465,30 @@ describe('parseWikiDeepLink — admin sub-tabs', () => {
 });
 
 // ─── wiki tab deep-link integration ─────────────────────────────
+// Top-level #wiki route removed; wiki is only accessible under #repos/:id/wiki.
 
 describe('wiki tab deep-link integration', () => {
-    it('tabFromHash returns "wiki" for all wiki tab routes', () => {
-        expect(tabFromHash('#wiki/my-wiki/browse')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/ask')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/graph')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin')).toBe('wiki');
+    it('tabFromHash returns null for all wiki routes (top-level wiki tab removed)', () => {
+        expect(tabFromHash('#wiki/my-wiki/browse')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/ask')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/graph')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/admin')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/component/comp-1')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/admin/seeds')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/admin/config')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/admin/delete')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/admin/generate')).toBeNull();
     });
 
-    it('tabFromHash returns "wiki" for wiki component route', () => {
-        expect(tabFromHash('#wiki/my-wiki/component/comp-1')).toBe('wiki');
-    });
+    it('parseWikiDeepLink still parses wiki hashes correctly', () => {
+        const detail1 = parseWikiDeepLink('#wiki/w1/ask');
+        expect(detail1.wikiId).toBe('w1');
+        expect(detail1.tab).toBe('ask');
 
-    it('tabFromHash returns "wiki" for admin sub-tab routes', () => {
-        expect(tabFromHash('#wiki/my-wiki/admin/seeds')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin/config')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin/delete')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin/generate')).toBe('wiki');
-    });
-
-    it('tab and component can be parsed after tabFromHash', () => {
-        const hash = '#wiki/w1/ask';
-        const tab = tabFromHash(hash);
-        expect(tab).toBe('wiki');
-        const detail = parseWikiDeepLink(hash);
-        expect(detail.wikiId).toBe('w1');
-        expect(detail.tab).toBe('ask');
-    });
-
-    it('admin sub-tab can be parsed after tabFromHash', () => {
-        const hash = '#wiki/w1/admin/seeds';
-        const tab = tabFromHash(hash);
-        expect(tab).toBe('wiki');
-        const detail = parseWikiDeepLink(hash);
-        expect(detail.wikiId).toBe('w1');
-        expect(detail.tab).toBe('admin');
-        expect(detail.adminTab).toBe('seeds');
+        const detail2 = parseWikiDeepLink('#wiki/w1/admin/seeds');
+        expect(detail2.wikiId).toBe('w1');
+        expect(detail2.tab).toBe('admin');
+        expect(detail2.adminTab).toBe('seeds');
     });
 });
 
@@ -554,8 +541,9 @@ describe('parsePipelineDeepLink', () => {
 });
 
 // ─── handleHash wiki dispatch simulation ────────────────────────
-// Mirrors the wiki-branch logic from Router's handleHash effect to verify
-// that component deep-links dispatch atomically (no intermediate clearing).
+// The top-level #wiki route has been removed; wiki is now only accessible
+// under #repos/:id/wiki. These tests verify that #wiki hashes no longer
+// trigger any dispatches.
 
 describe('handleHash wiki dispatch simulation', () => {
     function simulateWikiHashDispatch(rawHash: string): Array<{ type: string; [key: string]: any }> {
@@ -581,62 +569,12 @@ describe('handleHash wiki dispatch simulation', () => {
         return dispatches;
     }
 
-    it('dispatches single SELECT_WIKI_WITH_TAB with componentId for component deep-link', () => {
-        const dispatches = simulateWikiHashDispatch('#wiki/w1/component/comp-1');
-        expect(dispatches).toHaveLength(1);
-        expect(dispatches[0]).toEqual({
-            type: 'SELECT_WIKI_WITH_TAB',
-            wikiId: 'w1',
-            tab: 'browse',
-            adminTab: null,
-            componentId: 'comp-1',
-        });
-    });
-
-    it('does not dispatch separate SELECT_WIKI_COMPONENT for component deep-link', () => {
-        const dispatches = simulateWikiHashDispatch('#wiki/w1/component/comp-1');
-        expect(dispatches.find(d => d.type === 'SELECT_WIKI_COMPONENT')).toBeUndefined();
-    });
-
-    it('dispatches SELECT_WIKI_WITH_TAB with null componentId for tab-only link', () => {
-        const dispatches = simulateWikiHashDispatch('#wiki/w1/ask');
-        expect(dispatches).toHaveLength(1);
-        expect(dispatches[0]).toEqual({
-            type: 'SELECT_WIKI_WITH_TAB',
-            wikiId: 'w1',
-            tab: 'ask',
-            adminTab: null,
-            componentId: null,
-        });
-    });
-
-    it('dispatches SELECT_WIKI for wiki without tab', () => {
-        const dispatches = simulateWikiHashDispatch('#wiki/w1');
-        expect(dispatches).toHaveLength(1);
-        expect(dispatches[0]).toEqual({ type: 'SELECT_WIKI', wikiId: 'w1' });
-    });
-
-    it('dispatches SELECT_WIKI_WITH_TAB with adminTab for admin deep-link', () => {
-        const dispatches = simulateWikiHashDispatch('#wiki/w1/admin/seeds');
-        expect(dispatches).toHaveLength(1);
-        expect(dispatches[0]).toEqual({
-            type: 'SELECT_WIKI_WITH_TAB',
-            wikiId: 'w1',
-            tab: 'admin',
-            adminTab: 'seeds',
-            componentId: null,
-        });
-    });
-
-    it('handles URL-encoded component IDs', () => {
-        const dispatches = simulateWikiHashDispatch('#wiki/w1/component/comp%2Fone');
-        expect(dispatches).toHaveLength(1);
-        expect(dispatches[0].componentId).toBe('comp/one');
-    });
-
-    it('dispatches nothing for plain #wiki (no wikiId)', () => {
-        const dispatches = simulateWikiHashDispatch('#wiki');
-        expect(dispatches).toHaveLength(0);
+    it('dispatches nothing for #wiki hashes (top-level wiki tab removed)', () => {
+        expect(simulateWikiHashDispatch('#wiki/w1/component/comp-1')).toHaveLength(0);
+        expect(simulateWikiHashDispatch('#wiki/w1/ask')).toHaveLength(0);
+        expect(simulateWikiHashDispatch('#wiki/w1')).toHaveLength(0);
+        expect(simulateWikiHashDispatch('#wiki/w1/admin/seeds')).toHaveLength(0);
+        expect(simulateWikiHashDispatch('#wiki')).toHaveLength(0);
     });
 
     it('dispatches nothing for non-wiki hash', () => {

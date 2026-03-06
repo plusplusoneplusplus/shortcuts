@@ -40,11 +40,10 @@ function renderTopBar() {
 // ─── TABS constant ──────────────────────────────────────────────
 
 describe('TABS constant', () => {
-    it('contains Repos, Processes, and Wiki', () => {
+    it('contains Repos, Processes, and Memory', () => {
         const labels = TABS.map(t => t.label);
         expect(labels).toContain('Repos');
         expect(labels).toContain('Processes');
-        expect(labels).toContain('Wiki');
         expect(labels).toContain('Memory');
     });
 
@@ -52,12 +51,11 @@ describe('TABS constant', () => {
         const tabs = TABS.map(t => t.tab);
         expect(tabs).toContain('repos');
         expect(tabs).toContain('processes');
-        expect(tabs).toContain('wiki');
         expect(tabs).toContain('memory');
     });
 
-    it('has exactly 4 entries', () => {
-        expect(TABS).toHaveLength(4);
+    it('has exactly 3 entries', () => {
+        expect(TABS).toHaveLength(3);
     });
 });
 
@@ -151,12 +149,12 @@ describe('TopBar — tab click updates location.hash', () => {
         expect(location.hash).toBe('#repos');
     });
 
-    it('sets hash to #wiki when Wiki tab is clicked', () => {
+    it('sets hash to #memory when Memory tab is clicked', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Wiki'));
+            fireEvent.click(screen.getByText('Memory'));
         });
-        expect(location.hash).toBe('#wiki');
+        expect(location.hash).toBe('#memory');
     });
 
     it('clicking the same tab still sets the hash', () => {
@@ -170,8 +168,8 @@ describe('TopBar — tab click updates location.hash', () => {
 
     it('clicking tabs in sequence updates hash each time', () => {
         renderTopBar();
-        act(() => { fireEvent.click(screen.getByText('Wiki')); });
-        expect(location.hash).toBe('#wiki');
+        act(() => { fireEvent.click(screen.getByText('Memory')); });
+        expect(location.hash).toBe('#memory');
 
         act(() => { fireEvent.click(screen.getByText('Processes')); });
         expect(location.hash).toBe('#processes');
@@ -200,11 +198,11 @@ describe('TopBar — active tab styling', () => {
     it('clicked tab becomes active', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Wiki'));
+            fireEvent.click(screen.getByText('Memory'));
         });
-        const wikiBtn = screen.getByText('Wiki');
-        expect(wikiBtn.className).toContain('bg-[#0078d4]');
-        expect(wikiBtn.className).toContain('text-white');
+        const memoryBtn = screen.getByText('Memory');
+        expect(memoryBtn.className).toContain('bg-[#0078d4]');
+        expect(memoryBtn.className).toContain('text-white');
     });
 
     it('previously active tab loses active class after clicking another', () => {
@@ -243,9 +241,9 @@ describe('appReducer — SET_ACTIVE_TAB for top tabs', () => {
         expect(result.activeTab).toBe('processes');
     });
 
-    it('switches to wiki', () => {
-        const result = appReducer(baseState, { type: 'SET_ACTIVE_TAB', tab: 'wiki' });
-        expect(result.activeTab).toBe('wiki');
+    it('switches to memory', () => {
+        const result = appReducer(baseState, { type: 'SET_ACTIVE_TAB', tab: 'memory' });
+        expect(result.activeTab).toBe('memory');
     });
 
     it('switches to repos', () => {

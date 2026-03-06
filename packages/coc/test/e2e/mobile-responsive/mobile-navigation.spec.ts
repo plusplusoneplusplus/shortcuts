@@ -1,7 +1,7 @@
 /**
  * Mobile Navigation Tests — verify bottom nav and tab navigation at 375×812.
  */
-import { test, expect } from '../fixtures/server-fixture';
+import { expect, test } from '../fixtures/server-fixture';
 import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
@@ -50,14 +50,14 @@ test.describe('Mobile Navigation', () => {
         expect(page.url()).toContain('#processes');
     });
 
-    test('mobile: tapping bottom nav Wiki switches view', async ({ page, serverUrl }) => {
+    test('mobile: tapping bottom nav Memory switches view', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
-        await bottomNav.locator('button', { hasText: /Wiki/i }).tap();
+        await bottomNav.locator('button', { hasText: /Memory/i }).tap();
 
-        await expect(page.locator('#view-wiki')).toBeVisible();
+        await expect(page.locator('#view-memory')).toBeVisible();
     });
 
     test('mobile: tapping bottom nav Repos switches view', async ({ page, serverUrl }) => {
@@ -87,11 +87,11 @@ test.describe('Mobile Navigation', () => {
 
         // The active button should have distinct styling (aria-current or active class)
         const processesBtn = bottomNav.locator('button[data-tab="processes"]');
-        const wikiBtn = bottomNav.locator('button[data-tab="wiki"]');
+        const memoryBtn = bottomNav.locator('button[data-tab="memory"]');
 
-        // Tap Wiki
-        await wikiBtn.tap();
-        await expect(page.locator('#view-wiki')).toBeVisible();
+        // Tap Memory
+        await memoryBtn.tap();
+        await expect(page.locator('#view-memory')).toBeVisible();
     });
 
     test('mobile: TopBar shows header', async ({ page, serverUrl }) => {

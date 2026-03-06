@@ -46,7 +46,7 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         expect(screen.getByTestId('bottom-nav')).toBeTruthy();
         const buttons = screen.getAllByRole('button');
-        expect(buttons).toHaveLength(4);
+        expect(buttons).toHaveLength(3);
     });
 
     it('hidden on desktop viewport', () => {
@@ -79,12 +79,12 @@ describe('BottomNav', () => {
         expect(reposBtn.className).not.toContain('text-[#0078d4]');
     });
 
-    it('highlights active wiki tab', () => {
+    it('highlights active memory tab', () => {
         viewportCleanup = mockViewport(375);
-        mockActiveTab = 'wiki';
+        mockActiveTab = 'memory';
         render(<BottomNav />);
-        const wikiBtn = screen.getByText('Wiki').closest('button')!;
-        expect(wikiBtn.className).toContain('text-[#0078d4]');
+        const memoryBtn = screen.getByText('Memory').closest('button')!;
+        expect(memoryBtn.className).toContain('text-[#0078d4]');
     });
 
     it('dispatches SET_ACTIVE_TAB on click', () => {
@@ -97,8 +97,8 @@ describe('BottomNav', () => {
     it('updates location hash on click', () => {
         viewportCleanup = mockViewport(375);
         render(<BottomNav />);
-        fireEvent.click(screen.getByText('Wiki').closest('button')!);
-        expect(location.hash).toBe('#wiki');
+        fireEvent.click(screen.getByText('Memory').closest('button')!);
+        expect(location.hash).toBe('#memory');
     });
 
     it('sets aria-current="page" on active tab only', () => {
@@ -109,8 +109,8 @@ describe('BottomNav', () => {
         expect(reposBtn.getAttribute('aria-current')).toBe('page');
         const processesBtn = screen.getByText('Processes').closest('button')!;
         expect(processesBtn.getAttribute('aria-current')).toBeNull();
-        const wikiBtn = screen.getByText('Wiki').closest('button')!;
-        expect(wikiBtn.getAttribute('aria-current')).toBeNull();
+        const memoryBtn = screen.getByText('Memory').closest('button')!;
+        expect(memoryBtn.getAttribute('aria-current')).toBeNull();
     });
 
     it('has safe area padding attribute for notched devices', () => {
@@ -137,7 +137,7 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="repos"]')).toBeTruthy();
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="processes"]')).toBeTruthy();
-        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="wiki"]')).toBeTruthy();
+        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="memory"]')).toBeTruthy();
     });
 
     // ── Contextual repo nav ────────────────────────────────────────────
