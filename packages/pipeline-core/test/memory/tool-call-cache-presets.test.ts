@@ -14,6 +14,10 @@ describe('TASK_FILTER', () => {
         expect(TASK_FILTER('task', {})).toBe(true);
     });
 
+    it('matches read_agent', () => {
+        expect(TASK_FILTER('read_agent', {})).toBe(true);
+    });
+
     it('rejects grep', () => {
         expect(TASK_FILTER('grep', { pattern: 'foo' })).toBe(false);
     });

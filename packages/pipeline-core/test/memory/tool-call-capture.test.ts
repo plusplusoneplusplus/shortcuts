@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallCapture, ToolCallCaptureOptions } from '../../src/memory/tool-call-capture';
 import type { ToolCallCacheStore, ToolCallFilter, ToolCallQAEntry } from '../../src/memory/tool-call-cache-types';
 import type { ToolEvent } from '../../src/copilot-sdk-wrapper/types';
+import { TASK_FILTER } from '../../src/memory/tool-call-cache-presets';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,6 +135,13 @@ describe('ToolCallCapture', () => {
         it('normalizes create args', () => {
             expect(capture.normalizeToolArgs('create', { path: 'new-file.ts' }))
                 .toBe('Create file new-file.ts');
+        });
+
+        it('normalizes read_agent args', () => {
+            expect(capture.normalizeToolArgs('read_agent', { agent_id: 'agent-2', wait: true, timeout: 30 }))
+                .toBe('Read agent result: agent-2 (wait)');
+            expect(capture.normalizeToolArgs('read_agent', { agent_id: 'agent-5' }))
+                .toBe('Read agent result: agent-5');
         });
 
         it('normalizes web_search args', () => {
@@ -317,6 +325,29 @@ describe('ToolCallCapture', () => {
 
         await new Promise(r => setTimeout(r, 10));
         expect(store.writeRaw).not.toHaveBeenCalled();
+    });
+
+    // --- background task + read_agent flow ------------------------------------
+
+    describe('background task + read_agent flow', () => {
+        it('captures both task and read_agent tool-complete events', async () => {
+            const capture = new ToolCallCapture(store, TASK_FILTER);
+            const handler = capture.createToolEventHandler();
+
+            handler(makeStartEvent('tc-1', 'task', { prompt: 'Explore auth flow', agent_type: 'explore', mode: 'background' }));
+            handler(makeCompleteEvent('tc-1', 'task', 'Agent started in background with agent_id: agent-2'));
+
+            handler(makeStartEvent('tc-2', 'read_agent', { agent_id: 'agent-2', wait: true }));
+            handler(makeCompleteEvent('tc-2', 'read_agent', 'The auth flow uses JWT tokens with refresh...'));
+
+            await vi.waitFor(() => expect(store.writeRaw).toHaveBeenCalledTimes(2));
+
+            const entries = store.writeRaw.mock.calls.map((c: unknown[]) => c[0] as ToolCallQAEntry);
+            expect(entries[0].toolName).toBe('task');
+            expect(entries[0].answer).toBe('Agent started in background with agent_id: agent-2');
+            expect(entries[1].toolName).toBe('read_agent');
+            expect(entries[1].answer).toBe('The auth flow uses JWT tokens with refresh...');
+        });
     });
 
     // --- gitHash and parentToolCallId pass-through ---------------------------

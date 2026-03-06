@@ -100,6 +100,11 @@ export class ToolCallCapture {
                 const truncated = prompt.length > 200 ? prompt.substring(0, 200) + '...' : prompt;
                 return truncated || `Task${agentType}`;
             }
+            case 'read_agent': {
+                const agentId = String(args.agent_id ?? '');
+                const wait = args.wait ? ' (wait)' : '';
+                return `Read agent result: ${agentId}${wait}`;
+            }
             case 'web_search': {
                 return String(args.query ?? 'Web search');
             }

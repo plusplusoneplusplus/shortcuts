@@ -10,14 +10,14 @@
 import type { ToolCallFilter } from './tool-call-cache-types';
 
 /**
- * Matches only task tool invocations (any agent_type).
+ * Matches task and read_agent tool invocations.
  * Read-only tools like grep, glob, view, etc. are intentionally excluded.
  */
 export const TASK_FILTER: ToolCallFilter = (
     toolName: string,
     _args: Record<string, unknown>,
 ): boolean => {
-    return toolName === 'task';
+    return toolName === 'task' || toolName === 'read_agent';
 };
 
 /** Matches every tool call unconditionally. Useful for debugging/analysis. */
