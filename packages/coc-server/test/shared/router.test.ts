@@ -667,8 +667,166 @@ describe('Body parsers', () => {
 });
 
 // ============================================================================
-// Multiple Static Handlers Tests
+// ETag / Conditional Caching Tests
 // ============================================================================
+
+describe('SPA ETag caching', () => {
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+        const result = await createTestServer({
+            routes: [],
+            spaHtml: '<html>SPA with ETag</html>',
+            spaETag: '"abc123def456abcd"',
+        });
+        server = result.server;
+        baseUrl = result.baseUrl;
+    });
+
+    afterAll(async () => {
+        await closeServer(server);
+    });
+
+    it('includes ETag header on SPA response', async () => {
+        const res = await request(`${baseUrl}/`);
+        expect(res.status).toBe(200);
+        expect(res.headers['etag']).toBe('"abc123def456abcd"');
+    });
+
+    it('includes Cache-Control: no-cache on SPA response', async () => {
+        const res = await request(`${baseUrl}/`);
+        expect(res.headers['cache-control']).toBe('no-cache');
+    });
+
+    it('returns 304 when If-None-Match matches ETag', async () => {
+        const res = await request(`${baseUrl}/`, {
+            headers: { 'If-None-Match': '"abc123def456abcd"' },
+        });
+        expect(res.status).toBe(304);
+        expect(res.body).toBe('');
+        expect(res.headers['etag']).toBe('"abc123def456abcd"');
+        expect(res.headers['cache-control']).toBe('no-cache');
+    });
+
+    it('returns 200 when If-None-Match does not match', async () => {
+        const res = await request(`${baseUrl}/`, {
+            headers: { 'If-None-Match': '"differentetag123"' },
+        });
+        expect(res.status).toBe(200);
+        expect(res.body).toBe('<html>SPA with ETag</html>');
+    });
+
+    it('returns 304 for non-root SPA paths when ETag matches', async () => {
+        const res = await request(`${baseUrl}/dashboard/settings`, {
+            headers: { 'If-None-Match': '"abc123def456abcd"' },
+        });
+        expect(res.status).toBe(304);
+    });
+});
+
+describe('SPA ETag with function factory', () => {
+    let server: http.Server;
+    let baseUrl: string;
+    let currentETag = '"first_etag_value"';
+
+    beforeAll(async () => {
+        const result = await createTestServer({
+            routes: [],
+            spaHtml: '<html>Dynamic ETag SPA</html>',
+            spaETag: () => currentETag,
+        });
+        server = result.server;
+        baseUrl = result.baseUrl;
+    });
+
+    afterAll(async () => {
+        await closeServer(server);
+    });
+
+    it('uses current ETag from function', async () => {
+        const res = await request(`${baseUrl}/`);
+        expect(res.headers['etag']).toBe('"first_etag_value"');
+    });
+
+    it('returns 304 when matching current dynamic ETag', async () => {
+        const res = await request(`${baseUrl}/`, {
+            headers: { 'If-None-Match': '"first_etag_value"' },
+        });
+        expect(res.status).toBe(304);
+    });
+
+    it('returns 200 when ETag changes', async () => {
+        currentETag = '"second_etag_value"';
+        const res = await request(`${baseUrl}/`, {
+            headers: { 'If-None-Match': '"first_etag_value"' },
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers['etag']).toBe('"second_etag_value"');
+    });
+});
+
+describe('SPA without ETag (backward compatibility)', () => {
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+        const result = await createTestServer({
+            routes: [],
+            spaHtml: '<html>No ETag SPA</html>',
+        });
+        server = result.server;
+        baseUrl = result.baseUrl;
+    });
+
+    afterAll(async () => {
+        await closeServer(server);
+    });
+
+    it('does not include ETag header', async () => {
+        const res = await request(`${baseUrl}/`);
+        expect(res.status).toBe(200);
+        expect(res.headers['etag']).toBeUndefined();
+    });
+
+    it('does not include Cache-Control header', async () => {
+        const res = await request(`${baseUrl}/`);
+        expect(res.headers['cache-control']).toBeUndefined();
+    });
+
+    it('ignores If-None-Match header', async () => {
+        const res = await request(`${baseUrl}/`, {
+            headers: { 'If-None-Match': '"some-etag"' },
+        });
+        expect(res.status).toBe(200);
+        expect(res.body).toBe('<html>No ETag SPA</html>');
+    });
+});
+
+describe('SPA ETag with undefined factory return', () => {
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+        const result = await createTestServer({
+            routes: [],
+            spaHtml: '<html>Maybe ETag SPA</html>',
+            spaETag: () => undefined,
+        });
+        server = result.server;
+        baseUrl = result.baseUrl;
+    });
+
+    afterAll(async () => {
+        await closeServer(server);
+    });
+
+    it('does not include ETag when factory returns undefined', async () => {
+        const res = await request(`${baseUrl}/`);
+        expect(res.status).toBe(200);
+        expect(res.headers['etag']).toBeUndefined();
+    });
+});
 
 describe('Multiple static handlers', () => {
     let server: http.Server;

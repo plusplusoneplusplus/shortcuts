@@ -8,6 +8,7 @@
  * Mirrors packages/deep-wiki/src/server/spa/html-template.ts pattern.
  */
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -42,6 +43,24 @@ function getBundleCss(): string {
 function getBundleJs(): string {
     cachedJs = readBundleFile(bundleJsPath, cachedJs);
     return cachedJs.content;
+}
+
+let cachedETag: { hash: string; cssMtime: number; jsMtime: number } | null = null;
+
+/**
+ * Compute a short SHA-256 ETag from the bundle CSS + JS content.
+ * Cached alongside mtime — only rehashed when files change on disk.
+ */
+export function getBundleETag(): string {
+    const css = (cachedCss = readBundleFile(bundleCssPath, cachedCss));
+    const js = (cachedJs = readBundleFile(bundleJsPath, cachedJs));
+    if (cachedETag && cachedETag.cssMtime === css.mtime && cachedETag.jsMtime === js.mtime) {
+        return cachedETag.hash;
+    }
+    const hash = crypto.createHash('sha256').update(css.content).update(js.content).digest('hex').slice(0, 16);
+    const etag = `"${hash}"`;
+    cachedETag = { hash: etag, cssMtime: css.mtime, jsMtime: js.mtime };
+    return etag;
 }
 
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
@@ -80,7 +99,8 @@ ${getBundleCss()}
     <script>
         window.__DASHBOARD_CONFIG__ = {
             apiBasePath: '${escapeHtml(apiBasePath)}',
-            wsPath: '${escapeHtml(wsPath)}'
+            wsPath: '${escapeHtml(wsPath)}',
+            version: '${escapeHtml(getBundleETag())}'
         };
     </script>${reviewFilePath ? `
     <script>

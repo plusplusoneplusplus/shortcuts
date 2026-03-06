@@ -85,6 +85,8 @@ export interface SharedRouterOptions {
     spaHtml: string | (() => string);
     /** Static file handlers (evaluated in order) */
     staticHandlers?: StaticFileHandler[];
+    /** Optional ETag for the SPA HTML response. Enables conditional caching (304 Not Modified). */
+    spaETag?: string | (() => string | undefined);
 }
 
 // ============================================================================
@@ -100,7 +102,7 @@ export interface SharedRouterOptions {
  *   GET /*           → static handlers, then SPA fallback
  */
 export function createRouter(options: SharedRouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { routes, spaHtml, staticHandlers = [] } = options;
+    const { routes, spaHtml, staticHandlers = [], spaETag } = options;
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const parsedUrl = url.parse(req.url || '/', true);
@@ -170,8 +172,25 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
         }
 
         // SPA fallback (index page or client-side routing)
+        const etag = typeof spaETag === 'function' ? spaETag() : spaETag;
+        if (etag) {
+            const ifNoneMatch = req.headers['if-none-match'];
+            if (ifNoneMatch === etag) {
+                res.writeHead(304, {
+                    'ETag': etag,
+                    'Cache-Control': 'no-cache',
+                });
+                res.end();
+                return;
+            }
+        }
         const html = typeof spaHtml === 'function' ? spaHtml() : spaHtml;
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8' };
+        if (etag) {
+            headers['ETag'] = etag;
+            headers['Cache-Control'] = 'no-cache';
+        }
+        res.writeHead(200, headers);
         res.end(html);
     };
 }

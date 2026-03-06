@@ -30,6 +30,7 @@ import { registerPipelineRoutes, registerPipelineWriteRoutes } from './pipelines
 import { PipelineWatcher } from './pipeline-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { generateDashboardHtml } from './spa';
+import { getBundleETag } from './spa/html-template';
 import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
@@ -277,7 +278,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         routes,
         spaHtml: spaHtmlFactory,
         store,
-
+        spaETag: getBundleETag,
     });
     const server = http.createServer(handler);
 

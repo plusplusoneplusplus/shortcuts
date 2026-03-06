@@ -68,6 +68,8 @@ export interface RouterOptions {
     store: ProcessStore;
     /** Optional lookup function to resolve a wiki ID to its filesystem directory. */
     getWikiDir?: (wikiId: string) => string | undefined;
+    /** Optional ETag for the SPA HTML response. Enables conditional caching (304 Not Modified). */
+    spaETag?: string | (() => string | undefined);
 }
 
 // ============================================================================
@@ -88,7 +90,7 @@ export interface RouterOptions {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { spaHtml, staticDir, store, getWikiDir } = options;
+    const { spaHtml, staticDir, store, getWikiDir, spaETag } = options;
 
     // Prepend built-in routes (OpenAPI spec, Swagger UI, health)
     const routes: Route[] = [
@@ -149,6 +151,7 @@ export function createRequestHandler(
         routes,
         spaHtml,
         staticHandlers,
+        spaETag,
     });
 
     // Wrap with wiki static file handling (needs explicit 404 responses)
