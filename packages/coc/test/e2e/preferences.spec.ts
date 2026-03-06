@@ -164,8 +164,8 @@ test.describe('Preferences (007)', () => {
             // Wait for the fire-and-forget PATCH to complete
             await page.waitForTimeout(500);
 
-            // Verify preference was persisted by reading the API directly
-            const res = await page.request.get(`${serverUrl}/api/preferences`);
+            // Verify preference was persisted (per-workspace endpoint)
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
             expect(prefs.lastModel).toBe(modelValue);
         } finally {
@@ -190,7 +190,7 @@ test.describe('Preferences (007)', () => {
             // Wait for persistence
             await page.waitForTimeout(500);
 
-            const res = await page.request.get(`${serverUrl}/api/preferences`);
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
             expect(prefs.lastModel).toBe(modelValue);
         } finally {
@@ -207,8 +207,8 @@ test.describe('Preferences (007)', () => {
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
 
-            // Pre-set preference via API
-            await page.request.patch(`${serverUrl}/api/preferences`, {
+            // Pre-set preference via per-workspace API
+            await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
                 data: { lastModel: modelValue },
             });
 
@@ -238,8 +238,8 @@ test.describe('Preferences (007)', () => {
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
 
-            // Pre-set preference via API
-            await page.request.patch(`${serverUrl}/api/preferences`, {
+            // Pre-set preference via per-workspace API
+            await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
                 data: { lastModel: modelValue },
             });
 
@@ -337,7 +337,7 @@ test.describe('Preferences (007)', () => {
             await page.waitForTimeout(1000);
 
             // Final value should be model1
-            const res = await page.request.get(`${serverUrl}/api/preferences`);
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
             expect(prefs.lastModel).toBe(model1);
         } finally {

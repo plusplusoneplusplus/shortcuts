@@ -123,7 +123,12 @@ describe('GitPanelHeader', () => {
         it('branch pill is a button element', () => {
             expect(source).toContain('<button');
             expect(source).toContain('data-testid="git-branch-pill"');
-            expect(source).not.toContain('<span\n');
+            const pillSection = source.slice(
+                source.indexOf('{/* Branch pill */}'),
+                source.indexOf('data-testid="git-branch-pill"'),
+            );
+            expect(pillSection).toContain('<button');
+            expect(pillSection).not.toContain('<span');
         });
 
         it('accepts optional onBranchClick prop', () => {
