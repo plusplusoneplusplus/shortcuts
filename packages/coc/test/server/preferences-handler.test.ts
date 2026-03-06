@@ -257,6 +257,19 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.repos?.['r']?.lastSkill).toBe('');
     });
 
+    it('round-trips lastQueueTaskSkill through write and read', () => {
+        const data: PreferencesFile = { repos: { 'r': { lastQueueTaskSkill: 'impl' } } };
+        writePreferences(tmpDir, data);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded.repos?.['r']?.lastQueueTaskSkill).toBe('impl');
+    });
+
+    it('handles empty lastQueueTaskSkill string in repos', () => {
+        writePreferences(tmpDir, { repos: { 'r': { lastQueueTaskSkill: '' } } });
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.repos?.['r']?.lastQueueTaskSkill).toBe('');
+    });
+
     it('round-trips recentFollowPrompts through write and read', () => {
         const entries = [
             { type: 'prompt' as const, name: 'review', path: 'review.prompt.md', timestamp: 1000 },
@@ -437,6 +450,27 @@ describe('validatePreferences', () => {
     it('accepts lastSkill alongside other fields', () => {
         const result = validatePreferences({ lastModel: 'gpt-5.4', lastSkill: 'go-deep' });
         expect(result).toEqual({ lastModel: 'gpt-5.4', lastSkill: 'go-deep' });
+    });
+
+    // -- lastQueueTaskSkill field --
+
+    it('accepts valid lastQueueTaskSkill string', () => {
+        expect(validatePreferences({ lastQueueTaskSkill: 'impl' })).toEqual({ lastQueueTaskSkill: 'impl' });
+    });
+
+    it('accepts empty lastQueueTaskSkill string (means "None")', () => {
+        expect(validatePreferences({ lastQueueTaskSkill: '' })).toEqual({ lastQueueTaskSkill: '' });
+    });
+
+    it('rejects non-string lastQueueTaskSkill', () => {
+        expect(validatePreferences({ lastQueueTaskSkill: 42 })).toEqual({});
+        expect(validatePreferences({ lastQueueTaskSkill: true })).toEqual({});
+        expect(validatePreferences({ lastQueueTaskSkill: null })).toEqual({});
+    });
+
+    it('accepts lastQueueTaskSkill alongside other fields', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.4', lastQueueTaskSkill: 'go-deep' });
+        expect(result).toEqual({ lastModel: 'gpt-5.4', lastQueueTaskSkill: 'go-deep' });
     });
 
     // -- recentFollowPrompts field --
@@ -1186,6 +1220,12 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), { lastSkill: 'impl' });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({ lastSkill: 'impl' });
+    });
+
+    it('PATCH persists lastQueueTaskSkill', async () => {
+        const res = await patchJSON(repoUrl(repoId), { lastQueueTaskSkill: 'impl' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({ lastQueueTaskSkill: 'impl' });
     });
 
     it('PATCH persists recentFollowPrompts', async () => {

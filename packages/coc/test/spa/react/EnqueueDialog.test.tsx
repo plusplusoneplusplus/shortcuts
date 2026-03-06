@@ -910,7 +910,7 @@ describe('EnqueueDialog', () => {
         expect(postBody.payload.workingDirectory).toBe('/my/project');
     });
 
-    it('persists selected skill to preferences via PATCH', async () => {
+    it('persists selected skill to preferences via PATCH on submit', async () => {
         fetchSpy.mockImplementation((url: string, opts?: any) => {
             if (typeof url === 'string' && url.includes('/queue/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -935,6 +935,9 @@ describe('EnqueueDialog', () => {
                 });
             }
             if (typeof url === 'string' && url.includes('/preferences') && opts?.method === 'PATCH') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -962,7 +965,18 @@ describe('EnqueueDialog', () => {
         // Select skill
         fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
 
-        // Verify PATCH was called with lastSkill
+        // Selecting skill alone should NOT trigger a PATCH (save on submit only)
+        await new Promise(r => setTimeout(r, 50));
+        const patchCallsBefore = fetchSpy.mock.calls.filter(
+            ([u, opts]: [string, any]) =>
+                typeof u === 'string' && u.includes('/preferences') && opts?.method === 'PATCH'
+        );
+        expect(patchCallsBefore.length).toBe(0);
+
+        // Submit the task
+        fireEvent.click(screen.getByText('Enqueue'));
+
+        // Verify PATCH was called with lastQueueTaskSkill on submit
         await waitFor(() => {
             const patchCalls = fetchSpy.mock.calls.filter(
                 ([u, opts]: [string, any]) =>
@@ -971,7 +985,7 @@ describe('EnqueueDialog', () => {
             expect(patchCalls.length).toBeGreaterThanOrEqual(1);
             const lastPatch = patchCalls[patchCalls.length - 1];
             const body = JSON.parse(lastPatch[1].body);
-            expect(body.lastSkill).toBe('impl');
+            expect(body.lastQueueTaskSkill).toBe('impl');
         });
     });
 
@@ -983,7 +997,7 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ lastSkill: 'go-deep' }),
+                    json: () => Promise.resolve({ lastQueueTaskSkill: 'go-deep' }),
                 });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -1033,7 +1047,7 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ lastSkill: 'nonexistent-skill' }),
+                    json: () => Promise.resolve({ lastQueueTaskSkill: 'nonexistent-skill' }),
                 });
             }
             if (typeof url === 'string' && url.includes('/skills')) {

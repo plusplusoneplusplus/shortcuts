@@ -16,6 +16,7 @@ interface PerRepoPreferences {
     lastDepth?: 'deep' | 'normal';
     lastEffort?: 'low' | 'medium' | 'high';
     lastSkill?: string;
+    lastQueueTaskSkill?: string;
     recentFollowPrompts?: { type: string; name: string; timestamp: number }[];
 }
 
@@ -120,6 +121,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     !preferences.lastDepth &&
                     !preferences.lastEffort &&
                     !preferences.lastSkill &&
+                    !preferences.lastQueueTaskSkill &&
                     !preferences.recentFollowPrompts?.length
                 ) ? (
                     <div className="text-xs text-[#848484]" id="repo-preferences-empty">No preferences set</div>
@@ -128,7 +130,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                         <MetaRow label="Model" value={preferences.lastModel || 'default'} />
                         <MetaRow label="Depth" value={preferences.lastDepth || 'default'} />
                         <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
-                        <MetaRow label="Skill" value={preferences.lastSkill || 'none'} />
+                        <MetaRow label="Queue Task Skill" value={preferences.lastQueueTaskSkill || preferences.lastSkill || 'none'} />
                         <MetaRow label="Recent Prompts" value={String(preferences.recentFollowPrompts?.length ?? 0)} />
                     </div>
                 )}

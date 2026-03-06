@@ -39,7 +39,7 @@ export function EnqueueDialog() {
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
-    const { model: savedModel, setModel: persistModel, skill: savedSkill, setSkill: persistSkill } = usePreferences(workspaceId);
+    const { model: savedModel, setModel: persistModel, queueTaskSkill: savedQueueTaskSkill, setQueueTaskSkill: persistQueueTaskSkill } = usePreferences(workspaceId);
     const [models, setModels] = useState<string[]>([]);
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
@@ -96,15 +96,15 @@ export function EnqueueDialog() {
             .catch(() => { /* ignore */ });
     }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Restore saved skill when both preferences and skills are loaded
+    // Restore saved Queue Task skill when both preferences and skills are loaded
     useEffect(() => {
-        if (savedSkill && skills.length > 0 && !selectedSkill) {
-            const match = skills.find(s => s.name === savedSkill);
+        if (savedQueueTaskSkill && skills.length > 0 && !selectedSkill) {
+            const match = skills.find(s => s.name === savedQueueTaskSkill);
             if (match) {
-                setSelectedSkill(savedSkill);
+                setSelectedSkill(savedQueueTaskSkill);
             }
         }
-    }, [savedSkill, skills]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [savedQueueTaskSkill, skills]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
@@ -113,8 +113,7 @@ export function EnqueueDialog() {
 
     const handleSkillChange = useCallback((value: string) => {
         setSelectedSkill(value);
-        persistSkill(value);
-    }, [persistSkill]);
+    }, []);
 
     const handleSubmit = useCallback(async () => {
         if (!selectedSkill && !prompt.trim()) return;
@@ -162,11 +161,12 @@ export function EnqueueDialog() {
             }
             setPrompt('');
             setSelectedSkill('');
+            persistQueueTaskSkill(selectedSkill);
             clearImages();
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {

@@ -16,6 +16,8 @@ export interface UsePreferencesResult {
     setEffort: (e: string) => void;
     skill: string;
     setSkill: (s: string) => void;
+    queueTaskSkill: string;
+    setQueueTaskSkill: (s: string) => void;
     loaded: boolean;
 }
 
@@ -24,6 +26,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
     const [depth, setDepthState] = useState('');
     const [effort, setEffortState] = useState('');
     const [skill, setSkillState] = useState('');
+    const [queueTaskSkill, setQueueTaskSkillState] = useState('');
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
@@ -31,6 +34,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         setDepthState('');
         setEffortState('');
         setSkillState('');
+        setQueueTaskSkillState('');
         if (!repoId) {
             setLoaded(true);
             return;
@@ -55,6 +59,9 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                     }
                     if (typeof prefs.lastSkill === 'string') {
                         setSkillState(prefs.lastSkill);
+                    }
+                    if (typeof prefs.lastQueueTaskSkill === 'string') {
+                        setQueueTaskSkillState(prefs.lastQueueTaskSkill);
                     }
                 }
             } catch {
@@ -110,5 +117,16 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         }).catch(() => {});
     }, [repoId]);
 
-    return { model, setModel, depth, setDepth, effort, setEffort, skill, setSkill, loaded };
+    const setQueueTaskSkill = useCallback((s: string) => {
+        setQueueTaskSkillState(s);
+        if (!repoId) return;
+        // Fire-and-forget persistence
+        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lastQueueTaskSkill: s }),
+        }).catch(() => {});
+    }, [repoId]);
+
+    return { model, setModel, depth, setDepth, effort, setEffort, skill, setSkill, queueTaskSkill, setQueueTaskSkill, loaded };
 }

@@ -47,6 +47,8 @@ export interface PerRepoPreferences {
     lastEffort?: 'low' | 'medium' | 'high';
     /** Last-selected skill name in the Enqueue AI Task dialog (empty string = none). */
     lastSkill?: string;
+    /** Last-used skill name submitted via the Queue Task (Enqueue AI Task) dialog. Dedicated to Queue Task only. */
+    lastQueueTaskSkill?: string;
     /** Recently-used prompts/skills in Follow Prompt dialog (max 10, newest first). */
     recentFollowPrompts?: RecentFollowPromptEntry[];
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
@@ -125,6 +127,10 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
 
     if (typeof obj.lastSkill === 'string') {
         result.lastSkill = obj.lastSkill;
+    }
+
+    if (typeof obj.lastQueueTaskSkill === 'string') {
+        result.lastQueueTaskSkill = obj.lastQueueTaskSkill;
     }
 
     if (Array.isArray(obj.recentFollowPrompts)) {
