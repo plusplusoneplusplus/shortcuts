@@ -40,12 +40,12 @@ describe('RepoChatTab chat-input-fix: useVisualViewport usage', () => {
 });
 
 describe('RepoChatTab chat-input-fix: static bottom padding (Fix 1)', () => {
-    it('uses cn() for input container className', () => {
-        expect(SRC).toContain('cn("border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2"');
+    it('input container uses plain className without mobile pb override (outer shell provides nav clearance)', () => {
+        expect(SRC).toContain('className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2"');
     });
 
-    it('adds pb-[calc(0.75rem+56px)] on mobile to clear BottomNav', () => {
-        expect(SRC).toContain('isMobile && "pb-[calc(0.75rem+56px)]"');
+    it('does NOT add pb-[calc(0.75rem+56px)] on mobile (outer RepoDetail pb-14 already clears BottomNav)', () => {
+        expect(SRC).not.toContain('isMobile && "pb-[calc(0.75rem+56px)]"');
     });
 });
 

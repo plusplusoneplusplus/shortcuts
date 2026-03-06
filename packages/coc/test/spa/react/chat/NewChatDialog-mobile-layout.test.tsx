@@ -144,7 +144,7 @@ describe('NewChatDialog mobile layout', () => {
         viewportCleanup = undefined;
     });
 
-    it('follow-up wrapper has pb-14 on mobile to clear bottom nav', async () => {
+    it('follow-up wrapper does NOT have pb-14 on mobile (dialog covers BottomNav, no clearance needed)', async () => {
         viewportCleanup = mockViewport(375);
         const eventListeners: Record<string, Function> = {};
         setupStartChatMocks(eventListeners);
@@ -161,7 +161,7 @@ describe('NewChatDialog mobile layout', () => {
 
         const wrapper = document.querySelector('[data-testid="new-chat-followup-wrapper"]') as HTMLElement;
         expect(wrapper).not.toBeNull();
-        expect(wrapper.className).toContain('pb-14');
+        expect(wrapper.className).not.toContain('pb-14');
     });
 
     it('follow-up wrapper does NOT have pb-14 on desktop', async () => {

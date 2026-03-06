@@ -17,7 +17,6 @@ import { usePreferences } from '../hooks/usePreferences';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { cn } from '../shared/cn';
 import { SlashCommandMenu } from '../repos/SlashCommandMenu';
 import { useSlashCommands } from '../repos/useSlashCommands';
 import type { SkillItem } from '../repos/SlashCommandMenu';
@@ -433,7 +432,7 @@ export function NewChatDialog({
             {/* Follow-up input */}
             {!sessionExpired && (
                 <div
-                    className={cn("space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-2", isMobile && "pb-14")}
+                    className="space-y-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-2"
                     data-testid="new-chat-followup-wrapper"
                 >
                     {suggestions.length > 0 && !isStreaming && (

@@ -974,7 +974,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             </div>
 
             {/* Input area */}
-            <div className={cn("border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2", isMobile && "pb-[calc(0.75rem+56px)]")}>
+            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
                 {error && <div className="text-xs text-red-500">{error}</div>}
                 {sessionExpired ? (
                     <div className="flex items-center justify-center gap-2 py-2 text-sm text-[#848484]">
