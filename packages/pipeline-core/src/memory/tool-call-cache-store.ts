@@ -31,7 +31,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
     };
 
     constructor(options?: ToolCallCacheStoreOptions) {
-        const dataDir = options?.dataDir ?? path.join(os.homedir(), '.coc', 'memory');
+        const dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
         const cacheSubDir = options?.cacheSubDir ?? 'explore-cache';
         this.cacheDir = path.join(dataDir, cacheSubDir);
         this.rawDir = path.join(this.cacheDir, 'raw');

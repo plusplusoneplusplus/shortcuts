@@ -303,11 +303,10 @@ describe('FileMemoryStore', () => {
     // --- Default dataDir ---
 
     describe('default dataDir', () => {
-        it('defaults to ~/.coc/memory', () => {
+        it('defaults to COC_DATA_DIR/system when env var is set, else ~/.coc/memory/system', () => {
             const defaultStore = new FileMemoryStore();
-            expect(defaultStore.getSystemDir()).toBe(
-                path.join(os.homedir(), '.coc', 'memory', 'system'),
-            );
+            const expectedBase = process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
+            expect(defaultStore.getSystemDir()).toBe(path.join(expectedBase, 'system'));
         });
     });
 });

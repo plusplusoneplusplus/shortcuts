@@ -50,9 +50,9 @@ export interface FileProcessStoreOptions {
     onPrune?: (prunedEntries: StoredProcessEntry[]) => void;
 }
 
-/** Returns ~/.coc/ with ~ expanded via os.homedir() */
+/** Returns ~/.coc/ with ~ expanded via os.homedir(), overridden by COC_DATA_DIR env var */
 export function getDefaultDataDir(): string {
-    return path.join(os.homedir(), '.coc');
+    return process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc');
 }
 
 /** Creates directory (and parents) if it doesn't exist. Returns resolved path. */

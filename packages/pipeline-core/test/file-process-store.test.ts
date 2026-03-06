@@ -756,10 +756,14 @@ describe('FileProcessStore', () => {
 });
 
 describe('getDefaultDataDir', () => {
-    it('should return path ending in .coc under homedir', () => {
+    it('should return COC_DATA_DIR when env var is set, else ~/.coc under homedir', () => {
         const dir = getDefaultDataDir();
-        expect(dir).toContain('.coc');
-        expect(dir.startsWith(os.homedir())).toBe(true);
+        if (process.env.COC_DATA_DIR) {
+            expect(dir).toBe(process.env.COC_DATA_DIR);
+        } else {
+            expect(dir).toContain('.coc');
+            expect(dir.startsWith(os.homedir())).toBe(true);
+        }
     });
 });
 

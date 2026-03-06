@@ -38,7 +38,7 @@ export class FileMemoryStore implements MemoryStore {
     private writeQueue: Promise<void>;
 
     constructor(options?: MemoryStoreOptions) {
-        this.dataDir = options?.dataDir ?? path.join(os.homedir(), '.coc', 'memory');
+        this.dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
         this.systemDir = path.join(this.dataDir, 'system');
         this.reposDir = path.join(this.dataDir, 'repos');
         this.writeQueue = Promise.resolve();

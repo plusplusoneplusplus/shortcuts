@@ -303,11 +303,10 @@ describe('FileToolCallCacheStore', () => {
     // --- Default dataDir ---
 
     describe('default dataDir', () => {
-        it('defaults to ~/.coc/memory/explore-cache', () => {
+        it('defaults to COC_DATA_DIR/explore-cache when env var is set, else ~/.coc/memory/explore-cache', () => {
             const defaultStore = new FileToolCallCacheStore();
-            expect(defaultStore.getCacheDir()).toBe(
-                path.join(os.homedir(), '.coc', 'memory', 'explore-cache'),
-            );
+            const expectedBase = process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
+            expect(defaultStore.getCacheDir()).toBe(path.join(expectedBase, 'explore-cache'));
         });
     });
 });

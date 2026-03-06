@@ -5,7 +5,7 @@ export default defineConfig({
         globals: true,
         environment: 'node',
         include: ['test/**/*.test.ts'],
-        globalSetup: ['test/setup.ts'],
+        globalSetup: ['test/global-setup.ts'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'html'],
@@ -13,6 +13,6 @@ export default defineConfig({
             exclude: ['src/**/*.d.ts', 'src/**/index.ts']
         },
         testTimeout: 30000,
-        hookTimeout: 30000
+        hookTimeout: 30000,
     }
 });
