@@ -267,6 +267,10 @@ export function validateGenerateConfig(
         errors.push('Generate config "prompt" cannot be empty');
     }
     
+    if (config.autoApprove !== undefined && typeof config.autoApprove !== 'boolean') {
+        errors.push('Generate config "autoApprove" must be a boolean if provided');
+    }
+    
     if (!config.schema || !Array.isArray(config.schema)) {
         errors.push('Generate config requires a "schema" array');
     } else if (config.schema.length === 0) {

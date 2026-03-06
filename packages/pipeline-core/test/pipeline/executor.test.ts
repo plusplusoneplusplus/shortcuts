@@ -804,6 +804,154 @@ describe('Pipeline Executor', () => {
             ).rejects.toThrow(/Invalid "from" configuration|missing.*path/i);
         });
 
+        it('throws for generate without autoApprove', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate test items',
+                        schema: ['name', 'value']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await expect(
+                executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                })
+            ).rejects.toThrow(/interactive approval/);
+        });
+
+        it('throws for generate with autoApprove: false', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate test items',
+                        schema: ['name', 'value'],
+                        autoApprove: false
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await expect(
+                executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                })
+            ).rejects.toThrow(/interactive approval/);
+        });
+
+        it('executes generate with autoApprove: true', async () => {
+            const generatedItems = [
+                { name: 'item1', value: 'val1' },
+                { name: 'item2', value: 'val2' }
+            ];
+
+            const mockAI = createMockAIInvoker((prompt: string) => {
+                if (prompt.includes('Generate test items')) {
+                    return { success: true, response: JSON.stringify(generatedItems) };
+                }
+                // Map phase responses
+                if (prompt.includes('item1')) {
+                    return { success: true, response: '{"result": "processed_1"}' };
+                }
+                if (prompt.includes('item2')) {
+                    return { success: true, response: '{"result": "processed_2"}' };
+                }
+                return { success: true, response: '{"result": "unknown"}' };
+            });
+
+            const config = {
+                name: 'Test Generate',
+                input: {
+                    generate: {
+                        prompt: 'Generate test items',
+                        schema: ['name', 'value'],
+                        autoApprove: true
+                    }
+                },
+                map: { prompt: 'Process {{name}} with {{value}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            const result = await executePipeline(config, {
+                aiInvoker: mockAI,
+                pipelineDirectory: tempDir
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.output!.results.length).toBe(2);
+            expect(result.output!.results[0].output.result).toBe('processed_1');
+            expect(result.output!.results[1].output.result).toBe('processed_2');
+        });
+
+        it('throws PipelineExecutionError when generate AI fails', async () => {
+            const mockAI = createMockAIInvoker(() => {
+                return { success: false, error: 'AI service unavailable' };
+            });
+
+            const config = {
+                name: 'Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name'],
+                        autoApprove: true
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await expect(
+                executePipeline(config, {
+                    aiInvoker: mockAI,
+                    pipelineDirectory: tempDir
+                })
+            ).rejects.toThrow(/Failed to generate input items/);
+        });
+
+        it('applies limit to generated items', async () => {
+            const generatedItems = [
+                { name: 'a' }, { name: 'b' }, { name: 'c' }, { name: 'd' }, { name: 'e' }
+            ];
+
+            const mockAI = createMockAIInvoker((prompt: string) => {
+                if (prompt.includes('Generate')) {
+                    return { success: true, response: JSON.stringify(generatedItems) };
+                }
+                return { success: true, response: '{"result": "done"}' };
+            });
+
+            const config = {
+                name: 'Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate many items',
+                        schema: ['name'],
+                        autoApprove: true
+                    },
+                    limit: 2
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            const result = await executePipeline(config, {
+                aiInvoker: mockAI,
+                pipelineDirectory: tempDir
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.output!.results.length).toBe(2);
+        });
+
         it('accepts empty output fields (text mode)', async () => {
             // Empty output fields are now valid - enables text mode
             const config: PipelineConfig = {

@@ -36,7 +36,7 @@ import {
     PipelinePhaseEvent,
     PipelinePhase
 } from './types';
-import { validateGenerateConfig } from './input-generator';
+import { validateGenerateConfig, generateInputItems } from './input-generator';
 import { executeFilter } from './filter-executor';
 import { resolvePromptFile } from './prompt-resolver';
 import { resolveSkill } from './skill-resolver';
@@ -221,7 +221,7 @@ export async function executePipeline(
     const inputStart = Date.now();
     let items: PromptItem[];
     try {
-        items = await loadInputItems(mrConfig, options.pipelineDirectory);
+        items = await loadInputItems(mrConfig, options.pipelineDirectory, options.aiInvoker);
         emitPhase(options, 'input', 'completed', { durationMs: Date.now() - inputStart, itemCount: items.length });
     } catch (error) {
         emitPhase(options, 'input', 'failed', { durationMs: Date.now() - inputStart, error: error instanceof Error ? error.message : String(error) });
@@ -729,7 +729,7 @@ async function resolvePrompts(
 /**
  * Load items from input source (inline items, CSV, or inline array)
  */
-async function loadInputItems(config: MapReducePipelineConfig, pipelineDirectory: string): Promise<PromptItem[]> {
+async function loadInputItems(config: MapReducePipelineConfig, pipelineDirectory: string, aiInvoker?: AIInvoker): Promise<PromptItem[]> {
     try {
         if (config.input.items) {
             return config.input.items;
@@ -750,8 +750,22 @@ async function loadInputItems(config: MapReducePipelineConfig, pipelineDirectory
             
             throw new PipelineExecutionError('Invalid "from" configuration', 'input');
         }
+
+        if (config.input.generate && isGenerateConfig(config.input.generate)) {
+            if (!aiInvoker) {
+                throw new PipelineExecutionError('AI invoker is required for generate input', 'input');
+            }
+            const result = await generateInputItems(config.input.generate, aiInvoker);
+            if (!result.success || !result.items) {
+                throw new PipelineExecutionError(
+                    `Failed to generate input items: ${result.error || 'unknown error'}`,
+                    'input'
+                );
+            }
+            return result.items;
+        }
         
-        throw new PipelineExecutionError('Input must have either "items" or "from"', 'input');
+        throw new PipelineExecutionError('Input must have either "items", "from", or "generate"', 'input');
     } catch (error) {
         if (error instanceof PipelineExecutionError) {
             throw error;
@@ -1934,10 +1948,12 @@ function validateInputConfig(config: PipelineConfig): void {
                 `Invalid generate configuration: ${validation.errors.join('; ')}`
             );
         }
-        throw new PipelineExecutionError(
-            'Pipelines with "generate" input require interactive approval. Use the Pipeline Preview to generate and approve items first.',
-            'input'
-        );
+        if (!config.input.generate.autoApprove) {
+            throw new PipelineExecutionError(
+                'Pipelines with "generate" input require interactive approval. Use the Pipeline Preview to generate and approve items first, or set "autoApprove: true" in the generate config.',
+                'input'
+            );
+        }
     }
 
     // Validate from source if present

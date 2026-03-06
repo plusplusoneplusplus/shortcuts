@@ -582,6 +582,56 @@ describe('Input Generator', () => {
             expect(result.valid).toBe(false);
             expect(result.errors.length).toBeGreaterThanOrEqual(3);
         });
+
+        it('accepts config with autoApprove true', () => {
+            const config: GenerateInputConfig = {
+                prompt: 'Generate items',
+                schema: ['name', 'value'],
+                autoApprove: true
+            };
+
+            const result = validateGenerateConfig(config);
+
+            expect(result.valid).toBe(true);
+            expect(result.errors.length).toBe(0);
+        });
+
+        it('accepts config with autoApprove false', () => {
+            const config: GenerateInputConfig = {
+                prompt: 'Generate items',
+                schema: ['name', 'value'],
+                autoApprove: false
+            };
+
+            const result = validateGenerateConfig(config);
+
+            expect(result.valid).toBe(true);
+            expect(result.errors.length).toBe(0);
+        });
+
+        it('accepts config without autoApprove', () => {
+            const config: GenerateInputConfig = {
+                prompt: 'Generate items',
+                schema: ['name']
+            };
+
+            const result = validateGenerateConfig(config);
+
+            expect(result.valid).toBe(true);
+        });
+
+        it('rejects non-boolean autoApprove', () => {
+            const config = {
+                prompt: 'Generate items',
+                schema: ['name'],
+                autoApprove: 'yes'
+            } as unknown as GenerateInputConfig;
+
+            const result = validateGenerateConfig(config);
+
+            expect(result.valid).toBe(false);
+            expect(result.errors.some(e => e.includes('autoApprove'))).toBe(true);
+        });
     });
 
     describe('InputGenerationError', () => {

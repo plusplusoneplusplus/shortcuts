@@ -139,6 +139,11 @@ export interface GenerateInputConfig {
      * If not specified, uses the default model.
      */
     model?: string;
+    /**
+     * When true, generated items are fed directly into the map phase
+     * without interactive review. Enables CLI and queue execution.
+     */
+    autoApprove?: boolean;
 }
 
 /**
