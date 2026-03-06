@@ -40,7 +40,7 @@ export function ReposView() {
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleMiniHoverStart = useCallback(() => {
-        hoverTimerRef.current = setTimeout(() => setTempExpanded(true), 600);
+        hoverTimerRef.current = setTimeout(() => setTempExpanded(true), 3000);
     }, []);
 
     const handleMiniHoverEnd = useCallback(() => {

@@ -323,7 +323,7 @@ describe('Long hover expand', () => {
         expect(onEnd).toHaveBeenCalledTimes(1);
     });
 
-    it('sidebar remains collapsed before 600ms threshold', async () => {
+    it('sidebar remains collapsed before 3s threshold', async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
@@ -347,13 +347,13 @@ describe('Long hover expand', () => {
 
         const items = screen.getAllByTestId('mini-repo-item');
         fireEvent.mouseEnter(items[0]);
-        // Only 300ms — not enough
-        act(() => { vi.advanceTimersByTime(300); });
+        // Only 2s — not enough
+        act(() => { vi.advanceTimersByTime(2000); });
         expect(sidebar.className).toContain('w-12');
 
         // Cancel by leaving
         fireEvent.mouseLeave(items[0]);
-        act(() => { vi.advanceTimersByTime(400); });
+        act(() => { vi.advanceTimersByTime(2000); });
         expect(sidebar.className).toContain('w-12');
         vi.useRealTimers();
     });
@@ -381,7 +381,7 @@ describe('Long hover expand', () => {
 
         // Trigger hover expand
         fireEvent.mouseEnter(items[0]);
-        act(() => { vi.advanceTimersByTime(700); });
+        act(() => { vi.advanceTimersByTime(3100); });
         expect(sidebar.className).toContain('w-[280px]');
 
         // Leave the aside entirely
