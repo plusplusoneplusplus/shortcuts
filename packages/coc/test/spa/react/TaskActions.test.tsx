@@ -60,4 +60,27 @@ describe('TaskActions — toolbar', () => {
         expect(screen.getByText('Copy path')).toBeTruthy();
         expect(screen.getByText('Open in editor')).toBeTruthy();
     });
+
+    it('copies path relative to git root (tasksFolderPath/openFilePath)', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+        });
+
+        render(
+            <Wrap>
+                <TaskActions
+                    wsId="ws1"
+                    openFilePath="coc/add-retry-logic.plan.md"
+                    selectedFilePaths={[]}
+                    tasksFolderPath=".vscode/tasks"
+                    onClearSelection={vi.fn()}
+                />
+            </Wrap>
+        );
+
+        fireEvent.click(screen.getByText('Copy path'));
+        expect(writeText).toHaveBeenCalledWith('.vscode/tasks/coc/add-retry-logic.plan.md');
+    });
 });

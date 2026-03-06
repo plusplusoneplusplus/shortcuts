@@ -469,7 +469,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 label: 'Copy Path',
                 icon: '📋',
                 onClick: () => {
-                    navigator.clipboard.writeText(ctxItem.renamePath);
+                    navigator.clipboard.writeText(`${tasksFolder}/${ctxItem.renamePath}`);
                 },
             },
             {
@@ -619,7 +619,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 label: 'Copy Path',
                 icon: '📋',
                 onClick: () => {
-                    navigator.clipboard.writeText(folderPath);
+                    navigator.clipboard.writeText(`.vscode/tasks/${folderPath}`);
                 },
             },
             {
