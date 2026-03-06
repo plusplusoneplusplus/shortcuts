@@ -1624,3 +1624,35 @@ describe('RepoChatTab — retry strategy', () => {
         expect(retryFn).not.toContain("setInputValue('')");
     });
 });
+
+describe('RepoChatTab cross-repo event leakage fixes', () => {
+    let source: string;
+    beforeAll(() => {
+        source = require('fs').readFileSync(REPO_CHAT_TAB_PATH, 'utf-8');
+    });
+
+    it('filters hasChatTask by workspaceId to prevent foreign queue events triggering refresh', () => {
+        const queueEffect = source.substring(
+            source.indexOf('const hasChatTask'),
+            source.indexOf('if (hasChatTask) sessionsHook.refresh()')
+        );
+        expect(queueEffect).toContain('t.workspaceId === workspaceId');
+    });
+
+    it('hasChatTask guard allows tasks with no workspaceId (legacy compatibility)', () => {
+        const queueEffect = source.substring(
+            source.indexOf('const hasChatTask'),
+            source.indexOf('if (hasChatTask) sessionsHook.refresh()')
+        );
+        expect(queueEffect).toContain('!t.workspaceId');
+    });
+
+    it('hasChatTask filter combines workspaceId check with type check', () => {
+        const queueEffect = source.substring(
+            source.indexOf('const hasChatTask'),
+            source.indexOf('if (hasChatTask) sessionsHook.refresh()')
+        );
+        expect(queueEffect).toContain("t.type === 'chat'");
+        expect(queueEffect).toContain('t.workspaceId === workspaceId');
+    });
+});

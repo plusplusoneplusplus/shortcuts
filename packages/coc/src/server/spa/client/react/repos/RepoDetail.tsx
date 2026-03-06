@@ -480,7 +480,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'chat' && <RepoChatTab workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} onOpenNewChatDialog={(readOnly) => handleNewChatFromTopBar(readOnly)} />}
+                        {activeSubTab === 'chat' && <RepoChatTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} onOpenNewChatDialog={(readOnly) => handleNewChatFromTopBar(readOnly)} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab workspaceId={ws.id} />}

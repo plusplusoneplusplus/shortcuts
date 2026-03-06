@@ -378,7 +378,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     useEffect(() => {
         if (!repoQueue || eventSourceRef.current) return;
         const hasChatTask = [...(repoQueue.running ?? []), ...(repoQueue.queued ?? []), ...(repoQueue.history ?? [])]
-            .some(t => t.type === 'chat');
+            .some(t => t.type === 'chat' && (!t.workspaceId || t.workspaceId === workspaceId));
         if (hasChatTask) sessionsHook.refresh();
     }, [repoQueueKey]);
 

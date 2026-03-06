@@ -179,7 +179,11 @@ function AppInner() {
                             }
                         } else {
                             const aliasedWorkspaceId = repoIdAliasRef.current[queueRepoId];
-                            if (aliasedWorkspaceId && aliasedWorkspaceId !== queueRepoId) {
+                            // Only use alias if it still maps to a currently-known workspace,
+                            // preventing stale entries from injecting events into removed repos.
+                            const aliasStillValid = aliasedWorkspaceId &&
+                                (appState.workspaces as WorkspaceLike[]).some(ws => ws.id === aliasedWorkspaceId);
+                            if (aliasStillValid && aliasedWorkspaceId !== queueRepoId) {
                                 queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId, queue: msg.queue });
                             }
                         }

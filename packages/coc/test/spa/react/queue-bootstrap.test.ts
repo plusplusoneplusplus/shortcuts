@@ -164,6 +164,25 @@ describe('App.tsx — per-repo queue update aliasing', () => {
         expect(source).toContain('aliasedWorkspaceId');
         expect(source).toContain("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId, queue: msg.queue })");
     });
+
+    it('validates alias against current workspace list before dispatching fallback', () => {
+        // The alias fallback should check that the aliased ID still corresponds to a known workspace
+        expect(source).toContain('appState.workspaces');
+        const elseBlock = source.substring(
+            source.indexOf('const aliasedWorkspaceId'),
+            source.indexOf("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId")
+        );
+        expect(elseBlock).toContain('aliasStillValid');
+    });
+
+    it('uses aliasStillValid guard so removed workspaces do not receive stale events', () => {
+        expect(source).toContain('aliasStillValid');
+        const guard = source.substring(
+            source.indexOf('aliasStillValid'),
+            source.indexOf('aliasStillValid') + 200
+        );
+        expect(guard).toContain('.some(ws => ws.id === aliasedWorkspaceId)');
+    });
 });
 
 // ============================================================================

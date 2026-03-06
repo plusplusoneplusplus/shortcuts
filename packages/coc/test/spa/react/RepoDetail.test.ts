@@ -446,7 +446,6 @@ describe('RepoDetail New Chat button in header', () => {
         expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-option-project-root"');
         expect(REPO_DETAIL_SOURCE).not.toContain('New Chat (Project Root)');
     });
-
     it('terminal option calls handleLaunchInTerminal', () => {
         expect(REPO_DETAIL_SOURCE).toContain('handleLaunchInTerminal');
     });
@@ -544,5 +543,32 @@ describe('RepoDetail switchSubTab git deep-link', () => {
         const hashDispatchIdx = switchFnBody.indexOf("SET_GIT_COMMIT_HASH");
         const ifIdx = switchFnBody.indexOf("if (tab !== 'git')");
         expect(hashDispatchIdx).toBeGreaterThan(ifIdx);
+    });
+});
+
+describe('RepoDetail cross-repo event leakage fixes', () => {
+    it('adds key={ws.id} to RepoChatTab to force remount on workspace switch', () => {
+        const chatTabLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
+            l.includes('RepoChatTab') && l.includes('workspaceId={ws.id}')
+        );
+        expect(chatTabLine).toBeDefined();
+        expect(chatTabLine).toContain('key={ws.id}');
+    });
+
+    it('RepoChatTab key appears before workspaceId on the same line', () => {
+        const chatTabLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
+            l.includes('RepoChatTab') && l.includes('workspaceId={ws.id}')
+        );
+        expect(chatTabLine).toBeDefined();
+        const keyIdx = chatTabLine!.indexOf('key={ws.id}');
+        const wsIdx = chatTabLine!.indexOf('workspaceId={ws.id}');
+        expect(keyIdx).toBeGreaterThan(-1);
+        expect(wsIdx).toBeGreaterThan(-1);
+        expect(keyIdx).toBeLessThan(wsIdx);
+    });
+
+    it('RepoChatTab uses same key pattern as RepoGitTab', () => {
+        expect(REPO_DETAIL_SOURCE).toMatch(/<RepoChatTab key=\{ws\.id\}/);
+        expect(REPO_DETAIL_SOURCE).toMatch(/<RepoGitTab key=\{ws\.id\}/);
     });
 });
