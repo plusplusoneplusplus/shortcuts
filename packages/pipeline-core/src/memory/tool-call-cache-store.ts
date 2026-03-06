@@ -16,6 +16,7 @@ import type {
     ToolCallQAEntry,
     ToolCallCacheIndex,
     ConsolidatedToolCallEntry,
+    ConsolidatedIndexEntry,
     ToolCallCacheStats,
 } from './tool-call-cache-types';
 
@@ -25,6 +26,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
     private readonly dataDir: string;
     private readonly cacheSubDir: string;
     private writeQueue: Promise<void>;
+    private migrated = false;
 
     private static DEFAULT_INDEX: ToolCallCacheIndex = {
         lastAggregation: null,
@@ -89,10 +91,31 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
         return `${ts}-${tool}.json`;
     }
 
+    private sanitizeEntryId(id: string): string {
+        return id.replace(/[^a-zA-Z0-9\-_]/g, '_');
+    }
+
     // --- Path accessors ---
 
     getCacheDir(): string {
         return this.cacheDir;
+    }
+
+    private get consolidatedDir(): string {
+        return path.join(this.cacheDir, 'consolidated');
+    }
+
+    private get entriesDir(): string {
+        return path.join(this.cacheDir, 'consolidated', 'entries');
+    }
+
+    private get consolidatedIndexPath(): string {
+        return path.join(this.cacheDir, 'consolidated', 'index.json');
+    }
+
+    /** Legacy path for migration detection. */
+    private get legacyConsolidatedPath(): string {
+        return path.join(this.cacheDir, 'consolidated.json');
     }
 
     /** Absolute path to the git-remote scoped explore-cache for the given remoteHash. */
@@ -151,11 +174,73 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
 
     // --- Consolidated entries ---
 
-    async readConsolidated(): Promise<ConsolidatedToolCallEntry[]> {
+    /** Auto-migrate legacy consolidated.json to hierarchical layout on first access. */
+    private async migrateIfNeeded(): Promise<void> {
+        if (this.migrated) return;
+        this.migrated = true;
         try {
-            const filePath = path.join(this.cacheDir, 'consolidated.json');
-            const data = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(data) as ConsolidatedToolCallEntry[];
+            // Check if new-format index already exists — prefer it
+            await fs.access(this.consolidatedIndexPath);
+            return;
+        } catch { /* new format not found, check legacy */ }
+        try {
+            const data = await fs.readFile(this.legacyConsolidatedPath, 'utf-8');
+            const entries = JSON.parse(data) as ConsolidatedToolCallEntry[];
+            await this.writeConsolidatedInternal(entries);
+            await fs.unlink(this.legacyConsolidatedPath);
+        } catch { /* no legacy file either — nothing to migrate */ }
+    }
+
+    /** Strip answer field from a full entry to produce an index-only entry. */
+    private static toIndexEntry(entry: ConsolidatedToolCallEntry): ConsolidatedIndexEntry {
+        const { answer: _, ...rest } = entry;
+        return rest;
+    }
+
+    /**
+     * Internal write that splits entries into index + individual answer files.
+     * Cleans up orphaned answer files not in the new entry set.
+     */
+    private async writeConsolidatedInternal(entries: ConsolidatedToolCallEntry[]): Promise<void> {
+        await fs.mkdir(this.entriesDir, { recursive: true });
+
+        // Write each answer file
+        const newIds = new Set<string>();
+        for (const entry of entries) {
+            const safeId = this.sanitizeEntryId(entry.id);
+            newIds.add(safeId);
+            const answerPath = path.join(this.entriesDir, `${safeId}.md`);
+            await this.atomicWrite(answerPath, entry.answer);
+        }
+
+        // Write index (answer-free)
+        const indexEntries = entries.map(e => FileToolCallCacheStore.toIndexEntry(e));
+        await this.atomicWrite(this.consolidatedIndexPath, JSON.stringify(indexEntries, null, 2));
+
+        // Clean up orphaned answer files
+        try {
+            const files = await fs.readdir(this.entriesDir);
+            for (const file of files) {
+                if (!file.endsWith('.md')) continue;
+                const id = file.slice(0, -3);
+                if (!newIds.has(id)) {
+                    await fs.unlink(path.join(this.entriesDir, file)).catch(() => {});
+                }
+            }
+        } catch { /* entries dir may not exist yet */ }
+    }
+
+    async readConsolidated(): Promise<ConsolidatedToolCallEntry[]> {
+        await this.migrateIfNeeded();
+        try {
+            const data = await fs.readFile(this.consolidatedIndexPath, 'utf-8');
+            const indexEntries = JSON.parse(data) as ConsolidatedIndexEntry[];
+            const full: ConsolidatedToolCallEntry[] = [];
+            for (const entry of indexEntries) {
+                const answer = await this.readEntryAnswer(entry.id);
+                full.push({ ...entry, answer: answer ?? '' });
+            }
+            return full;
         } catch {
             return [];
         }
@@ -163,8 +248,80 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
 
     async writeConsolidated(entries: ConsolidatedToolCallEntry[]): Promise<void> {
         return this.enqueueWrite(async () => {
-            const filePath = path.join(this.cacheDir, 'consolidated.json');
-            await this.atomicWrite(filePath, JSON.stringify(entries, null, 2));
+            await this.writeConsolidatedInternal(entries);
+        });
+    }
+
+    async readConsolidatedIndex(): Promise<ConsolidatedIndexEntry[]> {
+        await this.migrateIfNeeded();
+        try {
+            const data = await fs.readFile(this.consolidatedIndexPath, 'utf-8');
+            return JSON.parse(data) as ConsolidatedIndexEntry[];
+        } catch {
+            return [];
+        }
+    }
+
+    async readEntryAnswer(id: string): Promise<string | undefined> {
+        try {
+            const safeId = this.sanitizeEntryId(id);
+            const answerPath = path.join(this.entriesDir, `${safeId}.md`);
+            return await fs.readFile(answerPath, 'utf-8');
+        } catch {
+            return undefined;
+        }
+    }
+
+    async writeConsolidatedEntry(entry: ConsolidatedToolCallEntry): Promise<void> {
+        return this.enqueueWrite(async () => {
+            await fs.mkdir(this.entriesDir, { recursive: true });
+
+            // Write answer file
+            const safeId = this.sanitizeEntryId(entry.id);
+            const answerPath = path.join(this.entriesDir, `${safeId}.md`);
+            await this.atomicWrite(answerPath, entry.answer);
+
+            // Update index — read, upsert, write
+            let indexEntries: ConsolidatedIndexEntry[] = [];
+            try {
+                const data = await fs.readFile(this.consolidatedIndexPath, 'utf-8');
+                indexEntries = JSON.parse(data) as ConsolidatedIndexEntry[];
+            } catch { /* no index yet */ }
+
+            const indexEntry = FileToolCallCacheStore.toIndexEntry(entry);
+            const existingIdx = indexEntries.findIndex(e => e.id === entry.id);
+            if (existingIdx >= 0) {
+                indexEntries[existingIdx] = indexEntry;
+            } else {
+                indexEntries.push(indexEntry);
+            }
+            await this.atomicWrite(this.consolidatedIndexPath, JSON.stringify(indexEntries, null, 2));
+        });
+    }
+
+    async deleteConsolidatedEntry(id: string): Promise<boolean> {
+        return this.enqueueWrite(async () => {
+            let found = false;
+
+            // Remove from index
+            try {
+                const data = await fs.readFile(this.consolidatedIndexPath, 'utf-8');
+                const indexEntries = JSON.parse(data) as ConsolidatedIndexEntry[];
+                const filtered = indexEntries.filter(e => e.id !== id);
+                if (filtered.length < indexEntries.length) {
+                    found = true;
+                    await this.atomicWrite(this.consolidatedIndexPath, JSON.stringify(filtered, null, 2));
+                }
+            } catch { /* no index */ }
+
+            // Delete answer file
+            try {
+                const safeId = this.sanitizeEntryId(id);
+                await fs.unlink(path.join(this.entriesDir, `${safeId}.md`));
+                found = true;
+            } catch { /* file may not exist */ }
+
+            return found;
         });
     }
 
@@ -192,6 +349,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
     // --- Management ---
 
     async getStats(): Promise<ToolCallCacheStats> {
+        await this.migrateIfNeeded();
         let rawCount = 0;
         try {
             const entries = await fs.readdir(this.rawDir);
@@ -201,7 +359,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
         let consolidatedExists = false;
         let consolidatedCount = 0;
         try {
-            const data = await fs.readFile(path.join(this.cacheDir, 'consolidated.json'), 'utf-8');
+            const data = await fs.readFile(this.consolidatedIndexPath, 'utf-8');
             consolidatedExists = true;
             consolidatedCount = (JSON.parse(data) as unknown[]).length;
         } catch { /* file may not exist */ }

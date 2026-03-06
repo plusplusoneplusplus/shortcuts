@@ -78,8 +78,9 @@ export interface ToolCallCacheIndex {
 }
 
 /**
- * Consolidated/deduplicated entry produced by the aggregator. Stored in
- * `explore-cache/consolidated.json` as an array.
+ * Consolidated/deduplicated entry produced by the aggregator. Stored as
+ * index metadata in `explore-cache/consolidated/index.json` with answer
+ * payloads in individual `explore-cache/consolidated/entries/<id>.md` files.
  */
 export interface ConsolidatedToolCallEntry {
     /** Unique identifier for the consolidated entry */
@@ -99,6 +100,13 @@ export interface ConsolidatedToolCallEntry {
     /** Number of times this entry has been used for context injection */
     hitCount: number;
 }
+
+/**
+ * Index-only view of a consolidated entry — identical to
+ * `ConsolidatedToolCallEntry` but without the potentially large `answer`
+ * field. Used by the retriever for lightweight similarity scoring.
+ */
+export type ConsolidatedIndexEntry = Omit<ConsolidatedToolCallEntry, 'answer'>;
 
 // ---------------------------------------------------------------------------
 // Retrieval types
@@ -156,9 +164,9 @@ export interface ToolCallCacheStoreOptions {
 export interface ToolCallCacheStats {
     /** Number of raw Q&A files */
     rawCount: number;
-    /** Whether consolidated.json exists */
+    /** Whether consolidated data exists (index.json in consolidated/) */
     consolidatedExists: boolean;
-    /** Number of entries in consolidated.json */
+    /** Number of entries in consolidated index */
     consolidatedCount: number;
     /** ISO 8601 timestamp of last aggregation, or null */
     lastAggregation: string | null;
@@ -191,11 +199,26 @@ export interface ToolCallCacheStore {
 
     // --- Consolidated entries ---
 
-    /** Read consolidated entries. Returns empty array if no file exists. */
+    /**
+     * Read all consolidated entries with full answers (reassembled from
+     * index + individual answer files). Returns empty array if none exist.
+     */
     readConsolidated(): Promise<ConsolidatedToolCallEntry[]>;
 
-    /** Write consolidated entries (atomic: tmp → rename). */
+    /** Write consolidated entries (splits into index + individual answer files). */
     writeConsolidated(entries: ConsolidatedToolCallEntry[]): Promise<void>;
+
+    /** Read consolidated index entries (without answer payloads). */
+    readConsolidatedIndex(): Promise<ConsolidatedIndexEntry[]>;
+
+    /** Read the answer payload for a single consolidated entry. Returns undefined if missing. */
+    readEntryAnswer(id: string): Promise<string | undefined>;
+
+    /** Write or update a single consolidated entry (index row + answer file). */
+    writeConsolidatedEntry(entry: ConsolidatedToolCallEntry): Promise<void>;
+
+    /** Delete a single consolidated entry (remove from index + delete answer file). */
+    deleteConsolidatedEntry(id: string): Promise<boolean>;
 
     // --- Index ---
 

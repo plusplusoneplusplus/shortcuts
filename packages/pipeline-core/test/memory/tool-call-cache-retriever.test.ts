@@ -21,6 +21,7 @@ function makeConsolidatedEntry(
 }
 
 function createMockStore(entries: ConsolidatedToolCallEntry[] = []): ToolCallCacheStore {
+    const indexEntries = entries.map(({ answer: _, ...rest }) => rest);
     return {
         listRaw: vi.fn().mockResolvedValue([]),
         readRaw: vi.fn().mockResolvedValue(undefined),
@@ -28,6 +29,13 @@ function createMockStore(entries: ConsolidatedToolCallEntry[] = []): ToolCallCac
         deleteRaw: vi.fn().mockResolvedValue(true),
         readConsolidated: vi.fn().mockResolvedValue(entries),
         writeConsolidated: vi.fn().mockResolvedValue(undefined),
+        readConsolidatedIndex: vi.fn().mockResolvedValue(indexEntries),
+        readEntryAnswer: vi.fn().mockImplementation(async (id: string) => {
+            const entry = entries.find(e => e.id === id);
+            return entry?.answer;
+        }),
+        writeConsolidatedEntry: vi.fn().mockResolvedValue(undefined),
+        deleteConsolidatedEntry: vi.fn().mockResolvedValue(true),
         readIndex: vi.fn().mockResolvedValue({ lastAggregation: null, rawCount: 0, consolidatedCount: 0 }),
         updateIndex: vi.fn().mockResolvedValue(undefined),
         getStats: vi.fn().mockResolvedValue({ rawCount: 0, consolidatedExists: false, consolidatedCount: 0, lastAggregation: null }),
@@ -205,7 +213,7 @@ describe('ToolCallCacheRetriever', () => {
     });
 
     describe('incrementHitCount', () => {
-        it('increments hit count and persists', async () => {
+        it('increments hit count and persists via writeConsolidatedEntry', async () => {
             const entry = makeConsolidatedEntry('e1', 'auth module', 'JWT', 'abc');
             entry.hitCount = 3;
             const store = createMockStore([entry]);
@@ -216,8 +224,9 @@ describe('ToolCallCacheRetriever', () => {
 
             await retriever.incrementHitCount('e1');
 
-            expect(entry.hitCount).toBe(4);
-            expect(store.writeConsolidated).toHaveBeenCalledWith([entry]);
+            expect(store.writeConsolidatedEntry).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'e1', hitCount: 4, answer: 'JWT' }),
+            );
         });
 
         it('does nothing for unknown entry id', async () => {
@@ -226,12 +235,12 @@ describe('ToolCallCacheRetriever', () => {
 
             await retriever.incrementHitCount('nonexistent');
 
-            expect(store.writeConsolidated).not.toHaveBeenCalled();
+            expect(store.writeConsolidatedEntry).not.toHaveBeenCalled();
         });
     });
 
     describe('caching', () => {
-        it('caches consolidated data across lookups', async () => {
+        it('caches index data across lookups', async () => {
             const entry = makeConsolidatedEntry('e1', 'auth module structure', 'uses JWT', 'abc');
             const store = createMockStore([entry]);
             const retriever = new ToolCallCacheRetriever(store);
@@ -239,7 +248,7 @@ describe('ToolCallCacheRetriever', () => {
             await retriever.lookup('auth module structure');
             await retriever.lookup('auth module structure');
 
-            expect(store.readConsolidated).toHaveBeenCalledTimes(1);
+            expect(store.readConsolidatedIndex).toHaveBeenCalledTimes(1);
         });
 
         it('invalidateCache forces reload', async () => {
@@ -251,7 +260,7 @@ describe('ToolCallCacheRetriever', () => {
             retriever.invalidateCache();
             await retriever.lookup('auth module structure');
 
-            expect(store.readConsolidated).toHaveBeenCalledTimes(2);
+            expect(store.readConsolidatedIndex).toHaveBeenCalledTimes(2);
         });
     });
 });

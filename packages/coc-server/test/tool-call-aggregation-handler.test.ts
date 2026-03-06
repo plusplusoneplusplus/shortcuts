@@ -142,9 +142,9 @@ describe('handleAggregateToolCalls — 200 aggregated: true with correct counts'
         const remaining = fs.readdirSync(rawDir).filter(f => f.endsWith('.json'));
         expect(remaining).toHaveLength(0);
 
-        // consolidated.json should exist
-        const consolidatedPath = path.join(storageDir, 'explore-cache', 'consolidated.json');
-        expect(fs.existsSync(consolidatedPath)).toBe(true);
+        // consolidated/index.json should exist
+        const consolidatedIndexPath = path.join(storageDir, 'explore-cache', 'consolidated', 'index.json');
+        expect(fs.existsSync(consolidatedIndexPath)).toBe(true);
     });
 });
 

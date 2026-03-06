@@ -30,6 +30,7 @@ export type {
     ToolCallQAEntry,
     ToolCallCacheIndex,
     ConsolidatedToolCallEntry,
+    ConsolidatedIndexEntry,
     ToolCallCacheConfig,
     ToolCallCacheLevel,
     ToolCallCacheStoreOptions,

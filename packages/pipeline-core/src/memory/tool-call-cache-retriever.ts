@@ -12,6 +12,7 @@
 import type {
     ToolCallCacheStore,
     ConsolidatedToolCallEntry,
+    ConsolidatedIndexEntry,
     StalenessStrategy,
     ToolCallCacheLookupResult,
 } from './tool-call-cache-types';
@@ -27,7 +28,7 @@ export class ToolCallCacheRetriever {
     private readonly store: ToolCallCacheStore;
     private readonly stalenessStrategy: StalenessStrategy;
     private readonly similarityThreshold: number;
-    private consolidatedCache: ConsolidatedToolCallEntry[] | null = null;
+    private indexCache: ConsolidatedIndexEntry[] | null = null;
 
     private static readonly STOP_WORDS = new Set([
         'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
@@ -59,12 +60,12 @@ export class ToolCallCacheRetriever {
      * staleness strategy dictates skipping stale entries.
      */
     async lookup(question: string, currentGitHash?: string): Promise<ToolCallCacheLookupResult | null> {
-        const entries = await this.loadConsolidated();
+        const entries = await this.loadIndex();
         if (entries.length === 0) return null;
 
         const questionTokens = ToolCallCacheRetriever.tokenize(question);
 
-        let bestEntry: ConsolidatedToolCallEntry | null = null;
+        let bestEntry: ConsolidatedIndexEntry | null = null;
         let bestScore = -1;
 
         for (const entry of entries) {
@@ -91,25 +92,31 @@ export class ToolCallCacheRetriever {
         // Apply staleness strategy
         if (stale && this.stalenessStrategy === 'skip') return null;
 
+        // Lazy-load answer only for the matched entry
+        const answer = await this.store.readEntryAnswer(bestEntry.id) ?? '';
+
         // 'warn' and 'revalidate' (v1: same as warn) return the result
-        return { entry: bestEntry, score: bestScore, stale };
+        return { entry: { ...bestEntry, answer }, score: bestScore, stale };
     }
 
     /**
      * Increment the hit count for a matched entry and persist.
+     * Uses the single-entry write API to avoid rewriting all answer files.
      */
     async incrementHitCount(entryId: string): Promise<void> {
-        const entries = await this.loadConsolidated();
+        const entries = await this.loadIndex();
         const entry = entries.find(e => e.id === entryId);
         if (!entry) return;
         entry.hitCount = (entry.hitCount ?? 0) + 1;
-        await this.store.writeConsolidated(entries);
-        // In-memory cache already updated (mutated in-place)
+        // Load answer to produce a full entry for writeConsolidatedEntry
+        const answer = await this.store.readEntryAnswer(entryId) ?? '';
+        await this.store.writeConsolidatedEntry({ ...entry, answer });
+        // In-memory index cache already updated (mutated in-place)
     }
 
     /** Force reload from store on next lookup. */
     invalidateCache(): void {
-        this.consolidatedCache = null;
+        this.indexCache = null;
     }
 
     /**
@@ -155,14 +162,15 @@ export class ToolCallCacheRetriever {
     }
 
     /**
-     * Load consolidated entries from the store, cached in-memory.
+     * Load consolidated index from the store, cached in-memory.
+     * Only loads metadata (no answer payloads) for efficient scoring.
      */
-    private async loadConsolidated(): Promise<ConsolidatedToolCallEntry[]> {
-        if (this.consolidatedCache !== null) {
-            return this.consolidatedCache;
+    private async loadIndex(): Promise<ConsolidatedIndexEntry[]> {
+        if (this.indexCache !== null) {
+            return this.indexCache;
         }
-        const data = await this.store.readConsolidated();
-        this.consolidatedCache = data ?? [];
-        return this.consolidatedCache;
+        const data = await this.store.readConsolidatedIndex();
+        this.indexCache = data ?? [];
+        return this.indexCache;
     }
 }

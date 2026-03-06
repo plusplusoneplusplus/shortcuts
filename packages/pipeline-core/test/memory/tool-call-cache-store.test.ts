@@ -177,12 +177,189 @@ describe('FileToolCallCacheStore', () => {
             expect(read[0].id).toBe('new');
         });
 
+        it('writes hierarchical layout: index.json + entries/*.md', async () => {
+            const entries = [
+                makeConsolidated({ id: 'entry-a', answer: 'Answer A' }),
+                makeConsolidated({ id: 'entry-b', answer: 'Answer B' }),
+            ];
+            await store.writeConsolidated(entries);
+            const cacheDir = store.getCacheDir();
+
+            // index.json in consolidated/
+            const indexPath = path.join(cacheDir, 'consolidated', 'index.json');
+            const indexData = JSON.parse(await fs.readFile(indexPath, 'utf-8'));
+            expect(indexData).toHaveLength(2);
+            // Index entries should NOT have answer field
+            expect(indexData[0]).not.toHaveProperty('answer');
+            expect(indexData[1]).not.toHaveProperty('answer');
+
+            // Individual answer files
+            const answerA = await fs.readFile(path.join(cacheDir, 'consolidated', 'entries', 'entry-a.md'), 'utf-8');
+            expect(answerA).toBe('Answer A');
+            const answerB = await fs.readFile(path.join(cacheDir, 'consolidated', 'entries', 'entry-b.md'), 'utf-8');
+            expect(answerB).toBe('Answer B');
+        });
+
+        it('cleans up orphaned answer files on overwrite', async () => {
+            await store.writeConsolidated([
+                makeConsolidated({ id: 'keep', answer: 'keep' }),
+                makeConsolidated({ id: 'orphan', answer: 'orphan' }),
+            ]);
+            await store.writeConsolidated([
+                makeConsolidated({ id: 'keep', answer: 'updated' }),
+            ]);
+
+            const cacheDir = store.getCacheDir();
+            const entriesDir = path.join(cacheDir, 'consolidated', 'entries');
+            const files = await fs.readdir(entriesDir);
+            expect(files).toEqual(['keep.md']);
+        });
+
         it('leaves no .tmp file after write', async () => {
             await store.writeConsolidated([makeConsolidated()]);
             const cacheDir = store.getCacheDir();
-            const files = await fs.readdir(cacheDir);
+            const consolidatedDir = path.join(cacheDir, 'consolidated');
+            const files = await fs.readdir(consolidatedDir);
             const tmpFiles = files.filter(f => f.endsWith('.tmp'));
             expect(tmpFiles).toEqual([]);
+        });
+    });
+
+    // --- readConsolidatedIndex ---
+
+    describe('readConsolidatedIndex', () => {
+        it('returns empty array when no index exists', async () => {
+            const result = await store.readConsolidatedIndex();
+            expect(result).toEqual([]);
+        });
+
+        it('returns index entries without answer field', async () => {
+            await store.writeConsolidated([
+                makeConsolidated({ id: 'idx-1', answer: 'big answer' }),
+            ]);
+            const index = await store.readConsolidatedIndex();
+            expect(index).toHaveLength(1);
+            expect(index[0].id).toBe('idx-1');
+            expect((index[0] as any).answer).toBeUndefined();
+        });
+    });
+
+    // --- readEntryAnswer ---
+
+    describe('readEntryAnswer', () => {
+        it('returns answer for existing entry', async () => {
+            await store.writeConsolidated([
+                makeConsolidated({ id: 'ans-1', answer: 'The answer text' }),
+            ]);
+            const answer = await store.readEntryAnswer('ans-1');
+            expect(answer).toBe('The answer text');
+        });
+
+        it('returns undefined for non-existent entry', async () => {
+            const answer = await store.readEntryAnswer('no-such-id');
+            expect(answer).toBeUndefined();
+        });
+    });
+
+    // --- writeConsolidatedEntry ---
+
+    describe('writeConsolidatedEntry', () => {
+        it('adds a new entry to empty store', async () => {
+            const entry = makeConsolidated({ id: 'single-1', answer: 'single answer' });
+            await store.writeConsolidatedEntry(entry);
+
+            const index = await store.readConsolidatedIndex();
+            expect(index).toHaveLength(1);
+            expect(index[0].id).toBe('single-1');
+
+            const answer = await store.readEntryAnswer('single-1');
+            expect(answer).toBe('single answer');
+        });
+
+        it('updates existing entry in index', async () => {
+            await store.writeConsolidated([
+                makeConsolidated({ id: 'upd-1', hitCount: 1, answer: 'old' }),
+            ]);
+            await store.writeConsolidatedEntry(
+                makeConsolidated({ id: 'upd-1', hitCount: 5, answer: 'new' }),
+            );
+
+            const index = await store.readConsolidatedIndex();
+            expect(index).toHaveLength(1);
+            expect(index[0].hitCount).toBe(5);
+            expect(await store.readEntryAnswer('upd-1')).toBe('new');
+        });
+    });
+
+    // --- deleteConsolidatedEntry ---
+
+    describe('deleteConsolidatedEntry', () => {
+        it('removes entry from index and deletes answer file', async () => {
+            await store.writeConsolidated([
+                makeConsolidated({ id: 'del-1' }),
+                makeConsolidated({ id: 'del-2' }),
+            ]);
+
+            const deleted = await store.deleteConsolidatedEntry('del-1');
+            expect(deleted).toBe(true);
+
+            const index = await store.readConsolidatedIndex();
+            expect(index).toHaveLength(1);
+            expect(index[0].id).toBe('del-2');
+            expect(await store.readEntryAnswer('del-1')).toBeUndefined();
+        });
+
+        it('returns false for non-existent entry', async () => {
+            const deleted = await store.deleteConsolidatedEntry('no-such');
+            expect(deleted).toBe(false);
+        });
+    });
+
+    // --- Migration from legacy consolidated.json ---
+
+    describe('migration from legacy consolidated.json', () => {
+        it('auto-migrates old consolidated.json to hierarchical layout', async () => {
+            const cacheDir = store.getCacheDir();
+            const legacyPath = path.join(cacheDir, 'consolidated.json');
+            const legacyEntries = [
+                makeConsolidated({ id: 'legacy-1', answer: 'Legacy answer 1' }),
+                makeConsolidated({ id: 'legacy-2', answer: 'Legacy answer 2' }),
+            ];
+            await fs.mkdir(cacheDir, { recursive: true });
+            await fs.writeFile(legacyPath, JSON.stringify(legacyEntries, null, 2));
+
+            // Reading should trigger migration
+            const entries = await store.readConsolidated();
+            expect(entries).toHaveLength(2);
+            expect(entries[0].answer).toBe('Legacy answer 1');
+
+            // Legacy file should be deleted
+            await expect(fs.access(legacyPath)).rejects.toThrow();
+
+            // New hierarchical files should exist
+            const indexPath = path.join(cacheDir, 'consolidated', 'index.json');
+            await expect(fs.access(indexPath)).resolves.toBeUndefined();
+        });
+
+        it('prefers new format when both exist', async () => {
+            const cacheDir = store.getCacheDir();
+
+            // Write new-format entries first
+            await store.writeConsolidated([
+                makeConsolidated({ id: 'new-1', answer: 'New answer' }),
+            ]);
+
+            // Write a legacy file too
+            const legacyPath = path.join(cacheDir, 'consolidated.json');
+            await fs.writeFile(legacyPath, JSON.stringify([
+                makeConsolidated({ id: 'legacy-1', answer: 'Legacy' }),
+            ]));
+
+            // Fresh store should prefer new format
+            const freshStore = new FileToolCallCacheStore({ dataDir: tmpDir });
+            const entries = await freshStore.readConsolidated();
+            expect(entries).toHaveLength(1);
+            expect(entries[0].id).toBe('new-1');
         });
     });
 
@@ -243,6 +420,19 @@ describe('FileToolCallCacheStore', () => {
             expect(stats.consolidatedExists).toBe(true);
             expect(stats.consolidatedCount).toBe(3);
             expect(stats.lastAggregation).toBe('2026-01-02T00:00:00Z');
+        });
+
+        it('detects legacy consolidated.json via migration', async () => {
+            const cacheDir = store.getCacheDir();
+            await fs.mkdir(cacheDir, { recursive: true });
+            await fs.writeFile(
+                path.join(cacheDir, 'consolidated.json'),
+                JSON.stringify([makeConsolidated({ id: 'leg' })]),
+            );
+
+            const stats = await store.getStats();
+            expect(stats.consolidatedExists).toBe(true);
+            expect(stats.consolidatedCount).toBe(1);
         });
     });
 
