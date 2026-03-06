@@ -36,6 +36,8 @@ export interface QueueExecutorBridge {
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
     findTaskByProcessId?(processId: string): { id: string; type: string } | undefined;
+    /** Cancel a running process by aborting its live AI session. */
+    cancelProcess?(processId: string): Promise<void>;
 }
 
 // ============================================================================
@@ -1416,6 +1418,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 status: 'cancelled',
                 endTime: new Date(),
             });
+
+            // Signal the live AI session to abort (fire-and-forget, non-fatal)
+            void bridge?.cancelProcess?.(id)?.catch(() => {});
 
             process.stderr.write(`[Process] cancel id=${id} prevStatus=${existing.status}\n`);
 

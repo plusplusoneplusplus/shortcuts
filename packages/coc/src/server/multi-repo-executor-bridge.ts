@@ -134,6 +134,24 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Cancel a running process by aborting its live AI session.
+     * Routes to the correct per-repo bridge via the process's workingDirectory.
+     */
+    async cancelProcess(processId: string): Promise<void> {
+        const proc = await this.store.getProcess(processId);
+        const workingDirectory = (proc as any)?.workingDirectory as string | undefined;
+        if (workingDirectory) {
+            const bridge = this.getOrCreateBridge(workingDirectory);
+            await bridge.cancelProcess?.(processId);
+            return;
+        }
+        // Fallback: try all existing bridges
+        for (const { bridge } of this.bridges.values()) {
+            await bridge.cancelProcess?.(processId);
+        }
+    }
+
+    /**
      * Execute a follow-up message on an existing AI session.
      * Searches across all per-repo bridges for the process.
      */

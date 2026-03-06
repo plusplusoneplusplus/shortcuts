@@ -2075,6 +2075,82 @@ describe('CLITaskExecutor', () => {
             expect(result.error?.message).toContain('cancelled');
             expect(mockSendMessage).not.toHaveBeenCalled();
         });
+
+        it('cancelProcess should abort SDK session and mark task cancelled', async () => {
+            const mockAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const executor = new CLITaskExecutor(store, { aiService: aiService as any });
+
+            // Seed the store with a process that has an sdkSessionId
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-cp-1',
+                type: 'queue-ai-clarification',
+                status: 'running',
+                sdkSessionId: 'sdk-session-abc',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            await executor.cancelProcess('queue_task-cp-1');
+
+            // Should add task-cp-1 to cancelledTasks (via replace('queue_', ''))
+            // and should call abortSession with the sdkSessionId
+            expect(mockAbortSession).toHaveBeenCalledWith('sdk-session-abc');
+        });
+
+        it('cancelProcess should be a no-op when process has no sdkSessionId', async () => {
+            const mockAbortSession = vi.fn().mockResolvedValue(true);
+            const aiService = { ...sdkMocks.service, abortSession: mockAbortSession };
+            const executor = new CLITaskExecutor(store, { aiService: aiService as any });
+
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-cp-2',
+                type: 'queue-ai-clarification',
+                status: 'running',
+                startTime: new Date(),
+                promptPreview: 'test',
+            } as any);
+
+            await executor.cancelProcess('queue_task-cp-2');
+
+            expect(mockAbortSession).not.toHaveBeenCalled();
+        });
+
+        it('should not overwrite cancelled status with completed after execution', async () => {
+            // Simulate: process is cancelled while AI is running
+            // Store reports 'cancelled' by the time execution finishes
+            let callCount = 0;
+            store.getProcess.mockImplementation(async () => {
+                callCount++;
+                return {
+                    id: 'queue_task-guard-1',
+                    type: 'queue-ai-clarification',
+                    status: 'cancelled',
+                    startTime: new Date(),
+                    promptPreview: 'test',
+                    conversationTurns: [],
+                } as any;
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-guard-1',
+                type: 'ai-clarification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { prompt: 'test' },
+                config: {},
+            };
+
+            await executor.execute(task);
+
+            // updateProcess should NOT have been called with status 'completed'
+            const completedCall = (store.updateProcess as any).mock.calls.find(
+                (c: any[]) => c[1]?.status === 'completed'
+            );
+            expect(completedCall).toBeUndefined();
+        });
     });
 
     // ========================================================================

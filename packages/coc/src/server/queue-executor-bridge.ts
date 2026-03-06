@@ -69,6 +69,9 @@ import { OutputFileManager } from './output-file-manager';
 // Constants
 // ============================================================================
 
+/** Statuses that represent a terminal (non-overwritable) process state. */
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
 /** Prompt prefix prepended to read-only chat messages to instruct the AI not to modify files. */
 export const READONLY_PROMPT_PREFIX =
     'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code that\'s tracked by the git. Special files like task plan markdown files are exempt from this rule. If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
@@ -112,6 +115,8 @@ export interface QueueExecutorBridge {
     executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void>;
     /** Check whether the underlying SDK session for a process is still alive. */
     isSessionAlive(processId: string): Promise<boolean>;
+    /** Cancel a running process by aborting its live AI session. */
+    cancelProcess?(processId: string): Promise<void>;
 }
 
 // ============================================================================
@@ -368,14 +373,17 @@ export class CLITaskExecutor implements TaskExecutor {
 
             // Update process as completed — now includes session + conversation data
             try {
-                await this.store.updateProcess(processId, {
-                    status: 'completed',
-                    endTime: new Date(),
-                    result: typeof result === 'string' ? result : JSON.stringify(result),
-                    sdkSessionId: sessionId,
-                    conversationTurns: combinedTurns,
-                });
-                this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
+                const currentProc = await this.store.getProcess(processId);
+                if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
+                    await this.store.updateProcess(processId, {
+                        status: 'completed',
+                        endTime: new Date(),
+                        result: typeof result === 'string' ? result : JSON.stringify(result),
+                        sdkSessionId: sessionId,
+                        conversationTurns: combinedTurns,
+                    });
+                    this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
+                }
             } catch {
                 // Non-fatal
             }
@@ -399,13 +407,15 @@ export class CLITaskExecutor implements TaskExecutor {
             try {
                 const currentProcess = await this.store.getProcess(processId);
                 const existingTurns = currentProcess?.conversationTurns || initialTurns;
-                await this.store.updateProcess(processId, {
-                    status: 'failed',
-                    endTime: new Date(),
-                    error: errorMsg,
-                    conversationTurns: existingTurns,
-                });
-                this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
+                if (!TERMINAL_STATUSES.has(currentProcess?.status ?? '')) {
+                    await this.store.updateProcess(processId, {
+                        status: 'failed',
+                        endTime: new Date(),
+                        error: errorMsg,
+                        conversationTurns: existingTurns,
+                    });
+                    this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
+                }
             } catch {
                 // Non-fatal
             }
@@ -426,6 +436,23 @@ export class CLITaskExecutor implements TaskExecutor {
 
     cancel(taskId: string): void {
         this.cancelledTasks.add(taskId);
+    }
+
+    /**
+     * Cancel a running process by aborting its live AI session.
+     * Also marks the task as cancelled to prevent future execution.
+     */
+    async cancelProcess(processId: string): Promise<void> {
+        const taskId = processId.replace('queue_', '');
+        this.cancelledTasks.add(taskId);
+        try {
+            const proc = await this.store.getProcess(processId);
+            if (proc?.sdkSessionId) {
+                await this.aiService.abortSession(proc.sdkSessionId);
+            }
+        } catch {
+            // Non-fatal: session may already be gone
+        }
     }
 
     /**
