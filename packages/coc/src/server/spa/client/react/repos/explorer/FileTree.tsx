@@ -1,10 +1,11 @@
 /**
  * FileTree — recursive, lazy-loaded tree sidebar for the explorer panel.
- * Supports keyboard navigation (arrow keys, Enter/Space).
+ * Supports keyboard navigation (arrow keys, Enter/Space) and substring filtering.
  */
 
 import { useState, useCallback, useMemo } from 'react';
 import { TreeNode } from './TreeNode';
+import { highlightMatch } from '../../tasks/TaskSearchResults';
 import type { TreeEntry } from './types';
 
 export interface FileTreeProps {
@@ -17,6 +18,7 @@ export interface FileTreeProps {
     onToggle: (path: string) => void;
     onFileOpen?: (entry: TreeEntry) => void;
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
+    filterQuery?: string;
 }
 
 /** Flatten the visible tree into an ordered list for keyboard navigation. */
@@ -39,15 +41,54 @@ export function flattenVisibleNodes(
     return result;
 }
 
+/** Check whether any cached descendant of a directory matches the query. */
+export function hasMatchingDescendant(
+    entry: TreeEntry,
+    query: string,
+    childrenMap: Map<string, TreeEntry[]>,
+): boolean {
+    const children = childrenMap.get(entry.path);
+    if (!children) return false;
+    for (const child of children) {
+        if (child.name.toLowerCase().includes(query)) return true;
+        if (child.type === 'dir' && hasMatchingDescendant(child, query, childrenMap)) return true;
+    }
+    return false;
+}
+
+/** Filter entries by query, keeping directories that have matching descendants. */
+export function filterEntries(
+    entries: TreeEntry[],
+    query: string,
+    childrenMap: Map<string, TreeEntry[]>,
+): TreeEntry[] {
+    if (!query) return entries;
+    const q = query.toLowerCase();
+    return entries.filter(entry => {
+        if (entry.type === 'dir') {
+            // Show dirs whose name matches, have matching descendants, or haven't been fetched yet
+            return entry.name.toLowerCase().includes(q)
+                || hasMatchingDescendant(entry, q, childrenMap)
+                || !childrenMap.has(entry.path);
+        }
+        return entry.name.toLowerCase().includes(q);
+    });
+}
+
 export function FileTree({
     workspaceId, entries, selectedPath, expandedPaths, childrenMap,
-    onSelect, onToggle, onFileOpen, onChildrenLoaded,
+    onSelect, onToggle, onFileOpen, onChildrenLoaded, filterQuery,
 }: FileTreeProps) {
     const [focusedIndex, setFocusedIndex] = useState(-1);
 
+    const filteredEntries = useMemo(
+        () => filterEntries(entries, filterQuery || '', childrenMap),
+        [entries, filterQuery, childrenMap],
+    );
+
     const visibleNodes = useMemo(
-        () => flattenVisibleNodes(entries, expandedPaths, childrenMap),
-        [entries, expandedPaths, childrenMap],
+        () => flattenVisibleNodes(filteredEntries, expandedPaths, childrenMap),
+        [filteredEntries, expandedPaths, childrenMap],
     );
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -102,7 +143,7 @@ export function FileTree({
                 onKeyDown={handleKeyDown}
                 data-testid="file-tree-scroll"
             >
-                {entries.map(entry => (
+                {filteredEntries.map(entry => (
                     <TreeNode
                         key={entry.path}
                         entry={entry}
@@ -116,6 +157,7 @@ export function FileTree({
                         onFileOpen={onFileOpen}
                         onChildrenLoaded={onChildrenLoaded}
                         isFocused={entry.path === focusedPath}
+                        filterQuery={filterQuery}
                     />
                 ))}
             </div>

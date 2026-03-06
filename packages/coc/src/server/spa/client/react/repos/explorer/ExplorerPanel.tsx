@@ -3,11 +3,13 @@
  * Left/right split: FileTree sidebar + placeholder preview pane.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Spinner } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
 import { FileTree } from './FileTree';
 import { PreviewPane } from './PreviewPane';
+import { SearchBar } from './SearchBar';
+import { Breadcrumbs } from './Breadcrumbs';
 import type { TreeEntry } from './types';
 
 export interface ExplorerPanelProps {
@@ -22,6 +24,13 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const [childrenMap, setChildrenMap] = useState<Map<string, TreeEntry[]>>(new Map());
     const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
+
+    // Search state
+    const [searchInput, setSearchInput] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const preFilterExpandedRef = useRef<Set<string> | null>(null);
 
     // Fetch root entries on mount
     useEffect(() => {
@@ -90,6 +99,92 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             .finally(() => setLoading(false));
     }, [workspaceId]);
 
+    // Search handlers
+    const onSearchChange = useCallback((value: string) => {
+        setSearchInput(value);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => setSearchQuery(value), 150);
+    }, []);
+
+    const onSearchClear = useCallback(() => {
+        setSearchInput('');
+        setSearchQuery('');
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+    }, []);
+
+    // Save/restore expanded state when filtering
+    useEffect(() => {
+        if (searchQuery && !preFilterExpandedRef.current) {
+            preFilterExpandedRef.current = new Set(expandedPaths);
+        } else if (!searchQuery && preFilterExpandedRef.current) {
+            setExpandedPaths(preFilterExpandedRef.current);
+            preFilterExpandedRef.current = null;
+        }
+    }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Auto-expand directories with matching descendants when filter is active
+    useEffect(() => {
+        if (!searchQuery) return;
+        const q = searchQuery.toLowerCase();
+        const toExpand = new Set(expandedPaths);
+        function walkAndExpand(entries: TreeEntry[]) {
+            for (const entry of entries) {
+                if (entry.type !== 'dir') continue;
+                const children = childrenMap.get(entry.path);
+                if (!children) continue;
+                const hasMatch = children.some(c =>
+                    c.name.toLowerCase().includes(q)
+                    || (c.type === 'dir' && childrenMap.has(c.path)),
+                );
+                if (hasMatch) {
+                    toExpand.add(entry.path);
+                    walkAndExpand(children);
+                }
+            }
+        }
+        walkAndExpand(rootEntries);
+        if (toExpand.size !== expandedPaths.size) {
+            setExpandedPaths(toExpand);
+        }
+    }, [searchQuery, childrenMap, rootEntries]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Keyboard shortcut: '/' to focus search, Escape to clear
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            } else if (e.key === 'Escape' && (searchInput || document.activeElement === searchInputRef.current)) {
+                onSearchClear();
+                searchInputRef.current?.blur();
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [searchInput, onSearchClear]);
+
+    // Breadcrumb segments derived from selectedPath
+    const breadcrumbSegments = useMemo(() => {
+        if (!selectedPath) return [];
+        return selectedPath.split('/').filter(Boolean);
+    }, [selectedPath]);
+
+    const handleBreadcrumbNavigate = useCallback((segmentIndex: number) => {
+        if (segmentIndex < 0) {
+            // Navigate to root
+            setSelectedPath(null);
+            return;
+        }
+        const segments = selectedPath?.split('/').filter(Boolean) || [];
+        const targetPath = segments.slice(0, segmentIndex + 1).join('/');
+        setSelectedPath(targetPath);
+        setExpandedPaths(prev => {
+            const next = new Set(prev);
+            next.add(targetPath);
+            return next;
+        });
+    }, [selectedPath]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-8" data-testid="explorer-loading">
@@ -121,6 +216,17 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                         ↻
                     </button>
                 </div>
+                <Breadcrumbs
+                    segments={breadcrumbSegments}
+                    onNavigate={handleBreadcrumbNavigate}
+                />
+                <SearchBar
+                    value={searchInput}
+                    onChange={onSearchChange}
+                    onClear={onSearchClear}
+                    inputRef={searchInputRef}
+                    placeholder="Filter files…"
+                />
                 <FileTree
                     workspaceId={workspaceId}
                     entries={rootEntries}
@@ -131,6 +237,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     onToggle={handleToggle}
                     onFileOpen={handleFileOpen}
                     onChildrenLoaded={handleChildrenLoaded}
+                    filterQuery={searchQuery}
                 />
             </aside>
 

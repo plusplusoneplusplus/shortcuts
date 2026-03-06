@@ -7,6 +7,8 @@ import { useEffect, useRef, useState, type Ref } from 'react';
 import { cn } from '../../shared/cn';
 import { Spinner } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
+import { highlightMatch } from '../../tasks/TaskSearchResults';
+import { filterEntries } from './FileTree';
 import type { TreeEntry } from './types';
 
 export interface TreeNodeProps {
@@ -22,6 +24,7 @@ export interface TreeNodeProps {
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
     isFocused?: boolean;
     treeIndex?: number;
+    filterQuery?: string;
 }
 
 function getFileIcon(entry: TreeEntry): string {
@@ -36,7 +39,7 @@ function getFileIcon(entry: TreeEntry): string {
 
 export function TreeNode({
     entry, depth, workspaceId, selectedPath, expandedPaths, childrenMap,
-    onToggle, onSelect, onFileOpen, onChildrenLoaded, isFocused, treeIndex,
+    onToggle, onSelect, onFileOpen, onChildrenLoaded, isFocused, treeIndex, filterQuery,
 }: TreeNodeProps) {
     const isDir = entry.type === 'dir';
     const isExpanded = expandedPaths.has(entry.path);
@@ -92,10 +95,10 @@ export function TreeNode({
                     <span className={cn('text-[10px] transition-transform inline-block', isExpanded && 'rotate-90')}>▶</span>
                 )}
                 <span className="flex-shrink-0">{getFileIcon(entry)}</span>
-                <span className="truncate">{entry.name}</span>
+                <span className="truncate">{filterQuery ? highlightMatch(entry.name, filterQuery) : entry.name}</span>
                 {loading && <Spinner size="sm" className="ml-auto" />}
             </div>
-            {isDir && isExpanded && children && children.map(child => (
+            {isDir && isExpanded && children && filterEntries(children, filterQuery || '', childrenMap).map(child => (
                 <TreeNode
                     key={child.path}
                     entry={child}
@@ -108,6 +111,7 @@ export function TreeNode({
                     onSelect={onSelect}
                     onFileOpen={onFileOpen}
                     onChildrenLoaded={onChildrenLoaded}
+                    filterQuery={filterQuery}
                 />
             ))}
         </>

@@ -1,9 +1,13 @@
 export { ExplorerPanel } from './ExplorerPanel';
 export type { ExplorerPanelProps } from './ExplorerPanel';
-export { FileTree, flattenVisibleNodes } from './FileTree';
+export { FileTree, flattenVisibleNodes, filterEntries, hasMatchingDescendant } from './FileTree';
 export type { FileTreeProps } from './FileTree';
 export { TreeNode } from './TreeNode';
 export type { TreeNodeProps } from './TreeNode';
 export { PreviewPane } from './PreviewPane';
 export type { PreviewPaneProps } from './PreviewPane';
+export { SearchBar } from './SearchBar';
+export type { SearchBarProps } from './SearchBar';
+export { Breadcrumbs } from './Breadcrumbs';
+export type { BreadcrumbsProps } from './Breadcrumbs';
 export type { TreeEntry } from './types';
