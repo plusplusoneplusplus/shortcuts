@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { registerSkillRoutes } from '../src/skill-handler';
+import { registerSkillRoutes, sortSkillsByUsage } from '../src/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../src/types';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
@@ -359,5 +359,101 @@ describe('registerSkillRoutes', () => {
             );
             expect(statusCode).toBe(400);
         }
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills (sorted by usage)
+    // -----------------------------------------------------------------------
+
+    it('GET /api/workspaces/:id/skills returns skills sorted by usage when dataDir provided', async () => {
+        // Create three skills
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        for (const name of ['beta-skill', 'alpha-skill', 'gamma-skill']) {
+            const dir = path.join(skillsDir, name);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'SKILL.md'), `# ${name}\nA skill`);
+        }
+
+        // Create preferences with usage data
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-prefs-'));
+        const prefs = {
+            repos: {
+                [workspaceId]: {
+                    skillUsageMap: {
+                        'gamma-skill': '2025-01-03T00:00:00.000Z',
+                        'alpha-skill': '2025-01-01T00:00:00.000Z',
+                    },
+                },
+            },
+        };
+        fs.writeFileSync(path.join(dataDir, 'preferences.json'), JSON.stringify(prefs));
+
+        // Re-register routes with dataDir
+        const sortedRoutes: Route[] = [];
+        registerSkillRoutes(sortedRoutes, store, dataDir);
+
+        const { statusCode, body } = await dispatchRoute(
+            sortedRoutes, 'GET', `/api/workspaces/${workspaceId}/skills`
+        );
+        expect(statusCode).toBe(200);
+        expect(body.skills.map((s: any) => s.name)).toEqual([
+            'gamma-skill',   // most recent usage
+            'alpha-skill',   // older usage
+            'beta-skill',    // unused, alphabetical
+        ]);
+
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+});
+
+// ============================================================================
+// sortSkillsByUsage
+// ============================================================================
+
+describe('sortSkillsByUsage', () => {
+    const skill = (name: string) => ({ name }) as any;
+
+    it('returns empty array for empty input', () => {
+        expect(sortSkillsByUsage([], {})).toEqual([]);
+    });
+
+    it('sorts alphabetically when no usage data', () => {
+        const skills = [skill('zebra'), skill('apple'), skill('mango')];
+        const result = sortSkillsByUsage(skills, {});
+        expect(result.map(s => s.name)).toEqual(['apple', 'mango', 'zebra']);
+    });
+
+    it('puts single used skill first, rest alphabetical', () => {
+        const skills = [skill('beta'), skill('alpha'), skill('gamma')];
+        const result = sortSkillsByUsage(skills, {
+            'gamma': '2025-01-01T00:00:00.000Z',
+        });
+        expect(result.map(s => s.name)).toEqual(['gamma', 'alpha', 'beta']);
+    });
+
+    it('orders multiple used skills by most-recent first', () => {
+        const skills = [skill('c'), skill('a'), skill('b')];
+        const result = sortSkillsByUsage(skills, {
+            'a': '2025-01-01T00:00:00.000Z',
+            'c': '2025-01-03T00:00:00.000Z',
+        });
+        expect(result.map(s => s.name)).toEqual(['c', 'a', 'b']);
+    });
+
+    it('handles all skills having usage data', () => {
+        const skills = [skill('x'), skill('y'), skill('z')];
+        const result = sortSkillsByUsage(skills, {
+            'z': '2025-01-03T00:00:00.000Z',
+            'x': '2025-01-02T00:00:00.000Z',
+            'y': '2025-01-01T00:00:00.000Z',
+        });
+        expect(result.map(s => s.name)).toEqual(['z', 'x', 'y']);
+    });
+
+    it('does not mutate the original array', () => {
+        const skills = [skill('b'), skill('a')];
+        const copy = [...skills];
+        sortSkillsByUsage(skills, {});
+        expect(skills).toEqual(copy);
     });
 });

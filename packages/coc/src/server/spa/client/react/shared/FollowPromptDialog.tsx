@@ -76,6 +76,15 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         try {
             trackUsage(type, name, path, description);
 
+            // Record skill usage for ordering
+            if (type === 'skill' && selectedWsId) {
+                fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/preferences/skill-usage`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ skillName: name }),
+                }).catch(() => { /* ignore */ });
+            }
+
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
             const workingDirectory = ws?.rootPath || '';
             const tasksFolder = await getTasksFolderPath(selectedWsId);

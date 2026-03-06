@@ -149,7 +149,7 @@ export {
 } from './errors';
 
 // Skill management
-export { registerSkillRoutes } from './skill-handler';
+export { registerSkillRoutes, sortSkillsByUsage } from './skill-handler';
 
 // Memory management
 export { registerMemoryRoutes } from './memory/memory-routes';

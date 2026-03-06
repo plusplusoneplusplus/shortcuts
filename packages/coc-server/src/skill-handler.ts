@@ -31,6 +31,25 @@ function getSkillsInstallPath(workspaceRoot: string, installPath?: string): stri
     return path.join(workspaceRoot, installPath || DEFAULT_SKILLS_SETTINGS.installPath);
 }
 
+/**
+ * Sort skills by most-recently-used first, then alphabetically.
+ * Skills with a usage timestamp are sorted most-recent-first;
+ * unused skills follow in A→Z order.
+ */
+export function sortSkillsByUsage(
+    skills: SkillInfo[],
+    usageMap: Record<string, string>,
+): SkillInfo[] {
+    return [...skills].sort((a, b) => {
+        const ta = usageMap[a.name];
+        const tb = usageMap[b.name];
+        if (ta && tb) return tb.localeCompare(ta);
+        if (ta) return -1;
+        if (tb) return 1;
+        return a.name.localeCompare(b.name);
+    });
+}
+
 /** Enriched skill info returned by the list/detail endpoints */
 interface SkillInfo {
     name: string;
@@ -195,8 +214,9 @@ function extractDescriptionFromMarkdown(content: string): string | undefined {
 
 /**
  * Register skill management API routes on the given route table.
+ * @param dataDir - Optional data directory for reading preferences (skill usage ordering).
  */
-export function registerSkillRoutes(routes: Route[], store: ProcessStore): void {
+export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDir?: string): void {
 
     // GET /api/workspaces/:id/skills — List installed skills
     routes.push({
@@ -211,7 +231,24 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore): void 
             }
 
             const installPath = getSkillsInstallPath(ws.rootPath);
-            const skills = listInstalledSkills(installPath);
+            let skills = listInstalledSkills(installPath);
+
+            // Sort skills by usage if preferences are available
+            if (dataDir) {
+                try {
+                    const prefsPath = path.join(dataDir, 'preferences.json');
+                    if (fs.existsSync(prefsPath)) {
+                        const raw = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
+                        const usageMap = raw?.repos?.[id]?.skillUsageMap;
+                        if (usageMap && typeof usageMap === 'object') {
+                            skills = sortSkillsByUsage(skills, usageMap);
+                        }
+                    }
+                } catch {
+                    // ignore — fall back to unsorted
+                }
+            }
+
             sendJSON(res, 200, { skills });
         },
     });

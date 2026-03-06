@@ -215,7 +215,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Build API routes
     const routes: Route[] = [];
-    registerApiRoutes(routes, store, bridge);
+    registerApiRoutes(routes, store, bridge, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);
     // Queue routes now receive the bridge directly for per-repo routing

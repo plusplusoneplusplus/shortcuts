@@ -162,6 +162,14 @@ export function EnqueueDialog() {
             setPrompt('');
             setSelectedSkill('');
             persistQueueTaskSkill(selectedSkill);
+            // Record skill usage for ordering
+            if (selectedSkill && workspaceId) {
+                fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ skillName: selectedSkill }),
+                }).catch(() => { /* ignore */ });
+            }
             clearImages();
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }

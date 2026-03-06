@@ -55,6 +55,8 @@ export interface PerRepoPreferences {
     pinnedChats?: Record<string, string[]>;
     /** Archived chat session IDs per workspace. */
     archivedChats?: Record<string, string[]>;
+    /** Skill usage timestamps for ordering skill dropdowns (skillName → ISO timestamp). */
+    skillUsageMap?: Record<string, string>;
 }
 
 /** backward-compat alias */
@@ -185,6 +187,18 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         }
         if (Object.keys(validatedArchived).length > 0) {
             result.archivedChats = validatedArchived;
+        }
+    }
+
+    if (typeof obj.skillUsageMap === 'object' && obj.skillUsageMap !== null && !Array.isArray(obj.skillUsageMap)) {
+        const validated: Record<string, string> = {};
+        for (const [key, value] of Object.entries(obj.skillUsageMap as Record<string, unknown>)) {
+            if (typeof key === 'string' && key.length > 0 && typeof value === 'string') {
+                validated[key] = value;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.skillUsageMap = validated;
         }
     }
 
@@ -403,6 +417,37 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             const repos = { ...(existing.repos ?? {}), [repoId]: merged };
             writePreferences(dataDir, { ...existing, repos });
             sendJSON(res, 200, merged);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PATCH /api/workspaces/:id/preferences/skill-usage — Record a skill usage
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/preferences\/skill-usage$/,
+        handler: async (req, res, match) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            if (!body || typeof body.skillName !== 'string' || body.skillName.length === 0) {
+                return sendError(res, 400, '`skillName` is required');
+            }
+
+            const repoId = decodeURIComponent(match![1]);
+            const skillName: string = body.skillName;
+            const existing = readPreferences(dataDir);
+            const existingRepo = existing.repos?.[repoId] ?? {};
+            const timestamp = new Date().toISOString();
+            const usageMap = { ...(existingRepo.skillUsageMap ?? {}), [skillName]: timestamp };
+            const merged: PerRepoPreferences = { ...existingRepo, skillUsageMap: usageMap };
+            const repos = { ...(existing.repos ?? {}), [repoId]: merged };
+            writePreferences(dataDir, { ...existing, repos });
+            sendJSON(res, 200, { skillName, timestamp });
         },
     });
 }

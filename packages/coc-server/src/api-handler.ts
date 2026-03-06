@@ -193,7 +193,7 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
  * Register all API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge): void {
+export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string): void {
     // ------------------------------------------------------------------
     // Workspace endpoints
     // ------------------------------------------------------------------
@@ -1600,7 +1600,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     });
 
     // Register skill management routes
-    registerSkillRoutes(routes, store);
+    registerSkillRoutes(routes, store, dataDir);
 }
 
 // ============================================================================

@@ -980,7 +980,7 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             const patchCalls = fetchSpy.mock.calls.filter(
                 ([u, opts]: [string, any]) =>
-                    typeof u === 'string' && u.includes('/preferences') && opts?.method === 'PATCH'
+                    typeof u === 'string' && u.includes('/preferences') && !u.includes('/skill-usage') && opts?.method === 'PATCH'
             );
             expect(patchCalls.length).toBeGreaterThanOrEqual(1);
             const lastPatch = patchCalls[patchCalls.length - 1];
