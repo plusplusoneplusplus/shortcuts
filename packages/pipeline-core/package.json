@@ -19,7 +19,8 @@
       "editor/types": ["dist/editor/types.d.ts"],
       "workflow": ["dist/workflow/index.d.ts"],
       "git": ["dist/git/index.d.ts"],
-      "memory": ["dist/memory/index.d.ts"]
+      "memory": ["dist/memory/index.d.ts"],
+      "templates": ["dist/templates/index.d.ts"]
     }
   },
   "exports": {
@@ -38,7 +39,8 @@
     "./editor/anchor-types": "./dist/editor/anchor-types.js",
     "./editor/types": "./dist/editor/types.js",
     "./workflow": "./dist/workflow/index.js",
-    "./memory": "./dist/memory/index.js"
+    "./memory": "./dist/memory/index.js",
+    "./templates": "./dist/templates/index.js"
   },
   "files": [
     "dist"
