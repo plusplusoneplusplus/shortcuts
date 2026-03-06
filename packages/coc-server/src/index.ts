@@ -151,6 +151,9 @@ export {
 // Skill management
 export { registerSkillRoutes, sortSkillsByUsage } from './skill-handler';
 
+// Repos (file explorer)
+export * from './repos';
+
 // Memory management
 export { registerMemoryRoutes } from './memory/memory-routes';
 export { readMemoryConfig, writeMemoryConfig, validateMemoryConfig, DEFAULT_MEMORY_CONFIG, MEMORY_CONFIG_FILE_NAME } from './memory/memory-config-handler';
