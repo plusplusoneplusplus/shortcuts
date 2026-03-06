@@ -24,7 +24,7 @@ import { registerAdminRoutes } from './admin-handler';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerDiffCommentsRoutes } from './diff-comments-handler';
 import { registerWikiRoutes } from './wiki';
-import { registerMemoryRoutes } from '@plusplusoneplusplus/coc-server';
+import { registerMemoryRoutes, registerRepoRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 import { WorkflowWatcher } from './workflow-watcher';
@@ -217,6 +217,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Build API routes
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge, dataDir);
+    registerRepoRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);
     // Queue routes now receive the bridge directly for per-repo routing
