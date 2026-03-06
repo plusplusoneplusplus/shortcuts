@@ -152,6 +152,44 @@ describe('UpdateDocumentDialog', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it('hoists workingDirectory to payload top level for correct queue routing', async () => {
+        const onClose = vi.fn();
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts2' }];
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, onClose);
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Submit'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            // workingDirectory must be at payload top level so resolveRootPath routes to the correct queue
+            expect(body.payload.workingDirectory).toBe('D:\\projects\\shortcuts2');
+            // also present inside payload.data for executor usage
+            expect(body.payload.data.workingDirectory).toBe('D:\\projects\\shortcuts2');
+        });
+    });
+
     it('normalizes backslashes in planFilePath when workingDirectory has backslashes', async () => {
         const onClose = vi.fn();
         const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];

@@ -87,6 +87,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 priority: 'normal',
                 displayName: `Update: ${taskName}`,
                 payload: {
+                    workingDirectory,
                     data: {
                         prompt,
                         workingDirectory,
