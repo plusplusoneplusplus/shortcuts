@@ -116,6 +116,7 @@ export {
     type TaskGenerationPayload,
     type RunWorkflowPayload,
     type RunScriptPayload,
+    type ReplicateTemplatePayload,
     type CustomTaskPayload,
     type TaskPayload,
     isFollowPromptPayload,
@@ -127,6 +128,7 @@ export {
     isTaskGenerationPayload,
     isRunWorkflowPayload,
     isRunScriptPayload,
+    isReplicateTemplatePayload,
 } from './task-types';
 
 // Suggest follow-ups tool

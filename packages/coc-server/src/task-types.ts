@@ -122,6 +122,16 @@ export interface RunScriptPayload {
     scheduleId?: string;
 }
 
+export interface ReplicateTemplatePayload {
+    readonly kind: 'replicate-template';
+    templateName: string;
+    commitHash: string;
+    instruction: string;
+    hints?: string[];
+    model?: string;
+    workingDirectory?: string;
+}
+
 export interface CustomTaskPayload {
     repoId?: string;
     data: Record<string, unknown>;
@@ -139,6 +149,7 @@ export type TaskPayload =
     | TaskGenerationPayload
     | RunWorkflowPayload
     | RunScriptPayload
+    | ReplicateTemplatePayload
     | CustomTaskPayload;
 
 // ============================================================================
@@ -183,4 +194,15 @@ export function isRunWorkflowPayload(payload: Record<string, unknown>): payload 
 
 export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {
     return (payload as any).kind === 'run-script';
+}
+
+export function isReplicateTemplatePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ReplicateTemplatePayload {
+    return (
+        typeof payload === 'object' &&
+        payload !== null &&
+        (payload as any).kind === 'replicate-template' &&
+        typeof (payload as any).templateName === 'string' &&
+        typeof (payload as any).commitHash === 'string' &&
+        typeof (payload as any).instruction === 'string'
+    );
 }

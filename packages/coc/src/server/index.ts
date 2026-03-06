@@ -27,6 +27,7 @@ import { registerWikiRoutes } from './wiki';
 import { registerMemoryRoutes, registerRepoRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
+import { registerReplicateApplyRoutes } from './replicate-apply-handler';
 import { WorkflowWatcher } from './workflow-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { generateDashboardHtml } from './spa';
@@ -233,6 +234,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     }, bridge, resolvedAiService);
     registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService);
+    registerReplicateApplyRoutes(routes, store);
     registerPromptRoutes(routes, store);
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);

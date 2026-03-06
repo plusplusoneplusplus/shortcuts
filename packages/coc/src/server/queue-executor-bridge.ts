@@ -17,7 +17,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ResolveCommentsPayload, RunWorkflowPayload, RunScriptPayload, TaskGenerationPayload, ChatPayload } from '@plusplusoneplusplus/coc-server';
+import type { ResolveCommentsPayload, RunWorkflowPayload, RunScriptPayload, TaskGenerationPayload, ChatPayload, ReplicateTemplatePayload } from '@plusplusoneplusplus/coc-server';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
@@ -25,6 +25,7 @@ import {
     isChatFollowUp,
     isCustomTaskPayload,
     isFollowPromptPayload,
+    isReplicateTemplatePayload,
     isResolveCommentsPayload,
     isRunWorkflowPayload,
     isRunScriptPayload,
@@ -61,6 +62,8 @@ import {
     toNativePath,
     ToolCallCapture,
 } from '@plusplusoneplusplus/pipeline-core';
+import { replicateCommit } from '@plusplusoneplusplus/pipeline-core/templates';
+import type { ReplicateResult, ReplicateProgressCallback } from '@plusplusoneplusplus/pipeline-core/templates';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
@@ -883,6 +886,11 @@ export class CLITaskExecutor implements TaskExecutor {
             return this.executeRunScript(task);
         }
 
+        // Replicate template: run commit replication via pipeline-core
+        if (isReplicateTemplatePayload(task.payload)) {
+            return this.executeReplicateTemplate(task);
+        }
+
         // For code-review: placeholder (no-op)
         return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
     }
@@ -929,6 +937,112 @@ export class CLITaskExecutor implements TaskExecutor {
                 });
             });
         });
+    }
+
+    private async executeReplicateTemplate(task: QueuedTask): Promise<unknown> {
+        const payload = task.payload as unknown as ReplicateTemplatePayload;
+        const processId = `queue_${task.id}`;
+
+        // 1. Resolve workspace root
+        const workingDirectory = payload.workingDirectory
+            ?? this.getWorkingDirectory(task);
+        if (!workingDirectory) {
+            throw new Error('Cannot resolve repository root for replicate-template task');
+        }
+
+        // 2. Update process with enriched prompt preview
+        const preview = `Replicate commit ${payload.commitHash.slice(0, 8)} → "${payload.instruction}"`;
+        this.store.updateProcess(processId, {
+            fullPrompt: payload.instruction,
+            promptPreview: preview,
+        });
+
+        // 3. Create AI invoker (same pattern as executeRunPipeline)
+        const aiInvoker = createCLIAIInvoker({
+            model: payload.model ?? (task.config as any)?.model,
+            approvePermissions: this.approvePermissions,
+            workingDirectory,
+        });
+
+        // 4. Build progress callback → SSE events
+        const onProgress: ReplicateProgressCallback = (stage, detail) => {
+            try {
+                this.store.emitProcessEvent(processId, {
+                    type: 'pipeline-progress',
+                    pipelineProgress: {
+                        phase: 'job',
+                        totalItems: 1,
+                        completedItems: 0,
+                        failedItems: 0,
+                        percentage: 0,
+                        message: detail ? `[${stage}] ${detail}` : stage,
+                    },
+                });
+            } catch {
+                // Non-fatal: store may be a stub
+            }
+        };
+
+        // 5. Emit phase-start event
+        try {
+            this.store.emitProcessEvent(processId, {
+                type: 'pipeline-phase',
+                pipelinePhase: { phase: 'job', status: 'started', timestamp: new Date().toISOString() },
+            });
+        } catch {
+            // Non-fatal
+        }
+
+        // 6. Execute replication
+        let result: ReplicateResult;
+        try {
+            result = await replicateCommit(
+                {
+                    template: {
+                        name: payload.templateName,
+                        kind: 'commit',
+                        commitHash: payload.commitHash,
+                        hints: payload.hints,
+                    },
+                    repoRoot: workingDirectory,
+                    instruction: payload.instruction,
+                },
+                aiInvoker,
+                onProgress,
+            );
+        } catch (err) {
+            // Emit failure phase event before re-throwing
+            try {
+                this.store.emitProcessEvent(processId, {
+                    type: 'pipeline-phase',
+                    pipelinePhase: { phase: 'job', status: 'failed', timestamp: new Date().toISOString() },
+                });
+            } catch {
+                // Non-fatal
+            }
+            throw err;
+        }
+
+        // 7. Emit phase-complete event
+        try {
+            this.store.emitProcessEvent(processId, {
+                type: 'pipeline-phase',
+                pipelinePhase: { phase: 'job', status: 'completed', timestamp: new Date().toISOString() },
+            });
+        } catch {
+            // Non-fatal
+        }
+
+        // 8. Return structured result for the apply endpoint
+        return {
+            response: result.summary,
+            replicateResult: {
+                summary: result.summary,
+                files: result.files,
+                commitHash: payload.commitHash,
+                templateName: payload.templateName,
+            },
+        };
     }
 
     private async executeWithAI(task: QueuedTask, prompt: string, options?: { tools?: Tool<any>[] }): Promise<unknown> {
@@ -1410,6 +1524,9 @@ export class CLITaskExecutor implements TaskExecutor {
         if (isResolveCommentsPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
+        if (isReplicateTemplatePayload(task.payload)) {
+            return task.payload.workingDirectory || this.defaultWorkingDirectory;
+        }
         return this.defaultWorkingDirectory;
     }
 
@@ -1589,6 +1706,7 @@ const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
     'code-review',
     'resolve-comments',
     'update-document',
+    'replicate-template',
 ]);
 
 /**

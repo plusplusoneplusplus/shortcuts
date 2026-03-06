@@ -15,6 +15,7 @@ import {
     isTaskGenerationPayload,
     isRunWorkflowPayload,
     isRunScriptPayload,
+    isReplicateTemplatePayload,
 } from '../src/task-types';
 import type {
     FollowPromptPayload,
@@ -24,6 +25,7 @@ import type {
     TaskGenerationPayload,
     RunWorkflowPayload,
     RunScriptPayload,
+    ReplicateTemplatePayload,
     CustomTaskPayload,
 } from '../src/task-types';
 import type { MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
@@ -229,6 +231,109 @@ describe('isRunScriptPayload', () => {
 
     it('returns false for kind: run-pipeline', () => {
         const payload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
+        expect(isRunScriptPayload(payload)).toBe(false);
+    });
+});
+
+// ============================================================================
+// isReplicateTemplatePayload
+// ============================================================================
+
+describe('isReplicateTemplatePayload', () => {
+    it('returns true for a valid replicate-template payload', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'replicate-template',
+            templateName: 'add-endpoint',
+            commitHash: 'abc123def',
+            instruction: 'Add a DELETE endpoint',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(true);
+    });
+
+    it('returns true with optional fields present', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'replicate-template',
+            templateName: 'add-endpoint',
+            commitHash: 'abc123def',
+            instruction: 'Add a DELETE endpoint',
+            hints: ['look at the POST handler'],
+            model: 'gpt-4',
+            workingDirectory: '/tmp/repo',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(true);
+    });
+
+    it('returns false when kind is wrong', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'chat',
+            templateName: 'add-endpoint',
+            commitHash: 'abc123def',
+            instruction: 'do stuff',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(false);
+    });
+
+    it('returns false when templateName is missing', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'replicate-template',
+            commitHash: 'abc123def',
+            instruction: 'do stuff',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(false);
+    });
+
+    it('returns false when commitHash is missing', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'replicate-template',
+            templateName: 'add-endpoint',
+            instruction: 'do stuff',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(false);
+    });
+
+    it('returns false when instruction is missing', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'replicate-template',
+            templateName: 'add-endpoint',
+            commitHash: 'abc123def',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(false);
+    });
+
+    it('returns false when templateName is not a string', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'replicate-template',
+            templateName: 42,
+            commitHash: 'abc123def',
+            instruction: 'do stuff',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(false);
+    });
+
+    it('returns false for null payload', () => {
+        expect(isReplicateTemplatePayload(null as any)).toBe(false);
+    });
+
+    it('returns false for payload with no kind field', () => {
+        const payload: Record<string, unknown> = {
+            templateName: 'x',
+            commitHash: 'abc',
+            instruction: 'do it',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(false);
+    });
+
+    it('is mutually exclusive with other discriminant-based guards', () => {
+        const payload: Record<string, unknown> = {
+            kind: 'replicate-template',
+            templateName: 'x',
+            commitHash: 'abc',
+            instruction: 'do it',
+        };
+        expect(isReplicateTemplatePayload(payload)).toBe(true);
+        expect(isChatPayload(payload)).toBe(false);
+        expect(isTaskGenerationPayload(payload)).toBe(false);
+        expect(isRunWorkflowPayload(payload)).toBe(false);
         expect(isRunScriptPayload(payload)).toBe(false);
     });
 });
