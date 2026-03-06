@@ -1070,3 +1070,19 @@ export {
     getAdoConnectionFactory,
     resetAdoConnectionFactory,
 } from './ado';
+
+// ============================================================================
+// Templates
+// ============================================================================
+
+export {
+    Template,
+    CommitTemplate,
+    ReplicateOptions,
+    FileChange,
+    ReplicateResult,
+    buildReplicatePrompt,
+    parseReplicateResponse,
+    replicateCommit,
+    ReplicateProgressCallback,
+} from './templates';
