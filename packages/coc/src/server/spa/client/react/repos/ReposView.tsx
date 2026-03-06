@@ -35,6 +35,24 @@ export function ReposView() {
     selectedRepoIdRef.current = state.selectedRepoId;
     const processThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Temporary hover-expand state (transient, no persistence)
+    const [tempExpanded, setTempExpanded] = useState(false);
+    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleMiniHoverStart = useCallback(() => {
+        hoverTimerRef.current = setTimeout(() => setTempExpanded(true), 600);
+    }, []);
+
+    const handleMiniHoverEnd = useCallback(() => {
+        if (hoverTimerRef.current) {
+            clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = null;
+        }
+        setTempExpanded(false);
+    }, []);
+
+    const isCollapsed = state.reposSidebarCollapsed && !tempExpanded;
+
     const handleBack = useCallback(() => {
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
         if (location.hash.startsWith('#repo')) {
@@ -177,6 +195,10 @@ export function ReposView() {
                 clearTimeout(processThrottleRef.current);
                 processThrottleRef.current = null;
             }
+            if (hoverTimerRef.current) {
+                clearTimeout(hoverTimerRef.current);
+                hoverTimerRef.current = null;
+            }
         };
     }, []);
 
@@ -229,13 +251,14 @@ export function ReposView() {
                         data-testid="repos-sidebar"
                         className={cn(
                             'shrink-0 min-h-0 flex flex-col overflow-hidden transition-[width,min-width,opacity] duration-150 ease-out border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]',
-                            state.reposSidebarCollapsed
+                            isCollapsed
                                 ? 'w-12 min-w-[48px]'
                                 : 'w-[280px] min-w-[240px]'
                         )}
+                        onMouseLeave={state.reposSidebarCollapsed ? handleMiniHoverEnd : undefined}
                     >
-                        {state.reposSidebarCollapsed ? (
-                            <MiniReposSidebar repos={repos} onRefresh={fetchRepos} />
+                        {isCollapsed ? (
+                            <MiniReposSidebar repos={repos} onRefresh={fetchRepos} onItemHoverStart={handleMiniHoverStart} onItemHoverEnd={handleMiniHoverEnd} />
                         ) : (
                             <ReposGrid repos={repos} onRefresh={fetchRepos} />
                         )}

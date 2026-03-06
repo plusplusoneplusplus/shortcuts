@@ -13,6 +13,8 @@ import type { RepoData } from './repoGrouping';
 interface MiniReposSidebarProps {
     repos: RepoData[];
     onRefresh: () => void;
+    onItemHoverStart?: () => void;
+    onItemHoverEnd?: () => void;
 }
 
 /** Disambiguate first letters within a list of repos: use 2 chars when collisions exist. */
@@ -47,12 +49,16 @@ function MiniRepoItem({
     isSelected,
     onClick,
     onDoubleClick,
+    onHoverStart,
+    onHoverEnd,
 }: {
     repo: RepoData;
     label: string;
     isSelected: boolean;
     onClick: () => void;
     onDoubleClick: () => void;
+    onHoverStart?: () => void;
+    onHoverEnd?: () => void;
 }) {
     const ws = repo.workspace;
     const color = ws.color || '#848484';
@@ -71,6 +77,8 @@ function MiniRepoItem({
             title={fullName}
             onClick={onClick}
             onDoubleClick={onDoubleClick}
+            onMouseEnter={onHoverStart}
+            onMouseLeave={onHoverEnd}
         >
             <span
                 className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -81,7 +89,7 @@ function MiniRepoItem({
     );
 }
 
-export function MiniReposSidebar({ repos, onRefresh }: MiniReposSidebarProps) {
+export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHoverEnd }: MiniReposSidebarProps) {
     const { state, dispatch } = useApp();
     const [addOpen, setAddOpen] = useState(false);
 
@@ -143,6 +151,8 @@ export function MiniReposSidebar({ repos, onRefresh }: MiniReposSidebarProps) {
                                     isSelected={repo.workspace.id === state.selectedRepoId}
                                     onClick={() => selectRepo(repo.workspace.id)}
                                     onDoubleClick={() => expandAndSelect(repo.workspace.id)}
+                                    onHoverStart={onItemHoverStart}
+                                    onHoverEnd={onItemHoverEnd}
                                 />
                             ))}
                         </div>

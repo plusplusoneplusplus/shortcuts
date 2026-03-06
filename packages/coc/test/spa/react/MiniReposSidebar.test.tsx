@@ -2,7 +2,7 @@
  * Tests for MiniReposSidebar — the collapsed sidebar rail.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
@@ -292,5 +292,125 @@ describe('ReposView — mini sidebar integration', () => {
         });
         const sidebar = screen.getByTestId('repos-sidebar');
         expect(sidebar.getAttribute('aria-hidden')).toBeNull();
+    });
+});
+
+// ============================================================================
+// Long hover expand — temporary sidebar expansion
+// ============================================================================
+
+describe('Long hover expand', () => {
+    beforeEach(() => {
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ workspaces: [] }),
+        });
+    });
+
+    it('MiniReposSidebar calls onItemHoverStart/onItemHoverEnd on mouse enter/leave', () => {
+        const onStart = vi.fn();
+        const onEnd = vi.fn();
+        const repos = [makeRepo({ workspace: { id: 'a', name: 'Alpha', color: '#0078d4' } })];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} onItemHoverStart={onStart} onItemHoverEnd={onEnd} />
+            </Wrap>
+        );
+        const item = screen.getByTestId('mini-repo-item');
+        fireEvent.mouseEnter(item);
+        expect(onStart).toHaveBeenCalledTimes(1);
+        fireEvent.mouseLeave(item);
+        expect(onEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('sidebar remains collapsed before 600ms threshold', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({
+                workspaces: [{ id: 'ws-1', name: 'TestRepo', rootPath: '/test', color: '#0078d4' }]
+            }),
+        });
+        render(
+            <Wrap>
+                <CollapseOnMount />
+                <ReposView />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('repos-sidebar')).toBeDefined();
+            expect(screen.queryAllByTestId('mini-repo-item').length).toBeGreaterThan(0);
+        });
+
+        const sidebar = screen.getByTestId('repos-sidebar');
+        expect(sidebar.className).toContain('w-12');
+
+        const items = screen.getAllByTestId('mini-repo-item');
+        fireEvent.mouseEnter(items[0]);
+        // Only 300ms — not enough
+        act(() => { vi.advanceTimersByTime(300); });
+        expect(sidebar.className).toContain('w-12');
+
+        // Cancel by leaving
+        fireEvent.mouseLeave(items[0]);
+        act(() => { vi.advanceTimersByTime(400); });
+        expect(sidebar.className).toContain('w-12');
+        vi.useRealTimers();
+    });
+
+    it('collapses back on mouseleave from aside', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({
+                workspaces: [{ id: 'ws-1', name: 'TestRepo', rootPath: '/test', color: '#0078d4' }]
+            }),
+        });
+        render(
+            <Wrap>
+                <CollapseOnMount />
+                <ReposView />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.queryAllByTestId('mini-repo-item').length).toBeGreaterThan(0);
+        });
+
+        const sidebar = screen.getByTestId('repos-sidebar');
+        const items = screen.getAllByTestId('mini-repo-item');
+
+        // Trigger hover expand
+        fireEvent.mouseEnter(items[0]);
+        act(() => { vi.advanceTimersByTime(700); });
+        expect(sidebar.className).toContain('w-[280px]');
+
+        // Leave the aside entirely
+        fireEvent.mouseLeave(sidebar);
+        expect(sidebar.className).toContain('w-12');
+        vi.useRealTimers();
+    });
+
+    it('does not affect permanently expanded sidebar', async () => {
+        render(<Wrap><ReposView /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('repos-sidebar')).toBeDefined();
+        });
+        const sidebar = screen.getByTestId('repos-sidebar');
+        expect(sidebar.className).toContain('w-[280px]');
+        fireEvent.mouseLeave(sidebar);
+        expect(sidebar.className).toContain('w-[280px]');
+    });
+
+    it('MiniReposSidebar works without hover props (backward compat)', () => {
+        const repos = [makeRepo({ workspace: { id: 'a', name: 'Alpha' } })];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} />
+            </Wrap>
+        );
+        const item = screen.getByTestId('mini-repo-item');
+        fireEvent.mouseEnter(item);
+        fireEvent.mouseLeave(item);
+        expect(item).toBeDefined();
     });
 });
