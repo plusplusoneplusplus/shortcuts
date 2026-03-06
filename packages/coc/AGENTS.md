@@ -9,6 +9,8 @@ npm run build        # Compile TypeScript
 npm run test:run     # Run tests (Vitest)
 ```
 
+Git commit file clicks in the repo dashboard use `RepoGitTab` split-view routing: full commits render `CommitDetail` diffs, while single commit files render `CommitFileContent` with full-file markdown/source content in the right panel.
+
 ## Usage
 
 ```bash

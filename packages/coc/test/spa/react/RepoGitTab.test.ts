@@ -437,6 +437,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('<CommitDetail');
         });
 
+        it('renders CommitFileContent component for commit-file view', () => {
+            expect(source).toContain('<CommitFileContent');
+        });
+
         it('renders BranchFileDiff component', () => {
             expect(source).toContain('<BranchFileDiff');
         });
@@ -447,6 +451,10 @@ describe('RepoGitTab', () => {
 
         it('imports CommitDetail', () => {
             expect(source).toContain("import { CommitDetail }");
+        });
+
+        it('imports CommitFileContent', () => {
+            expect(source).toContain("import { CommitFileContent } from './CommitFileContent'");
         });
 
         it('imports BranchFileDiff', () => {

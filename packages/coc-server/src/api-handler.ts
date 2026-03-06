@@ -548,6 +548,63 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // GET /api/workspaces/:id/git/commits/:hash/files/*/content — Full file content for a commit file
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/content$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const hash = match![2];
+            const filePath = decodeURIComponent(match![3]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            const cacheKey = `${id}:commit-file-content:${hash}:${filePath}`;
+            const cached = gitCache.get<{
+                path: string;
+                fileName: string;
+                lines: string[];
+                totalLines: number;
+                truncated: boolean;
+                language: string;
+                resolvedRef: string;
+            }>(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
+
+            try {
+                const { content, resolvedRef } = readGitFileAtCommit(hash, filePath, ws.rootPath);
+                if (Buffer.byteLength(content, 'utf-8') > 2 * 1024 * 1024) {
+                    return handleAPIError(res, badRequest('Commit file is too large (max 2MB)'));
+                }
+
+                const allLines = content.split('\n');
+                if (allLines.length > 0 && allLines[allLines.length - 1] === '') {
+                    allLines.pop();
+                }
+
+                const ext = path.extname(filePath).toLowerCase();
+                const result = {
+                    path: filePath,
+                    fileName: path.basename(filePath),
+                    lines: allLines,
+                    totalLines: allLines.length,
+                    truncated: false,
+                    language: ext.startsWith('.') ? ext.slice(1) : ext,
+                    resolvedRef,
+                };
+                gitCache.set(cacheKey, result);
+                sendJSON(res, 200, result);
+            } catch (err: any) {
+                return handleAPIError(res, badRequest('Failed to get commit file content: ' + (err.message || 'unknown error')));
+            }
+        },
+    });
+
     // GET /api/workspaces/:id/git/branch-range — Detect feature branch commit range
     routes.push({
         method: 'GET',
@@ -1626,6 +1683,27 @@ function getBranchService(): BranchService {
 /** Run a git command synchronously in the given directory. */
 export function execGitSync(args: string, cwd: string): string {
     return childProcess.execSync(`git ${args}`, { cwd, encoding: 'utf-8', timeout: 5000 }).trim();
+}
+
+/** Read a file's content from a specific commit, falling back to the first parent for deleted files. */
+export function readGitFileAtCommit(hash: string, filePath: string, cwd: string): { content: string; resolvedRef: string } {
+    const refsToTry = [`${hash}:${filePath}`, `${hash}^:${filePath}`];
+    let lastError: unknown;
+
+    for (const resolvedRef of refsToTry) {
+        try {
+            const content = childProcess.execFileSync('git', ['show', resolvedRef], {
+                cwd,
+                encoding: 'utf-8',
+                timeout: 5000,
+            });
+            return { content, resolvedRef };
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Failed to read git file content');
 }
 
 /**

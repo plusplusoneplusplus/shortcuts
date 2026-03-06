@@ -6,6 +6,7 @@
  * - GET /api/workspaces/:id/git/commits/:hash/files
  * - GET /api/workspaces/:id/git/commits/:hash/diff
  * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/diff
+ * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/content
  *
  * Uses mocked execGitSync via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -25,8 +26,10 @@ import { gitCache } from '../src/git-cache';
 // ============================================================================
 
 const mockExecSync = vi.fn();
+const mockExecFileSync = vi.fn();
 vi.mock('child_process', () => ({
     execSync: (...args: any[]) => mockExecSync(...args),
+    execFileSync: (...args: any[]) => mockExecFileSync(...args),
 }));
 
 // ============================================================================
@@ -121,6 +124,7 @@ describe('Git API endpoints', () => {
 
     beforeEach(() => {
         mockExecSync.mockReset();
+        mockExecFileSync.mockReset();
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
         mockGetCurrentBranch.mockReset();
@@ -409,6 +413,67 @@ describe('Git API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent(filePath)}/diff`);
             expect(res.status).toBe(200);
             expect(res.json().diff).toBe(diffOutput);
+        });
+    });
+
+    // ========================================================================
+    // GET /api/workspaces/:id/git/commits/:hash/files/*/content
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/git/commits/:hash/files/*/content', () => {
+        it('returns full file content for a commit file', async () => {
+            mockExecFileSync.mockReturnValue('first line\nsecond line\n');
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/readme.md')}/content`
+            );
+
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.path).toBe('docs/readme.md');
+            expect(data.fileName).toBe('readme.md');
+            expect(data.lines).toEqual(['first line', 'second line']);
+            expect(data.totalLines).toBe(2);
+            expect(data.truncated).toBe(false);
+            expect(data.language).toBe('md');
+            expect(data.resolvedRef).toBe('abc123:docs/readme.md');
+            expect(mockExecFileSync).toHaveBeenCalledWith(
+                'git',
+                ['show', 'abc123:docs/readme.md'],
+                expect.objectContaining({ cwd: WORKSPACE_ROOT, encoding: 'utf-8', timeout: 5000 }),
+            );
+        });
+
+        it('falls back to the parent ref when the file was deleted in the commit', async () => {
+            mockExecFileSync
+                .mockImplementationOnce(() => {
+                    throw new Error('fatal: path does not exist in commit');
+                })
+                .mockImplementationOnce(() => 'deleted content\n');
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/removed.md')}/content`
+            );
+
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.lines).toEqual(['deleted content']);
+            expect(data.resolvedRef).toBe('abc123^:docs/removed.md');
+            expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+        });
+
+        it('returns 400 when commit file content cannot be read', async () => {
+            mockExecFileSync.mockImplementation(() => {
+                throw new Error('fatal: bad object');
+            });
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/missing.md')}/content`
+            );
+
+            expect(res.status).toBe(400);
+            const data = res.json();
+            expect(data.error).toContain('Failed to get commit file content');
         });
     });
 
