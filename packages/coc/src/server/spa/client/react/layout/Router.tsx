@@ -152,7 +152,7 @@ export function parseWorkflowDeepLink(hash: string): { repoId: string; processId
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot', 'workflow']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot', 'workflow', 'explorer']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -275,6 +275,12 @@ export function Router() {
                         dispatch({ type: 'SET_WORKFLOW_PROCESS', processId: decodeURIComponent(parts[3]) });
                     } else if (parts[2] === 'workflow') {
                         dispatch({ type: 'SET_WORKFLOW_PROCESS', processId: null });
+                    }
+                    // Explorer deep-link: #repos/{id}/explorer/{path}
+                    if (parts[2] === 'explorer' && parts[3]) {
+                        dispatch({ type: 'SET_EXPLORER_PATH', path: decodeURIComponent(parts.slice(3).join('/')) });
+                    } else if (parts[2] === 'explorer') {
+                        dispatch({ type: 'SET_EXPLORER_PATH', path: null });
                     }
                 }
             }

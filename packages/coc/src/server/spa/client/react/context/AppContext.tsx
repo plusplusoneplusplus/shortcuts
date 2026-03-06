@@ -51,6 +51,7 @@ export interface AppContextState {
     selectedGitCommitHash: string | null;
     selectedGitFilePath: string | null;
     selectedWorkflowProcessId: string | null;
+    selectedExplorerPath: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
@@ -87,6 +88,7 @@ const initialState: AppContextState = {
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
     selectedWorkflowProcessId: null,
+    selectedExplorerPath: null,
     conversationCache: {},
     wsStatus: 'closed',
     activeMemorySubTab: 'entries',
@@ -143,6 +145,7 @@ export type AppAction =
     | { type: 'SET_REPO_WIKI_ID'; wikiId: string | null }
     | { type: 'SET_REPO_WIKI_DEEP_LINK'; wikiId: string; tab?: WikiProjectTab | null; adminTab?: WikiAdminTab | null; componentId?: string | null }
     | { type: 'CLEAR_REPO_WIKI_INITIAL' }
+    | { type: 'SET_EXPLORER_PATH'; path: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab };
 
 // ── Reducer ────────────────────────────────────────────────────────────
@@ -335,6 +338,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             };
         case 'CLEAR_REPO_WIKI_INITIAL':
             return { ...state, repoWikiInitialTab: null, repoWikiInitialAdminTab: null, repoWikiInitialComponentId: null };
+        case 'SET_EXPLORER_PATH':
+            return { ...state, selectedExplorerPath: action.path };
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
         default:

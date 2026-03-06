@@ -37,6 +37,7 @@ function defaultAppState(): AppContextState {
         wikiAutoGenerate: false,
         wikis: [],
         selectedPipelineName: null,
+        selectedExplorerPath: null,
         conversationCache: {},
         wsStatus: 'closed',
         repoTabState: {},

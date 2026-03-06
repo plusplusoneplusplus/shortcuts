@@ -17,6 +17,7 @@ import { RepoChatTab } from './RepoChatTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { RepoCopilotTab } from './RepoCopilotTab';
+import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { WorkflowDetailView } from '../processes/dag';
 import { AddRepoDialog } from './AddRepoDialog';
 
@@ -45,6 +46,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'copilot', label: 'Copilot' },
+    { key: 'explorer', label: 'Explorer' },
 ];
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
@@ -483,6 +485,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab workspaceId={ws.id} />}
+                        {activeSubTab === 'explorer' && <ExplorerPanel workspaceId={ws.id} />}
                         {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView processId={state.selectedWorkflowProcessId} />}
                     </div>
                 )}

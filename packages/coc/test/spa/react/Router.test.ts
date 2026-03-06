@@ -120,12 +120,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('workflow')).toBe(true);
     });
 
+    it('includes "explorer"', () => {
+        expect(VALID_REPO_SUB_TABS.has('explorer')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 10 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(10);
+    it('has exactly 11 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(11);
     });
 });
 

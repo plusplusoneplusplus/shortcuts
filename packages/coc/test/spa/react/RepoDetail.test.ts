@@ -29,13 +29,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 8 entries', () => {
-        expect(SUB_TABS).toHaveLength(8);
+    it('has exactly 9 entries', () => {
+        expect(SUB_TABS).toHaveLength(9);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'tasks', 'chat', 'queue', 'workflows', 'schedules', 'copilot']);
+        expect(keys).toEqual(['info', 'git', 'tasks', 'chat', 'queue', 'workflows', 'schedules', 'copilot', 'explorer']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {
@@ -43,8 +43,8 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab).toBeUndefined();
     });
 
-    it('has copilot as the last tab', () => {
-        expect(SUB_TABS[SUB_TABS.length - 1].key).toBe('copilot');
+    it('has explorer as the last tab', () => {
+        expect(SUB_TABS[SUB_TABS.length - 1].key).toBe('explorer');
     });
 });
 
