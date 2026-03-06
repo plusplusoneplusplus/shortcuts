@@ -300,7 +300,7 @@ describe('refinePipeline', () => {
         const result = await refinePipeline('ws1', 'my-pipeline', 'add logging step', 'name: original');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines/my-pipeline/refine',
+            'http://localhost:4000/api/workspaces/ws1/pipelines/refine',
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -339,12 +339,12 @@ describe('refinePipeline', () => {
         expect(call[1].signal).toBe(controller.signal);
     });
 
-    it('encodes workspace ID and pipeline name in URL', async () => {
+    it('encodes workspace ID in URL (pipeline name not in path)', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
         await refinePipeline('ws/special', 'my pipeline', 'add step', 'yaml');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/my%20pipeline/refine',
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/refine',
             expect.any(Object)
         );
     });

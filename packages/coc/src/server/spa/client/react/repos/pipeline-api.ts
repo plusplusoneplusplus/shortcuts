@@ -18,8 +18,8 @@ function pipelineContentUrl(workspaceId: string, name: string): string {
     return `${pipelineUrl(workspaceId, name)}/content`;
 }
 
-function pipelineRefineUrl(workspaceId: string, name: string): string {
-    return `${pipelineUrl(workspaceId, name)}/refine`;
+function pipelineRefineUrl(workspaceId: string): string {
+    return `${pipelinesUrl(workspaceId)}/refine`;
 }
 
 export async function fetchPipelines(workspaceId: string): Promise<PipelineInfo[]> {
@@ -106,7 +106,7 @@ export async function refinePipeline(
     if (model !== undefined) {
         body.model = model;
     }
-    const res = await fetch(pipelineRefineUrl(workspaceId, pipelineName), {
+    const res = await fetch(pipelineRefineUrl(workspaceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
