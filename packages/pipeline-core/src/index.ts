@@ -1013,7 +1013,7 @@ export type { WithMemoryOptions } from './memory';
 export { FileToolCallCacheStore, ToolCallCacheAggregator } from './memory';
 export { ToolCallCapture } from './memory';
 export type { ToolCallCaptureOptions } from './memory';
-export { EXPLORE_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from './memory';
+export { TASK_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from './memory';
 export type {
     ToolCallFilter,
     ToolCallQAEntry,

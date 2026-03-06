@@ -2,7 +2,7 @@
  * Tool Call Cache Presets
  *
  * Preset ToolCallFilter instances for common caching scenarios.
- * EXPLORE_FILTER is the primary use case: caching task agent invocations.
+ * TASK_FILTER is the primary use case: caching task agent invocations.
  *
  * No VS Code dependencies — pure Node.js.
  */
@@ -13,7 +13,7 @@ import type { ToolCallFilter } from './tool-call-cache-types';
  * Matches only task tool invocations (any agent_type).
  * Read-only tools like grep, glob, view, etc. are intentionally excluded.
  */
-export const EXPLORE_FILTER: ToolCallFilter = (
+export const TASK_FILTER: ToolCallFilter = (
     toolName: string,
     _args: Record<string, unknown>,
 ): boolean => {

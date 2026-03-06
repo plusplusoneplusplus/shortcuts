@@ -1,49 +1,49 @@
 import { describe, it, expect } from 'vitest';
-import { EXPLORE_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from '../../src/memory/tool-call-cache-presets';
+import { TASK_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from '../../src/memory/tool-call-cache-presets';
 
-describe('EXPLORE_FILTER', () => {
+describe('TASK_FILTER', () => {
     it('matches task with agent_type=explore', () => {
-        expect(EXPLORE_FILTER('task', { agent_type: 'explore' })).toBe(true);
+        expect(TASK_FILTER('task', { agent_type: 'explore' })).toBe(true);
     });
 
     it('matches task with agent_type=general-purpose', () => {
-        expect(EXPLORE_FILTER('task', { agent_type: 'general-purpose' })).toBe(true);
+        expect(TASK_FILTER('task', { agent_type: 'general-purpose' })).toBe(true);
     });
 
     it('matches task with no agent_type', () => {
-        expect(EXPLORE_FILTER('task', {})).toBe(true);
+        expect(TASK_FILTER('task', {})).toBe(true);
     });
 
     it('rejects grep', () => {
-        expect(EXPLORE_FILTER('grep', { pattern: 'foo' })).toBe(false);
+        expect(TASK_FILTER('grep', { pattern: 'foo' })).toBe(false);
     });
 
     it('rejects glob', () => {
-        expect(EXPLORE_FILTER('glob', { pattern: '**/*.ts' })).toBe(false);
+        expect(TASK_FILTER('glob', { pattern: '**/*.ts' })).toBe(false);
     });
 
     it('rejects view', () => {
-        expect(EXPLORE_FILTER('view', { path: '/src/index.ts' })).toBe(false);
+        expect(TASK_FILTER('view', { path: '/src/index.ts' })).toBe(false);
     });
 
     it('rejects read_file', () => {
-        expect(EXPLORE_FILTER('read_file', {})).toBe(false);
+        expect(TASK_FILTER('read_file', {})).toBe(false);
     });
 
     it('rejects list_directory', () => {
-        expect(EXPLORE_FILTER('list_directory', {})).toBe(false);
+        expect(TASK_FILTER('list_directory', {})).toBe(false);
     });
 
     it('rejects edit', () => {
-        expect(EXPLORE_FILTER('edit', {})).toBe(false);
+        expect(TASK_FILTER('edit', {})).toBe(false);
     });
 
     it('rejects create', () => {
-        expect(EXPLORE_FILTER('create', {})).toBe(false);
+        expect(TASK_FILTER('create', {})).toBe(false);
     });
 
     it('rejects powershell', () => {
-        expect(EXPLORE_FILTER('powershell', {})).toBe(false);
+        expect(TASK_FILTER('powershell', {})).toBe(false);
     });
 });
 

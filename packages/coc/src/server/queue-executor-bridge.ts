@@ -41,7 +41,7 @@ import {
     buildDeepModePrompt,
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
-    EXPLORE_FILTER,
+    TASK_FILTER,
     executePipeline,
     FileToolCallCacheStore,
     gatherFeatureContext,
@@ -962,7 +962,7 @@ export class CLITaskExecutor implements TaskExecutor {
             // Create capture handler defensively — errors must not break task execution.
             let captureHandler: ((event: ToolEvent) => void) | undefined;
             try {
-                const capture = new ToolCallCapture(this.toolCallCacheStore, EXPLORE_FILTER);
+                const capture = new ToolCallCapture(this.toolCallCacheStore, TASK_FILTER);
                 captureHandler = capture.createToolEventHandler();
             } catch (err) {
                 getLogger().warn(LogCategory.AI, `[QueueExecutor] ToolCallCapture setup failed: ${err}`);

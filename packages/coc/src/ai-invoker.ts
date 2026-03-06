@@ -14,7 +14,7 @@ import {
     DEFAULT_AI_TIMEOUT_MS,
     ToolCallCapture,
     FileToolCallCacheStore,
-    EXPLORE_FILTER,
+    TASK_FILTER,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     AIInvoker,
@@ -141,7 +141,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
     const store = new FileToolCallCacheStore(
         options.cacheDataDir ? { dataDir: options.cacheDataDir } : undefined
     );
-    const capture = new ToolCallCapture(store, EXPLORE_FILTER, {
+    const capture = new ToolCallCapture(store, TASK_FILTER, {
         gitHash: options.gitHash,
     });
     const captureHandler = capture.createToolEventHandler();

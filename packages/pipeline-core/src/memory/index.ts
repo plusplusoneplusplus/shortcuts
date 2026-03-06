@@ -50,4 +50,4 @@ export type { ToolCallCacheLookupResult, StalenessStrategy } from './tool-call-c
 
 export { withToolCallCache } from './with-tool-call-cache';
 export type { WithToolCallCacheOptions } from './with-tool-call-cache';
-export { EXPLORE_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from './tool-call-cache-presets';
+export { TASK_FILTER, ALL_TOOLS_FILTER, createToolNameFilter } from './tool-call-cache-presets';

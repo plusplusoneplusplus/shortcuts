@@ -7101,7 +7101,7 @@ describe('ToolCallCapture integration', () => {
         expect(entry.answer).toBe('file content');
     });
 
-    it('should not capture suggest_follow_ups events (not in EXPLORE_FILTER)', async () => {
+    it('should not capture suggest_follow_ups events (not in TASK_FILTER)', async () => {
         const { FileToolCallCacheStore: Store } = await import('@plusplusoneplusplus/pipeline-core');
         const mockWriteRaw = vi.fn().mockResolvedValue('ts.json');
         vi.spyOn(Store.prototype, 'writeRaw').mockImplementation(mockWriteRaw);
