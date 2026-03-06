@@ -558,6 +558,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
                 role: 'user', content: prompt,
                 timestamp: new Date().toISOString(), timeline: [],
                 images: sentImages,
+                ...(parsedSkills.length > 0 ? { skillNames: parsedSkills } : {}),
             };
             const assistantPlaceholder: ClientConversationTurn = {
                 role: 'assistant', content: '',
@@ -599,7 +600,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
             : undefined;
         setTurnsAndCache(prev => ([
             ...prev,
-            { role: 'user', content, timestamp, timeline: [], images: sentFollowUpImages },
+            { role: 'user', content, timestamp, timeline: [], images: sentFollowUpImages, ...(parsedSkills.length > 0 ? { skillNames: parsedSkills } : {}) },
             { role: 'assistant', content: '', timestamp, streaming: true, timeline: [] },
         ]));
 

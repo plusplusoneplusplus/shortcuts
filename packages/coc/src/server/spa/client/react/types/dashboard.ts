@@ -48,6 +48,8 @@ export interface ClientConversationTurn {
     hasImages?: boolean;
     /** True for turns prepended from a prior session during cold resume */
     historical?: boolean;
+    /** Skills invoked via /slash commands in this turn */
+    skillNames?: string[];
 }
 
 /** Cached conversation data for a historical process. */

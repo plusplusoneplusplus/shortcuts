@@ -784,3 +784,53 @@ describe('ConversationTurnBubble — retry button', () => {
         expect(container.querySelector('[data-testid="retry-turn-btn"]')).toBeTruthy();
     });
 });
+
+describe('ConversationTurnBubble — skill badges', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders .skill-badges container when skillNames is non-empty on user turn', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', skillNames: ['impl'] })} />
+        );
+        expect(container.querySelector('.skill-badges')).toBeTruthy();
+    });
+
+    it('renders one badge per skill name', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', skillNames: ['impl', 'draft'] })} />
+        );
+        const badges = container.querySelectorAll('.skill-badges span');
+        expect(badges.length).toBe(2);
+    });
+
+    it('displays badge text with leading slash', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', skillNames: ['my-skill'] })} />
+        );
+        const badge = container.querySelector('.skill-badges span');
+        expect(badge?.textContent).toBe('/my-skill');
+    });
+
+    it('does not render .skill-badges when skillNames is empty', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user', skillNames: [] })} />
+        );
+        expect(container.querySelector('.skill-badges')).toBeNull();
+    });
+
+    it('does not render .skill-badges when skillNames is absent', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'user' })} />
+        );
+        expect(container.querySelector('.skill-badges')).toBeNull();
+    });
+
+    it('does not render .skill-badges on assistant turns even when skillNames is set', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({ role: 'assistant', skillNames: ['impl'] })} />
+        );
+        expect(container.querySelector('.skill-badges')).toBeNull();
+    });
+});

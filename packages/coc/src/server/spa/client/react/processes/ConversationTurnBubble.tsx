@@ -700,6 +700,19 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
                 </div>
 
                 <div className="space-y-2 chat-message-content">
+                    {isUser && turn.skillNames && turn.skillNames.length > 0 && (
+                        <div className="flex flex-wrap gap-1 skill-badges">
+                            {turn.skillNames.map(skill => (
+                                <span
+                                    key={skill}
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#dceeff] dark:bg-[#0d2a42] text-[#005a9e] dark:text-[#7bbef3] border border-[#b3d7ff] dark:border-[#2a4a66]"
+                                    title={`Skill invoked: ${skill}`}
+                                >
+                                    /{skill}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                     {isUser && !showRaw && userContentHtml && <MarkdownView html={userContentHtml} />}
                     {isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
