@@ -687,9 +687,9 @@ suite('Git View Tests', () => {
             test('should set command to open diff review', () => {
                 const file = createMockCommitFile();
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
+                assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
                 assert.strictEqual(item.command?.title, 'Open Diff');
-                assert.deepStrictEqual(item.command?.arguments, [item]);
+                assert.deepStrictEqual(item.command?.arguments, [item.file]);
             });
 
             test('should store the file object', () => {
@@ -1465,8 +1465,8 @@ suite('Git View Tests', () => {
                 repositoryRoot: '/repo'
             };
             const item = new GitCommitFileItem(file);
-            assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
-            assert.deepStrictEqual(item.command?.arguments, [item]);
+            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+            assert.deepStrictEqual(item.command?.arguments, [item.file]);
             // Verify the commitFile accessor contains the status for proper handling
             assert.strictEqual(item.commitFile.status, 'added');
         });
@@ -1480,8 +1480,8 @@ suite('Git View Tests', () => {
                 repositoryRoot: '/repo'
             };
             const item = new GitCommitFileItem(file);
-            assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
-            assert.deepStrictEqual(item.command?.arguments, [item]);
+            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+            assert.deepStrictEqual(item.command?.arguments, [item.file]);
             // Verify the commitFile accessor contains the status for proper handling
             assert.strictEqual(item.commitFile.status, 'deleted');
         });

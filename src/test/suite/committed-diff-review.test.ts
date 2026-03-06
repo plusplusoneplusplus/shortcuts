@@ -33,9 +33,9 @@ suite('Committed Diff Review Tests', () => {
             const file = createMockCommitFile();
             const item = new GitCommitFileItem(file);
             
-            assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
+            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
             assert.strictEqual(item.command?.title, 'Open Diff');
-            assert.deepStrictEqual(item.command?.arguments, [item]);
+            assert.deepStrictEqual(item.command?.arguments, [item.file]);
         });
 
         test('should expose commitFile with complete file information', () => {
@@ -87,17 +87,19 @@ suite('Committed Diff Review Tests', () => {
     });
 
     suite('Command Arguments Structure', () => {
-        test('should create commitFile wrapper for DiffReviewEditorProvider', () => {
+        test('should pass GitCommitFile directly to gitView.openCommitFileDiff', () => {
             const file = createMockCommitFile();
+            const item = new GitCommitFileItem(file);
             
-            // This is the structure expected by DiffReviewEditorProvider.openDiffReview
-            const commandArg = { commitFile: file };
+            // The command receives the GitCommitFile directly for vscode.diff
+            assert.ok(item.command?.arguments);
+            const commandArg = item.command!.arguments![0] as typeof file;
             
-            assert.ok(commandArg.commitFile);
-            assert.strictEqual(commandArg.commitFile.path, file.path);
-            assert.strictEqual(commandArg.commitFile.commitHash, file.commitHash);
-            assert.strictEqual(commandArg.commitFile.parentHash, file.parentHash);
-            assert.strictEqual(commandArg.commitFile.repositoryRoot, file.repositoryRoot);
+            assert.ok(commandArg);
+            assert.strictEqual(commandArg.path, file.path);
+            assert.strictEqual(commandArg.commitHash, file.commitHash);
+            assert.strictEqual(commandArg.parentHash, file.parentHash);
+            assert.strictEqual(commandArg.repositoryRoot, file.repositoryRoot);
         });
 
         test('should handle all file statuses', () => {
@@ -110,7 +112,7 @@ suite('Committed Diff Review Tests', () => {
                 const item = new GitCommitFileItem(file);
                 
                 assert.ok(item.command, `Command should exist for ${status} status`);
-                assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
+                assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
                 
                 assert.strictEqual(item.commitFile.status, status);
             }

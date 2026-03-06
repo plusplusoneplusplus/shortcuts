@@ -25,7 +25,7 @@ import { DebugPanelTreeDataProvider, testCopilotSDK } from './shortcuts/debug-pa
 import { DiscoveryEngine, registerDiscoveryCommands } from './shortcuts/discovery';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GIT_SHOW_SCHEME, GitChangeItem, GitCommitFile, GitCommitFileItem, GitCommitItem, GitDragDropController, GitLogService, GitRangeFileItem, GitShowTextDocumentProvider, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import { GIT_SHOW_SCHEME, GitChangeItem, GitCommitFile, GitCommitFileItem, GitCommitItem, GitDragDropController, GitLogService, GitRangeFileItem, GitShowTextDocumentProvider, GitTreeDataProvider, LookedUpCommitItem, createGitShowUri } from './shortcuts/git';
 import {
     DiffCommentCategoryItem,
     DiffCommentFileItem,
@@ -778,7 +778,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 gitTreeDataProvider.clearAllLookedUpCommits();
             });
 
-            // Register command to open commit file diff using extension's diff review
+            // Register command to open commit file diff using VS Code's native diff editor (full file content)
             gitOpenFileDiffCommand = vscode.commands.registerCommand(
                 'gitView.openCommitFileDiff',
                 async (file: GitCommitFile) => {
@@ -786,11 +786,39 @@ export async function activate(context: vscode.ExtensionContext) {
                         return;
                     }
 
+                    // Empty tree hash used as the "before" ref for added files and "after" ref for deleted files
+                    const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+                    const { path: filePath, commitHash, parentHash, repositoryRoot, status, originalPath } = file;
+
                     try {
-                        // Open using the extension's diff review with commenting capability
-                        await vscode.commands.executeCommand('gitDiffComments.openWithReview', {
-                            commitFile: file
-                        });
+                        let leftUri: vscode.Uri;
+                        let rightUri: vscode.Uri;
+                        let title: string;
+
+                        if (status === 'deleted') {
+                            leftUri = createGitShowUri(filePath, parentHash, repositoryRoot);
+                            rightUri = createGitShowUri(filePath, EMPTY_TREE_HASH, repositoryRoot);
+                            title = `${path.basename(filePath)} (deleted in ${commitHash.slice(0, 7)})`;
+                        } else if (status === 'added') {
+                            leftUri = createGitShowUri(filePath, EMPTY_TREE_HASH, repositoryRoot);
+                            rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+                            title = `${path.basename(filePath)} (added in ${commitHash.slice(0, 7)})`;
+                        } else if (status === 'renamed' && originalPath) {
+                            leftUri = createGitShowUri(originalPath, parentHash, repositoryRoot);
+                            rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+                            title = `${path.basename(originalPath)} → ${path.basename(filePath)} (${commitHash.slice(0, 7)})`;
+                        } else if (status === 'copied' && originalPath) {
+                            leftUri = createGitShowUri(originalPath, parentHash, repositoryRoot);
+                            rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+                            title = `${path.basename(originalPath)} → ${path.basename(filePath)} (copied in ${commitHash.slice(0, 7)})`;
+                        } else {
+                            // Modified (and all other statuses)
+                            leftUri = createGitShowUri(filePath, parentHash, repositoryRoot);
+                            rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+                            title = `${path.basename(filePath)} (${commitHash.slice(0, 7)})`;
+                        }
+
+                        await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
                     } catch (error) {
                         getExtensionLogger().error(LogCategory.GIT, 'Failed to open commit file diff', error instanceof Error ? error : undefined);
                         vscode.window.showErrorMessage('Failed to open diff view');

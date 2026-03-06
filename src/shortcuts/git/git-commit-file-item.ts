@@ -45,11 +45,11 @@ export class GitCommitFileItem extends vscode.TreeItem {
 
         // Don't set iconPath - let VSCode use the default file icon from icon theme
 
-        // Command to open diff review (same as branch changes for preview-mode tab reuse)
+        // Command to open full file diff using VS Code's native diff editor
         this.command = {
-            command: 'gitDiffComments.openWithReview',
+            command: 'gitView.openCommitFileDiff',
             title: 'Open Diff',
-            arguments: [this]
+            arguments: [this.file]
         };
     }
 
