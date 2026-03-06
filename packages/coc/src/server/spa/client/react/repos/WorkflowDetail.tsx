@@ -1,5 +1,5 @@
 /**
- * PipelineDetail — view/edit panel for a single pipeline's YAML content.
+ * WorkflowDetail — view/edit panel for a single pipeline's YAML content.
  */
 
 import { useState, useEffect } from 'react';
@@ -7,30 +7,30 @@ import { Button, Badge, Dialog, Spinner, cn } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { fetchPipelineContent, savePipelineContent, deletePipeline, runPipeline } from './pipeline-api';
-import { PipelineRunHistory } from './PipelineRunHistory';
-import { PipelineDAGPreview } from './PipelineDAGPreview';
-import { PipelineAIRefinePanel } from './PipelineAIRefinePanel';
+import { fetchWorkflowContent, saveWorkflowContent, deleteWorkflow, runWorkflow } from './workflow-api';
+import { WorkflowRunHistory } from './WorkflowRunHistory';
+import { WorkflowDAGPreview } from './WorkflowDAGPreview';
+import { WorkflowAIRefinePanel } from './WorkflowAIRefinePanel';
 import { WorkflowDetailView } from '../processes/dag/WorkflowDetailView';
-import type { PipelineInfo } from './repoGrouping';
+import type { WorkflowInfo } from './repoGrouping';
 
-export interface PipelineDetailProps {
+export interface WorkflowDetailProps {
     workspaceId: string;
-    pipeline: PipelineInfo;
+    pipeline: WorkflowInfo;
     onClose: () => void;
     onDeleted: () => void;
     onRunSuccess?: () => void;
     refreshKey?: number;
 }
 
-export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess, refreshKey }: PipelineDetailProps) {
+export function WorkflowDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess, refreshKey }: WorkflowDetailProps) {
     const { addToast } = useGlobalToast();
     const { state: queueState } = useQueue();
     const { state: appState } = useApp();
     const [mode, setMode] = useState<'view' | 'edit'>('view');
     const [aiSidebarOpen, setAiSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'pipeline' | 'history'>('pipeline');
-    const selectedRunProcessId = appState.selectedPipelineRunProcessId;
+    const selectedRunProcessId = appState.selectedWorkflowRunProcessId;
     // Derive effective tab: when a run is selected, show 'run' regardless of local activeTab
     const effectiveTab = selectedRunProcessId ? 'run' : activeTab;
     const [content, setContent] = useState('');
@@ -44,7 +44,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
     const repoQueue = queueState.repoQueueMap[workspaceId];
     const activeTaskCount = [...(repoQueue?.running || []), ...(repoQueue?.queued || [])].filter(
         (t: any) =>
-            t.type === 'run-pipeline' && (
+            t.type === 'run-workflow' && (
                 t.metadata?.pipelineName === pipeline.name ||
                 t.displayName?.includes(pipeline.name)
             )
@@ -52,7 +52,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
 
     useEffect(() => {
         let cancelled = false;
-        fetchPipelineContent(workspaceId, pipeline.name)
+        fetchWorkflowContent(workspaceId, pipeline.name)
             .then(data => {
                 if (cancelled) return;
                 setContent(data.content);
@@ -71,7 +71,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
     async function handleRun() {
         setRunning(true);
         try {
-            const data = await runPipeline(workspaceId, pipeline.name);
+            const data = await runWorkflow(workspaceId, pipeline.name);
             const taskIdShort = data.task?.id ? data.task.id.slice(0, 8) : '';
             addToast(`Workflow queued${taskIdShort ? ` (${taskIdShort})` : ''}`, 'success');
             onRunSuccess?.();
@@ -90,7 +90,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
         setSaving(true);
         setError(null);
         try {
-            await savePipelineContent(workspaceId, pipeline.name, editContent);
+            await saveWorkflowContent(workspaceId, pipeline.name, editContent);
             setContent(editContent);
             setMode('view');
             addToast('Workflow saved', 'success');
@@ -105,7 +105,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
         setSaving(true);
         setError(null);
         try {
-            await savePipelineContent(workspaceId, pipeline.name, newYaml);
+            await saveWorkflowContent(workspaceId, pipeline.name, newYaml);
             setContent(newYaml);
             setEditContent(newYaml);
             addToast('Workflow updated ✓', 'success');
@@ -119,7 +119,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
 
     async function handleDelete() {
         try {
-            await deletePipeline(workspaceId, pipeline.name);
+            await deleteWorkflow(workspaceId, pipeline.name);
             addToast('Workflow deleted', 'success');
             onDeleted();
         } catch (err: any) {
@@ -155,7 +155,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                                 loading={running}
                                 disabled={pipeline.isValid === false}
                                 title={pipeline.isValid === false ? 'Fix validation errors before running' : 'Run workflow'}
-                                data-testid="pipeline-run-btn"
+                                data-testid="workflow-run-btn"
                                 onClick={handleRun}
                             >
                                 ▶ Run
@@ -195,7 +195,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
 
             {/* Tab bar (view mode only) */}
             {mode === 'view' && (
-                <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4" data-testid="pipeline-tab-bar">
+                <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4" data-testid="workflow-tab-bar">
                     {(['pipeline', 'history'] as const).map(tab => (
                         <button
                             key={tab}
@@ -250,12 +250,12 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                                         {content}
                                     </pre>
                                     {content && (
-                                        <PipelineDAGPreview yamlContent={content} validationErrors={pipeline.validationErrors} />
+                                        <WorkflowDAGPreview yamlContent={content} validationErrors={pipeline.validationErrors} />
                                     )}
                                 </>
                             )}
                             {effectiveTab === 'history' && (
-                                <PipelineRunHistory
+                                <WorkflowRunHistory
                                     workspaceId={workspaceId}
                                     pipelineName={pipeline.name}
                                     refreshKey={refreshKey}
@@ -298,7 +298,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                             </button>
                         </div>
                         <div className="flex-1 overflow-auto p-3">
-                            <PipelineAIRefinePanel
+                            <WorkflowAIRefinePanel
                                 workspaceId={workspaceId}
                                 pipelineName={pipeline.name}
                                 currentYaml={content}

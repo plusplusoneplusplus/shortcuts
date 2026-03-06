@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { PipelinePhasePopover } from '../../../../src/server/spa/client/react/processes/dag/PipelinePhasePopover';
-import type { PhaseDetail } from '../../../../src/server/spa/client/react/processes/dag/PipelinePhasePopover';
+import { WorkflowPhasePopover } from '../../../../src/server/spa/client/react/processes/dag/WorkflowPhasePopover';
+import type { PhaseDetail } from '../../../../src/server/spa/client/react/processes/dag/WorkflowPhasePopover';
 
 function makeDetail(overrides: Partial<PhaseDetail> = {}): PhaseDetail {
     return {
@@ -11,10 +11,10 @@ function makeDetail(overrides: Partial<PhaseDetail> = {}): PhaseDetail {
     };
 }
 
-describe('PipelinePhasePopover', () => {
+describe('WorkflowPhasePopover', () => {
     it('renders nothing when phase is null', () => {
         const { container } = render(
-            <PipelinePhasePopover phase={null} onClose={() => {}} />
+            <WorkflowPhasePopover phase={null} onClose={() => {}} />
         );
         expect(container.querySelector('[data-testid="phase-popover"]')).toBeNull();
     });
@@ -26,7 +26,7 @@ describe('PipelinePhasePopover', () => {
             itemCount: 42,
             parameters: { file: 'data.csv', delimiter: ',' },
         });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         const popover = screen.getByTestId('phase-popover');
         expect(popover.textContent).toContain('Input Phase');
         expect(popover.textContent).toContain('CSV');
@@ -45,7 +45,7 @@ describe('PipelinePhasePopover', () => {
             excludedCount: 2,
             durationMs: 1500,
         });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         const popover = screen.getByTestId('phase-popover');
         expect(popover.textContent).toContain('Filter Phase');
         expect(popover.textContent).toContain('rule');
@@ -66,7 +66,7 @@ describe('PipelinePhasePopover', () => {
                 { label: 'Item 2', status: 'failed', durationMs: 100 },
             ],
         });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         const popover = screen.getByTestId('phase-popover');
         expect(popover.textContent).toContain('Map Phase');
         expect(popover.textContent).toContain('4');
@@ -85,7 +85,7 @@ describe('PipelinePhasePopover', () => {
             status: 'completed',
         }));
         const detail = makeDetail({ phase: 'map', items });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         const popover = screen.getByTestId('phase-popover');
         const table = screen.getByTestId('map-items-table');
         const rows = table.querySelectorAll('tbody tr');
@@ -101,7 +101,7 @@ describe('PipelinePhasePopover', () => {
             model: 'gpt-4',
             outputPreview: longOutput,
         });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         const popover = screen.getByTestId('phase-popover');
         expect(popover.textContent).toContain('Reduce Phase');
         expect(popover.textContent).toContain('ai');
@@ -118,7 +118,7 @@ describe('PipelinePhasePopover', () => {
             promptPreview: 'Analyze this code...',
             durationMs: 3200,
         });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         const popover = screen.getByTestId('phase-popover');
         expect(popover.textContent).toContain('Job Phase');
         expect(popover.textContent).toContain('claude-3');
@@ -131,7 +131,7 @@ describe('PipelinePhasePopover', () => {
             status: 'failed',
             error: 'Model rate limited',
         });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         const popover = screen.getByTestId('phase-popover');
         expect(popover.textContent).toContain('Error');
         expect(popover.textContent).toContain('Model rate limited');
@@ -144,7 +144,7 @@ describe('PipelinePhasePopover', () => {
         const onScroll = vi.fn();
         const detail = makeDetail({ status: 'failed', error: 'timeout' });
         render(
-            <PipelinePhasePopover phase={detail} onClose={() => {}} onScrollToConversation={onScroll} />
+            <WorkflowPhasePopover phase={detail} onClose={() => {}} onScrollToConversation={onScroll} />
         );
         const link = screen.getByTestId('scroll-to-conversation');
         expect(link.textContent).toContain('View in Conversation');
@@ -152,7 +152,7 @@ describe('PipelinePhasePopover', () => {
 
     it('does not show "View in Conversation ↓" when onScrollToConversation is not provided', () => {
         const detail = makeDetail({ status: 'failed', error: 'timeout' });
-        render(<PipelinePhasePopover phase={detail} onClose={() => {}} />);
+        render(<WorkflowPhasePopover phase={detail} onClose={() => {}} />);
         expect(screen.queryByTestId('scroll-to-conversation')).toBeNull();
     });
 
@@ -160,14 +160,14 @@ describe('PipelinePhasePopover', () => {
         const onScroll = vi.fn();
         const detail = makeDetail({ status: 'completed' });
         render(
-            <PipelinePhasePopover phase={detail} onClose={() => {}} onScrollToConversation={onScroll} />
+            <WorkflowPhasePopover phase={detail} onClose={() => {}} onScrollToConversation={onScroll} />
         );
         expect(screen.queryByTestId('scroll-to-conversation')).toBeNull();
     });
 
     it('calls onClose when close button (×) is clicked', () => {
         const onClose = vi.fn();
-        render(<PipelinePhasePopover phase={makeDetail()} onClose={onClose} />);
+        render(<WorkflowPhasePopover phase={makeDetail()} onClose={onClose} />);
         fireEvent.click(screen.getByTestId('phase-popover-close'));
         expect(onClose).toHaveBeenCalledOnce();
     });
@@ -176,7 +176,7 @@ describe('PipelinePhasePopover', () => {
         const onScroll = vi.fn();
         const detail = makeDetail({ status: 'failed', error: 'err' });
         render(
-            <PipelinePhasePopover phase={detail} onClose={() => {}} onScrollToConversation={onScroll} />
+            <WorkflowPhasePopover phase={detail} onClose={() => {}} onScrollToConversation={onScroll} />
         );
         fireEvent.click(screen.getByTestId('scroll-to-conversation'));
         expect(onScroll).toHaveBeenCalledOnce();

@@ -134,10 +134,10 @@ describe('RepoQueueTab chat-type task inclusion', () => {
             expect(helperBlock).toContain("'🔍'");
         });
 
-        it('maps run-pipeline to ▶️', () => {
+        it('maps run-workflow to ▶️', () => {
             const helperIdx = source.indexOf('function getTaskTypeIcon');
             const helperBlock = source.slice(helperIdx, helperIdx + 900);
-            expect(helperBlock).toContain("'run-pipeline'");
+            expect(helperBlock).toContain("'run-workflow'");
             expect(helperBlock).toContain("'▶️'");
         });
 

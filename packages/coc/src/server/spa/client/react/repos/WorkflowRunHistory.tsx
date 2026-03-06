@@ -1,5 +1,5 @@
 /**
- * PipelineRunHistory — shows a list of past runs for the selected pipeline,
+ * WorkflowRunHistory — shows a list of past runs for the selected pipeline,
  * with status badges, timestamps, durations, and click-to-navigate to workflow detail.
  * Active (running/queued) tasks appear at the top via the QueueContext.
  */
@@ -10,13 +10,13 @@ import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format';
 
-export interface PipelineRunHistoryProps {
+export interface WorkflowRunHistoryProps {
     workspaceId: string;
     pipelineName: string;
     refreshKey?: number;
 }
 
-export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: PipelineRunHistoryProps) {
+export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: WorkflowRunHistoryProps) {
     const { state: queueState } = useQueue();
     const [history, setHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +43,7 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
     const repoQueue = queueState.repoQueueMap[workspaceId];
     const activeTasks = [...(repoQueue?.running || []), ...(repoQueue?.queued || [])].filter(
         (t: any) =>
-            t.type === 'run-pipeline' && (
+            t.type === 'run-workflow' && (
                 t.metadata?.pipelineName === pipelineName ||
                 t.displayName?.includes(pipelineName)
             )

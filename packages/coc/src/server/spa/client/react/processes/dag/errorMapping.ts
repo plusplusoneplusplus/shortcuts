@@ -16,7 +16,7 @@ const phaseKeywords: Array<{ phase: PipelinePhase; keywords: string[] }> = [
 ];
 
 /**
- * Map validation error strings to pipeline phases by keyword matching.
+ * Map validation error strings to workflow phases by keyword matching.
  * Each error is matched to the first phase whose keyword appears (case-insensitive).
  * Errors matching no phase go into `unmapped`.
  */

@@ -1,7 +1,7 @@
 /**
- * Pipelines REST API Handler
+ * Workflows REST API Handler
  *
- * HTTP API routes for pipeline CRUD operations: list (enriched),
+ * HTTP API routes for workflow CRUD operations: list (enriched),
  * read/write YAML content, create from template, and delete.
  *
  * Mirrors tasks-handler.ts pattern (separate read + write registration).
@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import type { ProcessStore, CopilotSDKService, MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
-import type { RunPipelinePayload } from '@plusplusoneplusplus/coc-server';
+import type { RunWorkflowPayload } from '@plusplusoneplusplus/coc-server';
 import { denyAllPermissions, isWithinDirectory, loadDefaultMcpConfig } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -27,15 +27,15 @@ import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge'
 // Constants
 // ============================================================================
 
-const DEFAULT_PIPELINES_FOLDER = '.vscode/pipelines';
+const DEFAULT_WORKFLOWS_FOLDER = '.vscode/workflows';
 
 // ============================================================================
-// Pipeline Templates
+// Workflow Templates
 // ============================================================================
 
 const TEMPLATES: Record<string, string> = {
-    custom: `name: "My Pipeline"
-description: "A custom pipeline"
+    custom: `name: "My Workflow"
+description: "A custom workflow"
 
 input:
   type: csv
@@ -52,7 +52,7 @@ map:
 reduce:
   type: json
 `,
-    'data-fanout': `name: "Data Fanout Pipeline"
+    'data-fanout': `name: "Data Fanout Workflow"
 description: "Process data items in parallel"
 
 input:
@@ -74,7 +74,7 @@ map:
 reduce:
   type: table
 `,
-    'model-fanout': `name: "Model Fanout Pipeline"
+    'model-fanout': `name: "Model Fanout Workflow"
 description: "Run the same prompt across multiple models"
 
 input:
@@ -93,8 +93,8 @@ map:
 reduce:
   type: json
 `,
-    'ai-generated': `name: "AI Generated Pipeline"
-description: "Template for AI-generated pipelines"
+    'ai-generated': `name: "AI Generated Workflow"
+description: "Template for AI-generated workflows"
 
 input:
   type: csv
@@ -116,27 +116,27 @@ reduce:
 };
 
 // ============================================================================
-// Pipeline Schema Reference (embedded for AI prompt construction)
+// Workflow Schema Reference (embedded for AI prompt construction)
 // ============================================================================
 
-const PIPELINE_SCHEMA_REFERENCE = `# Pipeline YAML Schema Reference
+const WORKFLOW_SCHEMA_REFERENCE = `# Workflow YAML Schema Reference
 
-## Two Pipeline Modes (mutually exclusive)
+## Two Workflow Modes (mutually exclusive)
 
 ### Map-Reduce Mode (batch processing)
 \`\`\`yaml
-name: string                    # Required: Pipeline identifier
+name: string                    # Required: Workflow identifier
 input: InputConfig              # Required: Data source
 map: MapConfig                  # Required: Processing phase
 reduce: ReduceConfig            # Required: Aggregation phase
-parameters?: PipelineParameter[] # Optional: Top-level parameters
+parameters?: WorkflowParameter[] # Optional: Top-level parameters
 \`\`\`
 
 ### Single-Job Mode (one-shot AI call)
 \`\`\`yaml
-name: string                    # Required: Pipeline identifier
+name: string                    # Required: Workflow identifier
 job: JobConfig                  # Required: Single AI job definition
-parameters?: PipelineParameter[] # Optional: Template variable values
+parameters?: WorkflowParameter[] # Optional: Template variable values
 \`\`\`
 
 Constraint: job and map are mutually exclusive.
@@ -239,8 +239,8 @@ function resolveAndValidatePath(base: string, name: string): string | null {
     return null;
 }
 
-/** Enriched pipeline info with validation results. */
-interface EnrichedPipeline {
+/** Enriched workflow info with validation results. */
+interface EnrichedWorkflow {
     name: string;
     path: string;
     description?: string;
@@ -249,9 +249,9 @@ interface EnrichedPipeline {
 }
 
 /**
- * Discover pipelines and enrich each with description and validation info.
+ * Discover workflows and enrich each with description and validation info.
  */
-function discoverAndEnrichPipelines(pipelinesDir: string): EnrichedPipeline[] {
+function discoverAndEnrichWorkflows(pipelinesDir: string): EnrichedWorkflow[] {
     const basic = discoverPipelines(pipelinesDir);
     return basic.map(p => {
         const yamlPath = path.join(p.path, 'pipeline.yaml');
@@ -270,7 +270,7 @@ function discoverAndEnrichPipelines(pipelinesDir: string): EnrichedPipeline[] {
             // Ignore read errors — validation will catch them
         }
 
-        // Validate pipeline
+        // Validate workflow
         try {
             const result = validatePipeline(yamlPath);
             isValid = result.valid;
@@ -279,7 +279,7 @@ function discoverAndEnrichPipelines(pipelinesDir: string): EnrichedPipeline[] {
                 .map(c => c.detail ?? c.label);
         } catch {
             isValid = false;
-            validationErrors = ['Failed to validate pipeline'];
+            validationErrors = ['Failed to validate workflow'];
         }
 
         return { name: p.name, path: p.path, description, isValid, validationErrors };
@@ -291,20 +291,20 @@ function discoverAndEnrichPipelines(pipelinesDir: string): EnrichedPipeline[] {
 // ============================================================================
 
 /**
- * Register pipeline read-only API routes on the given route table.
+ * Register workflow read-only API routes on the given route table.
  */
-export function registerPipelineRoutes(
+export function registerWorkflowRoutes(
     routes: Route[],
     store: ProcessStore,
 ): void {
 
     // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/pipelines/:pipelineName/content
-    // Returns YAML content of a pipeline.
+    // GET /api/workspaces/:id/workflows/:pipelineName/content
+    // Returns YAML content of a workflow.
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/([^/]+)\/content$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows\/([^/]+)\/content$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const pipelineName = decodeURIComponent(match![2]);
@@ -316,12 +316,12 @@ export function registerPipelineRoutes(
             const parsed = url.parse(req.url || '/', true);
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
-                : DEFAULT_PIPELINES_FOLDER;
+                : DEFAULT_WORKFLOWS_FOLDER;
             const pipelinesDir = path.resolve(ws.rootPath, folder);
 
             const resolvedDir = resolveAndValidatePath(pipelinesDir, pipelineName);
             if (!resolvedDir) {
-                return sendError(res, 403, 'Access denied: invalid pipeline name');
+                return sendError(res, 403, 'Access denied: invalid workflow name');
             }
 
             const yamlPath = path.join(resolvedDir, 'pipeline.yaml');
@@ -331,19 +331,19 @@ export function registerPipelineRoutes(
                 sendJSON(res, 200, { content, path: yamlPath });
             } catch (err: any) {
                 if (err.code === 'ENOENT') {
-                    return sendError(res, 404, 'Pipeline not found');
+                    return sendError(res, 404, 'Workflow not found');
                 }
-                return sendError(res, 500, 'Failed to read pipeline: ' + (err.message || 'Unknown error'));
+                return sendError(res, 500, 'Failed to read workflow: ' + (err.message || 'Unknown error'));
             }
         },
     });
 
     // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/pipelines — List all pipelines (enriched)
+    // GET /api/workspaces/:id/workflows — List all workflows (enriched)
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const ws = await resolveWorkspace(store, id);
@@ -354,10 +354,10 @@ export function registerPipelineRoutes(
             const parsed = url.parse(req.url || '/', true);
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
-                : DEFAULT_PIPELINES_FOLDER;
+                : DEFAULT_WORKFLOWS_FOLDER;
             const pipelinesDir = path.resolve(ws.rootPath, folder);
-            const pipelines = discoverAndEnrichPipelines(pipelinesDir);
-            sendJSON(res, 200, { pipelines });
+            const pipelines = discoverAndEnrichWorkflows(pipelinesDir);
+            sendJSON(res, 200, { workflows: pipelines });
         },
     });
 }
@@ -367,9 +367,9 @@ export function registerPipelineRoutes(
 // ============================================================================
 
 /**
- * Register pipeline mutation API routes on the given route table.
+ * Register workflow mutation API routes on the given route table.
  */
-export function registerPipelineWriteRoutes(
+export function registerWorkflowWriteRoutes(
     routes: Route[],
     store: ProcessStore,
     onPipelinesChanged?: (workspaceId: string) => void,
@@ -378,11 +378,11 @@ export function registerPipelineWriteRoutes(
 ): void {
 
     // ------------------------------------------------------------------
-    // POST /api/workspaces/:id/pipelines/generate — AI pipeline generation
+    // POST /api/workspaces/:id/workflows/generate — AI workflow generation
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/generate$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows\/generate$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const ws = await resolveWorkspace(store, id);
@@ -402,13 +402,13 @@ export function registerPipelineWriteRoutes(
                 return sendError(res, 400, 'Missing required field: description');
             }
 
-            const systemPrompt = `You are a pipeline YAML generator. You produce valid pipeline YAML configurations and nothing else.
+            const systemPrompt = `You are a workflow YAML generator. You produce valid workflow YAML configurations and nothing else.
 Output ONLY the raw YAML content. Do NOT wrap it in markdown code fences. Do NOT include any explanation before or after the YAML.
 The YAML must include a top-level "name" field. Choose a short, descriptive kebab-case name based on the user's requirement.
 
-${PIPELINE_SCHEMA_REFERENCE}`;
+${WORKFLOW_SCHEMA_REFERENCE}`;
 
-            const userPrompt = `Generate a pipeline YAML configuration for the following requirement:\n\n${description.trim()}`;
+            const userPrompt = `Generate a workflow YAML configuration for the following requirement:\n\n${description.trim()}`;
 
             try {
                 if (!aiService) {
@@ -429,7 +429,7 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
                 });
 
                 if (!result.success) {
-                    return sendError(res, 500, 'Pipeline generation failed: ' + (result.error || 'Unknown error'));
+                    return sendError(res, 500, 'Workflow generation failed: ' + (result.error || 'Unknown error'));
                 }
 
                 const raw = result.response || '';
@@ -462,19 +462,19 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 if (message.toLowerCase().includes('timeout')) {
-                    return sendError(res, 504, 'Pipeline generation timed out');
+                    return sendError(res, 504, 'Workflow generation timed out');
                 }
-                return sendError(res, 500, 'Pipeline generation failed: ' + message);
+                return sendError(res, 500, 'Workflow generation failed: ' + message);
             }
         },
     });
 
     // ------------------------------------------------------------------
-    // POST /api/workspaces/:id/pipelines/refine — AI pipeline refinement
+    // POST /api/workspaces/:id/workflows/refine — AI workflow refinement
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/refine$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows\/refine$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const ws = await resolveWorkspace(store, id);
@@ -504,12 +504,12 @@ ${PIPELINE_SCHEMA_REFERENCE}`;
                 return sendError(res, 400, 'Invalid YAML: ' + (err.message || 'Parse error'));
             }
 
-            const systemPrompt = `You are a pipeline YAML editor. You modify existing pipeline YAML configurations based on user instructions.
+            const systemPrompt = `You are a workflow YAML editor. You modify existing workflow YAML configurations based on user instructions.
 Output ONLY the complete modified YAML. Do NOT wrap in markdown code fences. Do NOT include any explanation before or after the YAML.
 
-${PIPELINE_SCHEMA_REFERENCE}`;
+${WORKFLOW_SCHEMA_REFERENCE}`;
 
-            const userPrompt = `Here is the current pipeline YAML:
+            const userPrompt = `Here is the current workflow YAML:
 
 ${currentYaml.trim()}
 
@@ -517,7 +517,7 @@ Apply the following change:
 
 ${instruction.trim()}
 
-Return the complete modified pipeline YAML.`;
+Return the complete modified workflow YAML.`;
 
             try {
                 if (!aiService) {
@@ -538,7 +538,7 @@ Return the complete modified pipeline YAML.`;
                 });
 
                 if (!result.success) {
-                    return sendError(res, 500, 'Pipeline refinement failed: ' + (result.error || 'Unknown error'));
+                    return sendError(res, 500, 'Workflow refinement failed: ' + (result.error || 'Unknown error'));
                 }
 
                 const raw = result.response || '';
@@ -557,20 +557,20 @@ Return the complete modified pipeline YAML.`;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 if (message.toLowerCase().includes('timeout')) {
-                    return sendError(res, 504, 'Pipeline refinement timed out');
+                    return sendError(res, 504, 'Workflow refinement timed out');
                 }
-                return sendError(res, 500, 'Pipeline refinement failed: ' + message);
+                return sendError(res, 500, 'Workflow refinement failed: ' + message);
             }
         },
     });
 
     // ------------------------------------------------------------------
-    // PATCH /api/workspaces/:id/pipelines/:pipelineName/content
-    // Update YAML content of a pipeline.
+    // PATCH /api/workspaces/:id/workflows/:pipelineName/content
+    // Update YAML content of a workflow.
     // ------------------------------------------------------------------
     routes.push({
         method: 'PATCH',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/([^/]+)\/content$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows\/([^/]+)\/content$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const pipelineName = decodeURIComponent(match![2]);
@@ -601,21 +601,21 @@ Return the complete modified pipeline YAML.`;
             const parsed = url.parse(req.url || '/', true);
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
-                : DEFAULT_PIPELINES_FOLDER;
+                : DEFAULT_WORKFLOWS_FOLDER;
             const pipelinesDir = path.resolve(ws.rootPath, folder);
 
             const resolvedDir = resolveAndValidatePath(pipelinesDir, pipelineName);
             if (!resolvedDir) {
-                return sendError(res, 403, 'Access denied: invalid pipeline name');
+                return sendError(res, 403, 'Access denied: invalid workflow name');
             }
 
             const yamlPath = path.join(resolvedDir, 'pipeline.yaml');
 
-            // Ensure the pipeline directory exists
+            // Ensure the workflow directory exists
             try {
                 await fs.promises.stat(yamlPath);
             } catch {
-                return sendError(res, 404, 'Pipeline not found');
+                return sendError(res, 404, 'Workflow not found');
             }
 
             try {
@@ -623,18 +623,18 @@ Return the complete modified pipeline YAML.`;
                 onPipelinesChanged?.(id);
                 sendJSON(res, 200, { path: yamlPath });
             } catch (err: any) {
-                return sendError(res, 500, 'Failed to write pipeline: ' + (err.message || 'Unknown error'));
+                return sendError(res, 500, 'Failed to write workflow: ' + (err.message || 'Unknown error'));
             }
         },
     });
 
     // ------------------------------------------------------------------
-    // DELETE /api/workspaces/:id/pipelines/:pipelineName
-    // Delete a pipeline package directory recursively.
+    // DELETE /api/workspaces/:id/workflows/:pipelineName
+    // Delete a workflow package directory recursively.
     // ------------------------------------------------------------------
     routes.push({
         method: 'DELETE',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/([^/]+)$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows\/([^/]+)$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const pipelineName = decodeURIComponent(match![2]);
@@ -646,22 +646,22 @@ Return the complete modified pipeline YAML.`;
             const parsed = url.parse(req.url || '/', true);
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
-                : DEFAULT_PIPELINES_FOLDER;
+                : DEFAULT_WORKFLOWS_FOLDER;
             const pipelinesDir = path.resolve(ws.rootPath, folder);
 
             const resolvedDir = resolveAndValidatePath(pipelinesDir, pipelineName);
             if (!resolvedDir) {
-                return sendError(res, 403, 'Access denied: invalid pipeline name');
+                return sendError(res, 403, 'Access denied: invalid workflow name');
             }
 
             // Check existence
             try {
                 const stat = await fs.promises.stat(resolvedDir);
                 if (!stat.isDirectory()) {
-                    return sendError(res, 404, 'Pipeline not found');
+                    return sendError(res, 404, 'Workflow not found');
                 }
             } catch {
-                return sendError(res, 404, 'Pipeline not found');
+                return sendError(res, 404, 'Workflow not found');
             }
 
             try {
@@ -669,17 +669,17 @@ Return the complete modified pipeline YAML.`;
                 onPipelinesChanged?.(id);
                 sendJSON(res, 200, { deleted: pipelineName });
             } catch (err: any) {
-                return sendError(res, 500, 'Failed to delete pipeline: ' + (err.message || 'Unknown error'));
+                return sendError(res, 500, 'Failed to delete workflow: ' + (err.message || 'Unknown error'));
             }
         },
     });
 
     // ------------------------------------------------------------------
-    // POST /api/workspaces/:id/pipelines — Create pipeline from template
+    // POST /api/workspaces/:id/workflows — Create workflow from template
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const ws = await resolveWorkspace(store, id);
@@ -703,24 +703,24 @@ Return the complete modified pipeline YAML.`;
 
             // Block path separators and traversal
             if (trimmedName.includes('/') || trimmedName.includes('\\') || trimmedName.includes('..')) {
-                return sendError(res, 403, 'Access denied: invalid pipeline name');
+                return sendError(res, 403, 'Access denied: invalid workflow name');
             }
 
             const parsed = url.parse(req.url || '/', true);
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
-                : DEFAULT_PIPELINES_FOLDER;
+                : DEFAULT_WORKFLOWS_FOLDER;
             const pipelinesDir = path.resolve(ws.rootPath, folder);
 
             const resolvedDir = resolveAndValidatePath(pipelinesDir, trimmedName);
             if (!resolvedDir) {
-                return sendError(res, 403, 'Access denied: invalid pipeline name');
+                return sendError(res, 403, 'Access denied: invalid workflow name');
             }
 
             // Check if directory already exists
             try {
                 await fs.promises.stat(resolvedDir);
-                return sendError(res, 409, 'Pipeline already exists');
+                return sendError(res, 409, 'Workflow already exists');
             } catch {
                 // Expected — directory does not exist
             }
@@ -752,17 +752,17 @@ Return the complete modified pipeline YAML.`;
                 onPipelinesChanged?.(id);
                 sendJSON(res, 201, { name: trimmedName, path: resolvedDir, template: usedTemplate });
             } catch (err: any) {
-                return sendError(res, 500, 'Failed to create pipeline: ' + (err.message || 'Unknown error'));
+                return sendError(res, 500, 'Failed to create workflow: ' + (err.message || 'Unknown error'));
             }
         },
     });
 
     // ------------------------------------------------------------------
-    // POST /api/workspaces/:id/pipelines/:name/run — Run a pipeline
+    // POST /api/workspaces/:id/workflows/:name/run — Run a workflow
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/pipelines\/([^/]+)\/run$/,
+        pattern: /^\/api\/workspaces\/([^/]+)\/workflows\/([^/]+)\/run$/,
         handler: async (req, res, match) => {
             if (!bridge) {
                 return sendError(res, 503, 'Queue system not available');
@@ -778,19 +778,19 @@ Return the complete modified pipeline YAML.`;
             const parsed = url.parse(req.url || '/', true);
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
                 ? parsed.query.folder
-                : DEFAULT_PIPELINES_FOLDER;
+                : DEFAULT_WORKFLOWS_FOLDER;
             const pipelinesDir = path.resolve(ws.rootPath, folder);
 
             const resolvedDir = resolveAndValidatePath(pipelinesDir, pipelineName);
             if (!resolvedDir) {
-                return sendError(res, 403, 'Access denied: invalid pipeline name');
+                return sendError(res, 403, 'Access denied: invalid workflow name');
             }
 
             const yamlPath = path.join(resolvedDir, 'pipeline.yaml');
             try {
                 await fs.promises.stat(yamlPath);
             } catch {
-                return sendError(res, 404, 'Pipeline not found');
+                return sendError(res, 404, 'Workflow not found');
             }
 
             // Parse optional body for overrides
@@ -813,9 +813,9 @@ Return the complete modified pipeline YAML.`;
                 );
             }
 
-            const payload: RunPipelinePayload = {
-                kind: 'run-pipeline',
-                pipelinePath: resolvedDir,
+            const payload: RunWorkflowPayload = {
+                kind: 'run-workflow',
+                workflowPath: resolvedDir,
                 workingDirectory: ws.rootPath,
                 model: body?.model,
                 params: body?.params,
@@ -824,11 +824,11 @@ Return the complete modified pipeline YAML.`;
             };
 
             const taskInput: CreateTaskInput = {
-                type: 'run-pipeline',
+                type: 'run-workflow',
                 priority: body?.priority || 'normal',
                 payload: payload as unknown as Record<string, unknown>,
                 config: { model: body?.model },
-                displayName: `Run Pipeline: ${pipelineName}`,
+                displayName: `Run Workflow: ${pipelineName}`,
             };
 
             bridge.getOrCreateBridge(ws.rootPath);

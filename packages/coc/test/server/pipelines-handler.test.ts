@@ -1,7 +1,7 @@
 /**
- * Pipelines Handler Tests
+ * Workflows Handler Tests
  *
- * Comprehensive tests for the Pipeline CRUD REST API endpoints:
+ * Comprehensive tests for the Workflow CRUD REST API endpoints:
  * list (enriched), content read/write, create from template, delete.
  *
  * Uses port 0 (OS-assigned) for test isolation.
@@ -17,7 +17,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // Mock loadDefaultMcpConfig from pipeline-core to control the global MCP config in tests.
-// executePipeline is also mocked to avoid actual AI execution in pipeline-run tests.
+// executePipeline is also mocked to avoid actual AI execution in workflow-run tests.
 const mockLoadDefaultMcpConfig = vi.fn().mockReturnValue({
     mcpServers: {} as Record<string, any>,
     configPath: '',
@@ -106,14 +106,14 @@ function deleteReq(url: string) {
 // Tests
 // ============================================================================
 
-describe('Pipelines Handler', () => {
+describe('Workflows Handler', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
 
     beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipelines-handler-test-'));
-        workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipelines-workspace-'));
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflows-handler-test-'));
+        workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflows-workspace-'));
     });
 
     afterEach(async () => {
@@ -142,9 +142,9 @@ describe('Pipelines Handler', () => {
         return id;
     }
 
-    /** Create pipeline directories with pipeline.yaml files. */
+    /** Create workflow directories with pipeline.yaml files. */
     function createPipelines(pipelines: Record<string, string>): void {
-        const pipelinesDir = path.join(workspaceDir, '.vscode', 'pipelines');
+        const pipelinesDir = path.join(workspaceDir, '.vscode', 'workflows');
         for (const [name, content] of Object.entries(pipelines)) {
             const dir = path.join(pipelinesDir, name);
             fs.mkdirSync(dir, { recursive: true });
@@ -153,8 +153,8 @@ describe('Pipelines Handler', () => {
     }
 
     // Valid pipeline YAML for testing
-    const VALID_YAML = `name: "Test Pipeline"
-description: "A test pipeline"
+    const VALID_YAML = `name: "Test Workflow"
+description: "A test workflow"
 
 input:
   type: csv
@@ -195,7 +195,7 @@ reduce:
     // ========================================================================
 
     describe('GET /api/workspaces/:id/pipelines', () => {
-        it('should list enriched pipelines with description and validation', async () => {
+        it('should list enriched workflows with description and validation', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
@@ -205,53 +205,53 @@ reduce:
             });
 
             // Also create a dummy input.csv so validation passes fully
-            const pipelinesDir = path.join(workspaceDir, '.vscode', 'pipelines');
+            const pipelinesDir = path.join(workspaceDir, '.vscode', 'workflows');
             fs.writeFileSync(path.join(pipelinesDir, 'my-pipe', 'input.csv'), 'title\nfoo\n', 'utf-8');
             fs.writeFileSync(path.join(pipelinesDir, 'another-pipe', 'input.csv'), 'title\nbar\n', 'utf-8');
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/pipelines`);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/workflows`);
             expect(res.status).toBe(200);
 
             const data = JSON.parse(res.body);
-            expect(data.pipelines).toHaveLength(2);
+            expect(data.workflows).toHaveLength(2);
 
-            const myPipe = data.pipelines.find((p: any) => p.name === 'my-pipe');
+            const myPipe = data.workflows.find((p: any) => p.name === 'my-pipe');
             expect(myPipe).toBeDefined();
-            expect(myPipe.description).toBe('A test pipeline');
+            expect(myPipe.description).toBe('A test workflow');
             // Pipeline may have validation warnings about template variables in prompt
             // but the key enrichment fields must be present
             expect(typeof myPipe.isValid).toBe('boolean');
             expect(Array.isArray(myPipe.validationErrors)).toBe(true);
 
-            const anotherPipe = data.pipelines.find((p: any) => p.name === 'another-pipe');
+            const anotherPipe = data.workflows.find((p: any) => p.name === 'another-pipe');
             expect(anotherPipe).toBeDefined();
             expect(anotherPipe.description).toBeUndefined();
         });
 
-        it('should return empty array for empty pipelines dir', async () => {
+        it('should return empty array for empty workflows dir', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/pipelines`);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/workflows`);
             expect(res.status).toBe(200);
             const data = JSON.parse(res.body);
-            expect(data.pipelines).toEqual([]);
+            expect(data.workflows).toEqual([]);
         });
 
-        it('should return invalid pipeline with validation errors', async () => {
+        it('should return invalid workflow with validation errors', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             createPipelines({ 'bad-pipe': MISSING_FIELDS_YAML });
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/pipelines`);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/workflows`);
             expect(res.status).toBe(200);
 
             const data = JSON.parse(res.body);
-            expect(data.pipelines).toHaveLength(1);
-            expect(data.pipelines[0].name).toBe('bad-pipe');
-            expect(data.pipelines[0].isValid).toBe(false);
-            expect(data.pipelines[0].validationErrors.length).toBeGreaterThan(0);
+            expect(data.workflows).toHaveLength(1);
+            expect(data.workflows[0].name).toBe('bad-pipe');
+            expect(data.workflows[0].isValid).toBe(false);
+            expect(data.workflows[0].validationErrors.length).toBeGreaterThan(0);
         });
     });
 
@@ -260,23 +260,23 @@ reduce:
     // ========================================================================
 
     describe('GET /api/workspaces/:id/pipelines/:name/content', () => {
-        it('should return YAML content of a pipeline', async () => {
+        it('should return YAML content of a workflow', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
             createPipelines({ 'my-pipe': VALID_YAML });
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/pipelines/my-pipe/content`);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/workflows/my-pipe/content`);
             expect(res.status).toBe(200);
             const data = JSON.parse(res.body);
             expect(data.content).toBe(VALID_YAML);
             expect(data.path).toContain('pipeline.yaml');
         });
 
-        it('should return 404 for missing pipeline', async () => {
+        it('should return 404 for missing workflow', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/pipelines/nonexistent/content`);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/workflows/nonexistent/content`);
             expect(res.status).toBe(404);
         });
 
@@ -284,7 +284,7 @@ reduce:
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/pipelines/..%2F..%2Fetc%2Fpasswd/content`);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/workflows/..%2F..%2Fetc%2Fpasswd/content`);
             expect(res.status === 403 || res.status === 404).toBe(true);
         });
     });
@@ -301,14 +301,14 @@ reduce:
 
             const newContent = 'name: "Updated"\ninput:\n  type: csv\n  path: "in.csv"\n';
             const res = await patchJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/my-pipe/content`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/my-pipe/content`,
                 { content: newContent }
             );
             expect(res.status).toBe(200);
 
             // Verify file on disk
             const onDisk = fs.readFileSync(
-                path.join(workspaceDir, '.vscode', 'pipelines', 'my-pipe', 'pipeline.yaml'),
+                path.join(workspaceDir, '.vscode', 'workflows', 'my-pipe', 'pipeline.yaml'),
                 'utf-8'
             );
             expect(onDisk).toBe(newContent);
@@ -320,7 +320,7 @@ reduce:
             createPipelines({ 'my-pipe': VALID_YAML });
 
             const res = await patchJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/my-pipe/content`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/my-pipe/content`,
                 { content: INVALID_YAML }
             );
             expect(res.status).toBe(400);
@@ -332,18 +332,18 @@ reduce:
             createPipelines({ 'my-pipe': VALID_YAML });
 
             const res = await patchJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/my-pipe/content`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/my-pipe/content`,
                 {}
             );
             expect(res.status).toBe(400);
         });
 
-        it('should return 404 for non-existent pipeline', async () => {
+        it('should return 404 for non-existent workflow', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const res = await patchJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/nonexistent/content`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/nonexistent/content`,
                 { content: 'name: test\n' }
             );
             expect(res.status).toBe(404);
@@ -351,15 +351,15 @@ reduce:
     });
 
     // ========================================================================
-    // POST /api/workspaces/:id/pipelines — Create pipeline
+    // POST /api/workspaces/:id/pipelines — Create workflow
     // ========================================================================
 
     describe('POST /api/workspaces/:id/pipelines', () => {
-        it('should create a pipeline from default template', async () => {
+        it('should create a workflow from default template', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'new-pipe',
             });
             expect(res.status).toBe(201);
@@ -369,17 +369,17 @@ reduce:
             expect(data.template).toBe('custom');
 
             // Verify on disk
-            const yamlPath = path.join(workspaceDir, '.vscode', 'pipelines', 'new-pipe', 'pipeline.yaml');
+            const yamlPath = path.join(workspaceDir, '.vscode', 'workflows', 'new-pipe', 'pipeline.yaml');
             expect(fs.existsSync(yamlPath)).toBe(true);
             const content = fs.readFileSync(yamlPath, 'utf-8');
             expect(content).toContain('name:');
         });
 
-        it('should create a pipeline with specified template', async () => {
+        it('should create a workflow with specified template', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'fanout-pipe',
                 template: 'data-fanout',
             });
@@ -388,16 +388,16 @@ reduce:
             expect(data.template).toBe('data-fanout');
         });
 
-        it('should return 409 for duplicate pipeline name', async () => {
+        it('should return 409 for duplicate workflow name', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res1 = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res1 = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'dup-pipe',
             });
             expect(res1.status).toBe(201);
 
-            const res2 = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res2 = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'dup-pipe',
             });
             expect(res2.status).toBe(409);
@@ -407,7 +407,7 @@ reduce:
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: '../escape',
             });
             expect(res.status).toBe(403);
@@ -417,7 +417,7 @@ reduce:
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: '',
             });
             expect(res.status).toBe(400);
@@ -425,19 +425,19 @@ reduce:
     });
 
     // ========================================================================
-    // DELETE /api/workspaces/:id/pipelines/:name — Delete pipeline
+    // DELETE /api/workspaces/:id/pipelines/:name — Delete workflow
     // ========================================================================
 
     describe('DELETE /api/workspaces/:id/pipelines/:name', () => {
-        it('should delete an existing pipeline', async () => {
+        it('should delete an existing workflow', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
             createPipelines({ 'to-delete': VALID_YAML });
 
-            const pipeDir = path.join(workspaceDir, '.vscode', 'pipelines', 'to-delete');
+            const pipeDir = path.join(workspaceDir, '.vscode', 'workflows', 'to-delete');
             expect(fs.existsSync(pipeDir)).toBe(true);
 
-            const res = await deleteReq(`${srv.url}/api/workspaces/${wsId}/pipelines/to-delete`);
+            const res = await deleteReq(`${srv.url}/api/workspaces/${wsId}/workflows/to-delete`);
             expect(res.status).toBe(200);
 
             const data = JSON.parse(res.body);
@@ -445,11 +445,11 @@ reduce:
             expect(fs.existsSync(pipeDir)).toBe(false);
         });
 
-        it('should return 404 for non-existent pipeline', async () => {
+        it('should return 404 for non-existent workflow', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await deleteReq(`${srv.url}/api/workspaces/${wsId}/pipelines/nonexistent`);
+            const res = await deleteReq(`${srv.url}/api/workspaces/${wsId}/workflows/nonexistent`);
             expect(res.status).toBe(404);
         });
 
@@ -457,7 +457,7 @@ reduce:
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await deleteReq(`${srv.url}/api/workspaces/${wsId}/pipelines/..%2F..%2Fetc`);
+            const res = await deleteReq(`${srv.url}/api/workspaces/${wsId}/workflows/..%2F..%2Fetc`);
             expect(res.status === 403 || res.status === 404).toBe(true);
         });
     });
@@ -467,13 +467,13 @@ reduce:
     // ====================================================================
 
     describe('POST /api/workspaces/:id/pipelines/:name/run', () => {
-        it('should return 201 with taskId when pipeline exists', async () => {
+        it('should return 201 with taskId when workflow exists', async () => {
             createPipelines({ 'my-pipeline': VALID_YAML });
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const res = await postJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/my-pipeline/run`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/my-pipeline/run`,
                 {}
             );
             expect(res.status).toBe(201);
@@ -489,18 +489,18 @@ reduce:
             const srv = await startServer();
 
             const res = await postJSON(
-                `${srv.url}/api/workspaces/nonexistent-ws/pipelines/my-pipeline/run`,
+                `${srv.url}/api/workspaces/nonexistent-ws/workflows/my-pipeline/run`,
                 {}
             );
             expect(res.status).toBe(404);
         });
 
-        it('should return 404 when pipeline not found', async () => {
+        it('should return 404 when workflow not found', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const res = await postJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/nonexistent-pipeline/run`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/nonexistent-pipeline/run`,
                 {}
             );
             expect(res.status).toBe(404);
@@ -511,7 +511,7 @@ reduce:
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const res = await postJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/..%2F..%2Fetc/run`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/..%2F..%2Fetc/run`,
                 {}
             );
             expect(res.status === 403 || res.status === 404).toBe(true);
@@ -523,7 +523,7 @@ reduce:
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const res = await postJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/param-pipeline/run`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/param-pipeline/run`,
                 { model: 'gpt-4', params: { key: 'value' } }
             );
             expect(res.status).toBe(201);
@@ -551,7 +551,7 @@ reduce:
 
         async function runAndGetTask(srv: ExecutionServer, wsId: string, pipeName: string) {
             const runRes = await postJSON(
-                `${srv.url}/api/workspaces/${wsId}/pipelines/${pipeName}/run`,
+                `${srv.url}/api/workspaces/${wsId}/workflows/${pipeName}/run`,
                 {}
             );
             expect(runRes.status).toBe(201);

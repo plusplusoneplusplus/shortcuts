@@ -9,7 +9,7 @@ import { Button, cn } from '../shared';
 import { BottomSheet } from '../shared/BottomSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
-import { PipelinesTab } from './PipelinesTab';
+import { WorkflowsTab } from './WorkflowsTab';
 import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoQueueTab } from './RepoQueueTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
@@ -42,7 +42,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'tasks', label: 'Tasks' },
     { key: 'chat', label: 'Chats' },
     { key: 'queue', label: 'Queue' },
-    { key: 'pipelines', label: 'Workflows' },
+    { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'copilot', label: 'Copilot' },
 ];
@@ -476,7 +476,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'queue' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
-                        {activeSubTab === 'pipelines' && <PipelinesTab repo={repo} />}
+                        {activeSubTab === 'workflows' && <WorkflowsTab repo={repo} />}
                         {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
                         {activeSubTab === 'chat' && <RepoChatTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} onOpenNewChatDialog={(readOnly) => handleNewChatFromTopBar(readOnly)} />}

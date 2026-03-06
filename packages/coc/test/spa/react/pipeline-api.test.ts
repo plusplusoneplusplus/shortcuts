@@ -15,25 +15,25 @@ vi.mock(
 );
 
 // We need to dynamically import after mock is set up
-let fetchPipelines: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').fetchPipelines;
-let fetchPipelineContent: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').fetchPipelineContent;
-let savePipelineContent: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').savePipelineContent;
-let createPipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').createPipeline;
-let deletePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').deletePipeline;
-let generatePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').generatePipeline;
-let refinePipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').refinePipeline;
-let runPipeline: typeof import('../../../src/server/spa/client/react/repos/pipeline-api').runPipeline;
+let fetchWorkflows: typeof import('../../../src/server/spa/client/react/repos/workflow-api').fetchWorkflows;
+let fetchWorkflowContent: typeof import('../../../src/server/spa/client/react/repos/workflow-api').fetchWorkflowContent;
+let saveWorkflowContent: typeof import('../../../src/server/spa/client/react/repos/workflow-api').saveWorkflowContent;
+let createWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').createWorkflow;
+let deleteWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').deleteWorkflow;
+let generateWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').generateWorkflow;
+let refineWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').refineWorkflow;
+let runWorkflow: typeof import('../../../src/server/spa/client/react/repos/workflow-api').runWorkflow;
 
 beforeEach(async () => {
-    const mod = await import('../../../src/server/spa/client/react/repos/pipeline-api');
-    fetchPipelines = mod.fetchPipelines;
-    fetchPipelineContent = mod.fetchPipelineContent;
-    savePipelineContent = mod.savePipelineContent;
-    createPipeline = mod.createPipeline;
-    deletePipeline = mod.deletePipeline;
-    generatePipeline = mod.generatePipeline;
-    refinePipeline = mod.refinePipeline;
-    runPipeline = mod.runPipeline;
+    const mod = await import('../../../src/server/spa/client/react/repos/workflow-api');
+    fetchWorkflows = mod.fetchWorkflows;
+    fetchWorkflowContent = mod.fetchWorkflowContent;
+    saveWorkflowContent = mod.saveWorkflowContent;
+    createWorkflow = mod.createWorkflow;
+    deleteWorkflow = mod.deleteWorkflow;
+    generateWorkflow = mod.generateWorkflow;
+    refineWorkflow = mod.refineWorkflow;
+    runWorkflow = mod.runWorkflow;
 });
 
 // ---------------------------------------------------------------------------
@@ -64,70 +64,70 @@ function errorResponse(status: number, statusText: string) {
 }
 
 // ===========================================================================
-// fetchPipelines
+// fetchWorkflows
 // ===========================================================================
-describe('fetchPipelines', () => {
+describe('fetchWorkflows', () => {
     it('sends GET to correct URL with encoded workspace ID', async () => {
-        mockFetch.mockReturnValue(okJson({ pipelines: [{ name: 'p1', path: '/p1' }] }));
-        const result = await fetchPipelines('ws/special');
+        mockFetch.mockReturnValue(okJson({ workflows: [{ name: 'p1', path: '/p1' }] }));
+        const result = await fetchWorkflows('ws/special');
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines'
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/workflows'
         );
         expect(result).toEqual([{ name: 'p1', path: '/p1' }]);
     });
 
-    it('unwraps pipelines array from response envelope', async () => {
+    it('unwraps workflows array from response envelope', async () => {
         const pipelines = [
             { name: 'a', path: '/a', description: 'desc', isValid: true },
             { name: 'b', path: '/b', isValid: false, validationErrors: ['err'] },
         ];
-        mockFetch.mockReturnValue(okJson({ pipelines }));
-        const result = await fetchPipelines('ws1');
+        mockFetch.mockReturnValue(okJson({ workflows: pipelines }));
+        const result = await fetchWorkflows('ws1');
         expect(result).toEqual(pipelines);
     });
 
-    it('returns empty array when pipelines key is missing', async () => {
+    it('returns empty array when workflows key is missing', async () => {
         mockFetch.mockReturnValue(okJson({}));
-        const result = await fetchPipelines('ws1');
+        const result = await fetchWorkflows('ws1');
         expect(result).toEqual([]);
     });
 
     it('throws on non-ok response', async () => {
         mockFetch.mockReturnValue(errorResponse(404, 'Not Found'));
-        await expect(fetchPipelines('ws1')).rejects.toThrow('API error: 404 Not Found');
+        await expect(fetchWorkflows('ws1')).rejects.toThrow('API error: 404 Not Found');
     });
 });
 
 // ===========================================================================
-// fetchPipelineContent
+// fetchWorkflowContent
 // ===========================================================================
-describe('fetchPipelineContent', () => {
+describe('fetchWorkflowContent', () => {
     it('sends GET to correct URL with encoded names', async () => {
         const data = { content: 'yaml: true', path: '/p/pipeline.yaml' };
         mockFetch.mockReturnValue(okJson(data));
-        const result = await fetchPipelineContent('ws1', 'my pipeline');
+        const result = await fetchWorkflowContent('ws1', 'my pipeline');
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines/my%20pipeline/content'
+            'http://localhost:4000/api/workspaces/ws1/workflows/my%20pipeline/content'
         );
         expect(result).toEqual(data);
     });
 
     it('throws on non-ok response', async () => {
         mockFetch.mockReturnValue(errorResponse(500, 'Internal Server Error'));
-        await expect(fetchPipelineContent('ws1', 'p1')).rejects.toThrow('API error: 500');
+        await expect(fetchWorkflowContent('ws1', 'p1')).rejects.toThrow('API error: 500');
     });
 });
 
 // ===========================================================================
-// savePipelineContent
+// saveWorkflowContent
 // ===========================================================================
-describe('savePipelineContent', () => {
+describe('saveWorkflowContent', () => {
     it('sends PATCH with JSON body and Content-Type header', async () => {
         mockFetch.mockReturnValue(okNoContent());
-        await savePipelineContent('ws1', 'p1', 'name: test');
+        await saveWorkflowContent('ws1', 'p1', 'name: test');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines/p1/content',
+            'http://localhost:4000/api/workspaces/ws1/workflows/p1/content',
             {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -138,20 +138,20 @@ describe('savePipelineContent', () => {
 
     it('throws on non-ok response', async () => {
         mockFetch.mockReturnValue(errorResponse(400, 'Bad Request'));
-        await expect(savePipelineContent('ws1', 'p1', '')).rejects.toThrow('API error: 400');
+        await expect(saveWorkflowContent('ws1', 'p1', '')).rejects.toThrow('API error: 400');
     });
 });
 
 // ===========================================================================
-// createPipeline
+// createWorkflow
 // ===========================================================================
-describe('createPipeline', () => {
+describe('createWorkflow', () => {
     it('sends POST with name in body', async () => {
         mockFetch.mockReturnValue(okJson({}));
-        await createPipeline('ws1', 'new-pipeline');
+        await createWorkflow('ws1', 'new-pipeline');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines',
+            'http://localhost:4000/api/workspaces/ws1/workflows',
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -162,7 +162,7 @@ describe('createPipeline', () => {
 
     it('includes template when provided', async () => {
         mockFetch.mockReturnValue(okJson({}));
-        await createPipeline('ws1', 'new-pipeline', 'basic');
+        await createWorkflow('ws1', 'new-pipeline', 'basic');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -171,7 +171,7 @@ describe('createPipeline', () => {
 
     it('omits template from body when undefined', async () => {
         mockFetch.mockReturnValue(okJson({}));
-        await createPipeline('ws1', 'new-pipeline');
+        await createWorkflow('ws1', 'new-pipeline');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -181,12 +181,12 @@ describe('createPipeline', () => {
 
     it('throws on non-ok response', async () => {
         mockFetch.mockReturnValue(errorResponse(409, 'Conflict'));
-        await expect(createPipeline('ws1', 'dup')).rejects.toThrow('API error: 409');
+        await expect(createWorkflow('ws1', 'dup')).rejects.toThrow('API error: 409');
     });
 
     it('includes content in body when provided', async () => {
         mockFetch.mockReturnValue(okJson({}));
-        await createPipeline('ws1', 'gen-pipe', undefined, 'yaml: content');
+        await createWorkflow('ws1', 'gen-pipe', undefined, 'yaml: content');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -196,7 +196,7 @@ describe('createPipeline', () => {
 
     it('includes both template and content when both provided', async () => {
         mockFetch.mockReturnValue(okJson({}));
-        await createPipeline('ws1', 'gen-pipe', 'custom', 'yaml: content');
+        await createWorkflow('ws1', 'gen-pipe', 'custom', 'yaml: content');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -205,15 +205,15 @@ describe('createPipeline', () => {
 });
 
 // ===========================================================================
-// generatePipeline
+// generateWorkflow
 // ===========================================================================
-describe('generatePipeline', () => {
+describe('generateWorkflow', () => {
     it('sends POST to correct URL with name and description', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'name: test', valid: true }));
-        await generatePipeline('ws1', 'my-pipe', 'classify tickets');
+        await generateWorkflow('ws1', 'my-pipe', 'classify tickets');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines/generate',
+            'http://localhost:4000/api/workspaces/ws1/workflows/generate',
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -225,7 +225,7 @@ describe('generatePipeline', () => {
 
     it('omits name from body when undefined', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'name: test', valid: true }));
-        await generatePipeline('ws1', undefined, 'classify tickets');
+        await generateWorkflow('ws1', undefined, 'classify tickets');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -235,7 +235,7 @@ describe('generatePipeline', () => {
 
     it('omits name from body when empty string', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'name: test', valid: true }));
-        await generatePipeline('ws1', '', 'classify tickets');
+        await generateWorkflow('ws1', '', 'classify tickets');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -246,14 +246,14 @@ describe('generatePipeline', () => {
     it('returns parsed { yaml, valid, validationError, suggestedName } response', async () => {
         const response = { yaml: 'name: test\ninput:\n  type: csv', valid: true, validationError: undefined, suggestedName: 'test' };
         mockFetch.mockReturnValue(okJson(response));
-        const result = await generatePipeline('ws1', 'pipe', 'do stuff');
+        const result = await generateWorkflow('ws1', 'pipe', 'do stuff');
         expect(result).toEqual(response);
     });
 
     it('passes AbortSignal to fetch when provided', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
         const controller = new AbortController();
-        await generatePipeline('ws1', 'pipe', 'desc', controller.signal);
+        await generateWorkflow('ws1', 'pipe', 'desc', controller.signal);
 
         const call = mockFetch.mock.calls[0];
         expect(call[1].signal).toBe(controller.signal);
@@ -266,7 +266,7 @@ describe('generatePipeline', () => {
             statusText: 'Internal Server Error',
             json: () => Promise.resolve({ error: 'AI unavailable' }),
         }));
-        await expect(generatePipeline('ws1', 'pipe', 'desc')).rejects.toThrow('AI unavailable');
+        await expect(generateWorkflow('ws1', 'pipe', 'desc')).rejects.toThrow('AI unavailable');
     });
 
     it('throws generic message when error body is unparseable', async () => {
@@ -276,31 +276,31 @@ describe('generatePipeline', () => {
             statusText: 'Internal Server Error',
             json: () => Promise.reject(new Error('not json')),
         }));
-        await expect(generatePipeline('ws1', 'pipe', 'desc')).rejects.toThrow('API error: 500 Internal Server Error');
+        await expect(generateWorkflow('ws1', 'pipe', 'desc')).rejects.toThrow('API error: 500 Internal Server Error');
     });
 
     it('encodes workspace ID in URL', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
-        await generatePipeline('ws/special', 'pipe', 'desc');
+        await generateWorkflow('ws/special', 'pipe', 'desc');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/generate',
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/workflows/generate',
             expect.any(Object)
         );
     });
 });
 
 // ===========================================================================
-// refinePipeline
+// refineWorkflow
 // ===========================================================================
-describe('refinePipeline', () => {
+describe('refineWorkflow', () => {
     it('sends POST to correct URL with instruction and currentYaml', async () => {
         const response = { yaml: 'name: refined', valid: true, suggestedName: 'foo' };
         mockFetch.mockReturnValue(okJson(response));
-        const result = await refinePipeline('ws1', 'my-pipeline', 'add logging step', 'name: original');
+        const result = await refineWorkflow('ws1', 'my-pipeline', 'add logging step', 'name: original');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines/refine',
+            'http://localhost:4000/api/workspaces/ws1/workflows/refine',
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -313,7 +313,7 @@ describe('refinePipeline', () => {
 
     it('includes model in body when provided', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
-        await refinePipeline('ws1', 'p1', 'add step', 'yaml', 'gpt-4');
+        await refineWorkflow('ws1', 'p1', 'add step', 'yaml', 'gpt-4');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -322,7 +322,7 @@ describe('refinePipeline', () => {
 
     it('omits model from body when undefined', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
-        await refinePipeline('ws1', 'p1', 'add step', 'yaml');
+        await refineWorkflow('ws1', 'p1', 'add step', 'yaml');
 
         const call = mockFetch.mock.calls[0];
         const body = JSON.parse(call[1].body);
@@ -333,7 +333,7 @@ describe('refinePipeline', () => {
     it('passes AbortSignal to fetch when provided', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
         const controller = new AbortController();
-        await refinePipeline('ws1', 'p1', 'add step', 'yaml', undefined, controller.signal);
+        await refineWorkflow('ws1', 'p1', 'add step', 'yaml', undefined, controller.signal);
 
         const call = mockFetch.mock.calls[0];
         expect(call[1].signal).toBe(controller.signal);
@@ -341,10 +341,10 @@ describe('refinePipeline', () => {
 
     it('encodes workspace ID in URL (pipeline name not in path)', async () => {
         mockFetch.mockReturnValue(okJson({ yaml: 'x', valid: true }));
-        await refinePipeline('ws/special', 'my pipeline', 'add step', 'yaml');
+        await refineWorkflow('ws/special', 'my pipeline', 'add step', 'yaml');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/refine',
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/workflows/refine',
             expect.any(Object)
         );
     });
@@ -356,7 +356,7 @@ describe('refinePipeline', () => {
             statusText: 'Internal Server Error',
             json: () => Promise.resolve({ error: 'AI unavailable' }),
         }));
-        await expect(refinePipeline('ws1', 'p1', 'add step', 'yaml')).rejects.toThrow('AI unavailable');
+        await expect(refineWorkflow('ws1', 'p1', 'add step', 'yaml')).rejects.toThrow('AI unavailable');
     });
 
     it('throws generic message when error body is unparseable', async () => {
@@ -366,43 +366,43 @@ describe('refinePipeline', () => {
             statusText: 'Internal Server Error',
             json: () => Promise.reject(new Error('not json')),
         }));
-        await expect(refinePipeline('ws1', 'p1', 'add step', 'yaml')).rejects.toThrow('API error: 500 Internal Server Error');
+        await expect(refineWorkflow('ws1', 'p1', 'add step', 'yaml')).rejects.toThrow('API error: 500 Internal Server Error');
     });
 });
 
 // ===========================================================================
-// deletePipeline
+// deleteWorkflow
 // ===========================================================================
-describe('deletePipeline', () => {
+describe('deleteWorkflow', () => {
     it('sends DELETE with correct URL and no body', async () => {
         mockFetch.mockReturnValue(okNoContent());
-        await deletePipeline('ws1', 'old-pipeline');
+        await deleteWorkflow('ws1', 'old-pipeline');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines/old-pipeline',
+            'http://localhost:4000/api/workspaces/ws1/workflows/old-pipeline',
             { method: 'DELETE' }
         );
     });
 
     it('throws on non-ok response', async () => {
         mockFetch.mockReturnValue(errorResponse(404, 'Not Found'));
-        await expect(deletePipeline('ws1', 'missing')).rejects.toThrow('API error: 404');
+        await expect(deleteWorkflow('ws1', 'missing')).rejects.toThrow('API error: 404');
     });
 });
 
 // ===========================================================================
-// runPipeline
+// runWorkflow
 // ===========================================================================
-describe('runPipeline', () => {
+describe('runWorkflow', () => {
     it('sends POST to correct URL with empty JSON body', async () => {
         mockFetch.mockReturnValue(Promise.resolve({
             ok: true, status: 201, statusText: 'Created',
             json: () => Promise.resolve({ task: { id: 'abc-12345678' } }),
         }));
-        const result = await runPipeline('ws1', 'my-pipeline');
+        const result = await runWorkflow('ws1', 'my-pipeline');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws1/pipelines/my-pipeline/run',
+            'http://localhost:4000/api/workspaces/ws1/workflows/my-pipeline/run',
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -417,10 +417,10 @@ describe('runPipeline', () => {
             ok: true, status: 201, statusText: 'Created',
             json: () => Promise.resolve({ task: { id: 'x' } }),
         }));
-        await runPipeline('ws/special', 'my pipeline');
+        await runWorkflow('ws/special', 'my pipeline');
 
         expect(mockFetch).toHaveBeenCalledWith(
-            'http://localhost:4000/api/workspaces/ws%2Fspecial/pipelines/my%20pipeline/run',
+            'http://localhost:4000/api/workspaces/ws%2Fspecial/workflows/my%20pipeline/run',
             expect.any(Object)
         );
     });
@@ -430,7 +430,7 @@ describe('runPipeline', () => {
             ok: false, status: 500, statusText: 'Internal Server Error',
             json: () => Promise.resolve({ error: 'Pipeline not found' }),
         }));
-        await expect(runPipeline('ws1', 'missing')).rejects.toThrow('Pipeline not found');
+        await expect(runWorkflow('ws1', 'missing')).rejects.toThrow('Pipeline not found');
     });
 
     it('throws generic message when error body is unparseable', async () => {
@@ -438,35 +438,35 @@ describe('runPipeline', () => {
             ok: false, status: 500, statusText: 'Internal Server Error',
             json: () => Promise.reject(new Error('not json')),
         }));
-        await expect(runPipeline('ws1', 'p1')).rejects.toThrow('API error: 500 Internal Server Error');
+        await expect(runWorkflow('ws1', 'p1')).rejects.toThrow('API error: 500 Internal Server Error');
     });
 });
 
 // ===========================================================================
 // PipelineInfo type compatibility
 // ===========================================================================
-describe('PipelineInfo type', () => {
+describe('WorkflowInfo type', () => {
     it('is exported from repoGrouping.ts', () => {
         const source = fs.readFileSync(
             path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'repoGrouping.ts'),
             'utf-8'
         );
-        expect(source).toContain('export interface PipelineInfo');
+        expect(source).toContain('export interface WorkflowInfo');
     });
 
-    it('RepoData.pipelines uses PipelineInfo[] type', () => {
+    it('RepoData.workflows uses WorkflowInfo[] type', () => {
         const source = fs.readFileSync(
             path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'repoGrouping.ts'),
             'utf-8'
         );
-        expect(source).toContain('pipelines?: PipelineInfo[]');
+        expect(source).toContain('workflows?: WorkflowInfo[]');
     });
 
-    it('old inline type is structurally compatible with PipelineInfo', () => {
+    it('old inline type is structurally compatible with WorkflowInfo', () => {
         // TypeScript structural check: an object with only { name, path } should be assignable
         const oldShape: { name: string; path: string } = { name: 'test', path: '/test' };
         // This import proves structural compatibility at the type level
-        const asInfo: import('../../../src/server/spa/client/react/repos/repoGrouping').PipelineInfo = oldShape;
+        const asInfo: import('../../../src/server/spa/client/react/repos/repoGrouping').WorkflowInfo = oldShape;
         expect(asInfo.name).toBe('test');
         expect(asInfo.description).toBeUndefined();
     });
@@ -485,12 +485,12 @@ describe('ReposView WebSocket integration', () => {
         expect(reposViewSource).toContain("import { useWebSocket }");
     });
 
-    it('imports fetchPipelines from pipeline-api', () => {
-        expect(reposViewSource).toContain("import { fetchPipelines } from './pipeline-api'");
+    it('imports fetchWorkflows from pipeline-api', () => {
+        expect(reposViewSource).toContain("import { fetchWorkflows } from './workflow-api'");
     });
 
-    it('handles pipelines-changed message type', () => {
-        expect(reposViewSource).toContain("msg.type === 'pipelines-changed'");
+    it('handles workflows-changed message type', () => {
+        expect(reposViewSource).toContain("msg.type === 'workflows-changed'");
     });
 
     it('calls connect on mount and disconnect on unmount', () => {

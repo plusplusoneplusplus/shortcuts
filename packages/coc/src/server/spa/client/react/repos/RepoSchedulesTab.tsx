@@ -7,7 +7,7 @@ import { Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { formatRelativeTime } from '../utils/format';
-import { fetchPipelines } from './pipeline-api';
+import { fetchWorkflows } from './workflow-api';
 import type { PipelineInfo } from './repoGrouping';
 
 /** Try to reverse-parse a cron expression into a simple interval. */
@@ -249,7 +249,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                     <div className="p-4 text-center text-sm text-[#848484]">
                         <div className="text-2xl mb-2">🕐</div>
                         <div>No schedules for this repo yet.</div>
-                        <div className="text-xs mt-1">Click &quot;+ New&quot; to automate a pipeline or script.</div>
+                        <div className="text-xs mt-1">Click &quot;+ New&quot; to automate a workflow or script.</div>
                     </div>
                 )}
 
@@ -509,8 +509,8 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         hint: 'Target file must exist at .vscode/schedules/auto-commit.md',
     },
     {
-        id: 'run-pipeline',
-        label: 'Run pipeline',
+        id: 'run-workflow',
+        label: 'Run workflow',
         emoji: '🚀',
         name: 'Run Workflow',
         target: 'pipelines/my-pipeline/pipeline.yaml',
@@ -519,7 +519,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
         intervalUnit: 'days',
         mode: 'cron',
         params: [],
-        hint: 'Ensure the pipeline YAML file exists at the specified target path',
+        hint: 'Ensure the workflow YAML file exists at the specified target path',
     },
     {
         id: 'pull-sync',
@@ -602,9 +602,9 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
     const [pipelinesLoading, setPipelinesLoading] = useState(false);
     const [manualPipeline, setManualPipeline] = useState(false);
 
-    // Fetch pipelines when run-pipeline template is selected
+    // Fetch pipelines when run-workflow template is selected
     useEffect(() => {
-        if (selectedTemplate !== 'run-pipeline') {
+        if (selectedTemplate !== 'run-workflow') {
             setPipelines([]);
             setPipelinesLoading(false);
             setManualPipeline(false);
@@ -612,7 +612,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
         }
         let cancelled = false;
         setPipelinesLoading(true);
-        fetchPipelines(workspaceId)
+        fetchWorkflows(workspaceId)
             .then(list => { if (!cancelled) setPipelines(list); })
             .catch(() => { if (!cancelled) setPipelines([]); })
             .finally(() => { if (!cancelled) setPipelinesLoading(false); });
@@ -638,7 +638,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
         setSelectedTemplate(templateId);
         setManualPipeline(false);
         setName(tpl.name);
-        setTarget(templateId === 'run-pipeline' ? '' : tpl.target);
+        setTarget(templateId === 'run-workflow' ? '' : tpl.target);
         setTargetType(tpl.targetType || 'prompt');
         setMode(tpl.mode);
         setCron(tpl.cronExpr);
@@ -752,10 +752,10 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                     >Script</button>
                 </div>
 
-                {/* Target field — pipeline selector for run-pipeline, plain input otherwise */}
-                {selectedTemplate === 'run-pipeline' && !manualPipeline ? (
+                {/* Target field — pipeline selector for run-workflow, plain input otherwise */}
+                {selectedTemplate === 'run-workflow' && !manualPipeline ? (
                     pipelinesLoading ? (
-                        <span className="text-xs px-2 py-1.5 text-[#848484] italic" data-testid="pipeline-loading">Loading pipelines…</span>
+                        <span className="text-xs px-2 py-1.5 text-[#848484] italic" data-testid="workflow-loading">Loading workflows…</span>
                     ) : pipelines.length > 0 ? (
                         <select
                             className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
@@ -770,9 +770,9 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                                 setTarget(e.target.value);
                                 setParams(prev => ({ ...prev, pipeline: e.target.value }));
                             }}
-                            data-testid="target-pipeline-select"
+                            data-testid="target-workflow-select"
                         >
-                            <option value="" disabled>Select a pipeline…</option>
+                            <option value="" disabled>Select a workflow…</option>
                             {pipelines.map(pl => (
                                 <option key={pl.path} value={pl.path}>{pl.name}</option>
                             ))}
@@ -781,30 +781,30 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                     ) : (
                         <input
                             className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                            placeholder="Target (e.g., pipelines/daily-report/pipeline.yaml)"
+                            placeholder="Target (e.g., workflows/daily-report/pipeline.yaml)"
                             value={target}
                             onChange={e => {
                                 setTarget(e.target.value);
                                 setParams(prev => ({ ...prev, pipeline: e.target.value }));
                             }}
-                            data-testid="target-pipeline-input"
+                            data-testid="target-workflow-input"
                         />
                     )
-                ) : selectedTemplate === 'run-pipeline' && manualPipeline ? (
+                ) : selectedTemplate === 'run-workflow' && manualPipeline ? (
                     <input
                         className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                        placeholder="Target (e.g., pipelines/daily-report/pipeline.yaml)"
+                        placeholder="Target (e.g., workflows/daily-report/pipeline.yaml)"
                         value={target}
                         onChange={e => {
                             setTarget(e.target.value);
                             setParams(prev => ({ ...prev, pipeline: e.target.value }));
                         }}
-                        data-testid="target-pipeline-input"
+                        data-testid="target-workflow-input"
                     />
                 ) : (
                     <input
                         className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                        placeholder={targetType === 'script' ? 'Command / Script (e.g., echo "hello world")' : 'Target (e.g., pipelines/daily-report/pipeline.yaml)'}
+                        placeholder={targetType === 'script' ? 'Command / Script (e.g., echo "hello world")' : 'Target (e.g., workflows/daily-report/pipeline.yaml)'}
                         value={target}
                         onChange={e => setTarget(e.target.value)}
                         data-testid="target-input"
@@ -916,7 +916,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                                     <span className="text-[#616161] dark:text-[#999] w-20 text-right flex-shrink-0">{p.key}:</span>
                                     {p.type === 'pipeline-select' && !manualPipeline ? (
                                         pipelinesLoading ? (
-                                            <span className="flex-1 text-[#848484] italic" data-testid="pipeline-loading">Loading pipelines…</span>
+                                            <span className="flex-1 text-[#848484] italic" data-testid="workflow-loading">Loading workflows…</span>
                                         ) : pipelines.length === 0 ? (
                                             <input
                                                 className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
@@ -944,7 +944,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                                                 }}
                                                 data-testid={`param-${p.key}`}
                                             >
-                                                <option value="" disabled>Select a pipeline…</option>
+                                                <option value="" disabled>Select a workflow…</option>
                                                 {pipelines.map(pl => (
                                                     <option key={pl.path} value={pl.path}>{pl.name}</option>
                                                 ))}

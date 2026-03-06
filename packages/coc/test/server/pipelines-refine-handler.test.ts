@@ -1,7 +1,7 @@
 /**
- * Pipelines Refine Handler Tests
+ * Workflows Refine Handler Tests
  *
- * Tests for POST /api/workspaces/:id/pipelines/refine (AI pipeline refinement).
+ * Tests for POST /api/workspaces/:id/workflows/refine (AI workflow refinement).
  *
  * Uses port 0 (OS-assigned) for test isolation.
  * Mocks getCopilotSDKService to avoid real AI calls.
@@ -68,7 +68,7 @@ function postJSON(url: string, data: unknown) {
 // Integration tests — Refine endpoint
 // ============================================================================
 
-describe('Pipelines Refine Handler', () => {
+describe('Workflows Refine Handler', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
@@ -134,17 +134,17 @@ describe('Pipelines Refine Handler', () => {
     }
 
     // ========================================================================
-    // POST /api/workspaces/:id/pipelines/refine
+    // POST /api/workspaces/:id/workflows/refine
     // ========================================================================
 
-    describe('POST /api/workspaces/:id/pipelines/refine', () => {
+    describe('POST /api/workspaces/:id/workflows/refine', () => {
         it('should refine pipeline YAML — happy path', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
             const refinedYaml = 'name: "My Pipeline"\ninput:\n  type: csv\n  path: "input.csv"\nmap:\n  prompt: "Analyze: {{title}}"\n  output:\n    - result\n  parallel: 10\nreduce:\n  type: json';
             configureMockAI({ response: refinedYaml });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'increase parallelism to 10',
             });
@@ -164,7 +164,7 @@ describe('Pipelines Refine Handler', () => {
             const fencedResponse = 'Here is the modified pipeline:\n```yaml\n' + innerYaml + '\n```\nDone!';
             configureMockAI({ response: fencedResponse });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'simplify',
             });
@@ -179,7 +179,7 @@ describe('Pipelines Refine Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 instruction: 'add retry logic',
             });
             expect(res.status).toBe(400);
@@ -191,7 +191,7 @@ describe('Pipelines Refine Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
             });
             expect(res.status).toBe(400);
@@ -203,7 +203,7 @@ describe('Pipelines Refine Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: '   ',
                 instruction: 'add retry logic',
             });
@@ -214,7 +214,7 @@ describe('Pipelines Refine Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: '   ',
             });
@@ -225,7 +225,7 @@ describe('Pipelines Refine Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: '{ bad: [yaml:',
                 instruction: 'fix this pipeline',
             });
@@ -239,7 +239,7 @@ describe('Pipelines Refine Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ response: 'This is not YAML: {{[invalid' });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'make it better',
             });
@@ -256,7 +256,7 @@ describe('Pipelines Refine Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ available: false });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'add retry logic',
             });
@@ -268,7 +268,7 @@ describe('Pipelines Refine Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ success: false, error: 'Model overloaded' });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'add retry logic',
             });
@@ -282,7 +282,7 @@ describe('Pipelines Refine Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ throwError: new Error('Request timeout exceeded') });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'add retry logic',
             });
@@ -292,7 +292,7 @@ describe('Pipelines Refine Handler', () => {
         it('should return 404 for unknown workspace', async () => {
             const srv = await startServer();
 
-            const res = await postJSON(`${srv.url}/api/workspaces/nonexistent/pipelines/refine`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/nonexistent/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'add retry logic',
             });
@@ -304,7 +304,7 @@ describe('Pipelines Refine Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             const svc = configureMockAI({});
 
-            await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'add retry logic',
                 model: 'gpt-4',
@@ -320,7 +320,7 @@ describe('Pipelines Refine Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             const svc = configureMockAI({});
 
-            await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'add retry logic',
             });
@@ -334,7 +334,7 @@ describe('Pipelines Refine Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             const svc = configureMockAI({});
 
-            await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/refine`, {
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/refine`, {
                 currentYaml: VALID_YAML,
                 instruction: 'increase parallelism to 10',
             });
@@ -342,7 +342,7 @@ describe('Pipelines Refine Handler', () => {
             const callArgs = svc.sendMessage.mock.calls[0][0];
             expect(callArgs.prompt).toContain(VALID_YAML.trim());
             expect(callArgs.prompt).toContain('increase parallelism to 10');
-            expect(callArgs.prompt).toContain('Pipeline YAML Schema Reference');
+            expect(callArgs.prompt).toContain('Workflow YAML Schema Reference');
         });
     });
 });

@@ -8,11 +8,11 @@ export interface PipelineProgressState {
 }
 
 /**
- * Subscribes to SSE `pipeline-progress` events for a running pipeline process.
+ * Subscribes to SSE `workflow-progress` events for a running pipeline process.
  * Returns live progress or null when no data is available yet.
  * Automatically closes the EventSource on unmount or when the process completes.
  */
-export function usePipelineProgress(processId: string | null): PipelineProgressState | null {
+export function useWorkflowProgress(processId: string | null): PipelineProgressState | null {
     const [progress, setProgress] = useState<PipelineProgressState | null>(null);
     const esRef = useRef<EventSource | null>(null);
 
@@ -25,7 +25,7 @@ export function usePipelineProgress(processId: string | null): PipelineProgressS
         const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
         esRef.current = es;
 
-        es.addEventListener('pipeline-progress', (e) => {
+        es.addEventListener('workflow-progress', (e) => {
             try {
                 const data = JSON.parse((e as MessageEvent).data);
                 setProgress({

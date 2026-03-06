@@ -106,7 +106,7 @@ describe('SSE pipeline events', () => {
         });
 
         const frames = parseSSEFrames(res._chunks);
-        const phaseFrames = frames.filter(f => f.event === 'pipeline-phase');
+        const phaseFrames = frames.filter(f => f.event === 'workflow-phase');
         expect(phaseFrames).toHaveLength(1);
         const payload = phaseFrames[0].data as any;
         expect(payload.phase).toBe('discovery');
@@ -137,7 +137,7 @@ describe('SSE pipeline events', () => {
         });
 
         const frames = parseSSEFrames(res._chunks);
-        const progressFrames = frames.filter(f => f.event === 'pipeline-progress');
+        const progressFrames = frames.filter(f => f.event === 'workflow-progress');
         expect(progressFrames).toHaveLength(1);
         const payload = progressFrames[0].data as any;
         expect(payload.phase).toBe('map');
@@ -173,15 +173,15 @@ describe('SSE pipeline events', () => {
         const eventNames = frames.map(f => f.event);
 
         expect(eventNames).toContain('chunk');
-        expect(eventNames).toContain('pipeline-phase');
-        expect(eventNames).toContain('pipeline-progress');
+        expect(eventNames).toContain('workflow-phase');
+        expect(eventNames).toContain('workflow-progress');
         expect(eventNames).toContain('status');
         expect(eventNames).toContain('done');
 
         // Verify correct ordering
         const chunkIdx = eventNames.indexOf('chunk');
-        const phaseIdx = eventNames.indexOf('pipeline-phase');
-        const progressIdx = eventNames.indexOf('pipeline-progress');
+        const phaseIdx = eventNames.indexOf('workflow-phase');
+        const progressIdx = eventNames.indexOf('workflow-progress');
         const statusIdx = eventNames.indexOf('status');
         expect(chunkIdx).toBeLessThan(phaseIdx);
         expect(phaseIdx).toBeLessThan(progressIdx);
@@ -212,7 +212,7 @@ describe('SSE pipeline events', () => {
         });
 
         const frames = parseSSEFrames(res._chunks);
-        const phaseFrames = frames.filter(f => f.event === 'pipeline-phase');
+        const phaseFrames = frames.filter(f => f.event === 'workflow-phase');
         expect(phaseFrames).toHaveLength(1);
         const payload = phaseFrames[0].data as any;
         expect(payload.phase).toBe('map');

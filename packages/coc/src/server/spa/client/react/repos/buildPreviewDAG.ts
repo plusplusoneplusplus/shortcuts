@@ -1,6 +1,6 @@
 /**
- * Build DAG preview data from raw pipeline YAML content.
- * Parses the YAML to determine pipeline structure and produces
+ * Build DAG preview data from raw workflow YAML content.
+ * Parses the YAML to determine workflow structure and produces
  * renderable graph data for the preview component.
  */
 
@@ -8,7 +8,7 @@ import yaml from 'js-yaml';
 import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData, DAGNodeData, DAGNodeState } from '../processes/dag';
 
-// --- Types for workflow DAG preview (multi-node pipelines) ---
+// --- Types for workflow DAG preview (multi-node workflows) ---
 
 export interface WorkflowPreviewNode {
     id: string;
@@ -54,7 +54,7 @@ export function buildPreviewDAG(yamlContent: string): PreviewDAGResult {
         return buildWorkflowPreview(config);
     }
 
-    // Linear pipeline: input → filter? → map → reduce?  or  job
+    // Linear workflow: input → filter? → map → reduce?  or  job
     return buildLinearPreview(config);
 }
 
@@ -62,10 +62,10 @@ function buildLinearPreview(config: any): PreviewDAGResult {
     const nodes: DAGNodeData[] = [];
 
     if (config.job || config.prompt) {
-        // Simple job pipeline
+        // Simple job workflow
         nodes.push({ phase: 'job', state: previewState, label: 'Job' });
     } else {
-        // Map-reduce pipeline
+        // Map-reduce workflow
         if (config.input) {
             nodes.push({ phase: 'input', state: previewState, label: 'Input' });
         }

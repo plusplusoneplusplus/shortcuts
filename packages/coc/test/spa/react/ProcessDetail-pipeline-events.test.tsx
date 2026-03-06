@@ -127,8 +127,8 @@ describe('ProcessDetail pipeline SSE listeners', () => {
 
         // Verify the expected event types are registered
         const registeredEvents = Array.from(es.listeners.keys());
-        expect(registeredEvents).toContain('pipeline-phase');
-        expect(registeredEvents).toContain('pipeline-progress');
+        expect(registeredEvents).toContain('workflow-phase');
+        expect(registeredEvents).toContain('workflow-progress');
         expect(registeredEvents).toContain('chunk');
         expect(registeredEvents).toContain('conversation-snapshot');
         expect(registeredEvents).toContain('status');
@@ -148,7 +148,7 @@ describe('ProcessDetail pipeline SSE listeners', () => {
 
         // Emit a pipeline-phase event
         await act(async () => {
-            emitSSEEvent(es, 'pipeline-phase', {
+            emitSSEEvent(es, 'workflow-phase', {
                 phase: 'input',
                 status: 'completed',
                 timestamp: '2026-01-01T00:00:00Z',
@@ -158,8 +158,8 @@ describe('ProcessDetail pipeline SSE listeners', () => {
         });
 
         // The listener is registered — verify it doesn't throw
-        // ProcessDetail registers 1 listener, usePipelinePhase registers another
-        expect(es.listeners.get('pipeline-phase')!.length).toBeGreaterThanOrEqual(1);
+        // ProcessDetail registers 1 listener, useWorkflowPhase registers another
+        expect(es.listeners.get('workflow-phase')!.length).toBeGreaterThanOrEqual(1);
     });
 
     it('pipeline-progress listener updates progress state', async () => {
@@ -176,7 +176,7 @@ describe('ProcessDetail pipeline SSE listeners', () => {
 
         // Emit a pipeline-progress event
         await act(async () => {
-            emitSSEEvent(es, 'pipeline-progress', {
+            emitSSEEvent(es, 'workflow-progress', {
                 phase: 'map',
                 totalItems: 10,
                 completedItems: 3,
@@ -185,8 +185,8 @@ describe('ProcessDetail pipeline SSE listeners', () => {
             });
         });
 
-        // ProcessDetail registers 1 listener, usePipelinePhase registers another
-        expect(es.listeners.get('pipeline-progress')!.length).toBeGreaterThanOrEqual(1);
+        // ProcessDetail registers 1 listener, useWorkflowPhase registers another
+        expect(es.listeners.get('workflow-progress')!.length).toBeGreaterThanOrEqual(1);
     });
 
     it('pipeline state resets on process selection change', async () => {
@@ -216,7 +216,7 @@ describe('ProcessDetail pipeline SSE listeners', () => {
 
         // Emit pipeline events for proc-a
         await act(async () => {
-            emitSSEEvent(es1, 'pipeline-phase', {
+            emitSSEEvent(es1, 'workflow-phase', {
                 phase: 'input',
                 status: 'completed',
                 timestamp: '2026-01-01T00:00:00Z',

@@ -678,11 +678,11 @@ describe('API Handler', () => {
             }
         });
 
-        it('should discover pipelines in a workspace', async () => {
+        it('should discover workflows in a workspace', async () => {
             const srv = await startServer();
-            // Create a fake pipeline directory structure
+            // Create a fake workflow directory structure
             const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-pipeline-'));
-            const pipelinesDir = path.join(wsRoot, '.vscode', 'pipelines', 'test-pipeline');
+            const pipelinesDir = path.join(wsRoot, '.vscode', 'workflows', 'test-pipeline');
             fs.mkdirSync(pipelinesDir, { recursive: true });
             fs.writeFileSync(path.join(pipelinesDir, 'pipeline.yaml'), 'name: test');
 
@@ -690,26 +690,26 @@ describe('API Handler', () => {
                 id: 'ws-pipe', name: 'pipe-test', rootPath: wsRoot,
             });
 
-            const res = await request(`${srv.url}/api/workspaces/ws-pipe/pipelines`);
+            const res = await request(`${srv.url}/api/workspaces/ws-pipe/workflows`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.pipelines).toHaveLength(1);
-            expect(body.pipelines[0].name).toBe('test-pipeline');
+            expect(body.workflows).toHaveLength(1);
+            expect(body.workflows[0].name).toBe('test-pipeline');
 
             fs.rmSync(wsRoot, { recursive: true, force: true });
         });
 
-        it('should return empty array when no pipelines folder exists', async () => {
+        it('should return empty array when no workflows folder exists', async () => {
             const srv = await startServer();
             const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-nopipe-'));
             await postJSON(`${srv.url}/api/workspaces`, {
                 id: 'ws-nopipe', name: 'no-pipe', rootPath: wsRoot,
             });
 
-            const res = await request(`${srv.url}/api/workspaces/ws-nopipe/pipelines`);
+            const res = await request(`${srv.url}/api/workspaces/ws-nopipe/workflows`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.pipelines).toEqual([]);
+            expect(body.workflows).toEqual([]);
 
             fs.rmSync(wsRoot, { recursive: true, force: true });
         });

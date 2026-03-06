@@ -1,5 +1,5 @@
 /**
- * Tests for the "Edit with AI" sidebar wired into PipelineDetail.
+ * Tests for the "Edit with AI" sidebar wired into WorkflowDetail.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -8,20 +8,20 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../../src/server/spa/client/react/context/ToastContext';
-import { PipelineDetail } from '../../../../src/server/spa/client/react/repos/PipelineDetail';
-import type { PipelineInfo } from '../../../../src/server/spa/client/react/repos/repoGrouping';
-import * as pipelineApi from '../../../../src/server/spa/client/react/repos/pipeline-api';
+import { WorkflowDetail } from '../../../../src/server/spa/client/react/repos/WorkflowDetail';
+import type { WorkflowInfo } from '../../../../src/server/spa/client/react/repos/repoGrouping';
+import * as pipelineApi from '../../../../src/server/spa/client/react/repos/workflow-api';
 
-// Mock fetchApi used by PipelineRunHistory
+// Mock fetchApi used by WorkflowRunHistory
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({ history: [] }),
 }));
 
-// Mock PipelineAIRefinePanel to expose onApply/onCancel via testids
+// Mock WorkflowAIRefinePanel to expose onApply/onCancel via testids
 let capturedOnApply: ((yaml: string) => void | Promise<void>) | undefined;
 let capturedOnCancel: (() => void) | undefined;
-vi.mock('../../../../src/server/spa/client/react/repos/PipelineAIRefinePanel', () => ({
-    PipelineAIRefinePanel: (props: any) => {
+vi.mock('../../../../src/server/spa/client/react/repos/WorkflowAIRefinePanel', () => ({
+    WorkflowAIRefinePanel: (props: any) => {
         capturedOnApply = props.onApply;
         capturedOnCancel = props.onCancel;
         return (
@@ -50,9 +50,9 @@ function Wrap({ children }: { children: ReactNode }) {
     );
 }
 
-const samplePipeline: PipelineInfo = {
+const samplePipeline: WorkflowInfo = {
     name: 'my-pipeline',
-    path: '.vscode/pipelines/my-pipeline/pipeline.yaml',
+    path: '.vscode/workflows/my-pipeline/pipeline.yaml',
     description: 'Test pipeline',
     isValid: true,
     validationErrors: [],
@@ -65,7 +65,7 @@ beforeEach(() => {
     mockAddToast.mockClear();
     capturedOnApply = undefined;
     capturedOnCancel = undefined;
-    vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+    vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
         content: sampleYaml,
         path: samplePipeline.path,
     });
@@ -74,7 +74,7 @@ beforeEach(() => {
 async function renderAndWaitForLoad() {
     render(
         <Wrap>
-            <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+            <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
         </Wrap>
     );
     await waitFor(() => {
@@ -82,7 +82,7 @@ async function renderAndWaitForLoad() {
     });
 }
 
-describe('PipelineDetail — AI sidebar', () => {
+describe('WorkflowDetail — AI sidebar', () => {
     it('"Edit with AI ✨" button is present in view mode', async () => {
         await renderAndWaitForLoad();
         expect(screen.getByText('Edit with AI ✨')).toBeDefined();
@@ -104,7 +104,7 @@ describe('PipelineDetail — AI sidebar', () => {
         await renderAndWaitForLoad();
         fireEvent.click(screen.getByText('Edit with AI ✨'));
 
-        expect(screen.getByTestId('pipeline-tab-bar')).toBeDefined();
+        expect(screen.getByTestId('workflow-tab-bar')).toBeDefined();
     });
 
     it('YAML content remains visible alongside the sidebar', async () => {
@@ -165,7 +165,7 @@ describe('PipelineDetail — AI sidebar', () => {
     });
 
     it('onApply saves content and sidebar stays open', async () => {
-        const saveSpy = vi.spyOn(pipelineApi, 'savePipelineContent').mockResolvedValue(undefined as any);
+        const saveSpy = vi.spyOn(pipelineApi, 'saveWorkflowContent').mockResolvedValue(undefined as any);
         await renderAndWaitForLoad();
 
         fireEvent.click(screen.getByText('Edit with AI ✨'));
@@ -176,7 +176,7 @@ describe('PipelineDetail — AI sidebar', () => {
             fireEvent.click(screen.getByTestId('mock-apply'));
         });
 
-        // savePipelineContent called with new YAML
+        // saveWorkflowContent called with new YAML
         expect(saveSpy).toHaveBeenCalledWith('ws-1', 'my-pipeline', 'name: refined\nsteps: [new]');
         // Sidebar stays open
         expect(screen.getByTestId('ai-sidebar')).toBeDefined();
@@ -186,7 +186,7 @@ describe('PipelineDetail — AI sidebar', () => {
     });
 
     it('onApply shows error on save failure and sidebar stays open', async () => {
-        vi.spyOn(pipelineApi, 'savePipelineContent').mockRejectedValue(new Error('Network error'));
+        vi.spyOn(pipelineApi, 'saveWorkflowContent').mockRejectedValue(new Error('Network error'));
         await renderAndWaitForLoad();
 
         fireEvent.click(screen.getByText('Edit with AI ✨'));
@@ -203,7 +203,7 @@ describe('PipelineDetail — AI sidebar', () => {
     });
 
     it('onCancel from panel closes the sidebar', async () => {
-        const saveSpy = vi.spyOn(pipelineApi, 'savePipelineContent');
+        const saveSpy = vi.spyOn(pipelineApi, 'saveWorkflowContent');
         await renderAndWaitForLoad();
 
         fireEvent.click(screen.getByText('Edit with AI ✨'));
@@ -215,7 +215,7 @@ describe('PipelineDetail — AI sidebar', () => {
         expect(screen.queryByTestId('ai-sidebar')).toBeNull();
         expect(screen.queryByTestId('pipeline-ai-refine-panel')).toBeNull();
         // Tab bar still visible
-        expect(screen.getByTestId('pipeline-tab-bar')).toBeDefined();
+        expect(screen.getByTestId('workflow-tab-bar')).toBeDefined();
         // No save triggered
         expect(saveSpy).not.toHaveBeenCalled();
     });
@@ -235,7 +235,7 @@ describe('PipelineDetail — AI sidebar', () => {
     });
 
     it('after AI apply, content updates in left panel', async () => {
-        vi.spyOn(pipelineApi, 'savePipelineContent').mockResolvedValue(undefined as any);
+        vi.spyOn(pipelineApi, 'saveWorkflowContent').mockResolvedValue(undefined as any);
         await renderAndWaitForLoad();
 
         fireEvent.click(screen.getByText('Edit with AI ✨'));
@@ -250,7 +250,7 @@ describe('PipelineDetail — AI sidebar', () => {
     });
 
     it('after AI apply, closing sidebar and opening manual Edit shows updated content', async () => {
-        vi.spyOn(pipelineApi, 'savePipelineContent').mockResolvedValue(undefined as any);
+        vi.spyOn(pipelineApi, 'saveWorkflowContent').mockResolvedValue(undefined as any);
         await renderAndWaitForLoad();
 
         // Open sidebar and apply

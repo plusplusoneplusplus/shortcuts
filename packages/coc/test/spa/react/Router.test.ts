@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parsePipelineRunDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -27,8 +27,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#repos/my-repo/tasks')).toBe('repos');
     });
 
-    it('returns "repos" for #repos/some-id/pipelines', () => {
-        expect(tabFromHash('#repos/my-repo/pipelines')).toBe('repos');
+    it('returns "repos" for #repos/some-id/workflows', () => {
+        expect(tabFromHash('#repos/my-repo/workflows')).toBe('repos');
     });
 
     it('returns "repos" for #repos/some-id/info', () => {
@@ -92,8 +92,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('tasks')).toBe(true);
     });
 
-    it('includes "pipelines"', () => {
-        expect(VALID_REPO_SUB_TABS.has('pipelines')).toBe(true);
+    it('includes "workflows"', () => {
+        expect(VALID_REPO_SUB_TABS.has('workflows')).toBe(true);
     });
 
     it('includes "schedules"', () => {
@@ -161,10 +161,10 @@ describe('repo sub-tab deep-link parsing', () => {
         expect(result.subTab).toBe('tasks');
     });
 
-    it('parses #repos/my-repo/pipelines correctly', () => {
-        const result = parseRepoDeepLink('#repos/my-repo/pipelines');
+    it('parses #repos/my-repo/workflows correctly', () => {
+        const result = parseRepoDeepLink('#repos/my-repo/workflows');
         expect(result.repoId).toBe('my-repo');
-        expect(result.subTab).toBe('pipelines');
+        expect(result.subTab).toBe('workflows');
     });
 
     it('parses #repos/my-repo/schedules correctly', () => {
@@ -496,51 +496,51 @@ describe('wiki tab deep-link integration', () => {
     });
 });
 
-// ─── parsePipelineDeepLink ──────────────────────────────────────
+// ─── parseWorkflowsDeepLink ──────────────────────────────────────
 
-describe('parsePipelineDeepLink', () => {
-    it('parses #repos/my-repo/pipelines/my-pipe', () => {
-        expect(parsePipelineDeepLink('#repos/my-repo/pipelines/my-pipe')).toBe('my-pipe');
+describe('parseWorkflowsDeepLink', () => {
+    it('parses #repos/my-repo/workflows/my-pipe', () => {
+        expect(parseWorkflowsDeepLink('#repos/my-repo/workflows/my-pipe')).toBe('my-pipe');
     });
 
     it('URL-decodes the pipeline name', () => {
-        expect(parsePipelineDeepLink('#repos/my-repo/pipelines/my%20pipe')).toBe('my pipe');
+        expect(parseWorkflowsDeepLink('#repos/my-repo/workflows/my%20pipe')).toBe('my pipe');
     });
 
     it('returns null when pipeline name is missing', () => {
-        expect(parsePipelineDeepLink('#repos/my-repo/pipelines')).toBeNull();
+        expect(parseWorkflowsDeepLink('#repos/my-repo/workflows')).toBeNull();
     });
 
-    it('returns null for non-pipelines sub-tab', () => {
-        expect(parsePipelineDeepLink('#repos/my-repo/info')).toBeNull();
+    it('returns null for non-workflows sub-tab', () => {
+        expect(parseWorkflowsDeepLink('#repos/my-repo/info')).toBeNull();
     });
 
     it('returns null for non-repo hash', () => {
-        expect(parsePipelineDeepLink('#wiki/something')).toBeNull();
+        expect(parseWorkflowsDeepLink('#wiki/something')).toBeNull();
     });
 
     it('returns null for empty hash', () => {
-        expect(parsePipelineDeepLink('#')).toBeNull();
+        expect(parseWorkflowsDeepLink('#')).toBeNull();
     });
 
     it('returns null for empty string', () => {
-        expect(parsePipelineDeepLink('')).toBeNull();
+        expect(parseWorkflowsDeepLink('')).toBeNull();
     });
 
     it('handles URL-encoded repo ID', () => {
-        expect(parsePipelineDeepLink('#repos/my%20repo/pipelines/pipe1')).toBe('pipe1');
+        expect(parseWorkflowsDeepLink('#repos/my%20repo/workflows/pipe1')).toBe('pipe1');
     });
 
     it('returns null from bare #repos', () => {
-        expect(parsePipelineDeepLink('#repos')).toBeNull();
+        expect(parseWorkflowsDeepLink('#repos')).toBeNull();
     });
 
     it('returns null from #repos/ws-abc with no sub-tab', () => {
-        expect(parsePipelineDeepLink('#repos/ws-abc')).toBeNull();
+        expect(parseWorkflowsDeepLink('#repos/ws-abc')).toBeNull();
     });
 
     it('returns null from #processes/some-id', () => {
-        expect(parsePipelineDeepLink('#processes/some-id')).toBeNull();
+        expect(parseWorkflowsDeepLink('#processes/some-id')).toBeNull();
     });
 });
 
@@ -589,23 +589,23 @@ describe('handleHash wiki dispatch simulation', () => {
     });
 });
 
-// ─── pipeline deep-link integration ────────────────────────────
+// ─── workflow deep-link integration ────────────────────────────
 
-describe('pipeline deep-link integration', () => {
-    it('tabFromHash returns "repos" for #repos/ws-abc/pipelines/my-pipeline', () => {
-        expect(tabFromHash('#repos/ws-abc/pipelines/my-pipeline')).toBe('repos');
+describe('workflow deep-link integration', () => {
+    it('tabFromHash returns "repos" for #repos/ws-abc/workflows/my-pipeline', () => {
+        expect(tabFromHash('#repos/ws-abc/workflows/my-pipeline')).toBe('repos');
     });
 
-    it('parsePipelineDeepLink and tabFromHash compose correctly for a pipeline deep link', () => {
-        const hash = '#repos/ws-abc/pipelines/my-pipeline';
+    it('parseWorkflowsDeepLink and tabFromHash compose correctly for a pipeline deep link', () => {
+        const hash = '#repos/ws-abc/workflows/my-pipeline';
         expect(tabFromHash(hash)).toBe('repos');
-        expect(parsePipelineDeepLink(hash)).toBe('my-pipeline');
+        expect(parseWorkflowsDeepLink(hash)).toBe('my-pipeline');
     });
 });
 
 // ─── handleHash pipeline integration (dispatch simulation) ──────
 
-describe('handleHash pipeline dispatch simulation', () => {
+describe('handleHash workflow dispatch simulation', () => {
     // Mirrors the repos-branch logic from Router's handleHash effect
     function simulateHandleHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
         const dispatches: Array<{ type: string; [key: string]: any }> = [];
@@ -618,39 +618,39 @@ describe('handleHash pipeline dispatch simulation', () => {
                 if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                     dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
                 }
-                if (parts[2] === 'pipelines' && parts[3]) {
-                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: decodeURIComponent(parts[3]) });
-                } else if (parts[2] === 'pipelines') {
-                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
-                } else if (parts[2] && parts[2] !== 'pipelines') {
-                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
+                if (parts[2] === 'workflows' && parts[3]) {
+                    dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: decodeURIComponent(parts[3]) });
+                } else if (parts[2] === 'workflows') {
+                    dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                } else if (parts[2] && parts[2] !== 'workflows') {
+                    dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
                 }
             }
         }
         return dispatches;
     }
 
-    it('dispatches SET_SELECTED_PIPELINE with name for #repos/r1/pipelines/pipe1', () => {
-        const dispatches = simulateHandleHash('#repos/r1/pipelines/pipe1');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: 'pipe1' });
+    it('dispatches SET_SELECTED_WORKFLOW with name for #repos/r1/workflows/pipe1', () => {
+        const dispatches = simulateHandleHash('#repos/r1/workflows/pipe1');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: 'pipe1' });
     });
 
-    it('dispatches SET_SELECTED_PIPELINE with null for #repos/r1/pipelines (no name)', () => {
-        const dispatches = simulateHandleHash('#repos/r1/pipelines');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: null });
+    it('dispatches SET_SELECTED_WORKFLOW with null for #repos/r1/workflows (no name)', () => {
+        const dispatches = simulateHandleHash('#repos/r1/workflows');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: null });
     });
 
-    it('dispatches SET_SELECTED_PIPELINE with null for #repos/r1/tasks (different sub-tab)', () => {
+    it('dispatches SET_SELECTED_WORKFLOW with null for #repos/r1/tasks (different sub-tab)', () => {
         const dispatches = simulateHandleHash('#repos/r1/tasks');
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'tasks' });
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: null });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: null });
     });
 
-    it('does not dispatch SET_SELECTED_PIPELINE when no sub-tab', () => {
+    it('does not dispatch SET_SELECTED_WORKFLOW when no sub-tab', () => {
         const dispatches = simulateHandleHash('#repos/r1');
-        expect(dispatches.find(d => d.type === 'SET_SELECTED_PIPELINE')).toBeUndefined();
+        expect(dispatches.find(d => d.type === 'SET_SELECTED_WORKFLOW')).toBeUndefined();
     });
 });
 
@@ -670,7 +670,7 @@ describe('parseQueueDeepLink', () => {
     });
 
     it('returns null for non-queue sub-tab', () => {
-        expect(parseQueueDeepLink('#repos/my-repo/pipelines')).toBeNull();
+        expect(parseQueueDeepLink('#repos/my-repo/workflows')).toBeNull();
     });
 
     it('returns null for non-repo hash', () => {
@@ -757,8 +757,8 @@ describe('handleHash queue dispatch simulation', () => {
         expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: null });
     });
 
-    it('does not dispatch SELECT_QUEUE_TASK for #repos/r1/pipelines', () => {
-        const dispatches = simulateQueueHash('#repos/r1/pipelines');
+    it('does not dispatch SELECT_QUEUE_TASK for #repos/r1/workflows', () => {
+        const dispatches = simulateQueueHash('#repos/r1/workflows');
         expect(dispatches.find(d => d.type === 'SELECT_QUEUE_TASK')).toBeUndefined();
     });
 
@@ -795,7 +795,7 @@ describe('parseChatDeepLink', () => {
     });
 
     it('returns null for non-chat sub-tab', () => {
-        expect(parseChatDeepLink('#repos/my-repo/pipelines')).toBeNull();
+        expect(parseChatDeepLink('#repos/my-repo/workflows')).toBeNull();
     });
 
     it('returns null for non-repo hash', () => {
@@ -882,8 +882,8 @@ describe('handleHash chat dispatch simulation', () => {
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_CHAT_SESSION', id: null });
     });
 
-    it('does not dispatch SET_SELECTED_CHAT_SESSION for #repos/r1/pipelines', () => {
-        const dispatches = simulateChatHash('#repos/r1/pipelines');
+    it('does not dispatch SET_SELECTED_CHAT_SESSION for #repos/r1/workflows', () => {
+        const dispatches = simulateChatHash('#repos/r1/workflows');
         expect(dispatches.find(d => d.type === 'SET_SELECTED_CHAT_SESSION')).toBeUndefined();
     });
 
@@ -920,7 +920,7 @@ describe('parseGitCommitDeepLink', () => {
     });
 
     it('returns null for non-git sub-tab', () => {
-        expect(parseGitCommitDeepLink('#repos/my-repo/pipelines')).toBeNull();
+        expect(parseGitCommitDeepLink('#repos/my-repo/workflows')).toBeNull();
     });
 
     it('returns null for non-repo hash', () => {
@@ -990,7 +990,7 @@ describe('parseGitFileDeepLink', () => {
     });
 
     it('returns null for non-git sub-tab', () => {
-        expect(parseGitFileDeepLink('#repos/my-repo/pipelines/abc/file.ts')).toBeNull();
+        expect(parseGitFileDeepLink('#repos/my-repo/workflows/abc/file.ts')).toBeNull();
     });
 
     it('returns null for empty string', () => {
@@ -1056,8 +1056,8 @@ describe('handleHash git dispatch simulation', () => {
         expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: null });
     });
 
-    it('does not dispatch SET_GIT_COMMIT_HASH for #repos/r1/pipelines', () => {
-        const dispatches = simulateGitHash('#repos/r1/pipelines');
+    it('does not dispatch SET_GIT_COMMIT_HASH for #repos/r1/workflows', () => {
+        const dispatches = simulateGitHash('#repos/r1/workflows');
         expect(dispatches.find(d => d.type === 'SET_GIT_COMMIT_HASH')).toBeUndefined();
     });
 
@@ -1367,7 +1367,7 @@ describe('parseWorkflowDeepLink', () => {
     });
 
     it('returns null for non-workflow sub-tab', () => {
-        expect(parseWorkflowDeepLink('#repos/my-repo/pipelines/pipe1')).toBeNull();
+        expect(parseWorkflowDeepLink('#repos/my-repo/workflows/pipe1')).toBeNull();
     });
 
     it('returns null for non-repo hash', () => {
@@ -1454,8 +1454,8 @@ describe('handleHash workflow dispatch simulation', () => {
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_PROCESS', processId: null });
     });
 
-    it('does not dispatch SET_WORKFLOW_PROCESS for #repos/r1/pipelines', () => {
-        const dispatches = simulateWorkflowHash('#repos/r1/pipelines');
+    it('does not dispatch SET_WORKFLOW_PROCESS for #repos/r1/workflows', () => {
+        const dispatches = simulateWorkflowHash('#repos/r1/workflows');
         expect(dispatches.find(d => d.type === 'SET_WORKFLOW_PROCESS')).toBeUndefined();
     });
 
@@ -1476,53 +1476,53 @@ describe('handleHash workflow dispatch simulation', () => {
     });
 });
 
-// ─── parsePipelineRunDeepLink ────────────────────────────────────
+// ─── parseWorkflowsRunDeepLink ────────────────────────────────────
 
-describe('parsePipelineRunDeepLink', () => {
-    it('parses #repos/my-repo/pipelines/my-pipe/run/proc-1', () => {
-        const result = parsePipelineRunDeepLink('#repos/my-repo/pipelines/my-pipe/run/proc-1');
-        expect(result).toEqual({ pipelineName: 'my-pipe', processId: 'proc-1' });
+describe('parseWorkflowsRunDeepLink', () => {
+    it('parses #repos/my-repo/workflows/my-pipe/run/proc-1', () => {
+        const result = parseWorkflowsRunDeepLink('#repos/my-repo/workflows/my-pipe/run/proc-1');
+        expect(result).toEqual({ workflowName: 'my-pipe', processId: 'proc-1' });
     });
 
-    it('URL-decodes pipelineName and processId', () => {
-        const result = parsePipelineRunDeepLink('#repos/my-repo/pipelines/my%20pipe/run/proc%2F1');
-        expect(result).toEqual({ pipelineName: 'my pipe', processId: 'proc/1' });
+    it('URL-decodes workflowName and processId', () => {
+        const result = parseWorkflowsRunDeepLink('#repos/my-repo/workflows/my%20pipe/run/proc%2F1');
+        expect(result).toEqual({ workflowName: 'my pipe', processId: 'proc/1' });
     });
 
     it('handles queue_ prefixed processId', () => {
-        const result = parsePipelineRunDeepLink('#repos/ws-1/pipelines/pipe1/run/queue_abc123');
-        expect(result).toEqual({ pipelineName: 'pipe1', processId: 'queue_abc123' });
+        const result = parseWorkflowsRunDeepLink('#repos/ws-1/workflows/pipe1/run/queue_abc123');
+        expect(result).toEqual({ workflowName: 'pipe1', processId: 'queue_abc123' });
     });
 
     it('returns null when processId is missing', () => {
-        expect(parsePipelineRunDeepLink('#repos/my-repo/pipelines/my-pipe/run')).toBeNull();
+        expect(parseWorkflowsRunDeepLink('#repos/my-repo/workflows/my-pipe/run')).toBeNull();
     });
 
     it('returns null when "run" segment is absent', () => {
-        expect(parsePipelineRunDeepLink('#repos/my-repo/pipelines/my-pipe')).toBeNull();
+        expect(parseWorkflowsRunDeepLink('#repos/my-repo/workflows/my-pipe')).toBeNull();
     });
 
-    it('returns null for non-pipelines sub-tab', () => {
-        expect(parsePipelineRunDeepLink('#repos/my-repo/workflow/proc-1')).toBeNull();
+    it('returns null for non-workflows sub-tab', () => {
+        expect(parseWorkflowsRunDeepLink('#repos/my-repo/workflow/proc-1')).toBeNull();
     });
 
     it('returns null for non-repo hash', () => {
-        expect(parsePipelineRunDeepLink('#wiki/something')).toBeNull();
+        expect(parseWorkflowsRunDeepLink('#wiki/something')).toBeNull();
     });
 
     it('returns null for empty hash', () => {
-        expect(parsePipelineRunDeepLink('#')).toBeNull();
+        expect(parseWorkflowsRunDeepLink('#')).toBeNull();
     });
 
     it('returns null for empty string', () => {
-        expect(parsePipelineRunDeepLink('')).toBeNull();
+        expect(parseWorkflowsRunDeepLink('')).toBeNull();
     });
 });
 
-// ─── handleHash pipeline run dispatch simulation ─────────────────
+// ─── handleHash workflow run dispatch simulation ─────────────────
 
-describe('handleHash pipeline run dispatch simulation', () => {
-    function simulatePipelineRunHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+describe('handleHash workflow run dispatch simulation', () => {
+    function simulateWorkflowRunHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
         const dispatches: Array<{ type: string; [key: string]: any }> = [];
         const hash = rawHash.replace(/^#/, '');
         const tab = tabFromHash('#' + hash);
@@ -1533,51 +1533,51 @@ describe('handleHash pipeline run dispatch simulation', () => {
                 if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                     dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
                 }
-                // Pipeline deep-link handling (mirrors Router.tsx)
-                if (parts[2] === 'pipelines' && parts[3]) {
-                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: decodeURIComponent(parts[3]) });
+                // Workflow deep-link handling (mirrors Router.tsx)
+                if (parts[2] === 'workflows' && parts[3]) {
+                    dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: decodeURIComponent(parts[3]) });
                     if (parts[4] === 'run' && parts[5]) {
-                        dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
+                        dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
                     } else {
-                        dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                        dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                     }
-                } else if (parts[2] === 'pipelines') {
-                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
-                    dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
-                } else if (parts[2] && parts[2] !== 'pipelines') {
-                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
-                    dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                } else if (parts[2] === 'workflows') {
+                    dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                    dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
+                } else if (parts[2] && parts[2] !== 'workflows') {
+                    dispatches.push({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                    dispatches.push({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                 }
             }
         }
         return dispatches;
     }
 
-    it('dispatches SET_PIPELINE_RUN_PROCESS for #repos/r1/pipelines/pipe1/run/proc-1', () => {
-        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines/pipe1/run/proc-1');
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: 'pipe1' });
-        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: 'proc-1' });
+    it('dispatches SET_WORKFLOW_RUN_PROCESS for #repos/r1/workflows/pipe1/run/proc-1', () => {
+        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows/pipe1/run/proc-1');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: 'pipe1' });
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'proc-1' });
     });
 
-    it('dispatches SET_PIPELINE_RUN_PROCESS null for #repos/r1/pipelines/pipe1 (no run)', () => {
-        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines/pipe1');
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: 'pipe1' });
-        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+    it('dispatches SET_WORKFLOW_RUN_PROCESS null for #repos/r1/workflows/pipe1 (no run)', () => {
+        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows/pipe1');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: 'pipe1' });
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
     });
 
-    it('dispatches SET_PIPELINE_RUN_PROCESS null for #repos/r1/pipelines (no name)', () => {
-        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines');
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: null });
-        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+    it('dispatches SET_WORKFLOW_RUN_PROCESS null for #repos/r1/workflows (no name)', () => {
+        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_WORKFLOW', name: null });
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
     });
 
-    it('dispatches SET_PIPELINE_RUN_PROCESS null for non-pipeline sub-tab', () => {
-        const dispatches = simulatePipelineRunHash('#repos/r1/tasks');
-        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+    it('dispatches SET_WORKFLOW_RUN_PROCESS null for non-workflow sub-tab', () => {
+        const dispatches = simulateWorkflowRunHash('#repos/r1/tasks');
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
     });
 
     it('URL-decodes processId in dispatch', () => {
-        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines/pipe1/run/queue_abc%2F1');
-        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: 'queue_abc/1' });
+        const dispatches = simulateWorkflowRunHash('#repos/r1/workflows/pipe1/run/queue_abc%2F1');
+        expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'queue_abc/1' });
     });
 });

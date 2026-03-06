@@ -1,5 +1,5 @@
 /**
- * PipelineResultCard — renders pipeline-specific result content:
+ * WorkflowResultCard — renders pipeline-specific result content:
  * header with name + status, stats grid, markdown result with mermaid support.
  */
 
@@ -10,12 +10,12 @@ import { renderMarkdownToHtml } from '../../markdown-renderer';
 import { useMermaid } from '../hooks/useMermaid';
 import { formatDuration, copyToClipboard } from '../utils/format';
 
-export interface PipelineResultCardProps {
+export interface WorkflowResultCardProps {
     process: any;
     className?: string;
 }
 
-export function PipelineResultCard({ process, className }: PipelineResultCardProps) {
+export function WorkflowResultCard({ process, className }: WorkflowResultCardProps) {
     const cardRef = useRef<HTMLDivElement>(null);
     const pipelineName = process.metadata?.pipelineName || 'Workflow Execution';
     const stats = process.metadata?.executionStats;
@@ -36,7 +36,7 @@ export function PipelineResultCard({ process, className }: PipelineResultCardPro
 
     return (
         <Card className={className}>
-            <div ref={cardRef} data-testid="pipeline-result-card">
+            <div ref={cardRef} data-testid="workflow-result-card">
                 {/* Header */}
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">

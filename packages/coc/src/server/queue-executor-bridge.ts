@@ -17,7 +17,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ResolveCommentsPayload, RunPipelinePayload, RunScriptPayload, TaskGenerationPayload, ChatPayload } from '@plusplusoneplusplus/coc-server';
+import type { ResolveCommentsPayload, RunWorkflowPayload, RunScriptPayload, TaskGenerationPayload, ChatPayload } from '@plusplusoneplusplus/coc-server';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
@@ -26,7 +26,7 @@ import {
     isCustomTaskPayload,
     isFollowPromptPayload,
     isResolveCommentsPayload,
-    isRunPipelinePayload,
+    isRunWorkflowPayload,
     isRunScriptPayload,
     isTaskGenerationPayload,
     saveImagesToTempFiles,
@@ -295,8 +295,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 queueTaskId: task.id,
                 priority: task.priority,
                 model: task.config.model,
-                pipelineName: isRunPipelinePayload(task.payload)
-                    ? path.basename(task.payload.pipelinePath)
+                workflowName: isRunWorkflowPayload(task.payload)
+                    ? path.basename(task.payload.workflowPath)
                     : undefined,
             },
         };
@@ -736,8 +736,8 @@ export class CLITaskExecutor implements TaskExecutor {
             return task.payload.prompt;
         }
 
-        if (isRunPipelinePayload(task.payload)) {
-            return `Run pipeline: ${path.basename(task.payload.pipelinePath)}`;
+        if (isRunWorkflowPayload(task.payload)) {
+            return `Run workflow: ${path.basename(task.payload.workflowPath)}`;
         }
 
         if (isChatPayload(task.payload)) {
@@ -853,8 +853,8 @@ export class CLITaskExecutor implements TaskExecutor {
             return this.executeTaskGeneration(task);
         }
 
-        // Run pipeline: parse YAML and execute via pipeline-core
-        if (isRunPipelinePayload(task.payload)) {
+        // Run workflow: parse YAML and execute via pipeline-core
+        if (isRunWorkflowPayload(task.payload)) {
             return this.executeRunPipeline(task);
         }
 
@@ -1160,8 +1160,8 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeRunPipeline(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as unknown as RunPipelinePayload;
-        const yamlPath = path.join(payload.pipelinePath, 'pipeline.yaml');
+        const payload = task.payload as unknown as RunWorkflowPayload;
+        const yamlPath = path.join(payload.workflowPath, 'pipeline.yaml');
 
         // Read and parse pipeline YAML
         const yamlContent = fs.readFileSync(yamlPath, 'utf-8');
@@ -1205,7 +1205,7 @@ export class CLITaskExecutor implements TaskExecutor {
         const processId = `queue_${task.id}`;
         const result = await executePipeline(config, {
             aiInvoker,
-            pipelineDirectory: payload.pipelinePath,
+            pipelineDirectory: payload.workflowPath,
             workspaceRoot: payload.workingDirectory,
             onPhaseChange: (event) => {
                 try {
@@ -1395,7 +1395,7 @@ export class CLITaskExecutor implements TaskExecutor {
         if (isTaskGenerationPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
-        if (isRunPipelinePayload(task.payload)) {
+        if (isRunWorkflowPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         if (isFollowPromptPayload(task.payload)) {

@@ -1,14 +1,14 @@
 /**
- * Tests for PipelineAIRefinePanel — the AI pipeline refinement UI component.
+ * Tests for WorkflowAIRefinePanel — the AI pipeline refinement UI component.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
-// Mock refinePipeline
+// Mock refineWorkflow
 const mockRefinePipeline = vi.fn();
-vi.mock('../../../../src/server/spa/client/react/repos/pipeline-api', () => ({
-    refinePipeline: (...args: any[]) => mockRefinePipeline(...args),
+vi.mock('../../../../src/server/spa/client/react/repos/workflow-api', () => ({
+    refineWorkflow: (...args: any[]) => mockRefinePipeline(...args),
 }));
 
 // Mock UnifiedDiffViewer
@@ -24,7 +24,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/unifiedDiffUtils', () => 
         `--- a/${fileName}\n+++ b/${fileName}\n@@ mock diff @@\n-old\n+new`,
 }));
 
-import { PipelineAIRefinePanel } from '../../../../src/server/spa/client/react/repos/PipelineAIRefinePanel';
+import { WorkflowAIRefinePanel } from '../../../../src/server/spa/client/react/repos/WorkflowAIRefinePanel';
 
 const defaultProps = {
     workspaceId: 'ws-1',
@@ -45,14 +45,14 @@ beforeEach(() => {
 
 describe('input phase', () => {
     it('renders textarea and "Edit with AI" title by default', () => {
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
         expect(screen.getByText('Edit with AI')).toBeTruthy();
         expect(screen.getByTestId('refine-instruction')).toBeTruthy();
         expect(screen.getByText('Refine with AI ✨')).toBeTruthy();
     });
 
     it('disables "Refine with AI" when instruction is less than 10 chars', () => {
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
         const btn = screen.getByTestId('refine-submit');
         expect(btn).toBeDisabled();
 
@@ -63,7 +63,7 @@ describe('input phase', () => {
     });
 
     it('enables "Refine with AI" when instruction has 10+ chars', () => {
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
         fireEvent.change(screen.getByTestId('refine-instruction'), {
             target: { value: 'add retry logic to the pipeline' },
         });
@@ -71,13 +71,13 @@ describe('input phase', () => {
     });
 
     it('calls onCancel when Cancel button is clicked in input phase', () => {
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
         fireEvent.click(screen.getByText('Cancel'));
         expect(defaultProps.onCancel).toHaveBeenCalledTimes(1);
     });
 
     it('shows character count', () => {
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
         expect(screen.getByText('0 / 2000 characters')).toBeTruthy();
 
         fireEvent.change(screen.getByTestId('refine-instruction'), {
@@ -94,7 +94,7 @@ describe('refining phase', () => {
         let resolveRefine!: (v: any) => void;
         mockRefinePipeline.mockReturnValue(new Promise(r => { resolveRefine = r; }));
 
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
 
         fireEvent.change(screen.getByTestId('refine-instruction'), {
             target: { value: 'add retry logic to the pipeline' },
@@ -116,7 +116,7 @@ describe('refining phase', () => {
         let resolveRefine!: (v: any) => void;
         mockRefinePipeline.mockReturnValue(new Promise(r => { resolveRefine = r; }));
 
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
 
         fireEvent.change(screen.getByTestId('refine-instruction'), {
             target: { value: 'add retry logic to the pipeline' },
@@ -147,7 +147,7 @@ describe('refining phase', () => {
 describe('preview phase', () => {
     async function goToPreview() {
         mockRefinePipeline.mockResolvedValue({ yaml: 'name: refined\nsteps: [retry]' });
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
 
         fireEvent.change(screen.getByTestId('refine-instruction'), {
             target: { value: 'add retry logic to the pipeline' },
@@ -221,7 +221,7 @@ describe('preview phase', () => {
             .mockResolvedValueOnce({ yaml: 'name: first' })
             .mockResolvedValueOnce({ yaml: 'name: second' });
 
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
 
         fireEvent.change(screen.getByTestId('refine-instruction'), {
             target: { value: 'add retry logic to the pipeline' },
@@ -236,7 +236,7 @@ describe('preview phase', () => {
             fireEvent.click(screen.getByText('Re-refine 🔄'));
         });
 
-        // refinePipeline called twice
+        // refineWorkflow called twice
         expect(mockRefinePipeline).toHaveBeenCalledTimes(2);
         // Back in preview with new result
         expect(screen.getByText('Review Changes')).toBeTruthy();
@@ -249,7 +249,7 @@ describe('error handling', () => {
     it('shows error banner on API failure and returns to input', async () => {
         mockRefinePipeline.mockRejectedValue(new Error('Server exploded'));
 
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
 
         fireEvent.change(screen.getByTestId('refine-instruction'), {
             target: { value: 'add retry logic to the pipeline' },
@@ -268,7 +268,7 @@ describe('error handling', () => {
         const abortError = new DOMException('Aborted', 'AbortError');
         mockRefinePipeline.mockRejectedValue(abortError);
 
-        render(<PipelineAIRefinePanel {...defaultProps} />);
+        render(<WorkflowAIRefinePanel {...defaultProps} />);
 
         fireEvent.change(screen.getByTestId('refine-instruction'), {
             target: { value: 'add retry logic to the pipeline' },

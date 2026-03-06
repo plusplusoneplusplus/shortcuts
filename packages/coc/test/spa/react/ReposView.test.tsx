@@ -20,7 +20,7 @@ import type { RepoData } from '../../../src/server/spa/client/react/repos/repoGr
 import { RepoCard } from '../../../src/server/spa/client/react/repos/RepoCard';
 import { ReposView } from '../../../src/server/spa/client/react/repos/ReposView';
 import { RepoInfoTab } from '../../../src/server/spa/client/react/repos/RepoInfoTab';
-import { PipelinesTab } from '../../../src/server/spa/client/react/repos/PipelinesTab';
+import { WorkflowsTab } from '../../../src/server/spa/client/react/repos/WorkflowsTab';
 import { TasksPanel } from '../../../src/server/spa/client/react/tasks/TasksPanel';
 import { AddRepoDialog } from '../../../src/server/spa/client/react/repos/AddRepoDialog';
 import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid';
@@ -49,7 +49,7 @@ function CollapseReposSidebarOnMount() {
 function makeRepo(overrides: Partial<RepoData> & { workspace: any }): RepoData {
     return {
         gitInfo: { branch: 'main', dirty: false, isGitRepo: true },
-        pipelines: [],
+        workflows: [],
         stats: { success: 0, failed: 0, running: 0 },
         taskCount: 0,
         ...overrides,
@@ -225,7 +225,7 @@ describe('RepoCard', () => {
     const repo = makeRepo({
         workspace: { id: 'ws-1', name: 'My Repo', rootPath: '/path/to/repo', color: '#0078d4' },
         gitInfo: { branch: 'main', dirty: false, isGitRepo: true },
-        pipelines: [{ name: 'test', path: 'test.yaml' }],
+        workflows: [{ name: 'test', path: 'test.yaml' }],
         stats: { success: 5, failed: 1, running: 2 },
         taskCount: 3,
     });
@@ -595,19 +595,19 @@ describe('RepoInfoTab', () => {
     });
 });
 
-describe('PipelinesTab', () => {
+describe('WorkflowsTab', () => {
     it('shows empty state when no pipelines', () => {
-        const repo = makeRepo({ workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' }, pipelines: [] });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        const repo = makeRepo({ workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' }, workflows: [] });
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         expect(screen.getByText('No workflows found')).toBeDefined();
     });
 
     it('lists pipelines', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [{ name: 'build', path: 'build.yaml' }, { name: 'deploy', path: 'deploy.yaml' }],
+            workflows: [{ name: 'build', path: 'build.yaml' }, { name: 'deploy', path: 'deploy.yaml' }],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         expect(screen.getByText(/build/)).toBeDefined();
         expect(screen.getByText(/deploy/)).toBeDefined();
     });

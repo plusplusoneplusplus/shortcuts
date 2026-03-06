@@ -337,6 +337,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         if (pipelinesViewerEnabled && workspaceFolder) {
             pipelineManager = new PipelineManager(workspaceRoot, context);
+            await pipelineManager.migrateFolder();
             pipelineManager.ensurePipelinesFolderExists();
 
             // Register the bundled pipeline read-only provider

@@ -33,7 +33,7 @@ export interface PhaseDetail {
     promptPreview?: string;
 }
 
-export interface PipelinePhasePopoverProps {
+export interface WorkflowPhasePopoverProps {
     phase: PhaseDetail | null;
     onClose: () => void;
     onScrollToConversation?: () => void;
@@ -181,7 +181,7 @@ function PhaseContent({ phase }: { phase: PhaseDetail }) {
     }
 }
 
-export function PipelinePhasePopover({ phase, onClose, onScrollToConversation }: PipelinePhasePopoverProps) {
+export function WorkflowPhasePopover({ phase, onClose, onScrollToConversation }: WorkflowPhasePopoverProps) {
     const { isMobile } = useBreakpoint();
 
     if (!phase) return null;

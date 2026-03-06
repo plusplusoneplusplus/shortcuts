@@ -25,8 +25,8 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wikiDetailInitialAdminTab: null,
         wikiAutoGenerate: false,
         wikis: [],
-        selectedPipelineName: null,
-        selectedPipelineRunProcessId: null,
+        selectedWorkflowName: null,
+        selectedWorkflowRunProcessId: null,
         selectedChatSessionId: null,
         conversationCache: {},
         wsStatus: 'closed',
@@ -260,9 +260,9 @@ describe('AppContext reducer', () => {
             expect(result.activeRepoSubTab).toBe('tasks');
         });
 
-        it('SET_REPO_SUB_TAB switches to pipelines', () => {
-            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
-            expect(result.activeRepoSubTab).toBe('pipelines');
+        it('SET_REPO_SUB_TAB switches to workflows', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
+            expect(result.activeRepoSubTab).toBe('workflows');
         });
 
         it('SET_REPO_SUB_TAB switches to info', () => {
@@ -317,10 +317,10 @@ describe('AppContext reducer', () => {
 
         it('SET_SELECTED_REPO to null preserves repoTabState but keeps current tab', () => {
             let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'pipelines' });
-            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'pipelines' });
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'workflows' });
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: null });
-            expect(state.repoTabState['repo-a']).toBe('pipelines');
-            expect(state.activeRepoSubTab).toBe('pipelines');
+            expect(state.repoTabState['repo-a']).toBe('workflows');
+            expect(state.activeRepoSubTab).toBe('workflows');
         });
 
         it('explicit SET_REPO_SUB_TAB after SET_SELECTED_REPO overrides the restored tab', () => {
@@ -441,23 +441,23 @@ describe('AppContext reducer', () => {
         });
     });
 
-    // ── SET_SELECTED_PIPELINE ──────────────────────────────────────
-    describe('SET_SELECTED_PIPELINE', () => {
-        it('sets selectedPipelineName to a string', () => {
-            const result = appReducer(makeState(), { type: 'SET_SELECTED_PIPELINE', name: 'foo' });
-            expect(result.selectedPipelineName).toBe('foo');
+    // ── SET_SELECTED_WORKFLOW ──────────────────────────────────────
+    describe('SET_SELECTED_WORKFLOW', () => {
+        it('sets selectedWorkflowName to a string', () => {
+            const result = appReducer(makeState(), { type: 'SET_SELECTED_WORKFLOW', name: 'foo' });
+            expect(result.selectedWorkflowName).toBe('foo');
         });
 
-        it('clears selectedPipelineName to null', () => {
-            const state = makeState({ selectedPipelineName: 'bar' });
-            const result = appReducer(state, { type: 'SET_SELECTED_PIPELINE', name: null });
-            expect(result.selectedPipelineName).toBeNull();
+        it('clears selectedWorkflowName to null', () => {
+            const state = makeState({ selectedWorkflowName: 'bar' });
+            const result = appReducer(state, { type: 'SET_SELECTED_WORKFLOW', name: null });
+            expect(result.selectedWorkflowName).toBeNull();
         });
 
-        it('overwrites existing selectedPipelineName', () => {
-            const state = makeState({ selectedPipelineName: 'old' });
-            const result = appReducer(state, { type: 'SET_SELECTED_PIPELINE', name: 'new' });
-            expect(result.selectedPipelineName).toBe('new');
+        it('overwrites existing selectedWorkflowName', () => {
+            const state = makeState({ selectedWorkflowName: 'old' });
+            const result = appReducer(state, { type: 'SET_SELECTED_WORKFLOW', name: 'new' });
+            expect(result.selectedWorkflowName).toBe('new');
         });
     });
 
@@ -828,23 +828,23 @@ describe('AppContext reducer', () => {
         });
     });
 
-    // ── SET_PIPELINE_RUN_PROCESS ──────────────────────────────────
-    describe('SET_PIPELINE_RUN_PROCESS', () => {
-        it('sets selectedPipelineRunProcessId to the given processId', () => {
-            const result = appReducer(makeState(), { type: 'SET_PIPELINE_RUN_PROCESS', processId: 'proc-1' });
-            expect(result.selectedPipelineRunProcessId).toBe('proc-1');
+    // ── SET_WORKFLOW_RUN_PROCESS ──────────────────────────────────
+    describe('SET_WORKFLOW_RUN_PROCESS', () => {
+        it('sets selectedWorkflowRunProcessId to the given processId', () => {
+            const result = appReducer(makeState(), { type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'proc-1' });
+            expect(result.selectedWorkflowRunProcessId).toBe('proc-1');
         });
 
-        it('clears selectedPipelineRunProcessId when null', () => {
-            const state = makeState({ selectedPipelineRunProcessId: 'proc-1' });
-            const result = appReducer(state, { type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
-            expect(result.selectedPipelineRunProcessId).toBeNull();
+        it('clears selectedWorkflowRunProcessId when null', () => {
+            const state = makeState({ selectedWorkflowRunProcessId: 'proc-1' });
+            const result = appReducer(state, { type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
+            expect(result.selectedWorkflowRunProcessId).toBeNull();
         });
 
-        it('replaces existing selectedPipelineRunProcessId', () => {
-            const state = makeState({ selectedPipelineRunProcessId: 'proc-1' });
-            const result = appReducer(state, { type: 'SET_PIPELINE_RUN_PROCESS', processId: 'proc-2' });
-            expect(result.selectedPipelineRunProcessId).toBe('proc-2');
+        it('replaces existing selectedWorkflowRunProcessId', () => {
+            const state = makeState({ selectedWorkflowRunProcessId: 'proc-1' });
+            const result = appReducer(state, { type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'proc-2' });
+            expect(result.selectedWorkflowRunProcessId).toBe('proc-2');
         });
     });
 });

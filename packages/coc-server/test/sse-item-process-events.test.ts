@@ -291,9 +291,9 @@ describe('SSE item-process events', () => {
         const frames = parseSSEFrames(res._chunks);
         const eventNames = frames.map(f => f.event);
 
-        expect(eventNames).toContain('pipeline-phase');
+        expect(eventNames).toContain('workflow-phase');
         expect(eventNames).toContain('item-process');
-        expect(eventNames).toContain('pipeline-progress');
+        expect(eventNames).toContain('workflow-progress');
         expect(eventNames).toContain('status');
         expect(eventNames).toContain('done');
 

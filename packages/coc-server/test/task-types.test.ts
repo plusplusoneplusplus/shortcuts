@@ -13,7 +13,7 @@ import {
     isChatPayload,
     isCustomTaskPayload,
     isTaskGenerationPayload,
-    isRunPipelinePayload,
+    isRunWorkflowPayload,
     isRunScriptPayload,
 } from '../src/task-types';
 import type {
@@ -22,7 +22,7 @@ import type {
     AIClarificationPayload,
     ChatPayload,
     TaskGenerationPayload,
-    RunPipelinePayload,
+    RunWorkflowPayload,
     RunScriptPayload,
     CustomTaskPayload,
 } from '../src/task-types';
@@ -160,17 +160,17 @@ describe('isTaskGenerationPayload', () => {
 });
 
 // ============================================================================
-// isRunPipelinePayload
+// isRunWorkflowPayload
 // ============================================================================
 
-describe('isRunPipelinePayload', () => {
+describe('isRunWorkflowPayload', () => {
     it('returns true for payload with kind: run-pipeline', () => {
         const payload: Record<string, unknown> = {
-            kind: 'run-pipeline',
-            pipelinePath: '/tmp/pipeline',
+            kind: 'run-workflow',
+            workflowPath: '/tmp/pipeline',
             workingDirectory: '/tmp',
         };
-        expect(isRunPipelinePayload(payload)).toBe(true);
+        expect(isRunWorkflowPayload(payload)).toBe(true);
     });
 
     it('returns false for task-generation kind', () => {
@@ -179,20 +179,20 @@ describe('isRunPipelinePayload', () => {
             workingDirectory: '/tmp',
             prompt: 'x',
         };
-        expect(isRunPipelinePayload(payload)).toBe(false);
+        expect(isRunWorkflowPayload(payload)).toBe(false);
     });
 
     it('accepts mcpServers field and still passes type guard', () => {
         const servers: Record<string, MCPServerConfig> = {
             github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
         };
-        const payload: RunPipelinePayload = {
-            kind: 'run-pipeline',
-            pipelinePath: '/tmp/pipeline',
+        const payload: RunWorkflowPayload = {
+            kind: 'run-workflow',
+            workflowPath: '/tmp/pipeline',
             workingDirectory: '/tmp',
             mcpServers: servers,
         };
-        expect(isRunPipelinePayload(payload as Record<string, unknown>)).toBe(true);
+        expect(isRunWorkflowPayload(payload as Record<string, unknown>)).toBe(true);
         expect(payload.mcpServers).toEqual(servers);
     });
 });
@@ -228,7 +228,7 @@ describe('isRunScriptPayload', () => {
     });
 
     it('returns false for kind: run-pipeline', () => {
-        const payload: Record<string, unknown> = { kind: 'run-pipeline', pipelinePath: '/p', workingDirectory: '/tmp' };
+        const payload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
         expect(isRunScriptPayload(payload)).toBe(false);
     });
 });
@@ -246,7 +246,7 @@ describe('type narrowing', () => {
             { kind: 'chat', prompt: 'hi' },
             { data: { x: 1 } },
             { kind: 'task-generation', workingDirectory: '/tmp', prompt: 'Create' },
-            { kind: 'run-pipeline', pipelinePath: '/tmp/p', workingDirectory: '/tmp' },
+            { kind: 'run-workflow', workflowPath: '/tmp/p', workingDirectory: '/tmp' },
         ];
 
         expect(isFollowPromptPayload(payloads[0])).toBe(true);
@@ -255,26 +255,26 @@ describe('type narrowing', () => {
         expect(isChatPayload(payloads[3])).toBe(true);
         expect(isCustomTaskPayload(payloads[4])).toBe(true);
         expect(isTaskGenerationPayload(payloads[5])).toBe(true);
-        expect(isRunPipelinePayload(payloads[6])).toBe(true);
+        expect(isRunWorkflowPayload(payloads[6])).toBe(true);
     });
 
     it('discriminant-based guards are mutually exclusive', () => {
         const chatPayload: Record<string, unknown> = { kind: 'chat', prompt: 'hi' };
         const taskGenPayload: Record<string, unknown> = { kind: 'task-generation', workingDirectory: '/tmp', prompt: 'x' };
-        const runPipePayload: Record<string, unknown> = { kind: 'run-pipeline', pipelinePath: '/p', workingDirectory: '/tmp' };
+        const runPipePayload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
 
         // Chat is not task-generation or run-pipeline
         expect(isChatPayload(chatPayload)).toBe(true);
         expect(isTaskGenerationPayload(chatPayload)).toBe(false);
-        expect(isRunPipelinePayload(chatPayload)).toBe(false);
+        expect(isRunWorkflowPayload(chatPayload)).toBe(false);
 
         // Task-generation is not chat or run-pipeline
         expect(isTaskGenerationPayload(taskGenPayload)).toBe(true);
         expect(isChatPayload(taskGenPayload)).toBe(false);
-        expect(isRunPipelinePayload(taskGenPayload)).toBe(false);
+        expect(isRunWorkflowPayload(taskGenPayload)).toBe(false);
 
         // Run-pipeline is not chat or task-generation
-        expect(isRunPipelinePayload(runPipePayload)).toBe(true);
+        expect(isRunWorkflowPayload(runPipePayload)).toBe(true);
         expect(isChatPayload(runPipePayload)).toBe(false);
         expect(isTaskGenerationPayload(runPipePayload)).toBe(false);
     });

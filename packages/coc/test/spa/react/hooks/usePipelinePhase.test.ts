@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { usePipelinePhase } from '../../../../src/server/spa/client/react/hooks/usePipelinePhase';
+import { useWorkflowPhase } from '../../../../src/server/spa/client/react/hooks/useWorkflowPhase';
 
 /**
  * Minimal mock EventSource that tracks addEventListener/removeEventListener.
@@ -41,7 +41,7 @@ function createMockEventSource() {
     return es;
 }
 
-describe('usePipelinePhase', () => {
+describe('useWorkflowPhase', () => {
     beforeEach(() => {
         vi.useFakeTimers();
     });
@@ -51,7 +51,7 @@ describe('usePipelinePhase', () => {
     });
 
     it('returns empty state when eventSource is null', () => {
-        const { result } = renderHook(() => usePipelinePhase(null, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(null, undefined));
         expect(result.current.phases.size).toBe(0);
         expect(result.current.progress).toBeNull();
         expect(result.current.disconnected).toBe(false);
@@ -60,10 +60,10 @@ describe('usePipelinePhase', () => {
 
     it('updates phase state on pipeline-phase events', () => {
         const es = createMockEventSource();
-        const { result } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         act(() => {
-            es._emit('pipeline-phase', { phase: 'input', status: 'started' });
+            es._emit('workflow-phase', { phase: 'input', status: 'started' });
         });
 
         expect(result.current.phases.size).toBe(1);
@@ -71,7 +71,7 @@ describe('usePipelinePhase', () => {
         expect(result.current.phases.get('input')?.startedAt).toBeDefined();
 
         act(() => {
-            es._emit('pipeline-phase', { phase: 'input', status: 'completed', durationMs: 100 });
+            es._emit('workflow-phase', { phase: 'input', status: 'completed', durationMs: 100 });
         });
 
         expect(result.current.phases.get('input')?.status).toBe('completed');
@@ -81,10 +81,10 @@ describe('usePipelinePhase', () => {
 
     it('updates progress state on pipeline-progress events', () => {
         const es = createMockEventSource();
-        const { result } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         act(() => {
-            es._emit('pipeline-progress', {
+            es._emit('workflow-progress', {
                 completedItems: 5,
                 failedItems: 1,
                 totalItems: 10,
@@ -102,12 +102,12 @@ describe('usePipelinePhase', () => {
 
     it('throttles progress events at 250ms', () => {
         const es = createMockEventSource();
-        const { result } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         // First progress event — applied immediately
         act(() => {
             vi.setSystemTime(1000);
-            es._emit('pipeline-progress', {
+            es._emit('workflow-progress', {
                 completedItems: 1,
                 failedItems: 0,
                 totalItems: 10,
@@ -119,7 +119,7 @@ describe('usePipelinePhase', () => {
         // Second event 100ms later — should be throttled (not applied yet)
         act(() => {
             vi.setSystemTime(1100);
-            es._emit('pipeline-progress', {
+            es._emit('workflow-progress', {
                 completedItems: 2,
                 failedItems: 0,
                 totalItems: 10,
@@ -137,7 +137,7 @@ describe('usePipelinePhase', () => {
 
     it('sets disconnected on EventSource error', () => {
         const es = createMockEventSource();
-        const { result } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         expect(result.current.disconnected).toBe(false);
 
@@ -150,27 +150,27 @@ describe('usePipelinePhase', () => {
 
     it('cleans up listeners on unmount', () => {
         const es = createMockEventSource();
-        const { unmount } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { unmount } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
-        expect(es._listenerCount('pipeline-phase')).toBe(1);
-        expect(es._listenerCount('pipeline-progress')).toBe(1);
+        expect(es._listenerCount('workflow-phase')).toBe(1);
+        expect(es._listenerCount('workflow-progress')).toBe(1);
         expect(es._listenerCount('error')).toBe(1);
 
         unmount();
 
         expect(es.removeEventListener).toHaveBeenCalledTimes(3);
-        expect(es._listenerCount('pipeline-phase')).toBe(0);
-        expect(es._listenerCount('pipeline-progress')).toBe(0);
+        expect(es._listenerCount('workflow-phase')).toBe(0);
+        expect(es._listenerCount('workflow-progress')).toBe(0);
         expect(es._listenerCount('error')).toBe(0);
     });
 
     it('builds DAGChartData from live phases', () => {
         const es = createMockEventSource();
-        const { result } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         act(() => {
-            es._emit('pipeline-phase', { phase: 'input', status: 'completed', durationMs: 50 });
-            es._emit('pipeline-phase', { phase: 'map', status: 'started' });
+            es._emit('workflow-phase', { phase: 'input', status: 'completed', durationMs: 50 });
+            es._emit('workflow-phase', { phase: 'map', status: 'started' });
         });
 
         expect(result.current.dagData).not.toBeNull();
@@ -186,7 +186,7 @@ describe('usePipelinePhase', () => {
     it('resets disconnected when eventSource changes', () => {
         const es1 = createMockEventSource();
         const { result, rerender } = renderHook(
-            ({ es }) => usePipelinePhase(es as any, undefined),
+            ({ es }) => useWorkflowPhase(es as any, undefined),
             { initialProps: { es: es1 } },
         );
 
@@ -202,11 +202,11 @@ describe('usePipelinePhase', () => {
 
     it('preserves startedAt across status updates', () => {
         const es = createMockEventSource();
-        const { result } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         act(() => {
             vi.setSystemTime(5000);
-            es._emit('pipeline-phase', { phase: 'map', status: 'started' });
+            es._emit('workflow-phase', { phase: 'map', status: 'started' });
         });
 
         const startedAt = result.current.phases.get('map')?.startedAt;
@@ -214,7 +214,7 @@ describe('usePipelinePhase', () => {
 
         act(() => {
             vi.setSystemTime(8000);
-            es._emit('pipeline-phase', { phase: 'map', status: 'completed', durationMs: 3000 });
+            es._emit('workflow-phase', { phase: 'map', status: 'completed', durationMs: 3000 });
         });
 
         // startedAt should be preserved from the started event
@@ -224,11 +224,11 @@ describe('usePipelinePhase', () => {
 
     it('handles parse errors gracefully', () => {
         const es = createMockEventSource();
-        const { result } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { result } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         // Simulate a bad event — should not throw
         const listeners = (es as any).addEventListener.mock.calls;
-        const phaseHandler = listeners.find((c: any[]) => c[0] === 'pipeline-phase')?.[1];
+        const phaseHandler = listeners.find((c: any[]) => c[0] === 'workflow-phase')?.[1];
         expect(phaseHandler).toBeDefined();
 
         act(() => {
@@ -240,16 +240,16 @@ describe('usePipelinePhase', () => {
 
     it('clears pending throttle timeout on unmount', () => {
         const es = createMockEventSource();
-        const { unmount } = renderHook(() => usePipelinePhase(es as any, undefined));
+        const { unmount } = renderHook(() => useWorkflowPhase(es as any, undefined));
 
         // Emit first, then second quickly to set up a pending timeout
         act(() => {
             vi.setSystemTime(1000);
-            es._emit('pipeline-progress', { completedItems: 1, failedItems: 0, totalItems: 10, percentage: 10 });
+            es._emit('workflow-progress', { completedItems: 1, failedItems: 0, totalItems: 10, percentage: 10 });
         });
         act(() => {
             vi.setSystemTime(1100);
-            es._emit('pipeline-progress', { completedItems: 2, failedItems: 0, totalItems: 10, percentage: 20 });
+            es._emit('workflow-progress', { completedItems: 2, failedItems: 0, totalItems: 10, percentage: 20 });
         });
 
         // Unmount before the timeout fires

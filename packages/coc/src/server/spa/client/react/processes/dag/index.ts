@@ -1,10 +1,10 @@
-export { PipelineDAGSection } from './PipelineDAGSection';
-export { PipelineDAGChart } from './PipelineDAGChart';
-export { PipelinePhasePopover } from './PipelinePhasePopover';
+export { WorkflowDAGSection } from './WorkflowDAGSection';
+export { WorkflowDAGChart } from './WorkflowDAGChart';
+export { WorkflowPhasePopover } from './WorkflowPhasePopover';
 export { DAGHoverTooltip } from './DAGHoverTooltip';
 export { buildDAGData, buildDAGDataFromLive } from './buildDAGData';
 export type { DAGNodeState, DAGNodeData, DAGChartData, ChildProcessSummary, MapItemGridData } from './types';
-export type { PhaseDetail } from './PipelinePhasePopover';
+export type { PhaseDetail } from './WorkflowPhasePopover';
 export { DAGLegend } from './DAGLegend';
 export { DAGBreadcrumb } from './DAGBreadcrumb';
 export { DAGEdgeLabel } from './DAGEdgeLabel';

@@ -35,7 +35,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'tasks', 'chat', 'queue', 'pipelines', 'schedules', 'copilot']);
+        expect(keys).toEqual(['info', 'git', 'tasks', 'chat', 'queue', 'workflows', 'schedules', 'copilot']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {

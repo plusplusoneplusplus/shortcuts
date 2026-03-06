@@ -1,7 +1,7 @@
 /**
  * Tests for RepoQueueTab split-panel layout.
  *
- * Verifies that the Queue tab uses a split-panel layout (matching PipelinesTab)
+ * Verifies that the Queue tab uses a split-panel layout (matching WorkflowsTab)
  * with:
  *   - Left panel: task list with selected state highlighting
  *   - Right panel: QueueTaskDetail or empty placeholder
@@ -29,7 +29,7 @@ describe('RepoQueueTab split-panel layout', () => {
     });
 
     describe('split-panel container', () => {
-        it('uses flex h-full overflow-hidden layout (matching PipelinesTab pattern)', () => {
+        it('uses flex h-full overflow-hidden layout (matching WorkflowsTab pattern)', () => {
             expect(source).toContain('flex h-full overflow-hidden');
         });
 

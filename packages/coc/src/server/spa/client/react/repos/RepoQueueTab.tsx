@@ -14,7 +14,7 @@ import { formatDuration, statusIcon, formatRelativeTime } from '../utils/format'
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import { usePipelineProgress } from '../hooks/usePipelineProgress';
+import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 
 interface RepoQueueTabProps {
     workspaceId: string;
@@ -23,7 +23,7 @@ interface RepoQueueTabProps {
 /** Primary task types surfaced as individual filter options. */
 const TASK_TYPE_LABELS: Record<string, string> = {
     'follow-prompt': 'Follow Prompt',
-    'run-pipeline': 'Run Workflow',
+    'run-workflow': 'Run Workflow',
     'code-review': 'Code Review',
     'chat': 'Chat',
     'custom': 'Custom',
@@ -164,7 +164,7 @@ export function RepoQueueTab({ workspaceId }: RepoQueueTabProps) {
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chat/' + encodeURIComponent(sessionId);
             return;
         }
-        if (task?.type === 'run-pipeline') {
+        if (task?.type === 'run-workflow') {
             const processId = task.processId || task.id;
             location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
             return;
@@ -605,7 +605,7 @@ function getTaskTypeIcon(task: any): string {
     if (type === 'code-review') return '🔍';
     if (type === 'resolve-comments') return '💬';
     if (type === 'ai-clarification') return '💡';
-    if (type === 'run-pipeline') return '▶️';
+    if (type === 'run-workflow') return '▶️';
     return '🤖';
 }
 
@@ -627,8 +627,8 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
     const name = task.displayName || task.type || 'Task';
     const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
-    const showProgress = task.type === 'run-pipeline' && status === 'running';
-    const progress = usePipelineProgress(showProgress ? (task.processId || task.id) : null);
+    const showProgress = task.type === 'run-workflow' && status === 'running';
+    const progress = useWorkflowProgress(showProgress ? (task.processId || task.id) : null);
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());
@@ -653,7 +653,7 @@ function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: 
                 <div className="text-[10px] text-[#848484] mt-0.5 truncate">{promptPreview}</div>
             )}
             {showProgress && progress && progress.total > 0 && (
-                <div className="mt-1" data-testid="pipeline-progress-indicator">
+                <div className="mt-1" data-testid="workflow-progress-indicator">
                     <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff]">
                         ▶ Map: {progress.completed}/{progress.total}
                     </div>

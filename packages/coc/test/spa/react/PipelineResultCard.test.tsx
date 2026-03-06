@@ -1,10 +1,10 @@
 /**
- * Tests for PipelineResultCard — rendering pipeline-specific result content.
+ * Tests for WorkflowResultCard — rendering pipeline-specific result content.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { PipelineResultCard } from '../../../src/server/spa/client/react/processes/PipelineResultCard';
+import { WorkflowResultCard } from '../../../src/server/spa/client/react/processes/WorkflowResultCard';
 
 // Mock MarkdownView
 vi.mock('../../../src/server/spa/client/react/processes/MarkdownView', () => ({
@@ -42,23 +42,23 @@ function makeProcess(overrides: Record<string, any> = {}) {
     };
 }
 
-describe('PipelineResultCard', () => {
+describe('WorkflowResultCard', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
 
     it('renders pipeline name from metadata', () => {
-        render(<PipelineResultCard process={makeProcess()} />);
+        render(<WorkflowResultCard process={makeProcess()} />);
         expect(screen.getByText('Bug Triage')).toBeDefined();
     });
 
     it('renders fallback title when pipelineName is missing', () => {
-        render(<PipelineResultCard process={makeProcess({ metadata: {} })} />);
+        render(<WorkflowResultCard process={makeProcess({ metadata: {} })} />);
         expect(screen.getByText('Workflow Execution')).toBeDefined();
     });
 
     it('renders execution stats grid when executionStats present', () => {
-        render(<PipelineResultCard process={makeProcess()} />);
+        render(<WorkflowResultCard process={makeProcess()} />);
         const statsGrid = screen.getByTestId('stats-grid');
         expect(statsGrid).toBeDefined();
         expect(statsGrid.textContent).toContain('10');
@@ -68,19 +68,19 @@ describe('PipelineResultCard', () => {
     });
 
     it('hides stats grid when executionStats is missing', () => {
-        render(<PipelineResultCard process={makeProcess({ metadata: { pipelineName: 'Test' } })} />);
+        render(<WorkflowResultCard process={makeProcess({ metadata: { pipelineName: 'Test' } })} />);
         expect(screen.queryByTestId('stats-grid')).toBeNull();
     });
 
     it('renders result content via MarkdownView', () => {
-        render(<PipelineResultCard process={makeProcess()} />);
+        render(<WorkflowResultCard process={makeProcess()} />);
         const mdView = screen.getByTestId('markdown-view');
         expect(mdView).toBeDefined();
         expect(mdView.innerHTML).toContain('Hello World');
     });
 
     it('renders placeholder when result is empty', () => {
-        render(<PipelineResultCard process={makeProcess({ result: '' })} />);
+        render(<WorkflowResultCard process={makeProcess({ result: '' })} />);
         expect(screen.getByText('No output available.')).toBeDefined();
     });
 
@@ -88,14 +88,14 @@ describe('PipelineResultCard', () => {
         const writeText = vi.fn().mockResolvedValue(undefined);
         Object.assign(navigator, { clipboard: { writeText } });
 
-        render(<PipelineResultCard process={makeProcess()} />);
+        render(<WorkflowResultCard process={makeProcess()} />);
         const copyBtn = screen.getByTestId('copy-result-btn');
         fireEvent.click(copyBtn);
         expect(writeText).toHaveBeenCalledWith('# Hello World');
     });
 
     it('renders status badge', () => {
-        const { container } = render(<PipelineResultCard process={makeProcess()} />);
+        const { container } = render(<WorkflowResultCard process={makeProcess()} />);
         // Badge renders the status text by default
         const badges = container.querySelectorAll('span');
         const badgeTexts = Array.from(badges).map(b => b.textContent);
@@ -103,12 +103,12 @@ describe('PipelineResultCard', () => {
     });
 
     it('does not render copy button when result is empty', () => {
-        render(<PipelineResultCard process={makeProcess({ result: '' })} />);
+        render(<WorkflowResultCard process={makeProcess({ result: '' })} />);
         expect(screen.queryByTestId('copy-result-btn')).toBeNull();
     });
 
     it('renders duration in header', () => {
-        const { container } = render(<PipelineResultCard process={makeProcess()} />);
+        const { container } = render(<WorkflowResultCard process={makeProcess()} />);
         expect(container.textContent).toContain('5s');
     });
 
@@ -119,7 +119,7 @@ describe('PipelineResultCard', () => {
                 executionStats: { totalItems: 5, successfulMaps: 5, failedMaps: 0 },
             },
         });
-        render(<PipelineResultCard process={proc} />);
+        render(<WorkflowResultCard process={proc} />);
         const statsGrid = screen.getByTestId('stats-grid');
         expect(statsGrid.textContent).toContain('100%');
     });

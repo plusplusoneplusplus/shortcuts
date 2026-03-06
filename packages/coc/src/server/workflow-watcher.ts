@@ -1,8 +1,8 @@
 /**
- * Pipeline Watcher
+ * Workflow Watcher
  *
- * Watches `.vscode/pipelines/` directories for registered workspaces and
- * fires a debounced callback when pipeline files change.  Uses Node.js
+ * Watches `.vscode/workflows/` directories for registered workspaces and
+ * fires a debounced callback when workflow files change.  Uses Node.js
  * built-in `fs.watch` with the `recursive` option (supported natively
  * on macOS and Windows; on Linux requires Node 19+).
  *
@@ -18,25 +18,25 @@ import * as path from 'path';
 // Types
 // ============================================================================
 
-export type PipelinesChangedCallback = (workspaceId: string) => void;
+export type WorkflowsChangedCallback = (workspaceId: string) => void;
 
 // ============================================================================
-// PipelineWatcher
+// WorkflowWatcher
 // ============================================================================
 
 const DEBOUNCE_MS = 300;
 
-export class PipelineWatcher {
+export class WorkflowWatcher {
     private watchers = new Map<string, fs.FSWatcher>();
     private timers = new Map<string, ReturnType<typeof setTimeout>>();
-    private onPipelinesChanged: PipelinesChangedCallback;
+    private onWorkflowsChanged: WorkflowsChangedCallback;
 
-    constructor(onPipelinesChanged: PipelinesChangedCallback) {
-        this.onPipelinesChanged = onPipelinesChanged;
+    constructor(onWorkflowsChanged: WorkflowsChangedCallback) {
+        this.onWorkflowsChanged = onWorkflowsChanged;
     }
 
     /**
-     * Start watching a workspace's `.vscode/pipelines/` directory.
+     * Start watching a workspace's `.vscode/workflows/` directory.
      * No-ops gracefully if the directory does not exist.
      */
     watchWorkspace(workspaceId: string, rootPath: string): void {
@@ -44,7 +44,7 @@ export class PipelineWatcher {
             return;
         }
 
-        const pipelinesDir = path.join(rootPath, '.vscode', 'pipelines');
+        const pipelinesDir = path.join(rootPath, '.vscode', 'workflows');
 
         try {
             const stat = fs.statSync(pipelinesDir);
@@ -71,7 +71,7 @@ export class PipelineWatcher {
     }
 
     /**
-     * Stop watching a workspace's pipelines directory.
+     * Stop watching a workspace's workflows directory.
      */
     unwatchWorkspace(workspaceId: string): void {
         this.cleanupWatcher(workspaceId);
@@ -106,7 +106,7 @@ export class PipelineWatcher {
         const timer = setTimeout(() => {
             this.timers.delete(workspaceId);
             if (this.watchers.has(workspaceId)) {
-                this.onPipelinesChanged(workspaceId);
+                this.onWorkflowsChanged(workspaceId);
             }
         }, DEBOUNCE_MS);
 

@@ -1,15 +1,15 @@
 /**
- * PipelineDAGPreview — parses pipeline YAML and renders a static DAG preview.
+ * WorkflowDAGPreview — parses pipeline YAML and renders a static DAG preview.
  * Supports both linear pipelines (input→map→reduce) and workflow DAGs (nodes with from).
  */
 
 import { useMemo, useState } from 'react';
-import { PipelineDAGChart } from '../processes/dag';
+import { WorkflowDAGChart as LinearDAGChart } from '../processes/dag';
 import { DAGLegend } from '../processes/dag/DAGLegend';
 import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildPreviewDAG } from './buildPreviewDAG';
 
-export interface PipelineDAGPreviewProps {
+export interface WorkflowDAGPreviewProps {
     yamlContent: string;
     /** Pipeline validation errors to display as pins on DAG nodes */
     validationErrors?: string[];
@@ -22,7 +22,7 @@ function detectDarkMode(): boolean {
     return false;
 }
 
-export function PipelineDAGPreview({ yamlContent, validationErrors }: PipelineDAGPreviewProps) {
+export function WorkflowDAGPreview({ yamlContent, validationErrors }: WorkflowDAGPreviewProps) {
     const [expanded, setExpanded] = useState(true);
     const isDark = detectDarkMode();
 
@@ -31,7 +31,7 @@ export function PipelineDAGPreview({ yamlContent, validationErrors }: PipelineDA
     if (!result) return null;
 
     return (
-        <div data-testid="pipeline-dag-preview" className="mb-3">
+        <div data-testid="workflow-dag-preview" className="mb-3">
             <div
                 className="flex items-center gap-2 py-2 cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]"
                 onClick={() => setExpanded(prev => !prev)}
@@ -43,7 +43,7 @@ export function PipelineDAGPreview({ yamlContent, validationErrors }: PipelineDA
                 <div className="py-2">
                     {result.type === 'linear' ? (
                         <>
-                            <PipelineDAGChart data={result.data} isDark={isDark} pipelineConfig={result.config} validationErrors={validationErrors} previewMode />
+                            <LinearDAGChart data={result.data} isDark={isDark} pipelineConfig={result.config} validationErrors={validationErrors} previewMode />
                             <DAGLegend isDark={isDark} />
                         </>
                     ) : (

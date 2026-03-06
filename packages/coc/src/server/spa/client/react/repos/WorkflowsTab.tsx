@@ -1,35 +1,35 @@
 /**
- * PipelinesTab — two-panel layout: left list + right detail/placeholder.
+ * WorkflowsTab — two-panel layout: left list + right detail/placeholder.
  */
 
 import { useState } from 'react';
 import { Button } from '../shared';
 import { useApp } from '../context/AppContext';
-import type { RepoData, PipelineInfo } from './repoGrouping';
-import { PipelineDetail } from './PipelineDetail';
-import { AddPipelineDialog } from './AddPipelineDialog';
+import type { RepoData, WorkflowInfo } from './repoGrouping';
+import { WorkflowDetail } from './WorkflowDetail';
+import { AddWorkflowDialog } from './AddWorkflowDialog';
 
-interface PipelinesTabProps {
+interface WorkflowsTabProps {
     repo: RepoData;
 }
 
-export function PipelinesTab({ repo }: PipelinesTabProps) {
+export function WorkflowsTab({ repo }: WorkflowsTabProps) {
     const { state, dispatch } = useApp();
-    const pipelines = repo.pipelines || [];
+    const pipelines = repo.workflows || [];
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
-    const selectedPipeline: PipelineInfo | null =
-        pipelines.find(p => p.name === state.selectedPipelineName) ?? null;
+    const selectedPipeline: WorkflowInfo | null =
+        pipelines.find(p => p.name === state.selectedWorkflowName) ?? null;
 
-    const handleSelect = (p: PipelineInfo) => {
-        dispatch({ type: 'SET_SELECTED_PIPELINE', name: p.name });
-        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/pipelines/' + encodeURIComponent(p.name);
+    const handleSelect = (p: WorkflowInfo) => {
+        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: p.name });
+        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/workflows/' + encodeURIComponent(p.name);
     };
 
     const handleClose = () => {
-        dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
-        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/pipelines';
+        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+        location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/workflows';
     };
 
     const handleDeleted = () => {
@@ -55,28 +55,28 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
                         <div className="text-2xl mb-2">📋</div>
                         <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">No workflows found</div>
                         <div className="text-xs text-[#848484] mt-1">
-                            Create your first workflow by describing what it should do, or add YAML files to .vscode/pipelines/.
+                            Create your first workflow by describing what it should do, or add YAML files to .vscode/workflows/.
                         </div>
                     </div>
                 ) : (
-                    <ul className="repo-pipeline-list px-4 pb-4 flex flex-col gap-1 overflow-y-auto">
+                    <ul className="repo-workflow-list px-4 pb-4 flex flex-col gap-1 overflow-y-auto">
                         {pipelines.map(p => {
-                            const isActive = p.name === state.selectedPipelineName;
+                            const isActive = p.name === state.selectedWorkflowName;
                             return (
                                 <li
                                     key={p.name}
                                     className={
-                                        'repo-pipeline-item flex items-center justify-between gap-2 py-1.5 px-2 rounded cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
+                                        'repo-workflow-item flex items-center justify-between gap-2 py-1.5 px-2 rounded cursor-pointer hover:bg-[#e8e8e8] dark:hover:bg-[#333]'
                                         + (isActive ? ' bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]' : '')
                                     }
                                     role="option"
                                     aria-selected={isActive}
                                     onClick={() => handleSelect(p)}
                                 >
-                                    <span className={'pipeline-name text-sm text-[#1e1e1e] dark:text-[#cccccc]' + (isActive ? ' font-medium' : '')}>
+                                    <span className={'workflow-name text-sm text-[#1e1e1e] dark:text-[#cccccc]' + (isActive ? ' font-medium' : '')}>
                                         📋 {p.name}
                                     </span>
-                                    <span className="repo-pipeline-actions shrink-0" onClick={e => e.stopPropagation()}>
+                                    <span className="repo-workflow-actions shrink-0" onClick={e => e.stopPropagation()}>
                                         <Button variant="secondary" size="sm" className="action-btn" onClick={() => handleSelect(p)}>View</Button>
                                     </span>
                                 </li>
@@ -89,7 +89,7 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
             {/* Right panel — detail or placeholder */}
             <div className="flex-1 min-w-0 overflow-hidden">
                 {selectedPipeline ? (
-                    <PipelineDetail
+                    <WorkflowDetail
                         workspaceId={repo.workspace.id}
                         pipeline={selectedPipeline}
                         onClose={handleClose}
@@ -105,13 +105,13 @@ export function PipelinesTab({ repo }: PipelinesTabProps) {
             </div>
 
             {showAddDialog && (
-                <AddPipelineDialog
+                <AddWorkflowDialog
                     workspaceId={repo.workspace.id}
                     onCreated={(createdName?: string) => {
                         setShowAddDialog(false);
                         if (createdName) {
-                            dispatch({ type: 'SET_SELECTED_PIPELINE', name: createdName });
-                            location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/pipelines/' + encodeURIComponent(createdName);
+                            dispatch({ type: 'SET_SELECTED_WORKFLOW', name: createdName });
+                            location.hash = '#repos/' + encodeURIComponent(repo.workspace.id) + '/workflows/' + encodeURIComponent(createdName);
                         }
                     }}
                     onClose={() => setShowAddDialog(false)}

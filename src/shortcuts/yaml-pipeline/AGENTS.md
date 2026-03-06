@@ -13,7 +13,7 @@ The core execution functionality has been extracted to `packages/pipeline-core/s
 Pipelines are organized as **packages** - directories containing a `pipeline.yaml` file and related resources:
 
 ```
-.vscode/pipelines/
+.vscode/workflows/
 ├── run-tests/                  # Pipeline package
 │   ├── pipeline.yaml           # Standard entry point (required)
 │   ├── input.csv               # Data file referenced in pipeline
@@ -33,17 +33,17 @@ Pipelines are organized as **packages** - directories containing a `pipeline.yam
 
 ### Key Concepts
 
-1. **Package Directory**: Each subdirectory in `.vscode/pipelines/` with a `pipeline.yaml` or `pipeline.yml` is a pipeline package
+1. **Package Directory**: Each subdirectory in `.vscode/workflows/` with a `pipeline.yaml` or `pipeline.yml` is a pipeline package
 2. **Entry Point**: Only `pipeline.yaml` or `pipeline.yml` is recognized as the pipeline definition
 3. **Relative Paths**: All paths in `pipeline.yaml` are resolved relative to the package directory
 4. **Shared Resources**: Use `../shared/file.csv` to reference shared resources across packages
 
 ### Path Resolution Examples
 
-Given package at `.vscode/pipelines/run-tests/`:
-- `path: "input.csv"` → `.vscode/pipelines/run-tests/input.csv`
-- `path: "data/files.csv"` → `.vscode/pipelines/run-tests/data/files.csv`
-- `path: "../shared/common.csv"` → `.vscode/pipelines/shared/common.csv`
+Given package at `.vscode/workflows/run-tests/`:
+- `path: "input.csv"` → `.vscode/workflows/run-tests/input.csv`
+- `path: "data/files.csv"` → `.vscode/workflows/run-tests/data/files.csv`
+- `path: "../shared/common.csv"` → `.vscode/workflows/shared/common.csv`
 
 ## Architecture Overview
 
@@ -112,7 +112,7 @@ import { executePipeline, parsePipelineYAML } from '../yaml-pipeline';
 
 // Execute pipeline from a package
 // pipelineDirectory is the package folder containing pipeline.yaml
-const pipelineDir = '/workspace/.vscode/pipelines/run-tests';
+const pipelineDir = '/workspace/.vscode/workflows/run-tests';
 const yamlContent = fs.readFileSync(path.join(pipelineDir, 'pipeline.yaml'), 'utf8');
 const config = await parsePipelineYAML(yamlContent);
 
@@ -376,7 +376,7 @@ Instead of inline prompts, you can store prompts in separate `.md` files for bet
 #### Prompt File Structure
 
 ```
-.vscode/pipelines/
+.vscode/workflows/
 ├── run-tests/                    # Pipeline package
 │   ├── pipeline.yaml             # Pipeline definition
 │   ├── test-suite.csv            # Input data
@@ -697,7 +697,7 @@ const { content, hadFrontmatter } = extractPromptContent(fileContent);
 ### Advanced Configuration with Shared Resources
 
 ```yaml
-# Package: .vscode/pipelines/code-review/pipeline.yaml
+# Package: .vscode/workflows/code-review/pipeline.yaml
 name: "Multi-stage Review Pipeline"
 
 input:
@@ -729,7 +729,7 @@ reduce:
 Use AI to synthesize, deduplicate, or prioritize results from the map phase.
 
 ```yaml
-# Package: .vscode/pipelines/bug-synthesis/pipeline.yaml
+# Package: .vscode/workflows/bug-synthesis/pipeline.yaml
 name: "Bug Analysis with AI Synthesis"
 
 input:
@@ -1215,9 +1215,9 @@ const pipelines = await manager.getPipelines();
 
 // Create new pipeline package
 const filePath = await manager.createPipeline('my-new-pipeline');
-// Creates: .vscode/pipelines/my-new-pipeline/
-//          .vscode/pipelines/my-new-pipeline/pipeline.yaml
-//          .vscode/pipelines/my-new-pipeline/input.csv
+// Creates: .vscode/workflows/my-new-pipeline/
+//          .vscode/workflows/my-new-pipeline/pipeline.yaml
+//          .vscode/workflows/my-new-pipeline/input.csv
 
 // Rename pipeline package
 await manager.renamePipeline(oldFilePath, 'new-name');
@@ -1268,7 +1268,7 @@ The extension ships with several pre-configured pipelines that users can copy to
 - Examples: `code-review-checklist`, `bug-triage`, `doc-generator`, `multi-agent-research`
 
 **Copy to Workspace:**
-- Users can copy bundled pipelines to `.vscode/pipelines/` via the "Copy to Workspace" command
+- Users can copy bundled pipelines to `.vscode/workflows/` via the "Copy to Workspace" command
 - Copied pipelines become editable workspace pipelines
 - Original bundled pipelines remain read-only
 
@@ -1337,7 +1337,7 @@ Pipelines Viewer
 ```
 
 - **Bundled Pipelines** category shows read-only templates shipped with the extension
-- **Workspace Pipelines** category shows editable pipelines in `.vscode/pipelines/`
+- **Workspace Pipelines** category shows editable pipelines in `.vscode/workflows/`
 - Each package can be expanded to show its resource files
 - Categories use `PipelineCategoryItem` tree items
 
@@ -1384,7 +1384,7 @@ interface PipelineInfo {
 
 ## Migration from Flat Structure
 
-If you have existing flat `.yaml` files in `.vscode/pipelines/`:
+If you have existing flat `.yaml` files in `.vscode/workflows/`:
 
 1. Create a directory for each pipeline (e.g., `my-pipeline/`)
 2. Move the `.yaml` file into the directory and rename to `pipeline.yaml`
@@ -1393,14 +1393,14 @@ If you have existing flat `.yaml` files in `.vscode/pipelines/`:
 
 **Before:**
 ```
-.vscode/pipelines/
+.vscode/workflows/
 ├── my-pipeline.yaml      # path: "../data/input.csv"
 └── other-pipeline.yaml
 ```
 
 **After:**
 ```
-.vscode/pipelines/
+.vscode/workflows/
 ├── my-pipeline/
 │   ├── pipeline.yaml     # path: "input.csv"
 │   └── input.csv

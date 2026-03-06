@@ -28,7 +28,7 @@ export type TaskType =
     | 'ai-clarification'
     | 'chat'
     | 'task-generation'
-    | 'run-pipeline'
+    | 'run-workflow'
     | 'run-script'
     | 'custom';
 
@@ -104,9 +104,9 @@ export interface TaskGenerationPayload {
     workspaceId?: string;
 }
 
-export interface RunPipelinePayload {
-    readonly kind: 'run-pipeline';
-    pipelinePath: string;
+export interface RunWorkflowPayload {
+    readonly kind: 'run-workflow';
+    workflowPath: string;
     workingDirectory: string;
     model?: string;
     params?: Record<string, string>;
@@ -137,7 +137,7 @@ export type TaskPayload =
     | AIClarificationPayload
     | ChatPayload
     | TaskGenerationPayload
-    | RunPipelinePayload
+    | RunWorkflowPayload
     | RunScriptPayload
     | CustomTaskPayload;
 
@@ -177,8 +177,8 @@ export function isTaskGenerationPayload(payload: Record<string, unknown>): paylo
     return (payload as any).kind === 'task-generation';
 }
 
-export function isRunPipelinePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunPipelinePayload {
-    return (payload as any).kind === 'run-pipeline';
+export function isRunWorkflowPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunWorkflowPayload {
+    return (payload as any).kind === 'run-workflow';
 }
 
 export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {

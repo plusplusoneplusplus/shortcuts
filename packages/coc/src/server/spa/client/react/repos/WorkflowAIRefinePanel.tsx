@@ -1,16 +1,16 @@
 /**
- * PipelineAIRefinePanel — lets users submit a natural-language instruction to
+ * WorkflowAIRefinePanel — lets users submit a natural-language instruction to
  * refine an existing pipeline YAML, tracks progress through three phases
  * (input → refining → preview), and renders the result as a unified diff.
  */
 
 import { useState, useRef } from 'react';
 import { Button, Spinner } from '../shared';
-import { refinePipeline } from './pipeline-api';
+import { refineWorkflow } from './workflow-api';
 import { UnifiedDiffViewer } from './UnifiedDiffViewer';
 import { generateUnifiedDiff } from './unifiedDiffUtils';
 
-export interface PipelineAIRefinePanelProps {
+export interface WorkflowAIRefinePanelProps {
     workspaceId: string;
     pipelineName: string;
     currentYaml: string;
@@ -20,13 +20,13 @@ export interface PipelineAIRefinePanelProps {
 
 type RefinePhase = 'input' | 'refining' | 'preview';
 
-export function PipelineAIRefinePanel({
+export function WorkflowAIRefinePanel({
     workspaceId,
     pipelineName,
     currentYaml,
     onApply,
     onCancel,
-}: PipelineAIRefinePanelProps) {
+}: WorkflowAIRefinePanelProps) {
     const [phase, setPhase] = useState<RefinePhase>('input');
     const [instruction, setInstruction] = useState('');
     const [refinedYaml, setRefinedYaml] = useState('');
@@ -46,7 +46,7 @@ export function PipelineAIRefinePanel({
         setError(null);
 
         try {
-            const result = await refinePipeline(
+            const result = await refineWorkflow(
                 workspaceId,
                 pipelineName,
                 instruction.trim(),

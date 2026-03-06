@@ -1,12 +1,12 @@
 /**
  * Tests for navigation integration (Commit 8):
- * - RepoQueueTab: run-pipeline tasks navigate to workflow view
- * - RepoQueueTab: chat/non-pipeline tasks unchanged (no regression)
- * - RepoQueueTab: mini progress indicator on running pipeline cards
- * - PipelineRunHistory: clicks navigate to workflow view
+ * - RepoQueueTab: run-workflow tasks navigate to workflow view
+ * - RepoQueueTab: chat/non-workflow tasks unchanged (no regression)
+ * - RepoQueueTab: mini progress indicator on running workflow cards
+ * - WorkflowRunHistory: clicks navigate to workflow view
  * - RepoDetail: workflow sub-tab renders WorkflowDetailView
- * - ProcessDetail: "View Workflow →" button for pipeline processes
- * - usePipelineProgress hook
+ * - ProcessDetail: "View Workflow →" button for workflow processes
+ * - useWorkflowProgress hook
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -21,7 +21,7 @@ const REPO_QUEUE_TAB_SRC = fs.readFileSync(
 );
 
 const PIPELINE_RUN_HISTORY_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'repos', 'PipelineRunHistory.tsx'),
+    path.join(SRC_ROOT, 'repos', 'WorkflowRunHistory.tsx'),
     'utf-8',
 );
 
@@ -36,27 +36,27 @@ const PROCESS_DETAIL_SRC = fs.readFileSync(
 );
 
 const USE_PIPELINE_PROGRESS_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'hooks', 'usePipelineProgress.ts'),
+    path.join(SRC_ROOT, 'hooks', 'useWorkflowProgress.ts'),
     'utf-8',
 );
 
-// ─── RepoQueueTab: selectTask run-pipeline branch ──────────────
-describe('RepoQueueTab selectTask: run-pipeline navigation', () => {
-    it('has a run-pipeline branch in selectTask that navigates to workflow', () => {
+// ─── RepoQueueTab: selectTask run-workflow branch ──────────────
+describe('RepoQueueTab selectTask: run-workflow navigation', () => {
+    it('has a run-workflow branch in selectTask that navigates to workflow', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
             REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
-        expect(handler).toContain("task?.type === 'run-pipeline'");
+        expect(handler).toContain("task?.type === 'run-workflow'");
         expect(handler).toContain('/workflow/');
     });
 
-    it('run-pipeline branch returns early before SELECT_QUEUE_TASK', () => {
+    it('run-workflow branch returns early before SELECT_QUEUE_TASK', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
             REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
-        const pipelineBranch = handler.indexOf("task?.type === 'run-pipeline'");
+        const pipelineBranch = handler.indexOf("task?.type === 'run-workflow'");
         const returnAfterPipeline = handler.indexOf('return;', pipelineBranch);
         const selectDispatch = handler.indexOf("'SELECT_QUEUE_TASK'");
         expect(returnAfterPipeline).toBeLessThan(selectDispatch);
@@ -64,32 +64,32 @@ describe('RepoQueueTab selectTask: run-pipeline navigation', () => {
 
     it('uses task.processId preferentially, falling back to task.id', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf("task?.type === 'run-pipeline'"),
-            REPO_QUEUE_TAB_SRC.indexOf('return;', REPO_QUEUE_TAB_SRC.indexOf("task?.type === 'run-pipeline'"))
+            REPO_QUEUE_TAB_SRC.indexOf("task?.type === 'run-workflow'"),
+            REPO_QUEUE_TAB_SRC.indexOf('return;', REPO_QUEUE_TAB_SRC.indexOf("task?.type === 'run-workflow'"))
         );
         expect(handler).toContain('task.processId || task.id');
     });
 });
 
-// ─── RepoQueueTab: non-pipeline tasks unchanged ────────────────
+// ─── RepoQueueTab: non-workflow tasks unchanged ────────────────
 describe('RepoQueueTab selectTask: no regression for other types', () => {
-    it('chat branch is preserved before run-pipeline', () => {
+    it('chat branch is preserved before run-workflow', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
             REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
         const chatIdx = handler.indexOf("task?.type === 'chat'");
-        const pipelineIdx = handler.indexOf("task?.type === 'run-pipeline'");
+        const pipelineIdx = handler.indexOf("task?.type === 'run-workflow'");
         expect(chatIdx).toBeGreaterThan(-1);
         expect(pipelineIdx).toBeGreaterThan(chatIdx);
     });
 
-    it('generic fallback dispatches SELECT_QUEUE_TASK after run-pipeline', () => {
+    it('generic fallback dispatches SELECT_QUEUE_TASK after run-workflow', () => {
         const handler = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
             REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
         );
-        const pipelineReturn = handler.indexOf('return;', handler.indexOf("task?.type === 'run-pipeline'"));
+        const pipelineReturn = handler.indexOf('return;', handler.indexOf("task?.type === 'run-workflow'"));
         const selectDispatch = handler.indexOf("'SELECT_QUEUE_TASK'");
         expect(selectDispatch).toBeGreaterThan(pipelineReturn);
     });
@@ -97,20 +97,20 @@ describe('RepoQueueTab selectTask: no regression for other types', () => {
 
 // ─── RepoQueueTab: mini progress indicator ─────────────────────
 describe('RepoQueueTab: mini progress indicator', () => {
-    it('imports usePipelineProgress', () => {
-        expect(REPO_QUEUE_TAB_SRC).toContain("import { usePipelineProgress } from '../hooks/usePipelineProgress'");
+    it('imports useWorkflowProgress', () => {
+        expect(REPO_QUEUE_TAB_SRC).toContain("import { useWorkflowProgress } from '../hooks/useWorkflowProgress'");
     });
 
-    it('QueueTaskItem calls usePipelineProgress for running pipeline tasks', () => {
+    it('QueueTaskItem calls useWorkflowProgress for running pipeline tasks', () => {
         const itemFn = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('function QueueTaskItem'),
         );
-        expect(itemFn).toContain("task.type === 'run-pipeline'");
-        expect(itemFn).toContain('usePipelineProgress');
+        expect(itemFn).toContain("task.type === 'run-workflow'");
+        expect(itemFn).toContain('useWorkflowProgress');
     });
 
     it('renders progress indicator with data-testid', () => {
-        expect(REPO_QUEUE_TAB_SRC).toContain('data-testid="pipeline-progress-indicator"');
+        expect(REPO_QUEUE_TAB_SRC).toContain('data-testid="workflow-progress-indicator"');
     });
 
     it('shows Map: N/M text in the progress indicator', () => {
@@ -131,15 +131,15 @@ describe('RepoQueueTab: mini progress indicator', () => {
         const itemFn = REPO_QUEUE_TAB_SRC.substring(
             REPO_QUEUE_TAB_SRC.indexOf('function QueueTaskItem'),
         );
-        expect(itemFn).toContain("task.type === 'run-pipeline' && status === 'running'");
+        expect(itemFn).toContain("task.type === 'run-workflow' && status === 'running'");
     });
 });
 
-// ─── PipelineRunHistory: workflow navigation ────────────────────
-describe('PipelineRunHistory: workflow navigation', () => {
-    it('does not import PipelineResultCard', () => {
-        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain("import { PipelineResultCard }");
-        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain("from '../processes/PipelineResultCard'");
+// ─── WorkflowRunHistory: workflow navigation ────────────────────
+describe('WorkflowRunHistory: workflow navigation', () => {
+    it('does not import WorkflowResultCard', () => {
+        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain("import { WorkflowResultCard }");
+        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain("from '../processes/WorkflowResultCard'");
     });
 
     it('does not have selectedTaskId state', () => {
@@ -150,8 +150,8 @@ describe('PipelineRunHistory: workflow navigation', () => {
         expect(PIPELINE_RUN_HISTORY_SRC).not.toContain('setSelectedProcess');
     });
 
-    it('does not render PipelineResultCard', () => {
-        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain('<PipelineResultCard');
+    it('does not render WorkflowResultCard', () => {
+        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain('<WorkflowResultCard');
     });
 
     it('handleSelectTask navigates to run view', () => {
@@ -205,7 +205,7 @@ describe('ProcessDetail: View Workflow button', () => {
     });
 
     it('button is shown for pipeline-type processes', () => {
-        expect(PROCESS_DETAIL_SRC).toContain("metadataProcess?.metadata?.pipelineName || metadataProcess?.type === 'run-pipeline'");
+        expect(PROCESS_DETAIL_SRC).toContain("metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow'");
     });
 
     it('button navigates to workflow hash with wsId and process.id', () => {
@@ -218,10 +218,10 @@ describe('ProcessDetail: View Workflow button', () => {
     });
 });
 
-// ─── usePipelineProgress hook ───────────────────────────────────
-describe('usePipelineProgress hook', () => {
-    it('exports usePipelineProgress function', () => {
-        expect(USE_PIPELINE_PROGRESS_SRC).toContain('export function usePipelineProgress');
+// ─── useWorkflowProgress hook ───────────────────────────────────
+describe('useWorkflowProgress hook', () => {
+    it('exports useWorkflowProgress function', () => {
+        expect(USE_PIPELINE_PROGRESS_SRC).toContain('export function useWorkflowProgress');
     });
 
     it('accepts processId parameter (string | null)', () => {
@@ -233,7 +233,7 @@ describe('usePipelineProgress hook', () => {
     });
 
     it('subscribes to pipeline-progress SSE events', () => {
-        expect(USE_PIPELINE_PROGRESS_SRC).toContain("'pipeline-progress'");
+        expect(USE_PIPELINE_PROGRESS_SRC).toContain("'workflow-progress'");
         expect(USE_PIPELINE_PROGRESS_SRC).toContain('EventSource');
     });
 

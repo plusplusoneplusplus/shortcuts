@@ -41,14 +41,14 @@ test.describe('Cross-Viewport Deep Links', () => {
     test('deeplinks: #repos/:id/:subTab resolves at desktop viewport', async ({ page, serverUrl }) => {
         await page.setViewportSize(DESKTOP);
         await seedWorkspace(serverUrl, 'dl-desk-ws', 'dl-desk-repo');
-        await page.goto(`${serverUrl}/#repos/dl-desk-ws/pipelines`);
+        await page.goto(`${serverUrl}/#repos/dl-desk-ws/workflows`);
 
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
 
-        // Pipelines sub-tab should be active
-        const pipelinesTab = page.locator('[data-subtab="pipelines"]');
-        if (await pipelinesTab.count() > 0) {
-            await expect(pipelinesTab).toBeVisible();
+        // Workflows sub-tab should be active
+        const workflowsTab = page.locator('[data-subtab="workflows"]');
+        if (await workflowsTab.count() > 0) {
+            await expect(workflowsTab).toBeVisible();
         }
     });
 

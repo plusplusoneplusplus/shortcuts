@@ -23,8 +23,8 @@ import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
  *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, result }
  *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, error }
  *   event: permission-request → { turnIndex, permissionId, kind, description }
- *   event: pipeline-phase    → { phase, status, timestamp, durationMs?, error?, itemCount? }
- *   event: pipeline-progress → { phase, totalItems, completedItems, failedItems, percentage, message? }
+ *   event: workflow-phase    → { phase, status, timestamp, durationMs?, error?, itemCount? }
+ *   event: workflow-progress → { phase, totalItems, completedItems, failedItems, percentage, message? }
  *   event: item-process     → { itemIndex, processId, status, phase, itemLabel?, error? }
  *   event: suggestions       → { suggestions: string[], turnIndex: number }
  *   event: status             → { status, result?, error?, duration? }
@@ -118,9 +118,9 @@ export async function handleProcessStream(
                 description: event.description,
             });
         } else if (event.type === 'pipeline-phase') {
-            sendEvent(res, 'pipeline-phase', event.pipelinePhase);
+            sendEvent(res, 'workflow-phase', event.pipelinePhase);
         } else if (event.type === 'pipeline-progress') {
-            sendEvent(res, 'pipeline-progress', event.pipelineProgress);
+            sendEvent(res, 'workflow-progress', event.pipelineProgress);
         } else if (event.type === 'item-process') {
             sendEvent(res, 'item-process', event.itemProcess);
         } else if (event.type === 'suggestions') {

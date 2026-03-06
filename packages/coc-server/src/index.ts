@@ -114,7 +114,7 @@ export {
     type AIClarificationPayload,
     type ChatPayload,
     type TaskGenerationPayload,
-    type RunPipelinePayload,
+    type RunWorkflowPayload,
     type RunScriptPayload,
     type CustomTaskPayload,
     type TaskPayload,
@@ -125,7 +125,7 @@ export {
     isChatFollowUp,
     isCustomTaskPayload,
     isTaskGenerationPayload,
-    isRunPipelinePayload,
+    isRunWorkflowPayload,
     isRunScriptPayload,
 } from './task-types';
 

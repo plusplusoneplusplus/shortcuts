@@ -1,10 +1,10 @@
 /**
- * Pipelines Generate Handler Tests
+ * Workflows Generate Handler Tests
  *
  * Tests for:
  * - extractYamlFromResponse utility function
- * - POST /api/workspaces/:id/pipelines/generate (AI pipeline generation)
- * - POST /api/workspaces/:id/pipelines with optional content field
+ * - POST /api/workspaces/:id/workflows/generate (AI workflow generation)
+ * - POST /api/workspaces/:id/workflows with optional content field
  *
  * Uses port 0 (OS-assigned) for test isolation.
  * Mocks getCopilotSDKService to avoid real AI calls.
@@ -19,7 +19,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import { extractYamlFromResponse } from '../../src/server/pipelines-handler';
+import { extractYamlFromResponse } from '../../src/server/workflows-handler';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // ============================================================================
@@ -113,7 +113,7 @@ describe('extractYamlFromResponse', () => {
 // Integration tests — Generate endpoint & Create with content
 // ============================================================================
 
-describe('Pipelines Generate Handler', () => {
+describe('Workflows Generate Handler', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
@@ -177,17 +177,17 @@ describe('Pipelines Generate Handler', () => {
     }
 
     // ========================================================================
-    // POST /api/workspaces/:id/pipelines/generate
+    // POST /api/workspaces/:id/workflows/generate
     // ========================================================================
 
-    describe('POST /api/workspaces/:id/pipelines/generate', () => {
+    describe('POST /api/workspaces/:id/workflows/generate', () => {
         it('should generate pipeline YAML — happy path', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
             const yamlResponse = 'name: "Bug Classifier"\ninput:\n  type: csv\n  path: "bugs.csv"\nmap:\n  prompt: "Classify: {{title}}"\n  output:\n    - category\nreduce:\n  type: json';
             configureMockAI({ response: yamlResponse });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs by category',
             });
             expect(res.status).toBe(200);
@@ -206,7 +206,7 @@ describe('Pipelines Generate Handler', () => {
             const fencedResponse = 'Here is the pipeline:\n```yaml\n' + innerYaml + '\n```\nDone!';
             configureMockAI({ response: fencedResponse });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'test pipeline',
             });
             expect(res.status).toBe(200);
@@ -221,7 +221,7 @@ describe('Pipelines Generate Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {});
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {});
             expect(res.status).toBe(400);
             const data = JSON.parse(res.body);
             expect(data.error).toContain('description');
@@ -231,7 +231,7 @@ describe('Pipelines Generate Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: '   ',
             });
             expect(res.status).toBe(400);
@@ -242,7 +242,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ available: false });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs',
             });
             expect(res.status).toBe(503);
@@ -253,7 +253,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ success: false, error: 'Model overloaded' });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs',
             });
             expect(res.status).toBe(500);
@@ -266,7 +266,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ response: 'This is not YAML: {{[invalid' });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs',
             });
             expect(res.status).toBe(200);
@@ -280,7 +280,7 @@ describe('Pipelines Generate Handler', () => {
         it('should return 404 for non-existent workspace', async () => {
             const srv = await startServer();
 
-            const res = await postJSON(`${srv.url}/api/workspaces/nonexistent/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/nonexistent/workflows/generate`, {
                 description: 'classify bugs',
             });
             expect(res.status).toBe(404);
@@ -291,7 +291,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ throwError: new Error('Request timeout exceeded') });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs',
             });
             expect(res.status).toBe(504);
@@ -302,7 +302,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             const mockService = configureMockAI({});
 
-            await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs',
                 model: 'gpt-4',
             });
@@ -317,13 +317,13 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             const mockService = configureMockAI({});
 
-            await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs',
             });
 
             const callArgs = mockService.sendMessage.mock.calls[0][0];
             expect(callArgs.onPermissionRequest).toBeDefined();
-            expect(callArgs.prompt).toContain('pipeline YAML generator');
+            expect(callArgs.prompt).toContain('workflow YAML generator');
             expect(callArgs.prompt).toContain('classify bugs');
         });
 
@@ -333,7 +333,7 @@ describe('Pipelines Generate Handler', () => {
             const yamlResponse = 'name: "Bug Classifier"\ninput:\n  type: csv\n  path: "bugs.csv"\nmap:\n  prompt: "Classify: {{title}}"\n  output:\n    - category\nreduce:\n  type: json';
             configureMockAI({ response: yamlResponse });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs by category',
             });
             expect(res.status).toBe(200);
@@ -348,7 +348,7 @@ describe('Pipelines Generate Handler', () => {
             const yamlResponse = 'name: "My Cool Pipeline!"\ninput:\n  type: csv\n  path: "in.csv"\nmap:\n  prompt: "Go"\n  output:\n    - r\nreduce:\n  type: json';
             configureMockAI({ response: yamlResponse });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'test pipeline',
             });
             const data = JSON.parse(res.body);
@@ -360,7 +360,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({ response: 'input:\n  type: csv\n  path: "in.csv"' });
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'test pipeline',
             });
             const data = JSON.parse(res.body);
@@ -372,7 +372,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             configureMockAI({});
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs by category',
             });
             expect(res.status).toBe(200);
@@ -386,7 +386,7 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
             const mockService = configureMockAI({});
 
-            await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines/generate`, {
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows/generate`, {
                 description: 'classify bugs',
             });
 
@@ -399,13 +399,13 @@ describe('Pipelines Generate Handler', () => {
     // POST /api/workspaces/:id/pipelines — Create with content
     // ========================================================================
 
-    describe('POST /api/workspaces/:id/pipelines (content field)', () => {
+    describe('POST /api/workspaces/:id/workflows (content field)', () => {
         it('should create pipeline with provided content', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const customYaml = 'name: "Custom"\ninput:\n  type: csv\n  path: "data.csv"\nmap:\n  prompt: "Go"\n  output:\n    - result\nreduce:\n  type: json';
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'content-pipe',
                 content: customYaml,
             });
@@ -416,7 +416,7 @@ describe('Pipelines Generate Handler', () => {
             expect(data.template).toBe('custom');
 
             // Verify file on disk contains provided content
-            const yamlPath = path.join(workspaceDir, '.vscode', 'pipelines', 'content-pipe', 'pipeline.yaml');
+            const yamlPath = path.join(workspaceDir, '.vscode', 'workflows', 'content-pipe', 'pipeline.yaml');
             expect(fs.existsSync(yamlPath)).toBe(true);
             expect(fs.readFileSync(yamlPath, 'utf-8')).toBe(customYaml);
         });
@@ -425,7 +425,7 @@ describe('Pipelines Generate Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'bad-content-pipe',
                 content: '{ bad: [yaml:',
             });
@@ -438,7 +438,7 @@ describe('Pipelines Generate Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'template-pipe',
                 template: 'custom',
             });
@@ -448,16 +448,16 @@ describe('Pipelines Generate Handler', () => {
             expect(data.template).toBe('custom');
 
             // Verify it used the template, not empty content
-            const yamlPath = path.join(workspaceDir, '.vscode', 'pipelines', 'template-pipe', 'pipeline.yaml');
+            const yamlPath = path.join(workspaceDir, '.vscode', 'workflows', 'template-pipe', 'pipeline.yaml');
             const content = fs.readFileSync(yamlPath, 'utf-8');
-            expect(content).toContain('name: "My Pipeline"');
+            expect(content).toContain('name: "My Workflow"');
         });
 
         it('should fall back to template when content is empty string', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'empty-content-pipe',
                 content: '',
                 template: 'data-fanout',
@@ -473,14 +473,14 @@ describe('Pipelines Generate Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             const customYaml = 'name: "Direct Content"';
-            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/pipelines`, {
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/workflows`, {
                 name: 'override-pipe',
                 content: customYaml,
                 template: 'data-fanout',
             });
             expect(res.status).toBe(201);
 
-            const yamlPath = path.join(workspaceDir, '.vscode', 'pipelines', 'override-pipe', 'pipeline.yaml');
+            const yamlPath = path.join(workspaceDir, '.vscode', 'workflows', 'override-pipe', 'pipeline.yaml');
             const content = fs.readFileSync(yamlPath, 'utf-8');
             expect(content).toBe(customYaml);
         });

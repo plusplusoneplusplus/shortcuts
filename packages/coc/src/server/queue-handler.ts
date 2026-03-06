@@ -26,7 +26,7 @@ import * as fs from 'fs';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'run-pipeline']);
+const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'run-workflow']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
@@ -36,7 +36,7 @@ const TYPE_LABELS: Record<string, string> = {
     'ai-clarification': 'AI Clarification',
     'custom': 'Task',
     'chat': 'Chat',
-    'run-pipeline': 'Run Pipeline',
+    'run-workflow': 'Run Workflow',
 };
 
 /**

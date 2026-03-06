@@ -45,8 +45,8 @@ export interface AppContextState {
     repoWikiInitialTab: WikiProjectTab | null;
     repoWikiInitialAdminTab: WikiAdminTab | null;
     repoWikiInitialComponentId: string | null;
-    selectedPipelineName: string | null;
-    selectedPipelineRunProcessId: string | null;
+    selectedWorkflowName: string | null;
+    selectedWorkflowRunProcessId: string | null;
     selectedChatSessionId: string | null;
     selectedGitCommitHash: string | null;
     selectedGitFilePath: string | null;
@@ -81,8 +81,8 @@ const initialState: AppContextState = {
     repoWikiInitialTab: null,
     repoWikiInitialAdminTab: null,
     repoWikiInitialComponentId: null,
-    selectedPipelineName: null,
-    selectedPipelineRunProcessId: null,
+    selectedWorkflowName: null,
+    selectedWorkflowRunProcessId: null,
     selectedChatSessionId: null,
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
@@ -132,8 +132,8 @@ export type AppAction =
     | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[] }
     | { type: 'APPEND_TURN'; processId: string; turn: any }
     | { type: 'INVALIDATE_CONVERSATION'; processId: string }
-    | { type: 'SET_SELECTED_PIPELINE'; name: string | null }
-    | { type: 'SET_PIPELINE_RUN_PROCESS'; processId: string | null }
+    | { type: 'SET_SELECTED_WORKFLOW'; name: string | null }
+    | { type: 'SET_WORKFLOW_RUN_PROCESS'; processId: string | null }
     | { type: 'SET_SELECTED_CHAT_SESSION'; id: string | null }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
     | { type: 'SET_GIT_FILE_PATH'; filePath: string }
@@ -307,10 +307,10 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             delete cache[action.processId];
             return { ...state, conversationCache: cache };
         }
-        case 'SET_SELECTED_PIPELINE':
-            return { ...state, selectedPipelineName: action.name };
-        case 'SET_PIPELINE_RUN_PROCESS':
-            return { ...state, selectedPipelineRunProcessId: action.processId };
+        case 'SET_SELECTED_WORKFLOW':
+            return { ...state, selectedWorkflowName: action.name };
+        case 'SET_WORKFLOW_RUN_PROCESS':
+            return { ...state, selectedWorkflowRunProcessId: action.processId };
         case 'SET_SELECTED_CHAT_SESSION':
             return { ...state, selectedChatSessionId: action.id };
         case 'SET_GIT_COMMIT_HASH':

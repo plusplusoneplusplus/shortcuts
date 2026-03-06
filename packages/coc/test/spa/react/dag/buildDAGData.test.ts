@@ -289,7 +289,7 @@ describe('buildDAGData', () => {
 
 import { buildDAGDataFromLive } from '../../../../src/server/spa/client/react/processes/dag/buildDAGData';
 import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
-import type { LivePhaseEntry, LiveProgress } from '../../../../src/server/spa/client/react/hooks/usePipelinePhase';
+import type { LivePhaseEntry, LiveProgress } from '../../../../src/server/spa/client/react/hooks/useWorkflowPhase';
 
 describe('buildDAGDataFromLive', () => {
     it('returns null for empty phases map', () => {

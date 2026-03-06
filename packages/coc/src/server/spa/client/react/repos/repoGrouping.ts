@@ -3,7 +3,7 @@
  * Ported from repos.ts.
  */
 
-export interface PipelineInfo {
+export interface WorkflowInfo {
     name: string;
     path: string;
     description?: string;
@@ -22,7 +22,7 @@ export interface RepoData {
         behind?: number;
     };
     gitInfoLoading?: boolean;
-    pipelines?: PipelineInfo[];
+    workflows?: WorkflowInfo[];
     stats?: { success: number; failed: number; running: number };
     taskCount?: number;
 }

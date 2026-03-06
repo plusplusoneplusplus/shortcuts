@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { PipelineDAGSection } from '../../../../src/server/spa/client/react/processes/dag/PipelineDAGSection';
+import { WorkflowDAGSection } from '../../../../src/server/spa/client/react/processes/dag/WorkflowDAGSection';
 
 function makeProcess(overrides: Record<string, any> = {}) {
     return {
@@ -23,7 +23,7 @@ function makeProcess(overrides: Record<string, any> = {}) {
 }
 
 /**
- * Minimal mock EventSource for testing live DAG updates in PipelineDAGSection.
+ * Minimal mock EventSource for testing live DAG updates in WorkflowDAGSection.
  */
 function createMockEventSource() {
     const listeners = new Map<string, Set<(e: Event) => void>>();
@@ -46,29 +46,29 @@ function createMockEventSource() {
     };
 }
 
-describe('PipelineDAGSection', () => {
+describe('WorkflowDAGSection', () => {
     it('returns null for non-pipeline processes', () => {
-        const { container } = render(<PipelineDAGSection process={{ id: 'x', status: 'completed' }} />);
-        expect(container.querySelector('[data-testid="pipeline-dag-section"]')).toBeNull();
+        const { container } = render(<WorkflowDAGSection process={{ id: 'x', status: 'completed' }} />);
+        expect(container.querySelector('[data-testid="workflow-dag-section"]')).toBeNull();
     });
 
     it('returns null when metadata is empty', () => {
-        const { container } = render(<PipelineDAGSection process={{ id: 'x', status: 'completed', metadata: {} }} />);
-        expect(container.querySelector('[data-testid="pipeline-dag-section"]')).toBeNull();
+        const { container } = render(<WorkflowDAGSection process={{ id: 'x', status: 'completed', metadata: {} }} />);
+        expect(container.querySelector('[data-testid="workflow-dag-section"]')).toBeNull();
     });
 
     it('renders pipeline-dag-section for pipeline processes', () => {
-        render(<PipelineDAGSection process={makeProcess()} />);
-        expect(screen.getByTestId('pipeline-dag-section')).toBeDefined();
+        render(<WorkflowDAGSection process={makeProcess()} />);
+        expect(screen.getByTestId('workflow-dag-section')).toBeDefined();
     });
 
     it('displays Workflow Flow header text', () => {
-        render(<PipelineDAGSection process={makeProcess()} />);
+        render(<WorkflowDAGSection process={makeProcess()} />);
         expect(screen.getByTestId('dag-section-header').textContent).toContain('Workflow Flow');
     });
 
     it('toggles collapsed state on header click', () => {
-        render(<PipelineDAGSection process={makeProcess()} />);
+        render(<WorkflowDAGSection process={makeProcess()} />);
         // Initially expanded — chart visible
         expect(screen.getByTestId('dag-chart')).toBeDefined();
 
@@ -82,54 +82,54 @@ describe('PipelineDAGSection', () => {
     });
 
     it('shows total duration in header', () => {
-        render(<PipelineDAGSection process={makeProcess()} />);
+        render(<WorkflowDAGSection process={makeProcess()} />);
         const header = screen.getByTestId('dag-section-header');
         expect(header.textContent).toContain('5s');
     });
 
     it('shows status caption with correct icon for completed', () => {
-        const { container } = render(<PipelineDAGSection process={makeProcess()} />);
+        const { container } = render(<WorkflowDAGSection process={makeProcess()} />);
         expect(container.textContent).toContain('✅');
         expect(container.textContent).toContain('Workflow completed');
     });
 
     it('shows running caption for running process', () => {
         const proc = makeProcess({ status: 'running', durationMs: undefined });
-        const { container } = render(<PipelineDAGSection process={proc} />);
+        const { container } = render(<WorkflowDAGSection process={proc} />);
         expect(container.textContent).toContain('🔄');
         expect(container.textContent).toContain('Running...');
     });
 
     it('shows failed caption for failed process', () => {
         const proc = makeProcess({ status: 'failed' });
-        const { container } = render(<PipelineDAGSection process={proc} />);
+        const { container } = render(<WorkflowDAGSection process={proc} />);
         expect(container.textContent).toContain('❌');
         expect(container.textContent).toContain('Workflow failed');
     });
 
     it('shows cancelled caption for cancelled process', () => {
         const proc = makeProcess({ status: 'cancelled' });
-        const { container } = render(<PipelineDAGSection process={proc} />);
+        const { container } = render(<WorkflowDAGSection process={proc} />);
         expect(container.textContent).toContain('🚫');
         expect(container.textContent).toContain('Workflow cancelled');
     });
 
     it('renders DAG chart with correct node count', () => {
-        render(<PipelineDAGSection process={makeProcess()} />);
+        render(<WorkflowDAGSection process={makeProcess()} />);
         const chart = screen.getByTestId('dag-chart');
         const nodes = chart.querySelectorAll('[data-testid^="dag-node-"]');
         expect(nodes.length).toBe(3); // input, map, reduce
     });
 
     it('renders edges between nodes', () => {
-        render(<PipelineDAGSection process={makeProcess()} />);
+        render(<WorkflowDAGSection process={makeProcess()} />);
         const chart = screen.getByTestId('dag-chart');
         const edges = chart.querySelectorAll('[data-testid="dag-edge"]');
         expect(edges.length).toBe(2); // input→map, map→reduce
     });
 });
 
-describe('PipelineDAGSection — live mode', () => {
+describe('WorkflowDAGSection — live mode', () => {
     beforeEach(() => {
         vi.useFakeTimers();
     });
@@ -143,8 +143,8 @@ describe('PipelineDAGSection — live mode', () => {
         const ref = { current: es as unknown as EventSource };
         const proc = makeProcess({ status: 'completed' });
 
-        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
-        expect(screen.getByTestId('pipeline-dag-section')).toBeDefined();
+        render(<WorkflowDAGSection process={proc} eventSourceRef={ref} />);
+        expect(screen.getByTestId('workflow-dag-section')).toBeDefined();
         // Static data should produce completed nodes
         const chart = screen.getByTestId('dag-chart');
         const nodes = chart.querySelectorAll('[data-testid^="dag-node-"]');
@@ -167,12 +167,12 @@ describe('PipelineDAGSection — live mode', () => {
             },
         });
 
-        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
+        render(<WorkflowDAGSection process={proc} eventSourceRef={ref} />);
 
         // Emit phase events
         act(() => {
-            es._emit('pipeline-phase', { phase: 'input', status: 'completed', durationMs: 50 });
-            es._emit('pipeline-phase', { phase: 'map', status: 'started' });
+            es._emit('workflow-phase', { phase: 'input', status: 'completed', durationMs: 50 });
+            es._emit('workflow-phase', { phase: 'map', status: 'started' });
         });
 
         // Should have at least the live nodes
@@ -186,11 +186,11 @@ describe('PipelineDAGSection — live mode', () => {
         const ref = { current: es as unknown as EventSource };
         const proc = makeProcess({ status: 'running', durationMs: undefined });
 
-        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
+        render(<WorkflowDAGSection process={proc} eventSourceRef={ref} />);
 
         // Emit some phases first so we have data
         act(() => {
-            es._emit('pipeline-phase', { phase: 'input', status: 'completed' });
+            es._emit('workflow-phase', { phase: 'input', status: 'completed' });
         });
 
         act(() => {
@@ -206,10 +206,10 @@ describe('PipelineDAGSection — live mode', () => {
         const ref = { current: es as unknown as EventSource };
         const proc = makeProcess({ status: 'running', durationMs: undefined });
 
-        render(<PipelineDAGSection process={proc} eventSourceRef={ref} />);
+        render(<WorkflowDAGSection process={proc} eventSourceRef={ref} />);
 
         act(() => {
-            es._emit('pipeline-phase', { phase: 'input', status: 'completed' });
+            es._emit('workflow-phase', { phase: 'input', status: 'completed' });
         });
 
         const warning = screen.queryByTestId('dag-disconnect-warning');

@@ -20,7 +20,7 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
     const color = ws.color || '#848484';
     const branch = repo.gitInfo?.branch || 'n/a';
     const gitInfoLoading = repo.gitInfoLoading ?? false;
-    const pipelineCount = repo.pipelines?.length || 0;
+    const pipelineCount = repo.workflows?.length || 0;
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const truncPath = truncatePath(ws.rootPath || '', 24);
     const taskCount = repo.taskCount || 0;

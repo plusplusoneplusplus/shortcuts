@@ -1,12 +1,12 @@
 /**
- * AddPipelineDialog — create-pipeline dialog with name input, template selector,
+ * AddWorkflowDialog — create-pipeline dialog with name input, template selector,
  * and AI generation flow (input → generating → preview).
  */
 
 import { useState, useRef } from 'react';
 import { Button, Dialog, Badge, Spinner } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
-import { createPipeline, generatePipeline } from './pipeline-api';
+import { createWorkflow, generateWorkflow } from './workflow-api';
 
 const TEMPLATES = [
     { value: 'custom', label: 'Custom (blank)' },
@@ -19,13 +19,13 @@ const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9-]*$/;
 
 type DialogPhase = 'input' | 'generating' | 'preview';
 
-export interface AddPipelineDialogProps {
+export interface AddWorkflowDialogProps {
     workspaceId: string;
     onCreated: (name?: string) => void;
     onClose: () => void;
 }
 
-export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipelineDialogProps) {
+export function AddWorkflowDialog({ workspaceId, onCreated, onClose }: AddWorkflowDialogProps) {
     const { addToast } = useGlobalToast();
     const [name, setName] = useState('');
     const [template, setTemplate] = useState<string>('ai-generated');
@@ -54,7 +54,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
         setSubmitting(true);
         setError(null);
         try {
-            await createPipeline(workspaceId, trimmed, template);
+            await createWorkflow(workspaceId, trimmed, template);
             addToast('Workflow created', 'success');
             onCreated(trimmed);
             onClose();
@@ -82,7 +82,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
         setError(null);
 
         try {
-            const result = await generatePipeline(workspaceId, trimmed || undefined, description.trim(), controller.signal);
+            const result = await generateWorkflow(workspaceId, trimmed || undefined, description.trim(), controller.signal);
             setGeneratedYaml(result.yaml);
             setGeneratedValid(result.valid);
             setGenerationErrors(result.validationError ? [result.validationError] : []);
@@ -114,7 +114,7 @@ export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipeli
         setSubmitting(true);
         setError(null);
         try {
-            await createPipeline(workspaceId, trimmed, undefined, generatedYaml);
+            await createWorkflow(workspaceId, trimmed, undefined, generatedYaml);
             addToast('Workflow created', 'success');
             onCreated(trimmed);
             onClose();

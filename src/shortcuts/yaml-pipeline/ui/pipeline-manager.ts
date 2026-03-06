@@ -18,6 +18,12 @@ import { BUNDLED_PIPELINES, getBundledPipelinesPath, getBundledPipelineManifest 
 /** Standard pipeline file names recognized by the system */
 const PIPELINE_FILE_NAMES = ['pipeline.yaml', 'pipeline.yml'];
 
+/** Legacy folder path before the rename to workflows */
+const LEGACY_PIPELINES_FOLDER = '.vscode/pipelines';
+
+/** Current default folder path */
+const DEFAULT_WORKFLOWS_FOLDER = '.vscode/workflows';
+
 /**
  * Manages pipeline packages in the workspace.
  * A pipeline package is a directory containing pipeline.yaml and related resources.
@@ -48,10 +54,39 @@ export class PipelineManager implements vscode.Disposable {
      */
     getPipelinesFolder(): string {
         const settings = this.getSettings();
-        const folderPath = settings.folderPath || '.vscode/pipelines';
+        const folderPath = settings.folderPath || DEFAULT_WORKFLOWS_FOLDER;
         return path.isAbsolute(folderPath)
             ? folderPath
             : path.join(this.workspaceRoot, folderPath);
+    }
+
+    /**
+     * Migrate the legacy .vscode/pipelines folder to .vscode/workflows.
+     * This is a one-time, idempotent operation:
+     * - Skips if user has a custom folderPath that differs from both defaults
+     * - Skips if the old folder doesn't exist or the new folder already exists
+     */
+    async migrateFolder(): Promise<void> {
+        const settings = this.getSettings();
+        const customPath = settings.folderPath;
+        if (customPath && customPath !== LEGACY_PIPELINES_FOLDER && customPath !== DEFAULT_WORKFLOWS_FOLDER) {
+            return;
+        }
+
+        const oldFolder = path.join(this.workspaceRoot, LEGACY_PIPELINES_FOLDER);
+        const newFolder = path.join(this.workspaceRoot, DEFAULT_WORKFLOWS_FOLDER);
+
+        const oldExists = safeExists(oldFolder);
+        const newExists = safeExists(newFolder);
+
+        if (oldExists && !newExists) {
+            try {
+                await fs.promises.rename(oldFolder, newFolder);
+                vscode.window.showInformationMessage('Pipelines folder renamed to `.vscode/workflows`.');
+            } catch {
+                // Best-effort migration — don't block activation
+            }
+        }
     }
 
     /**
@@ -267,7 +302,7 @@ export class PipelineManager implements vscode.Disposable {
      */
     getRelativePipelinesFolder(): string {
         const settings = this.getSettings();
-        return settings.folderPath || '.vscode/pipelines';
+        return settings.folderPath || DEFAULT_WORKFLOWS_FOLDER;
     }
 
     /**
@@ -604,7 +639,7 @@ export class PipelineManager implements vscode.Disposable {
         const config = vscode.workspace.getConfiguration('workspaceShortcuts.pipelinesViewer');
         return {
             enabled: config.get<boolean>('enabled', true),
-            folderPath: config.get<string>('folderPath', '.vscode/pipelines'),
+            folderPath: config.get<string>('folderPath', DEFAULT_WORKFLOWS_FOLDER),
             sortBy: config.get<PipelineSortBy>('sortBy', 'name')
         };
     }

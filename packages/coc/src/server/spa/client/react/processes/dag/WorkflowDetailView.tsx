@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
-import { PipelineDAGChart } from './PipelineDAGChart';
+import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildDAGData } from './buildDAGData';
 import { MapItemGrid } from './MapItemGrid';
 import type { ChildProcess } from './MapItemGrid';
 import { ItemConversationPanel } from './ItemConversationPanel';
-import { usePipelinePhase } from '../../hooks/usePipelinePhase';
+import { useWorkflowPhase } from '../../hooks/useWorkflowPhase';
 import { useItemProcessEvents } from '../../hooks/useItemProcessEvents';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { fetchApi } from '../../hooks/useApi';
 import { formatDuration, statusIcon } from '../../utils/format';
 import { BottomSheet } from '../../shared';
-import type { PhaseDetail } from './PipelinePhasePopover';
+import type { PhaseDetail } from './WorkflowPhasePopover';
 
 export interface WorkflowDetailViewProps {
     processId: string;
@@ -103,7 +103,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
     }, [isRunning]);
 
     // SSE hooks
-    const { dagData: liveDagData, disconnected } = usePipelinePhase(
+    const { dagData: liveDagData, disconnected } = useWorkflowPhase(
         eventSourceRef.current,
         process?.metadata,
     );
@@ -209,7 +209,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
     if (!dagData) {
         return (
             <div data-testid="workflow-detail-empty" className="flex items-center justify-center py-8 text-[#848484]">
-                No pipeline data available.
+                No workflow data available.
             </div>
         );
     }
@@ -249,7 +249,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
             </div>
 
             {/* DAG Chart */}
-            <PipelineDAGChart
+            <WorkflowDAGChart
                 data={dagData}
                 isDark={isDark}
                 now={isRunning ? now : undefined}

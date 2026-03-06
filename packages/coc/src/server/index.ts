@@ -26,8 +26,8 @@ import { registerDiffCommentsRoutes } from './diff-comments-handler';
 import { registerWikiRoutes } from './wiki';
 import { registerMemoryRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
-import { registerPipelineRoutes, registerPipelineWriteRoutes } from './pipelines-handler';
-import { PipelineWatcher } from './pipeline-watcher';
+import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
+import { WorkflowWatcher } from './workflow-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
@@ -223,10 +223,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerQueueRoutes(routes, bridge, store);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
-    registerPipelineRoutes(routes, store);
-    registerPipelineWriteRoutes(routes, store, (workspaceId) => {
+    registerWorkflowRoutes(routes, store);
+    registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
         wsServer.broadcastProcessEvent({
-            type: 'pipelines-changed',
+            type: 'workflows-changed',
             workspaceId,
             timestamp: Date.now(),
         });
@@ -434,16 +434,16 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     });
 
-    // Bridge pipeline file changes to WebSocket
-    const pipelineWatcher = new PipelineWatcher((workspaceId) => {
+    // Bridge workflow file changes to WebSocket
+    const pipelineWatcher = new WorkflowWatcher((workspaceId) => {
         wsServer.broadcastProcessEvent({
-            type: 'pipelines-changed',
+            type: 'workflows-changed',
             workspaceId,
             timestamp: Date.now(),
         });
     });
 
-    // Watch tasks and pipelines directories for already-registered workspaces (handles server restart)
+    // Watch tasks and workflows directories for already-registered workspaces (handles server restart)
     const existingWorkspaces = await store.getWorkspaces();
     for (const ws of existingWorkspaces) {
         taskWatcher.watchWorkspace(ws.id, ws.rootPath);
@@ -502,7 +502,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             outputPruner.stopListening();
             // Close task file watchers
             taskWatcher.closeAll();
-            // Close pipeline file watchers
+            // Close workflow file watchers
             pipelineWatcher.closeAll();
             // Dispose wiki manager (stop file watchers, destroy sessions)
             wikiManager?.disposeAll();
@@ -566,9 +566,9 @@ export { StaleTaskDetector } from './stale-task-detector';
 export type { StaleTaskDetectorOptions } from './stale-task-detector';
 export { TaskWatcher } from './task-watcher';
 export type { TasksChangedCallback } from './task-watcher';
-export { PipelineWatcher } from './pipeline-watcher';
-export type { PipelinesChangedCallback } from './pipeline-watcher';
-export { registerPipelineRoutes, registerPipelineWriteRoutes } from './pipelines-handler';
+export { WorkflowWatcher } from './workflow-watcher';
+export type { WorkflowsChangedCallback } from './workflow-watcher';
+export { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 export { registerWikiRoutes } from './wiki';
 export type { WikiRouteOptions } from './wiki';
 export { discoverPromptFiles, readPromptFileContent } from './prompt-utils';

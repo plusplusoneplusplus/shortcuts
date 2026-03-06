@@ -20,7 +20,7 @@ function makeRepo(overrides: Partial<RepoData> = {}): RepoData {
     return {
         workspace: { id: 'ws-1', name: 'my-app', rootPath: '/home/user/my-app' } as any,
         gitInfo: { branch: 'main', dirty: false, isGitRepo: true } as any,
-        pipelines: [],
+        workflows: [],
         stats: { success: 2, failed: 1, running: 0 },
         taskCount: 0,
         ...overrides,
@@ -55,7 +55,7 @@ describe('2-line layout', () => {
     });
 
     it('renders Pipelines count on line 2', () => {
-        renderCard({ repo: makeRepo({ pipelines: [{} as any, {} as any] }) });
+        renderCard({ repo: makeRepo({ workflows: [{} as any, {} as any] }) });
         expect(screen.getByText('Workflows: 2')).toBeTruthy();
     });
 

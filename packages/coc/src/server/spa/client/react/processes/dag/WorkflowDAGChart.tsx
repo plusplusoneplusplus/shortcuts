@@ -7,15 +7,15 @@ import { getEdgeBadgeText, getEdgeSchemaText } from './edgeAnnotations';
 import { DAGProgressBar } from './DAGProgressBar';
 import { DAGLegend } from './DAGLegend';
 import { DAGBreadcrumb } from './DAGBreadcrumb';
-import { PipelinePhasePopover } from './PipelinePhasePopover';
+import { WorkflowPhasePopover } from './WorkflowPhasePopover';
 import { DAGHoverTooltip } from './DAGHoverTooltip';
 import { mapErrorsToPhases, getNodeErrors } from './errorMapping';
 import { useZoomPan } from '../../hooks/useZoomPan';
 import { ZoomControls } from './ZoomControls';
-import type { PhaseDetail } from './PipelinePhasePopover';
+import type { PhaseDetail } from './WorkflowPhasePopover';
 import type { EdgeState } from './dag-colors';
 
-export interface PipelineDAGChartProps {
+export interface WorkflowDAGChartProps {
     data: DAGChartData;
     isDark: boolean;
     onNodeClick?: (phase: PipelinePhase) => void;
@@ -51,7 +51,7 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
     return 'waiting';
 }
 
-export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors, previewMode, onMapNodeExpand, mapExpanded }: PipelineDAGChartProps) {
+export function WorkflowDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors, previewMode, onMapNodeExpand, mapExpanded }: WorkflowDAGChartProps) {
     const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
     const [hoveredPhase, setHoveredPhase] = useState<PipelinePhase | null>(null);
     const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
@@ -275,7 +275,7 @@ export function PipelineDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
             />
         )}
         {selectedPhase && selectedDetail && (
-            <PipelinePhasePopover
+            <WorkflowPhasePopover
                 phase={selectedDetail}
                 onClose={() => setSelectedPhase(null)}
                 onScrollToConversation={

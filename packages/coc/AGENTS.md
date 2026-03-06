@@ -97,8 +97,8 @@ src/
 │   ├── queue-persistence.ts      # Persistent queue state storage
 │   ├── multi-repo-executor-bridge.ts  # Multi-repo pipeline execution
 │   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence
-│   ├── pipelines-handler.ts      # Pipeline CRUD and listing API
-│   ├── pipeline-watcher.ts       # File watcher for pipeline changes
+│   ├── workflows-handler.ts      # Workflow CRUD and listing API
+│   ├── workflow-watcher.ts       # File watcher for workflow changes
 │   ├── tasks-handler.ts          # Task management API endpoints
 │   ├── task-watcher.ts           # File watcher for task changes
 │   ├── task-comments-handler.ts  # Task comment/annotation API

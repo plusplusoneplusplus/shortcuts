@@ -1,5 +1,5 @@
 /**
- * Tests for generateUnifiedDiff — the client-side diff utility for PipelineAIRefinePanel.
+ * Tests for generateUnifiedDiff — the client-side diff utility for WorkflowAIRefinePanel.
  */
 
 import { describe, it, expect } from 'vitest';

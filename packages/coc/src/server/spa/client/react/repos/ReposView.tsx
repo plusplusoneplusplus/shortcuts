@@ -15,7 +15,7 @@ import { RepoDetail } from './RepoDetail';
 import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { cn } from '../shared';
 import { countTasks } from './repoGrouping';
-import { fetchPipelines } from './pipeline-api';
+import { fetchWorkflows } from './workflow-api';
 import type { RepoData } from './repoGrouping';
 
 
@@ -73,7 +73,7 @@ export function ReposView() {
             // Update global workspace list
             dispatch({ type: 'WORKSPACES_LOADED', workspaces });
 
-            // Phase 1: Fetch pipelines/tasks/processes (fast) in parallel — skip git-info
+            // Phase 1: Fetch workflows/tasks/processes (fast) in parallel — skip git-info
             const enriched: RepoData[] = await Promise.all(
                 workspaces.map(async (ws: any) => {
                     const [pipelinesRes, tasksRes] = await Promise.all([
@@ -93,7 +93,7 @@ export function ReposView() {
                     return {
                         workspace: ws,
                         gitInfoLoading: true,
-                        pipelines: pipelinesRes?.pipelines || [],
+                        workflows: pipelinesRes?.workflows || [],
                         stats,
                         taskCount: countTasks(tasksRes),
                     };
@@ -158,10 +158,10 @@ export function ReposView() {
         } catch { /* fire-and-forget */ }
     }, [queueDispatch]);
 
-    // Targeted pipeline refresh for a single workspace
+    // Targeted workflow refresh for a single workspace
     const refreshPipelinesForWorkspace = useCallback(async (wsId: string) => {
         try {
-            const updated = await fetchPipelines(wsId);
+            const updated = await fetchWorkflows(wsId);
             setRepos(prev => prev.map(r =>
                 r.workspace.id === wsId ? { ...r, pipelines: updated } : r
             ));
@@ -171,7 +171,7 @@ export function ReposView() {
     // WebSocket: auto-refresh on mutation events (pipelines, processes)
     const { connect, disconnect } = useWebSocket({
         onMessage: useCallback((msg: any) => {
-            if (msg.type === 'pipelines-changed' && msg.workspaceId) {
+            if (msg.type === 'workflows-changed' && msg.workspaceId) {
                 refreshPipelinesForWorkspace(msg.workspaceId);
             }
             // Throttle process events: at most one fetchRepos per 10 seconds

@@ -80,21 +80,21 @@ export function parseProcessDeepLink(hash: string): string | null {
     return null;
 }
 
-export function parsePipelineDeepLink(hash: string): string | null {
+export function parseWorkflowsDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'pipelines' && parts[3]) {
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'workflows' && parts[3]) {
         return decodeURIComponent(parts[3]);
     }
     return null;
 }
 
-export function parsePipelineRunDeepLink(hash: string): { pipelineName: string; processId: string } | null {
+export function parseWorkflowsRunDeepLink(hash: string): { workflowName: string; processId: string } | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'pipelines' && parts[3] && parts[4] === 'run' && parts[5]) {
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'workflows' && parts[3] && parts[4] === 'run' && parts[5]) {
         return {
-            pipelineName: decodeURIComponent(parts[3]),
+            workflowName: decodeURIComponent(parts[3]),
             processId: decodeURIComponent(parts[5]),
         };
     }
@@ -152,7 +152,7 @@ export function parseWorkflowDeepLink(hash: string): { repoId: string; processId
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'pipelines', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot', 'workflow']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'chat', 'wiki', 'copilot', 'workflow']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -207,21 +207,21 @@ export function Router() {
                     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
                     }
-                    // Pipeline deep-link handling
-                    if (parts[2] === 'pipelines' && parts[3]) {
-                        dispatch({ type: 'SET_SELECTED_PIPELINE', name: decodeURIComponent(parts[3]) });
-                        // Pipeline run detail: #repos/:id/pipelines/:name/run/:processId
+                    // Workflow deep-link handling
+                    if (parts[2] === 'workflows' && parts[3]) {
+                        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: decodeURIComponent(parts[3]) });
+                        // Workflow run detail: #repos/:id/workflows/:name/run/:processId
                         if (parts[4] === 'run' && parts[5]) {
-                            dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
+                            dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
                         } else {
-                            dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                            dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                         }
-                    } else if (parts[2] === 'pipelines') {
-                        dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
-                        dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
-                    } else if (parts[2] && parts[2] !== 'pipelines') {
-                        dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
-                        dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                    } else if (parts[2] === 'workflows') {
+                        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                        dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
+                    } else if (parts[2] && parts[2] !== 'workflows') {
+                        dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
+                        dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                     }
                     // Queue task deep-link handling
                     if (parts[2] === 'queue' && parts[3]) {

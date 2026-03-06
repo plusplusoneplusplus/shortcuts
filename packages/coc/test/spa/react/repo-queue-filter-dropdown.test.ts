@@ -30,7 +30,7 @@ describe('RepoQueueTab filter dropdown', () => {
         it('defines TASK_TYPE_LABELS mapping with known task types', () => {
             expect(source).toContain('TASK_TYPE_LABELS');
             expect(source).toContain("'follow-prompt'");
-            expect(source).toContain("'run-pipeline'");
+            expect(source).toContain("'run-workflow'");
             expect(source).toContain("'code-review'");
             expect(source).toContain("'chat'");
             expect(source).toContain("'custom'");

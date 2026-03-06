@@ -1,5 +1,5 @@
 /**
- * Tests for PipelineRunHistory — run history list, empty state, refresh, active tasks.
+ * Tests for WorkflowRunHistory — run history list, empty state, refresh, active tasks.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { PipelineRunHistory } from '../../../src/server/spa/client/react/repos/PipelineRunHistory';
+import { WorkflowRunHistory } from '../../../src/server/spa/client/react/repos/WorkflowRunHistory';
 
 // Mock fetchApi
 const mockFetchApi = vi.fn();
@@ -33,12 +33,12 @@ beforeEach(() => {
     mockFetchApi.mockReset();
 });
 
-describe('PipelineRunHistory', () => {
+describe('WorkflowRunHistory', () => {
     it('renders empty state when no history', async () => {
         mockFetchApi.mockResolvedValue({ history: [] });
         render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
             </Wrap>
         );
         await waitFor(() => {
@@ -57,7 +57,7 @@ describe('PipelineRunHistory', () => {
         });
         render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
             </Wrap>
         );
         await waitFor(() => {
@@ -75,7 +75,7 @@ describe('PipelineRunHistory', () => {
 
         render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
             </Wrap>
         );
         await waitFor(() => {
@@ -98,7 +98,7 @@ describe('PipelineRunHistory', () => {
 
         render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
             </Wrap>
         );
         await waitFor(() => {
@@ -112,7 +112,7 @@ describe('PipelineRunHistory', () => {
         expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline/run/queue_t2');
     });
 
-    it('does not render PipelineResultCard after click', async () => {
+    it('does not render WorkflowResultCard after click', async () => {
         mockFetchApi.mockResolvedValueOnce({
             history: [
                 { id: 't1', status: 'completed', processId: 'proc-1' },
@@ -121,7 +121,7 @@ describe('PipelineRunHistory', () => {
 
         render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
             </Wrap>
         );
         await waitFor(() => {
@@ -132,7 +132,7 @@ describe('PipelineRunHistory', () => {
             fireEvent.click(screen.getByTestId('run-history-item'));
         });
 
-        expect(screen.queryByTestId('pipeline-result-card')).toBeNull();
+        expect(screen.queryByTestId('workflow-result-card')).toBeNull();
     });
 
     it('re-fetches on refreshKey change', async () => {
@@ -140,7 +140,7 @@ describe('PipelineRunHistory', () => {
 
         const { rerender } = render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" refreshKey={1} />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" refreshKey={1} />
             </Wrap>
         );
         await waitFor(() => {
@@ -149,7 +149,7 @@ describe('PipelineRunHistory', () => {
 
         rerender(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" refreshKey={2} />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" refreshKey={2} />
             </Wrap>
         );
         await waitFor(() => {
@@ -161,7 +161,7 @@ describe('PipelineRunHistory', () => {
         mockFetchApi.mockResolvedValue({ history: [] });
         render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
             </Wrap>
         );
         await waitFor(() => {
@@ -173,7 +173,7 @@ describe('PipelineRunHistory', () => {
         mockFetchApi.mockResolvedValue({ history: [] });
         render(
             <Wrap>
-                <PipelineRunHistory workspaceId="ws-1" pipelineName="Bug Triage" />
+                <WorkflowRunHistory workspaceId="ws-1" pipelineName="Bug Triage" />
             </Wrap>
         );
         await waitFor(() => {

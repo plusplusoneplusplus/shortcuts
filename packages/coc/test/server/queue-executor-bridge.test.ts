@@ -1383,7 +1383,7 @@ describe('CLITaskExecutor', () => {
 
             it('should NOT include planFilePath when promptFilePath has wrong path (regression)', async () => {
                 // This test documents the old bug: when promptFilePath was wrongly constructed
-                // as /workspace/.vscode/pipelines/.github/prompts/impl.prompt.md, fs.existsSync
+                // as /workspace/.vscode/workflows/.github/prompts/impl.prompt.md, fs.existsSync
                 // would return false, causing the prompt to fall through to legacy path without planFilePath
                 const existsSyncMock = vi.mocked(fs.existsSync);
 
@@ -1401,7 +1401,7 @@ describe('CLITaskExecutor', () => {
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.vscode/pipelines/.github/prompts/impl.prompt.md',
+                        promptFilePath: '/workspace/.vscode/workflows/.github/prompts/impl.prompt.md',
                         planFilePath: '/workspace/.vscode/tasks/my-task.md',
                         workingDirectory: '/workspace',
                     },
@@ -5574,10 +5574,10 @@ describe('createQueueExecutorBridge', () => {
     });
 
     // ========================================================================
-    // Run Pipeline Tasks
+    // Run Workflow Tasks
     // ========================================================================
 
-    describe('run-pipeline tasks', () => {
+    describe('run-workflow tasks', () => {
         let store: ReturnType<typeof createMockProcessStore>;
         const existsSyncMock = vi.mocked(fs.existsSync);
         const readFileSyncMock = vi.mocked(fs.readFileSync);
@@ -5597,7 +5597,7 @@ job:
             mockCreateCLIAIInvoker.mockReturnValue(vi.fn());
         });
 
-        it('should execute a run-pipeline task successfully', async () => {
+        it('should execute a run-workflow task successfully', async () => {
             // Mock fs to return pipeline YAML
             readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
                 if (String(p).includes('pipeline.yaml')) {
@@ -5613,18 +5613,18 @@ job:
 
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
-                id: 'task-run-pipeline',
-                type: 'run-pipeline',
+                id: 'task-run-workflow',
+                type: 'run-workflow',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'run-pipeline' as const,
-                    pipelinePath: '/workspace/.vscode/pipelines/my-pipeline',
+                    kind: 'run-workflow' as const,
+                    workflowPath: '/workspace/.vscode/workflows/my-pipeline',
                     workingDirectory: '/workspace',
                 },
                 config: {},
-                displayName: 'Run Pipeline: my-pipeline',
+                displayName: 'Run Workflow: my-pipeline',
             };
 
             const result = await executor.execute(task);
@@ -5655,13 +5655,13 @@ job:
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-model-override',
-                type: 'run-pipeline',
+                type: 'run-workflow',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'run-pipeline' as const,
-                    pipelinePath: '/workspace/.vscode/pipelines/test',
+                    kind: 'run-workflow' as const,
+                    workflowPath: '/workspace/.vscode/workflows/test',
                     workingDirectory: '/workspace',
                     model: 'gpt-4',
                 },
@@ -5675,7 +5675,7 @@ job:
             }));
         });
 
-        it('should handle pipeline execution failure', async () => {
+        it('should handle workflow execution failure', async () => {
             readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
                 if (String(p).includes('pipeline.yaml')) {
                     return SIMPLE_JOB_YAML;
@@ -5687,14 +5687,14 @@ job:
 
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
-                id: 'task-pipeline-fail',
-                type: 'run-pipeline',
+                id: 'task-workflow-fail',
+                type: 'run-workflow',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'run-pipeline' as const,
-                    pipelinePath: '/workspace/.vscode/pipelines/failing',
+                    kind: 'run-workflow' as const,
+                    workflowPath: '/workspace/.vscode/workflows/failing',
                     workingDirectory: '/workspace',
                 },
                 config: {},
@@ -5706,7 +5706,7 @@ job:
             expect(result.error?.message).toContain('Pipeline execution failed');
         });
 
-        it('should extract prompt as pipeline basename', async () => {
+        it('should extract prompt as workflow basename', async () => {
             readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
                 if (String(p).includes('pipeline.yaml')) {
                     return SIMPLE_JOB_YAML;
@@ -5722,13 +5722,13 @@ job:
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-prompt-extract',
-                type: 'run-pipeline',
+                type: 'run-workflow',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'run-pipeline' as const,
-                    pipelinePath: '/workspace/.vscode/pipelines/my-named-pipeline',
+                    kind: 'run-workflow' as const,
+                    workflowPath: '/workspace/.vscode/workflows/my-named-pipeline',
                     workingDirectory: '/workspace',
                 },
                 config: {},
@@ -5738,8 +5738,8 @@ job:
 
             // Verify the process was added with the correct prompt
             expect(store.addProcess).toHaveBeenCalledWith(expect.objectContaining({
-                fullPrompt: 'Run pipeline: my-named-pipeline',
-                promptPreview: 'Run pipeline: my-named-pipeline',
+                fullPrompt: 'Run workflow: my-named-pipeline',
+                promptPreview: 'Run workflow: my-named-pipeline',
             }));
         });
 
@@ -5760,13 +5760,13 @@ job:
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-mcp-forward',
-                type: 'run-pipeline',
+                type: 'run-workflow',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'run-pipeline' as const,
-                    pipelinePath: '/workspace/.vscode/pipelines/mcp-pipe',
+                    kind: 'run-workflow' as const,
+                    workflowPath: '/workspace/.vscode/workflows/mcp-pipe',
                     workingDirectory: '/workspace',
                     mcpServers,
                 },
@@ -5793,13 +5793,13 @@ job:
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-mcp-undefined',
-                type: 'run-pipeline',
+                type: 'run-workflow',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'run-pipeline' as const,
-                    pipelinePath: '/workspace/.vscode/pipelines/no-mcp',
+                    kind: 'run-workflow' as const,
+                    workflowPath: '/workspace/.vscode/workflows/no-mcp',
                     workingDirectory: '/workspace',
                     // mcpServers intentionally omitted
                 },
@@ -5813,7 +5813,7 @@ job:
             }));
         });
 
-        it('persists executionStats to process metadata after pipeline execution', async () => {
+        it('persists executionStats to process metadata after workflow execution', async () => {
             readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
                 if (String(p).includes('pipeline.yaml')) { return SIMPLE_JOB_YAML; }
                 return '';
@@ -5836,13 +5836,13 @@ job:
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-meta-stats',
-                type: 'run-pipeline',
+                type: 'run-workflow',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'run-pipeline' as const,
-                    pipelinePath: '/workspace/.vscode/pipelines/stats-pipe',
+                    kind: 'run-workflow' as const,
+                    workflowPath: '/workspace/.vscode/workflows/stats-pipe',
                     workingDirectory: '/workspace',
                 },
                 config: {},
@@ -5861,16 +5861,16 @@ job:
         });
 
         describe('child process wiring via onItemProcessCreated', () => {
-            function createPipelineTask(id: string): QueuedTask {
+            function createWorkflowTask(id: string): QueuedTask {
                 return {
                     id,
-                    type: 'run-pipeline',
+                    type: 'run-workflow',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        kind: 'run-pipeline' as const,
-                        pipelinePath: '/workspace/.vscode/pipelines/child-test',
+                        kind: 'run-workflow' as const,
+                        workflowPath: '/workspace/.vscode/workflows/child-test',
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -5906,7 +5906,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-3items'));
+                await executor.execute(createWorkflowTask('cp-3items'));
 
                 // 3 child processes should be added (plus the parent process from execute())
                 const addCalls = store.addProcess.mock.calls.filter(
@@ -5942,7 +5942,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-parent'));
+                await executor.execute(createWorkflowTask('cp-parent'));
 
                 const childCalls = store.addProcess.mock.calls.filter(
                     (call: any[]) => call[0].type === 'pipeline-item'
@@ -5969,7 +5969,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-meta'));
+                await executor.execute(createWorkflowTask('cp-meta'));
 
                 const childCalls = store.addProcess.mock.calls.filter(
                     (call: any[]) => call[0].type === 'pipeline-item'
@@ -6007,7 +6007,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-group'));
+                await executor.execute(createWorkflowTask('cp-group'));
 
                 // Wait for fire-and-forget promises
                 await new Promise(r => setTimeout(r, 10));
@@ -6044,7 +6044,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-sse'));
+                await executor.execute(createWorkflowTask('cp-sse'));
 
                 const sseCalls = store.emitProcessEvent.mock.calls.filter(
                     (call: any[]) => call[0] === 'queue_cp-sse'
@@ -6084,7 +6084,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                const result = await executor.execute(createPipelineTask('cp-fail'));
+                const result = await executor.execute(createWorkflowTask('cp-fail'));
 
                 // Pipeline should succeed despite store failure
                 expect(result.success).toBe(true);
@@ -6100,7 +6100,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-noids'));
+                await executor.execute(createWorkflowTask('cp-noids'));
 
                 await new Promise(r => setTimeout(r, 10));
 
@@ -6128,7 +6128,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-obj'));
+                await executor.execute(createWorkflowTask('cp-obj'));
 
                 const childCalls = store.addProcess.mock.calls.filter(
                     (call: any[]) => call[0].type === 'pipeline-item'
@@ -6156,7 +6156,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-err'));
+                await executor.execute(createWorkflowTask('cp-err'));
 
                 const childCalls = store.addProcess.mock.calls.filter(
                     (call: any[]) => call[0].type === 'pipeline-item'
@@ -6186,7 +6186,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-conv'));
+                await executor.execute(createWorkflowTask('cp-conv'));
 
                 const childCalls = store.addProcess.mock.calls.filter(
                     (call: any[]) => call[0].type === 'pipeline-item'
@@ -6218,7 +6218,7 @@ job:
                 });
 
                 const executor = new CLITaskExecutor(store);
-                await executor.execute(createPipelineTask('cp-noai'));
+                await executor.execute(createWorkflowTask('cp-noai'));
 
                 const childCalls = store.addProcess.mock.calls.filter(
                     (call: any[]) => call[0].type === 'pipeline-item'
@@ -6240,7 +6240,7 @@ describe('defaultIsExclusive', () => {
     it.each([
         { type: 'follow-prompt', expected: true },
         { type: 'resolve-comments', expected: false },
-        { type: 'run-pipeline', expected: true },
+        { type: 'run-workflow', expected: true },
         { type: 'custom', expected: true },
         { type: 'task-generation', expected: false },
         { type: 'ai-clarification', expected: false },

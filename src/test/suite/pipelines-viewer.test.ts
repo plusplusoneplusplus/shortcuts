@@ -30,7 +30,7 @@ suite('Pipelines Viewer Tests (Package Structure)', () => {
                     get: <T>(key: string, defaultValue?: T): T => {
                         const defaults: Record<string, any> = {
                             enabled: true,
-                            folderPath: '.vscode/pipelines',
+                            folderPath: '.vscode/workflows',
                             sortBy: 'name'
                         };
                         return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
@@ -108,7 +108,7 @@ reduce:
         suite('Folder Management', () => {
             test('should get correct pipelines folder path', () => {
                 const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                assert.strictEqual(pipelinesFolder, path.join(tempDir, '.vscode', 'pipelines'));
+                assert.strictEqual(pipelinesFolder, path.join(tempDir, '.vscode', 'workflows'));
             });
 
             test('should create folders when ensurePipelinesFolderExists is called', () => {
@@ -869,7 +869,7 @@ reduce:
                 const settings = pipelineManager.getSettings();
 
                 assert.strictEqual(settings.enabled, true);
-                assert.strictEqual(settings.folderPath, '.vscode/pipelines');
+                assert.strictEqual(settings.folderPath, '.vscode/workflows');
                 assert.strictEqual(settings.sortBy, 'name');
             });
         });
@@ -881,7 +881,7 @@ reduce:
                 packageName: 'test-pipeline',
                 packagePath: '/path/to/test-pipeline',
                 filePath: '/path/to/test-pipeline/pipeline.yaml',
-                relativePath: '.vscode/pipelines/test-pipeline',
+                relativePath: '.vscode/workflows/test-pipeline',
                 name: 'Test Pipeline',
                 description: 'A test pipeline',
                 lastModified: new Date(),
@@ -904,7 +904,7 @@ reduce:
                 packageName: 'with-resources',
                 packagePath: '/path/to/with-resources',
                 filePath: '/path/to/with-resources/pipeline.yaml',
-                relativePath: '.vscode/pipelines/with-resources',
+                relativePath: '.vscode/workflows/with-resources',
                 name: 'With Resources',
                 lastModified: new Date(),
                 size: 1024,
@@ -931,7 +931,7 @@ reduce:
                 packageName: 'no-resources',
                 packagePath: '/path/to/no-resources',
                 filePath: '/path/to/no-resources/pipeline.yaml',
-                relativePath: '.vscode/pipelines/no-resources',
+                relativePath: '.vscode/workflows/no-resources',
                 name: 'No Resources',
                 lastModified: new Date(),
                 size: 1024,
@@ -950,7 +950,7 @@ reduce:
                 packageName: 'invalid',
                 packagePath: '/path/to/invalid',
                 filePath: '/path/to/invalid/pipeline.yaml',
-                relativePath: '.vscode/pipelines/invalid',
+                relativePath: '.vscode/workflows/invalid',
                 name: 'Invalid Pipeline',
                 lastModified: new Date(),
                 size: 100,
@@ -969,7 +969,7 @@ reduce:
                 packageName: 'pipeline',
                 packagePath: '/path/to/pipeline',
                 filePath: '/path/to/pipeline/pipeline.yaml',
-                relativePath: '.vscode/pipelines/pipeline',
+                relativePath: '.vscode/workflows/pipeline',
                 name: 'Pipeline',
                 lastModified: new Date(),
                 size: 500,
@@ -990,7 +990,7 @@ reduce:
                 packageName: 'pipeline',
                 packagePath: '/path/to/pipeline',
                 filePath: '/path/to/pipeline/pipeline.yaml',
-                relativePath: '.vscode/pipelines/pipeline',
+                relativePath: '.vscode/workflows/pipeline',
                 name: 'My Pipeline',
                 description: 'This is a test pipeline',
                 lastModified: new Date(),
@@ -1014,7 +1014,7 @@ reduce:
                 packageName: 'test',
                 packagePath: '/path/to/test',
                 filePath: '/path/to/test/pipeline.yaml',
-                relativePath: '.vscode/pipelines/test',
+                relativePath: '.vscode/workflows/test',
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
@@ -1043,7 +1043,7 @@ reduce:
                 packageName: 'test',
                 packagePath: '/path/to/test',
                 filePath: '/path/to/test/pipeline.yaml',
-                relativePath: '.vscode/pipelines/test',
+                relativePath: '.vscode/workflows/test',
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
@@ -1069,7 +1069,7 @@ reduce:
                 packageName: 'test',
                 packagePath: '/path/to/test',
                 filePath: '/path/to/test/pipeline.yaml',
-                relativePath: '.vscode/pipelines/test',
+                relativePath: '.vscode/workflows/test',
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
@@ -1253,7 +1253,7 @@ reduce:
                 packageName: 'test',
                 packagePath: '/path/to/test',
                 filePath: '/path/to/test/pipeline.yaml',
-                relativePath: '.vscode/pipelines/test',
+                relativePath: '.vscode/workflows/test',
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
@@ -1573,6 +1573,105 @@ reduce:
             const resources = pipelines[0].resourceFiles || [];
             assert.strictEqual(resources.length, 1);
             assert.ok(resources[0].relativePath.includes('a/b/c/d') || resources[0].relativePath.includes('a\\b\\c\\d'));
+        });
+    });
+
+    suite('Folder Migration (migrateFolder)', () => {
+        let migrationTempDir: string;
+        let migrationManager: PipelineManager;
+
+        setup(() => {
+            migrationTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-migration-test-'));
+
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            (vscode.workspace as any).getConfiguration = (section?: string) => {
+                if (section === 'workspaceShortcuts.pipelinesViewer') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => {
+                            const defaults: Record<string, any> = {
+                                enabled: true,
+                                folderPath: '.vscode/workflows',
+                                sortBy: 'name'
+                            };
+                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            migrationManager = new PipelineManager(migrationTempDir);
+        });
+
+        teardown(() => {
+            migrationManager.dispose();
+            if (fs.existsSync(migrationTempDir)) {
+                fs.rmSync(migrationTempDir, { recursive: true, force: true });
+            }
+        });
+
+        test('renames old folder when it exists and new folder does not', async () => {
+            const oldFolder = path.join(migrationTempDir, '.vscode', 'pipelines');
+            fs.mkdirSync(oldFolder, { recursive: true });
+            fs.writeFileSync(path.join(oldFolder, 'test.txt'), 'content');
+
+            await migrationManager.migrateFolder();
+
+            const newFolder = path.join(migrationTempDir, '.vscode', 'workflows');
+            assert.ok(!fs.existsSync(oldFolder), 'Old folder should not exist after migration');
+            assert.ok(fs.existsSync(newFolder), 'New folder should exist after migration');
+            assert.strictEqual(fs.readFileSync(path.join(newFolder, 'test.txt'), 'utf-8'), 'content');
+        });
+
+        test('does nothing when old folder does not exist', async () => {
+            const newFolder = path.join(migrationTempDir, '.vscode', 'workflows');
+            await migrationManager.migrateFolder();
+            assert.ok(!fs.existsSync(newFolder), 'New folder should not be created');
+        });
+
+        test('does nothing when both folders exist (no clobber)', async () => {
+            const oldFolder = path.join(migrationTempDir, '.vscode', 'pipelines');
+            const newFolder = path.join(migrationTempDir, '.vscode', 'workflows');
+            fs.mkdirSync(oldFolder, { recursive: true });
+            fs.mkdirSync(newFolder, { recursive: true });
+            fs.writeFileSync(path.join(oldFolder, 'old.txt'), 'old');
+            fs.writeFileSync(path.join(newFolder, 'new.txt'), 'new');
+
+            await migrationManager.migrateFolder();
+
+            assert.ok(fs.existsSync(oldFolder), 'Old folder should still exist');
+            assert.ok(fs.existsSync(newFolder), 'New folder should still exist');
+            assert.strictEqual(fs.readFileSync(path.join(newFolder, 'new.txt'), 'utf-8'), 'new');
+        });
+
+        test('skips migration when user has custom folderPath', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            (vscode.workspace as any).getConfiguration = (section?: string) => {
+                if (section === 'workspaceShortcuts.pipelinesViewer') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => {
+                            const defaults: Record<string, any> = {
+                                enabled: true,
+                                folderPath: 'custom/pipeline-dir',
+                                sortBy: 'name'
+                            };
+                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            const customManager = new PipelineManager(migrationTempDir);
+            const oldFolder = path.join(migrationTempDir, '.vscode', 'pipelines');
+            fs.mkdirSync(oldFolder, { recursive: true });
+
+            await customManager.migrateFolder();
+
+            assert.ok(fs.existsSync(oldFolder), 'Old folder should still exist with custom path');
+            const newFolder = path.join(migrationTempDir, '.vscode', 'workflows');
+            assert.ok(!fs.existsSync(newFolder), 'New folder should not be created with custom path');
+            customManager.dispose();
         });
     });
 });

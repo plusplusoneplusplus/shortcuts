@@ -133,7 +133,7 @@
       },
       {
         "view": "pipelinesView",
-        "contents": "📋 **Pipelines**\n\n[Create First Pipeline](command:pipelinesViewer.create)\n\nManage YAML-based AI pipelines.\n\n**Features:**\n• Pipelines stored in `.vscode/pipelines/`\n• One-click execution\n• Validation and error checking\n• Template-based AI processing"
+        "contents": "📋 **Workflows**\n\n[Create First Pipeline](command:pipelinesViewer.create)\n\nManage YAML-based AI workflows.\n\n**Features:**\n• Workflows stored in `.vscode/workflows/`\n• One-click execution\n• Validation and error checking\n• Template-based AI processing"
       }
     ],
     "configuration": {
@@ -860,8 +860,8 @@
         },
         "workspaceShortcuts.pipelinesViewer.folderPath": {
           "type": "string",
-          "default": ".vscode/pipelines",
-          "description": "Path to pipelines folder relative to workspace root"
+          "default": ".vscode/workflows",
+          "description": "Path to workflows folder relative to workspace root"
         },
         "workspaceShortcuts.pipelinesViewer.sortBy": {
           "type": "string",

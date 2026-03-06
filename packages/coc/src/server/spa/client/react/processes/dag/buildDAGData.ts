@@ -1,6 +1,6 @@
 import type { DAGChartData, DAGNodeData, DAGNodeState } from './types';
 import type { PipelinePhase, PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
-import type { LivePhaseEntry, LiveProgress } from '../../hooks/usePipelinePhase';
+import type { LivePhaseEntry, LiveProgress } from '../../hooks/useWorkflowPhase';
 
 const phaseLabels: Record<PipelinePhase, string> = {
     input: 'Input',
@@ -79,7 +79,7 @@ export function buildDAGData(process: any): DAGChartData | null {
     if (!metadata) return null;
 
     let stats = metadata.executionStats;
-    // Fallback: queue-run-pipeline stores stats in result JSON when metadata lacks them
+    // Fallback: queue-run-workflow stores stats in result JSON when metadata lacks them
     if (!stats && process?.result) {
         try {
             const parsed = typeof process.result === 'string'
@@ -115,7 +115,7 @@ export function buildDAGData(process: any): DAGChartData | null {
         (pipelinePhases && pipelinePhases.some(p => p.phase === 'reduce'));
     if (hasReduce) phases.push('reduce');
 
-    // If only 'input' detected and no other signals, not a pipeline visualization
+    // If only 'input' detected and no other signals, not a workflow visualization
     if (phases.length === 1 && !stats && !pipelinePhases) return null;
 
     const stateMap = deriveNodeStates(phases, process.status || 'completed', pipelinePhases);
@@ -164,7 +164,7 @@ const phaseStatusToNodeState: Record<PipelinePhaseStatus, DAGNodeState> = {
 
 /**
  * Build DAGChartData from live SSE phase/progress state.
- * Used when a pipeline process is actively running.
+ * Used when a workflow process is actively running.
  */
 export function buildDAGDataFromLive(
     phases: Map<PipelinePhase, LivePhaseEntry>,

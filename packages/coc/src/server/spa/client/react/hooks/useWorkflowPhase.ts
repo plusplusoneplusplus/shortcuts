@@ -1,6 +1,6 @@
 /**
- * usePipelinePhase — React hook that subscribes to SSE `pipeline-phase` and
- * `pipeline-progress` named events, maintaining live phase/progress state
+ * useWorkflowPhase — React hook that subscribes to SSE `workflow-phase` and
+ * `workflow-progress` named events, maintaining live phase/progress state
  * for the DAG visualization.
  */
 
@@ -34,7 +34,7 @@ export interface UsePipelinePhaseResult {
 
 const THROTTLE_MS = 250;
 
-export function usePipelinePhase(
+export function useWorkflowPhase(
     eventSource: EventSource | null,
     metadata: any | undefined,
 ): UsePipelinePhaseResult {
@@ -113,13 +113,13 @@ export function usePipelinePhase(
             setDisconnectedRef.current(true);
         };
 
-        eventSource.addEventListener('pipeline-phase', handlePhase);
-        eventSource.addEventListener('pipeline-progress', handleProgress);
+        eventSource.addEventListener('workflow-phase', handlePhase);
+        eventSource.addEventListener('workflow-progress', handleProgress);
         eventSource.addEventListener('error', handleError);
 
         return () => {
-            eventSource.removeEventListener('pipeline-phase', handlePhase);
-            eventSource.removeEventListener('pipeline-progress', handleProgress);
+            eventSource.removeEventListener('workflow-phase', handlePhase);
+            eventSource.removeEventListener('workflow-progress', handleProgress);
             eventSource.removeEventListener('error', handleError);
             if (pendingProgressRef.current) {
                 clearTimeout(pendingProgressRef.current);

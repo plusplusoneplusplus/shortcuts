@@ -12,7 +12,7 @@ import { ConversationTurnBubble } from './ConversationTurnBubble';
 import { ConversationMiniMap } from './ConversationMiniMap';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from './ConversationMetadataPopover';
 import { formatDuration, statusIcon, statusLabel } from '../utils/format';
-import { PipelineDAGSection } from './dag';
+import { WorkflowDAGSection } from './dag';
 import { resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName } from '../utils/workspace';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -156,7 +156,7 @@ export function ProcessDetail() {
             } catch { /* ignore */ }
         });
 
-        es.addEventListener('pipeline-phase', (e) => {
+        es.addEventListener('workflow-phase', (e) => {
             try {
                 const data = JSON.parse(e.data);
                 setPipelinePhases(prev => {
@@ -171,7 +171,7 @@ export function ProcessDetail() {
             } catch { /* ignore */ }
         });
 
-        es.addEventListener('pipeline-progress', (e) => {
+        es.addEventListener('workflow-progress', (e) => {
             try {
                 const data = JSON.parse(e.data);
                 setPipelineProgress(data);
@@ -292,7 +292,7 @@ export function ProcessDetail() {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
-                            {(metadataProcess?.metadata?.pipelineName || metadataProcess?.type === 'run-pipeline') && wsId && (
+                            {(metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow') && wsId && (
                                 <Button
                                     variant="secondary"
                                     size="sm"
@@ -358,8 +358,8 @@ export function ProcessDetail() {
                     )}
                 </div>
 
-                {/* Pipeline DAG visualization */}
-                <PipelineDAGSection process={metadataProcess} eventSourceRef={eventSourceRef} onScrollToConversation={scrollToTurn} />
+                {/* Workflow DAG visualization */}
+                <WorkflowDAGSection process={metadataProcess} eventSourceRef={eventSourceRef} onScrollToConversation={scrollToTurn} />
 
                 {/* Conversation turns */}
                 {loading ? (

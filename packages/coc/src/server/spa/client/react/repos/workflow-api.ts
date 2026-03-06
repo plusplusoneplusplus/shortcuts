@@ -1,53 +1,53 @@
 /**
- * Typed API client for pipeline CRUD endpoints.
+ * Typed API client for workflow CRUD endpoints.
  * Uses raw fetch() + getApiBase() for full HTTP method support.
  */
 
 import { getApiBase } from '../utils/config';
 import type { PipelineInfo } from './repoGrouping';
 
-function pipelinesUrl(workspaceId: string): string {
-    return `${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/pipelines`;
+function workflowsUrl(workspaceId: string): string {
+    return `${getApiBase()}/workspaces/${encodeURIComponent(workspaceId)}/workflows`;
 }
 
-function pipelineUrl(workspaceId: string, name: string): string {
-    return `${pipelinesUrl(workspaceId)}/${encodeURIComponent(name)}`;
+function workflowUrl(workspaceId: string, name: string): string {
+    return `${workflowsUrl(workspaceId)}/${encodeURIComponent(name)}`;
 }
 
-function pipelineContentUrl(workspaceId: string, name: string): string {
-    return `${pipelineUrl(workspaceId, name)}/content`;
+function workflowContentUrl(workspaceId: string, name: string): string {
+    return `${workflowUrl(workspaceId, name)}/content`;
 }
 
-function pipelineRefineUrl(workspaceId: string): string {
-    return `${pipelinesUrl(workspaceId)}/refine`;
+function workflowRefineUrl(workspaceId: string): string {
+    return `${workflowsUrl(workspaceId)}/refine`;
 }
 
-export async function fetchPipelines(workspaceId: string): Promise<PipelineInfo[]> {
-    const res = await fetch(pipelinesUrl(workspaceId));
+export async function fetchWorkflows(workspaceId: string): Promise<PipelineInfo[]> {
+    const res = await fetch(workflowsUrl(workspaceId));
     if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
     const data = await res.json();
-    return data.pipelines || [];
+    return data.workflows || [];
 }
 
-export async function fetchPipelineContent(
+export async function fetchWorkflowContent(
     workspaceId: string,
     pipelineName: string
 ): Promise<{ content: string; path: string }> {
-    const res = await fetch(pipelineContentUrl(workspaceId, pipelineName));
+    const res = await fetch(workflowContentUrl(workspaceId, pipelineName));
     if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
     return res.json();
 }
 
-export async function savePipelineContent(
+export async function saveWorkflowContent(
     workspaceId: string,
     pipelineName: string,
     content: string
 ): Promise<void> {
-    const res = await fetch(pipelineContentUrl(workspaceId, pipelineName), {
+    const res = await fetch(workflowContentUrl(workspaceId, pipelineName), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
@@ -71,7 +71,7 @@ export interface RefineResult {
     suggestedName?: string;
 }
 
-export async function generatePipeline(
+export async function generateWorkflow(
     workspaceId: string,
     name: string | undefined,
     description: string,
@@ -81,7 +81,7 @@ export async function generatePipeline(
     if (name) {
         body.name = name;
     }
-    const res = await fetch(`${pipelinesUrl(workspaceId)}/generate`, {
+    const res = await fetch(`${workflowsUrl(workspaceId)}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -94,7 +94,7 @@ export async function generatePipeline(
     return res.json();
 }
 
-export async function refinePipeline(
+export async function refineWorkflow(
     workspaceId: string,
     pipelineName: string,
     instruction: string,
@@ -106,7 +106,7 @@ export async function refinePipeline(
     if (model !== undefined) {
         body.model = model;
     }
-    const res = await fetch(pipelineRefineUrl(workspaceId), {
+    const res = await fetch(workflowRefineUrl(workspaceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -119,7 +119,7 @@ export async function refinePipeline(
     return res.json();
 }
 
-export async function createPipeline(
+export async function createWorkflow(
     workspaceId: string,
     name: string,
     template?: string,
@@ -132,7 +132,7 @@ export async function createPipeline(
     if (content !== undefined) {
         body.content = content;
     }
-    const res = await fetch(pipelinesUrl(workspaceId), {
+    const res = await fetch(workflowsUrl(workspaceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -142,11 +142,11 @@ export async function createPipeline(
     }
 }
 
-export async function deletePipeline(
+export async function deleteWorkflow(
     workspaceId: string,
     pipelineName: string
 ): Promise<void> {
-    const res = await fetch(pipelineUrl(workspaceId, pipelineName), {
+    const res = await fetch(workflowUrl(workspaceId, pipelineName), {
         method: 'DELETE',
     });
     if (!res.ok) {
@@ -154,11 +154,11 @@ export async function deletePipeline(
     }
 }
 
-export async function runPipeline(
+export async function runWorkflow(
     workspaceId: string,
     pipelineName: string
 ): Promise<{ task: any }> {
-    const res = await fetch(`${pipelineUrl(workspaceId, pipelineName)}/run`, {
+    const res = await fetch(`${workflowUrl(workspaceId, pipelineName)}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),

@@ -35,7 +35,7 @@ Entry point: `src/extension.ts`. Feature modules under `src/shortcuts/`:
 - **markdown-comments** — Custom Editor API for inline markdown review. Comments in `.vscode/comments/<hash>.json`.
 - **git-diff-comments** — Git diff review with comment categories and resolve/reopen workflow.
 - **code-review** — Review commits against rules in `.github/cr-rules/*.md`.
-- **yaml-pipeline** — Pipeline management UI. Pipelines are directories with `pipeline.yaml` under `.vscode/pipelines/`.
+- **yaml-pipeline** — Pipeline management UI. Pipelines are directories with `pipeline.yaml` under `.vscode/workflows/`.
 - **tasks-viewer** — Hierarchical task management in `.vscode/tasks/`. Recursive scanning, document grouping by suffix (plan/spec/test/notes/todo/design/impl/review/checklist/requirements/analysis).
 - **ai-service** — VS Code AI wrapper: `AIProcessManager` (Memento persistence), `AIQueueService`, `CopilotCLIInvoker`. Working dir defaults to `{workspace}/src` if exists.
 - **git** — VS Code git layer wrapping `pipeline-core/src/git/`.

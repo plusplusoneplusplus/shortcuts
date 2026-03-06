@@ -1,11 +1,11 @@
 import { useState, useEffect, type RefObject } from 'react';
-import { PipelineDAGChart } from './PipelineDAGChart';
+import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildDAGData } from './buildDAGData';
-import { usePipelinePhase } from '../../hooks/usePipelinePhase';
+import { useWorkflowPhase } from '../../hooks/useWorkflowPhase';
 import { formatDuration, statusIcon } from '../../utils/format';
-import type { PhaseDetail } from './PipelinePhasePopover';
+import type { PhaseDetail } from './WorkflowPhasePopover';
 
-export interface PipelineDAGSectionProps {
+export interface WorkflowDAGSectionProps {
     process: any;
     eventSourceRef?: RefObject<EventSource | null>;
     onScrollToConversation?: (phaseName: string) => void;
@@ -18,7 +18,7 @@ function detectDarkMode(): boolean {
     return false;
 }
 
-export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversation }: PipelineDAGSectionProps) {
+export function WorkflowDAGSection({ process, eventSourceRef, onScrollToConversation }: WorkflowDAGSectionProps) {
     const [expanded, setExpanded] = useState(true);
     const [now, setNow] = useState(Date.now());
     const isDark = detectDarkMode();
@@ -33,7 +33,7 @@ export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversa
     }, [isRunning]);
 
     // SSE live data
-    const { dagData: liveDagData, disconnected } = usePipelinePhase(
+    const { dagData: liveDagData, disconnected } = useWorkflowPhase(
         eventSourceRef?.current ?? null,
         process?.metadata,
     );
@@ -131,7 +131,7 @@ export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversa
     }
 
     return (
-        <div data-testid="pipeline-dag-section" className="mb-4">
+        <div data-testid="workflow-dag-section" className="mb-4">
             {/* Header */}
             <div
                 className="flex items-center justify-between px-4 py-2 cursor-pointer
@@ -158,7 +158,7 @@ export function PipelineDAGSection({ process, eventSourceRef, onScrollToConversa
             {/* Body */}
             {expanded && (
                 <div className="px-4 py-3">
-                    <PipelineDAGChart
+                    <WorkflowDAGChart
                         data={dagData}
                         isDark={isDark}
                         now={isRunning ? now : undefined}

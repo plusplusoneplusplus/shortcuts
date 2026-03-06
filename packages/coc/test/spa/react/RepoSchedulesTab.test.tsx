@@ -111,7 +111,7 @@ describe('SCHEDULE_TEMPLATES', () => {
     it('contains expected template ids', () => {
         const ids = SCHEDULE_TEMPLATES.map(t => t.id);
         expect(ids).toContain('auto-commit');
-        expect(ids).toContain('run-pipeline');
+        expect(ids).toContain('run-workflow');
         expect(ids).toContain('pull-sync');
         expect(ids).toContain('clean-outputs');
         expect(ids).toContain('run-script');
@@ -164,11 +164,11 @@ describe('CreateScheduleForm template UI', () => {
         expect(targetInput.value).toBe(tpl.target);
     });
 
-    it('run-pipeline template starts with empty target for dropdown selection', async () => {
+    it('run-workflow template starts with empty target for dropdown selection', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
         expect(nameInput.value).toBe('Run Workflow');
@@ -230,7 +230,7 @@ describe('CreateScheduleForm template UI', () => {
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
         expect(nameInput.value).toBe('Auto-commit');
 
-        // Switch to pull-sync (another non-pipeline template)
+        // Switch to pull-sync (another non-workflow template)
         fireEvent.click(screen.getByTestId('template-pull-sync'));
         expect(nameInput.value).toBe('Pull & Sync');
 
@@ -296,8 +296,8 @@ describe('CreateScheduleForm template UI', () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
-        // run-pipeline is a cron mode template
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        // run-workflow is a cron mode template
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         // The Cron button should be highlighted (active)
         const cronBtn = screen.getByText('Cron');
@@ -317,10 +317,10 @@ describe('CreateScheduleForm template UI', () => {
 });
 
 // ============================================================================
-// Pipeline dropdown selector tests
+// Workflow dropdown selector tests
 // ============================================================================
 
-describe('Pipeline dropdown selector (target field)', () => {
+describe('Workflow dropdown selector (target field)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockFetchApi.mockResolvedValue({ schedules: [] });
@@ -330,16 +330,16 @@ describe('Pipeline dropdown selector (target field)', () => {
         });
     });
 
-    async function openRunPipelineTemplate() {
+    async function openRunWorkflowTemplate() {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
         // Override fetch to return pipelines for the pipeline API call
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/pipelines')) {
+            if (typeof url === 'string' && url.includes('/workflows')) {
                 return {
                     ok: true,
                     json: () => Promise.resolve({
-                        pipelines: [
+                        workflows: [
                             { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
                             { name: 'data-sync', path: 'pipelines/data-sync/pipeline.yaml' },
                         ],
@@ -348,170 +348,170 @@ describe('Pipeline dropdown selector (target field)', () => {
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
     }
 
-    it('renders a <select> dropdown in the target position when pipelines are available', async () => {
-        await openRunPipelineTemplate();
+    it('renders a <select> dropdown in the target position when workflows are available', async () => {
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            const selectEl = screen.getByTestId('target-pipeline-select');
+            const selectEl = screen.getByTestId('target-workflow-select');
             expect(selectEl.tagName).toBe('SELECT');
         });
     });
 
-    it('dropdown contains discovered pipeline options', async () => {
-        await openRunPipelineTemplate();
+    it('dropdown contains discovered workflow options', async () => {
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        const select = screen.getByTestId('target-workflow-select') as HTMLSelectElement;
         const options = Array.from(select.options).map(o => o.textContent);
         expect(options).toContain('daily-report');
         expect(options).toContain('data-sync');
     });
 
     it('dropdown includes a disabled placeholder option', async () => {
-        await openRunPipelineTemplate();
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        const select = screen.getByTestId('target-workflow-select') as HTMLSelectElement;
         const placeholder = Array.from(select.options).find(o => o.disabled);
         expect(placeholder).toBeTruthy();
-        expect(placeholder!.textContent).toContain('Select a pipeline');
+        expect(placeholder!.textContent).toContain('Select a workflow');
     });
 
     it('dropdown includes "Other (manual path)" option', async () => {
-        await openRunPipelineTemplate();
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        const select = screen.getByTestId('target-workflow-select') as HTMLSelectElement;
         const manualOpt = Array.from(select.options).find(o => o.value === '__manual__');
         expect(manualOpt).toBeTruthy();
         expect(manualOpt!.textContent).toContain('Other');
     });
 
-    it('selecting a pipeline sets the target value', async () => {
-        await openRunPipelineTemplate();
+    it('selecting a workflow sets the target value', async () => {
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        const select = screen.getByTestId('target-workflow-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: 'pipelines/daily-report/pipeline.yaml' } });
 
         expect(select.value).toBe('pipelines/daily-report/pipeline.yaml');
     });
 
     it('selecting "Other" switches to manual text input for target', async () => {
-        await openRunPipelineTemplate();
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
-        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        const select = screen.getByTestId('target-workflow-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: '__manual__' } });
 
         // Should now be an input, not a select
         await waitFor(() => {
-            const inputEl = screen.getByTestId('target-pipeline-input');
+            const inputEl = screen.getByTestId('target-workflow-input');
             expect(inputEl.tagName).toBe('INPUT');
         });
     });
 
-    it('falls back to text input when no pipelines are found', async () => {
+    it('falls back to text input when no workflows are found', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
         // Return empty pipelines
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/pipelines')) {
-                return { ok: true, json: () => Promise.resolve({ pipelines: [] }) };
+            if (typeof url === 'string' && url.includes('/workflows')) {
+                return { ok: true, json: () => Promise.resolve({ workflows: [] }) };
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         await waitFor(() => {
-            const inputEl = screen.getByTestId('target-pipeline-input');
+            const inputEl = screen.getByTestId('target-workflow-input');
             expect(inputEl.tagName).toBe('INPUT');
         });
     });
 
-    it('falls back to text input when pipeline fetch fails', async () => {
+    it('falls back to text input when workflow fetch fails', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/pipelines')) {
+            if (typeof url === 'string' && url.includes('/workflows')) {
                 return { ok: false, status: 500, statusText: 'Internal Server Error' };
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         await waitFor(() => {
-            const inputEl = screen.getByTestId('target-pipeline-input');
+            const inputEl = screen.getByTestId('target-workflow-input');
             expect(inputEl.tagName).toBe('INPUT');
         });
     });
 
-    it('shows loading indicator while fetching pipelines', async () => {
+    it('shows loading indicator while fetching workflows', async () => {
         await renderSchedulesTab();
         fireEvent.click(screen.getByText('+ New'));
 
         // Make fetch hang indefinitely
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/pipelines')) {
+            if (typeof url === 'string' && url.includes('/workflows')) {
                 return new Promise(() => {}); // never resolves
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('pipeline-loading')).toBeTruthy();
+            expect(screen.getByTestId('workflow-loading')).toBeTruthy();
         });
     });
 
-    it('deselecting run-pipeline template resets manual mode', async () => {
-        await openRunPipelineTemplate();
+    it('deselecting run-workflow template resets manual mode', async () => {
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
         // Switch to manual
-        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        const select = screen.getByTestId('target-workflow-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: '__manual__' } });
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-input').tagName).toBe('INPUT');
+            expect(screen.getByTestId('target-workflow-input').tagName).toBe('INPUT');
         });
 
         // Deselect template
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         // Re-select: should be back to dropdown (not stuck in manual)
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/pipelines')) {
+            if (typeof url === 'string' && url.includes('/workflows')) {
                 return {
                     ok: true,
                     json: () => Promise.resolve({
-                        pipelines: [
+                        workflows: [
                             { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
                         ],
                     }),
@@ -519,25 +519,25 @@ describe('Pipeline dropdown selector (target field)', () => {
             }
             return { ok: true, json: () => Promise.resolve({ schedules: [] }) };
         });
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
     });
 
-    it('no PARAMETERS section is shown for run-pipeline template', async () => {
-        await openRunPipelineTemplate();
+    it('no PARAMETERS section is shown for run-workflow template', async () => {
+        await openRunWorkflowTemplate();
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
         // The template-params section should not exist since params is empty
         expect(screen.queryByTestId('template-params')).toBeNull();
     });
 
-    it('params.pipeline is set when a pipeline is selected from dropdown', async () => {
+    it('params.pipeline is set when a workflow is selected from dropdown', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({ schedules: [] }),
@@ -547,11 +547,11 @@ describe('Pipeline dropdown selector (target field)', () => {
         fireEvent.click(screen.getByText('+ New'));
 
         mockFetch.mockImplementation(async (url: string) => {
-            if (typeof url === 'string' && url.includes('/pipelines')) {
+            if (typeof url === 'string' && url.includes('/workflows')) {
                 return {
                     ok: true,
                     json: () => Promise.resolve({
-                        pipelines: [
+                        workflows: [
                             { name: 'daily-report', path: 'pipelines/daily-report/pipeline.yaml' },
                         ],
                     }),
@@ -561,14 +561,14 @@ describe('Pipeline dropdown selector (target field)', () => {
             return { ok: true, json: () => Promise.resolve({}) };
         });
 
-        fireEvent.click(screen.getByTestId('template-run-pipeline'));
+        fireEvent.click(screen.getByTestId('template-run-workflow'));
 
         await waitFor(() => {
-            expect(screen.getByTestId('target-pipeline-select').tagName).toBe('SELECT');
+            expect(screen.getByTestId('target-workflow-select').tagName).toBe('SELECT');
         });
 
-        // Select a pipeline
-        const select = screen.getByTestId('target-pipeline-select') as HTMLSelectElement;
+        // Select a workflow
+        const select = screen.getByTestId('target-workflow-select') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: 'pipelines/daily-report/pipeline.yaml' } });
 
         // Submit by clicking the Create button (type="submit")

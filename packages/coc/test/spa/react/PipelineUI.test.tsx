@@ -1,5 +1,5 @@
 /**
- * Tests for Pipeline UI components: PipelineDetail, AddPipelineDialog, PipelinesTab interactions.
+ * Tests for Pipeline UI components: WorkflowDetail, AddWorkflowDialog, WorkflowsTab interactions.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -8,13 +8,13 @@ import type { ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { PipelineDetail } from '../../../src/server/spa/client/react/repos/PipelineDetail';
-import { AddPipelineDialog } from '../../../src/server/spa/client/react/repos/AddPipelineDialog';
-import { PipelinesTab } from '../../../src/server/spa/client/react/repos/PipelinesTab';
-import type { RepoData, PipelineInfo } from '../../../src/server/spa/client/react/repos/repoGrouping';
-import * as pipelineApi from '../../../src/server/spa/client/react/repos/pipeline-api';
+import { WorkflowDetail } from '../../../src/server/spa/client/react/repos/WorkflowDetail';
+import { AddWorkflowDialog } from '../../../src/server/spa/client/react/repos/AddWorkflowDialog';
+import { WorkflowsTab } from '../../../src/server/spa/client/react/repos/WorkflowsTab';
+import type { RepoData, WorkflowInfo } from '../../../src/server/spa/client/react/repos/repoGrouping';
+import * as pipelineApi from '../../../src/server/spa/client/react/repos/workflow-api';
 
-// Mock fetchApi used by PipelineRunHistory (rendered inside PipelineDetail)
+// Mock fetchApi used by WorkflowRunHistory (rendered inside WorkflowDetail)
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue({ history: [] }),
 }));
@@ -36,16 +36,16 @@ function Wrap({ children }: { children: ReactNode }) {
 function makeRepo(overrides: Partial<RepoData> & { workspace: any }): RepoData {
     return {
         gitInfo: { branch: 'main', dirty: false, isGitRepo: true },
-        pipelines: [],
+        workflows: [],
         stats: { success: 0, failed: 0, running: 0 },
         taskCount: 0,
         ...overrides,
     };
 }
 
-const samplePipeline: PipelineInfo = {
+const samplePipeline: WorkflowInfo = {
     name: 'my-pipeline',
-    path: '.vscode/pipelines/my-pipeline/pipeline.yaml',
+    path: '.vscode/workflows/my-pipeline/pipeline.yaml',
     description: 'Test pipeline',
     isValid: true,
     validationErrors: [],
@@ -59,12 +59,12 @@ beforeEach(() => {
 });
 
 // ============================================================================
-// PipelineDetail
+// WorkflowDetail
 // ============================================================================
 
-describe('PipelineDetail', () => {
+describe('WorkflowDetail', () => {
     beforeEach(() => {
-        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
         });
@@ -73,7 +73,7 @@ describe('PipelineDetail', () => {
     it('renders pipeline name and path after loading', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => {
@@ -85,7 +85,7 @@ describe('PipelineDetail', () => {
     it('renders YAML content in a pre element in view mode', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => {
@@ -98,7 +98,7 @@ describe('PipelineDetail', () => {
     it('shows valid badge when isValid is true', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => {
@@ -110,7 +110,7 @@ describe('PipelineDetail', () => {
         const invalidPipeline = { ...samplePipeline, isValid: false, validationErrors: ['Missing input'] };
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={invalidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={invalidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => {
@@ -121,7 +121,7 @@ describe('PipelineDetail', () => {
     it('shows Edit and Delete buttons in view mode', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => {
@@ -133,12 +133,12 @@ describe('PipelineDetail', () => {
     it('action buttons are in the header row, not a footer', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
         // The Run button and pipeline name should share the same top-level header container
-        const runBtn = screen.getByTestId('pipeline-run-btn');
+        const runBtn = screen.getByTestId('workflow-run-btn');
         const nameEl = screen.getByText('my-pipeline');
         // Both live inside the header div (direct child of the root flex-col)
         const headerDiv = nameEl.parentElement!;
@@ -153,7 +153,7 @@ describe('PipelineDetail', () => {
     it('edit mode Cancel/Save buttons are in the header row', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
@@ -169,7 +169,7 @@ describe('PipelineDetail', () => {
     it('switches to edit mode with textarea when Edit is clicked', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
@@ -182,7 +182,7 @@ describe('PipelineDetail', () => {
     it('shows Save and Cancel buttons in edit mode', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
@@ -192,10 +192,10 @@ describe('PipelineDetail', () => {
     });
 
     it('Cancel returns to view mode without saving', async () => {
-        const saveSpy = vi.spyOn(pipelineApi, 'savePipelineContent');
+        const saveSpy = vi.spyOn(pipelineApi, 'saveWorkflowContent');
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
@@ -209,7 +209,7 @@ describe('PipelineDetail', () => {
     it('shows inline error on empty content save', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
@@ -220,11 +220,11 @@ describe('PipelineDetail', () => {
         expect(screen.getByText('Workflow content cannot be empty')).toBeDefined();
     });
 
-    it('Save calls savePipelineContent and shows success toast', async () => {
-        const saveSpy = vi.spyOn(pipelineApi, 'savePipelineContent').mockResolvedValue();
+    it('Save calls saveWorkflowContent and shows success toast', async () => {
+        const saveSpy = vi.spyOn(pipelineApi, 'saveWorkflowContent').mockResolvedValue();
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
@@ -239,10 +239,10 @@ describe('PipelineDetail', () => {
     });
 
     it('Save shows inline error on API failure', async () => {
-        vi.spyOn(pipelineApi, 'savePipelineContent').mockRejectedValue(new Error('Bad YAML'));
+        vi.spyOn(pipelineApi, 'saveWorkflowContent').mockRejectedValue(new Error('Bad YAML'));
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
@@ -256,7 +256,7 @@ describe('PipelineDetail', () => {
     it('Delete button opens confirmation dialog', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Delete'));
@@ -265,12 +265,12 @@ describe('PipelineDetail', () => {
         expect(screen.getByText(/Are you sure you want to delete/)).toBeDefined();
     });
 
-    it('confirming delete calls deletePipeline and onDeleted', async () => {
-        const deleteSpy = vi.spyOn(pipelineApi, 'deletePipeline').mockResolvedValue();
+    it('confirming delete calls deleteWorkflow and onDeleted', async () => {
+        const deleteSpy = vi.spyOn(pipelineApi, 'deleteWorkflow').mockResolvedValue();
         const onDeleted = vi.fn();
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={onDeleted} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={onDeleted} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Delete'));
@@ -287,7 +287,7 @@ describe('PipelineDetail', () => {
         const onDeleted = vi.fn();
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={onDeleted} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={onDeleted} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Delete'));
@@ -304,7 +304,7 @@ describe('PipelineDetail', () => {
         const onClose = vi.fn();
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={onClose} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={onClose} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Close'));
@@ -317,22 +317,22 @@ describe('PipelineDetail', () => {
     it('renders ▶ Run button in view mode', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
-        expect(screen.getByTestId('pipeline-run-btn')).toBeDefined();
-        expect(screen.getByTestId('pipeline-run-btn').textContent).toContain('Run');
+        expect(screen.getByTestId('workflow-run-btn')).toBeDefined();
+        expect(screen.getByTestId('workflow-run-btn').textContent).toContain('Run');
     });
 
     it('▶ Run button is not disabled when pipeline.isValid is true', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
-        const btn = screen.getByTestId('pipeline-run-btn');
+        const btn = screen.getByTestId('workflow-run-btn');
         expect(btn.hasAttribute('disabled')).toBe(false);
     });
 
@@ -340,11 +340,11 @@ describe('PipelineDetail', () => {
         const undefinedValidPipeline = { ...samplePipeline, isValid: undefined };
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={undefinedValidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={undefinedValidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
-        const btn = screen.getByTestId('pipeline-run-btn');
+        const btn = screen.getByTestId('workflow-run-btn');
         expect(btn.hasAttribute('disabled')).toBe(false);
     });
 
@@ -352,11 +352,11 @@ describe('PipelineDetail', () => {
         const invalidPipeline = { ...samplePipeline, isValid: false, validationErrors: ['missing input'] };
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={invalidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={invalidPipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
-        const btn = screen.getByTestId('pipeline-run-btn');
+        const btn = screen.getByTestId('workflow-run-btn');
         expect(btn.getAttribute('disabled')).not.toBeNull();
         expect(btn.getAttribute('title')).toBe('Fix validation errors before running');
     });
@@ -364,54 +364,54 @@ describe('PipelineDetail', () => {
     it('▶ Run button is not shown in edit mode', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
         fireEvent.click(screen.getByText('Edit'));
-        expect(screen.queryByTestId('pipeline-run-btn')).toBeNull();
+        expect(screen.queryByTestId('workflow-run-btn')).toBeNull();
     });
 
-    it('clicking ▶ Run calls runPipeline and shows success toast', async () => {
+    it('clicking ▶ Run calls runWorkflow and shows success toast', async () => {
         const onRunSuccess = vi.fn();
-        vi.spyOn(pipelineApi, 'runPipeline').mockResolvedValue({ task: { id: 'abcdef1234567890' } });
+        vi.spyOn(pipelineApi, 'runWorkflow').mockResolvedValue({ task: { id: 'abcdef1234567890' } });
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} onRunSuccess={onRunSuccess} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} onRunSuccess={onRunSuccess} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
-        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        fireEvent.click(screen.getByTestId('workflow-run-btn'));
         await waitFor(() => {
-            expect(pipelineApi.runPipeline).toHaveBeenCalledWith('ws-1', 'my-pipeline');
+            expect(pipelineApi.runWorkflow).toHaveBeenCalledWith('ws-1', 'my-pipeline');
             expect(mockAddToast).toHaveBeenCalledWith('Workflow queued (abcdef12)', 'success');
             expect(onRunSuccess).toHaveBeenCalled();
         });
     });
 
     it('clicking ▶ Run shows error toast on failure', async () => {
-        vi.spyOn(pipelineApi, 'runPipeline').mockRejectedValue(new Error('AI unavailable'));
+        vi.spyOn(pipelineApi, 'runWorkflow').mockRejectedValue(new Error('AI unavailable'));
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
-        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        fireEvent.click(screen.getByTestId('workflow-run-btn'));
         await waitFor(() => {
             expect(mockAddToast).toHaveBeenCalledWith('Failed to run workflow: AI unavailable', 'error');
         });
     });
 
     it('▶ Run shows toast without task ID when response has no id', async () => {
-        vi.spyOn(pipelineApi, 'runPipeline').mockResolvedValue({ task: {} });
+        vi.spyOn(pipelineApi, 'runWorkflow').mockResolvedValue({ task: {} });
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('my-pipeline'));
-        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        fireEvent.click(screen.getByTestId('workflow-run-btn'));
         await waitFor(() => {
             expect(mockAddToast).toHaveBeenCalledWith('Workflow queued', 'success');
         });
@@ -419,21 +419,21 @@ describe('PipelineDetail', () => {
 
     // ---- Tab bar tests ----
 
-    it('tab bar renders with Pipeline and Run History tabs in view mode', async () => {
+    it('tab bar renders with Workflow and Run History tabs in view mode', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
-        await waitFor(() => screen.getByTestId('pipeline-tab-bar'));
+        await waitFor(() => screen.getByTestId('workflow-tab-bar'));
         expect(screen.getByText('Workflow')).toBeDefined();
         expect(screen.getByText('Run History')).toBeDefined();
     });
 
-    it('default active tab is Pipeline, showing YAML content', async () => {
+    it('default active tab is Workflow, showing YAML content', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText(/name: my-pipeline/));
@@ -443,13 +443,13 @@ describe('PipelineDetail', () => {
         expect(screen.queryByTestId('pipeline-run-history')).toBeNull();
     });
 
-    it('clicking Run History tab shows PipelineRunHistory component', async () => {
+    it('clicking Run History tab shows WorkflowRunHistory component', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
-        await waitFor(() => screen.getByTestId('pipeline-tab-bar'));
+        await waitFor(() => screen.getByTestId('workflow-tab-bar'));
         fireEvent.click(screen.getByText('Run History'));
         await waitFor(() => {
             expect(screen.getByTestId('pipeline-run-history')).toBeDefined();
@@ -460,19 +460,19 @@ describe('PipelineDetail', () => {
     it('tab bar is hidden in edit mode', async () => {
         render(
             <Wrap>
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
         await waitFor(() => screen.getByText('Edit'));
         fireEvent.click(screen.getByText('Edit'));
-        expect(screen.queryByTestId('pipeline-tab-bar')).toBeNull();
+        expect(screen.queryByTestId('workflow-tab-bar')).toBeNull();
     });
 
     it('active-task badge shows on Run History tab when tasks are running', async () => {
         const { useQueue } = await import('../../../src/server/spa/client/react/context/QueueContext');
         const activeTask = {
             id: 'task-1',
-            type: 'run-pipeline',
+            type: 'run-workflow',
             status: 'running',
             metadata: { pipelineName: 'my-pipeline' },
         };
@@ -494,10 +494,10 @@ describe('PipelineDetail', () => {
         render(
             <Wrap>
                 <SeedQueue />
-                <PipelineDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
+                <WorkflowDetail workspaceId="ws-1" pipeline={samplePipeline} onClose={vi.fn()} onDeleted={vi.fn()} />
             </Wrap>
         );
-        await waitFor(() => screen.getByTestId('pipeline-tab-bar'));
+        await waitFor(() => screen.getByTestId('workflow-tab-bar'));
         await waitFor(() => {
             expect(screen.getByTestId('active-task-badge')).toBeDefined();
             expect(screen.getByTestId('active-task-badge').textContent).toBe('1');
@@ -506,14 +506,14 @@ describe('PipelineDetail', () => {
 });
 
 // ============================================================================
-// AddPipelineDialog
+// AddWorkflowDialog
 // ============================================================================
 
-describe('AddPipelineDialog', () => {
+describe('AddWorkflowDialog', () => {
     it('renders dialog with title and inputs', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         expect(screen.getByText('New Workflow')).toBeDefined();
@@ -524,7 +524,7 @@ describe('AddPipelineDialog', () => {
     it('shows error on empty name submit', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
@@ -535,7 +535,7 @@ describe('AddPipelineDialog', () => {
     it('shows error on invalid name with special chars', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
@@ -546,10 +546,10 @@ describe('AddPipelineDialog', () => {
     });
 
     it('does not call API on invalid name', () => {
-        const createSpy = vi.spyOn(pipelineApi, 'createPipeline');
+        const createSpy = vi.spyOn(pipelineApi, 'createWorkflow');
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
@@ -557,13 +557,13 @@ describe('AddPipelineDialog', () => {
         expect(createSpy).not.toHaveBeenCalled();
     });
 
-    it('calls createPipeline with valid name and template', async () => {
-        const createSpy = vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+    it('calls createWorkflow with valid name and template', async () => {
+        const createSpy = vi.spyOn(pipelineApi, 'createWorkflow').mockResolvedValue();
         const onCreated = vi.fn();
         const onClose = vi.fn();
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
             </Wrap>
         );
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
@@ -579,10 +579,10 @@ describe('AddPipelineDialog', () => {
     });
 
     it('includes selected template in API call', async () => {
-        const createSpy = vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+        const createSpy = vi.spyOn(pipelineApi, 'createWorkflow').mockResolvedValue();
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -596,10 +596,10 @@ describe('AddPipelineDialog', () => {
     });
 
     it('shows error on API failure', async () => {
-        vi.spyOn(pipelineApi, 'createPipeline').mockRejectedValue(new Error('Already exists'));
+        vi.spyOn(pipelineApi, 'createWorkflow').mockRejectedValue(new Error('Already exists'));
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
@@ -614,7 +614,7 @@ describe('AddPipelineDialog', () => {
     it('has all four template options', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -629,7 +629,7 @@ describe('AddPipelineDialog', () => {
         const onClose = vi.fn();
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={onClose} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={onClose} />
             </Wrap>
         );
         fireEvent.click(screen.getByText('Cancel'));
@@ -641,7 +641,7 @@ describe('AddPipelineDialog', () => {
     it('selecting "AI Generated" template shows textarea and tip block', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -653,7 +653,7 @@ describe('AddPipelineDialog', () => {
     it('non-AI templates do NOT show textarea', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -664,7 +664,7 @@ describe('AddPipelineDialog', () => {
     it('"Generate Pipeline ✨" button disabled when description < 10 chars', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -678,7 +678,7 @@ describe('AddPipelineDialog', () => {
     it('"Generate Pipeline ✨" button enabled when description ≥ 10 chars', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -692,7 +692,7 @@ describe('AddPipelineDialog', () => {
     it('character counter displays current length and turns red near limit', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -707,13 +707,13 @@ describe('AddPipelineDialog', () => {
         expect(counter.className).toContain('text-red-500');
     });
 
-    it('clicking "Generate Pipeline ✨" calls generatePipeline API', async () => {
-        const genSpy = vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+    it('clicking "Generate Pipeline ✨" calls generateWorkflow API', async () => {
+        const genSpy = vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: test', valid: true,
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -730,12 +730,12 @@ describe('AddPipelineDialog', () => {
 
     it('generating phase shows spinner and cancel button', async () => {
         let resolveGen: (v: any) => void;
-        vi.spyOn(pipelineApi, 'generatePipeline').mockImplementation(() =>
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockImplementation(() =>
             new Promise(resolve => { resolveGen = resolve; })
         );
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -756,7 +756,7 @@ describe('AddPipelineDialog', () => {
 
     it('cancel during generation returns to input with description preserved', async () => {
         let resolveGen: (v: any) => void;
-        vi.spyOn(pipelineApi, 'generatePipeline').mockImplementation((_ws, _n, _d, signal) =>
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockImplementation((_ws, _n, _d, signal) =>
             new Promise((resolve, reject) => {
                 resolveGen = resolve;
                 signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
@@ -764,7 +764,7 @@ describe('AddPipelineDialog', () => {
         );
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -787,13 +787,13 @@ describe('AddPipelineDialog', () => {
     });
 
     it('successful generation transitions to preview with YAML and valid badge', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: generated\ninput:\n  type: csv',
             valid: true,
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -811,14 +811,14 @@ describe('AddPipelineDialog', () => {
     });
 
     it('invalid generation shows warning badge and collapsible errors', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: bad',
             valid: false,
             validationError: 'Missing input',
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -835,12 +835,12 @@ describe('AddPipelineDialog', () => {
     });
 
     it('"← Back" returns to input with description preserved', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: test', valid: true,
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -859,13 +859,13 @@ describe('AddPipelineDialog', () => {
         expect(ta.value).toBe('classify tickets by urgency');
     });
 
-    it('"Regenerate 🔄" re-calls generatePipeline', async () => {
-        const genSpy = vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+    it('"Regenerate 🔄" re-calls generateWorkflow', async () => {
+        const genSpy = vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: test', valid: true,
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -884,16 +884,16 @@ describe('AddPipelineDialog', () => {
         expect(genSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('"Save Pipeline ✓" calls createPipeline with content and triggers onCreated with name', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+    it('"Save Pipeline ✓" calls createWorkflow with content and triggers onCreated with name', async () => {
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: generated-yaml', valid: true,
         });
-        const createSpy = vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+        const createSpy = vi.spyOn(pipelineApi, 'createWorkflow').mockResolvedValue();
         const onCreated = vi.fn();
         const onClose = vi.fn();
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -914,10 +914,10 @@ describe('AddPipelineDialog', () => {
     });
 
     it('API error during generation returns to input with error message', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockRejectedValue(new Error('AI service down'));
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockRejectedValue(new Error('AI service down'));
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -935,13 +935,13 @@ describe('AddPipelineDialog', () => {
     });
 
     it('API error during save shows inline error in preview phase', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: test', valid: true,
         });
-        vi.spyOn(pipelineApi, 'createPipeline').mockRejectedValue(new Error('Disk full'));
+        vi.spyOn(pipelineApi, 'createWorkflow').mockRejectedValue(new Error('Disk full'));
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -962,14 +962,14 @@ describe('AddPipelineDialog', () => {
     });
 
     it('AI mode allows empty name — no error on generate', async () => {
-        const genSpy = vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        const genSpy = vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: suggested-name\ninput:\n  type: csv',
             valid: true,
             suggestedName: 'suggested-name',
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -985,14 +985,14 @@ describe('AddPipelineDialog', () => {
     });
 
     it('AI mode with empty name uses suggestedName in preview', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: bug-classifier\ninput:\n  type: csv',
             valid: true,
             suggestedName: 'bug-classifier',
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -1009,14 +1009,14 @@ describe('AddPipelineDialog', () => {
     });
 
     it('AI mode with user-provided name preserves it (not overridden by suggestedName)', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: ai-suggested\ninput:\n  type: csv',
             valid: true,
             suggestedName: 'ai-suggested',
         });
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const input = document.querySelector('input[type="text"]')!;
@@ -1034,17 +1034,17 @@ describe('AddPipelineDialog', () => {
     });
 
     it('preview phase name input is editable and used by Save', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: generated-yaml',
             valid: true,
             suggestedName: 'generated-yaml',
         });
-        const createSpy = vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+        const createSpy = vi.spyOn(pipelineApi, 'createWorkflow').mockResolvedValue();
         const onCreated = vi.fn();
         const onClose = vi.fn();
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -1065,13 +1065,13 @@ describe('AddPipelineDialog', () => {
     });
 
     it('save in preview requires a name — shows error when empty', async () => {
-        vi.spyOn(pipelineApi, 'generatePipeline').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'generateWorkflow').mockResolvedValue({
             yaml: 'name: test', valid: true,
         });
-        const createSpy = vi.spyOn(pipelineApi, 'createPipeline');
+        const createSpy = vi.spyOn(pipelineApi, 'createWorkflow');
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -1092,7 +1092,7 @@ describe('AddPipelineDialog', () => {
     it('AI mode name input shows placeholder hint', () => {
         render(
             <Wrap>
-                <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
+                <AddWorkflowDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
         const select = document.querySelector('select')!;
@@ -1103,10 +1103,10 @@ describe('AddPipelineDialog', () => {
 });
 
 // ============================================================================
-// PipelinesTab split-panel layout
+// WorkflowsTab split-panel layout
 // ============================================================================
 
-describe('PipelinesTab (split-panel layout)', () => {
+describe('WorkflowsTab (split-panel layout)', () => {
     beforeEach(() => {
         location.hash = '';
     });
@@ -1114,25 +1114,25 @@ describe('PipelinesTab (split-panel layout)', () => {
     it('renders both left list and right placeholder simultaneously', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         // Left panel has the pipeline name
         expect(screen.getByText(/my-pipeline/)).toBeDefined();
         // Right panel shows placeholder
         expect(screen.getByText('Select a workflow')).toBeDefined();
     });
 
-    it('clicking a pipeline row selects it and renders PipelineDetail', async () => {
-        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+    it('clicking a workflow row selects it and renders WorkflowDetail', async () => {
+        vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
         });
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         // Click the pipeline row (not a View button — row is clickable)
         const row = screen.getByRole('option');
         fireEvent.click(row);
@@ -1140,29 +1140,29 @@ describe('PipelinesTab (split-panel layout)', () => {
             expect(screen.getByText(/name: my-pipeline/)).toBeDefined();
         });
         // URL updated
-        expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline');
+        expect(location.hash).toBe('#repos/ws-1/workflows/my-pipeline');
     });
 
-    it('updates location.hash on pipeline selection', () => {
+    it('updates location.hash on workflow selection', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByRole('option'));
-        expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline');
+        expect(location.hash).toBe('#repos/ws-1/workflows/my-pipeline');
     });
 
     it('Close button clears selection and resets hash', async () => {
-        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
         });
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         // Select pipeline
         fireEvent.click(screen.getByRole('option'));
         await waitFor(() => screen.getByText('Close'));
@@ -1170,20 +1170,20 @@ describe('PipelinesTab (split-panel layout)', () => {
         fireEvent.click(screen.getByText('Close'));
         // Placeholder returns
         expect(screen.getByText('Select a workflow')).toBeDefined();
-        expect(location.hash).toBe('#repos/ws-1/pipelines');
+        expect(location.hash).toBe('#repos/ws-1/workflows');
     });
 
     it('onDeleted clears selection and resets hash', async () => {
-        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
         });
-        vi.spyOn(pipelineApi, 'deletePipeline').mockResolvedValue();
+        vi.spyOn(pipelineApi, 'deleteWorkflow').mockResolvedValue();
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         // Select pipeline
         fireEvent.click(screen.getByRole('option'));
         await waitFor(() => screen.getByText('Delete'));
@@ -1195,53 +1195,53 @@ describe('PipelinesTab (split-panel layout)', () => {
         });
         // Selection cleared
         expect(screen.getByText('Select a workflow')).toBeDefined();
-        expect(location.hash).toBe('#repos/ws-1/pipelines');
+        expect(location.hash).toBe('#repos/ws-1/workflows');
     });
 
-    it('shows "New Pipeline" button when pipelines exist', () => {
+    it('shows "New Workflow" button when workflows exist', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         expect(screen.getByText('+ New Workflow')).toBeDefined();
     });
 
-    it('shows "New Pipeline" button in empty state', () => {
+    it('shows "New Workflow" button in empty state', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [],
+            workflows: [],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         expect(screen.getByText('+ New Workflow')).toBeDefined();
     });
 
-    it('"New Pipeline" click opens AddPipelineDialog', () => {
+    it('"New Workflow" click opens AddWorkflowDialog', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByText('+ New Workflow'));
         expect(screen.getByText('New Workflow')).toBeDefined();
         expect(screen.getByText('Name')).toBeDefined();
     });
 
-    it('shows pipeline count', () => {
+    it('shows workflow count', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline, { name: 'other', path: 'other.yaml' }],
+            workflows: [samplePipeline, { name: 'other', path: 'other.yaml' }],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         expect(screen.getByText('2 workflows')).toBeDefined();
     });
 
     it('empty state renders within split layout without collapsing', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [],
+            workflows: [],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         // Empty state message in left panel
         expect(screen.getByText('No workflows found')).toBeDefined();
         // Placeholder still visible in right panel
@@ -1250,17 +1250,17 @@ describe('PipelinesTab (split-panel layout)', () => {
         expect(screen.getByText('+ New Workflow')).toBeDefined();
     });
 
-    it('pipeline list remains visible when detail is shown', async () => {
-        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+    it('workflow list remains visible when detail is shown', async () => {
+        vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
         });
-        const secondPipeline: PipelineInfo = { name: 'second-pipe', path: 'second.yaml' };
+        const secondPipeline: WorkflowInfo = { name: 'second-pipe', path: 'second.yaml' };
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline, secondPipeline],
+            workflows: [samplePipeline, secondPipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         const rows = screen.getAllByRole('option');
         fireEvent.click(rows[0]);
         await waitFor(() => {
@@ -1272,15 +1272,15 @@ describe('PipelinesTab (split-panel layout)', () => {
     });
 
     it('active row has aria-selected true', () => {
-        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+        vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
         });
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         const row = screen.getByRole('option');
         expect(row.getAttribute('aria-selected')).toBe('false');
         fireEvent.click(row);
@@ -1288,23 +1288,23 @@ describe('PipelinesTab (split-panel layout)', () => {
     });
 
     it('encodes special chars in URL hash', () => {
-        const specialPipeline: PipelineInfo = { name: 'my pipeline', path: 'pipe.yaml' };
+        const specialPipeline: WorkflowInfo = { name: 'my pipeline', path: 'pipe.yaml' };
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [specialPipeline],
+            workflows: [specialPipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByRole('option'));
-        expect(location.hash).toBe('#repos/ws-1/pipelines/my%20pipeline');
+        expect(location.hash).toBe('#repos/ws-1/workflows/my%20pipeline');
     });
 
-    it('onCreated with name auto-selects the pipeline and updates hash', async () => {
-        vi.spyOn(pipelineApi, 'createPipeline').mockResolvedValue();
+    it('onCreated with name auto-selects the workflow and updates hash', async () => {
+        vi.spyOn(pipelineApi, 'createWorkflow').mockResolvedValue();
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByText('+ New Workflow'));
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         const input = document.querySelector('input[type="text"]')!;
@@ -1312,37 +1312,37 @@ describe('PipelinesTab (split-panel layout)', () => {
         await act(async () => {
             fireEvent.click(screen.getByText('Create'));
         });
-        expect(location.hash).toBe('#repos/ws-1/pipelines/new-created');
+        expect(location.hash).toBe('#repos/ws-1/workflows/new-created');
     });
 
     it('empty state includes natural language discoverability text', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [],
+            workflows: [],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         expect(screen.getByText(/Create your first workflow by describing what it should do/)).toBeDefined();
     });
 
-    it('successful ▶ Run stays on Pipelines tab (no auto-navigation to queue)', async () => {
-        vi.spyOn(pipelineApi, 'fetchPipelineContent').mockResolvedValue({
+    it('successful ▶ Run stays on Workflows tab (no auto-navigation to queue)', async () => {
+        vi.spyOn(pipelineApi, 'fetchWorkflowContent').mockResolvedValue({
             content: sampleYaml,
             path: samplePipeline.path,
         });
-        vi.spyOn(pipelineApi, 'runPipeline').mockResolvedValue({ task: { id: 'task-abc123' } });
+        vi.spyOn(pipelineApi, 'runWorkflow').mockResolvedValue({ task: { id: 'task-abc123' } });
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
-            pipelines: [samplePipeline],
+            workflows: [samplePipeline],
         });
-        render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
+        render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
         // Select the pipeline
         fireEvent.click(screen.getAllByText(/my-pipeline/)[0]);
-        await waitFor(() => screen.getByTestId('pipeline-run-btn'));
-        fireEvent.click(screen.getByTestId('pipeline-run-btn'));
+        await waitFor(() => screen.getByTestId('workflow-run-btn'));
+        fireEvent.click(screen.getByTestId('workflow-run-btn'));
         await waitFor(() => {
-            expect(pipelineApi.runPipeline).toHaveBeenCalledWith('ws-1', 'my-pipeline');
+            expect(pipelineApi.runWorkflow).toHaveBeenCalledWith('ws-1', 'my-pipeline');
             // Hash stays on pipelines (no auto-switch to queue tab)
-            expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline');
+            expect(location.hash).toBe('#repos/ws-1/workflows/my-pipeline');
         });
     });
 });
