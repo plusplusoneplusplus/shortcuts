@@ -25,6 +25,7 @@ import {
     AIInvoker,
     CodeReviewInput,
     CodeReviewOutput,
+    CommitReference,
     createCodeReviewJob,
     createExecutor,
     ExecutorOptions,
@@ -198,7 +199,8 @@ export function registerCodeReviewCommands(
     async function executeReview(
         diff: string,
         metadata: CodeReviewMetadata,
-        selectedRules?: string[]
+        selectedRules?: string[],
+        commitReference?: CommitReference
     ): Promise<void> {
         const workspaceRoot = getWorkspaceRoot();
         if (!workspaceRoot) {
@@ -344,7 +346,9 @@ export function registerCodeReviewCommands(
 
                     // Create input for the job
                     const input: CodeReviewInput = {
-                        diff,
+                        ...(commitReference
+                            ? { commitReference }
+                            : { diff }),
                         rules,
                         context: {
                             commitSha: metadata.commitSha,
@@ -465,7 +469,14 @@ export function registerCodeReviewCommands(
             repositoryRoot: repoRoot
         };
 
-        await executeReview(diff, metadata, selectedRules);
+        const commitReference: CommitReference = {
+            type: 'commit',
+            repositoryRoot: repoRoot,
+            commitSha: commit.hash,
+            commitMessage: commit.subject
+        };
+
+        await executeReview(diff, metadata, selectedRules, commitReference);
     }
 
     // Command: Review commit against rules
@@ -531,7 +542,12 @@ export function registerCodeReviewCommands(
             repositoryRoot: repoRoot
         };
 
-        await executeReview(diff, metadata, selectedRules);
+        const commitReference: CommitReference = {
+            type: 'pending',
+            repositoryRoot: repoRoot
+        };
+
+        await executeReview(diff, metadata, selectedRules, commitReference);
     }
 
     /**
@@ -569,7 +585,12 @@ export function registerCodeReviewCommands(
             repositoryRoot: repoRoot
         };
 
-        await executeReview(diff, metadata, selectedRules);
+        const commitReference: CommitReference = {
+            type: 'staged',
+            repositoryRoot: repoRoot
+        };
+
+        await executeReview(diff, metadata, selectedRules, commitReference);
     }
 
     // Command: Review pending changes against rules (all rules)
@@ -666,7 +687,14 @@ export function registerCodeReviewCommands(
             repositoryRoot: repoRoot
         };
 
-        await executeReview(diff, metadata, selectedRules);
+        const commitReference: CommitReference = {
+            type: 'range',
+            repositoryRoot: repoRoot,
+            baseRef: range.baseRef,
+            headRef: range.headRef
+        };
+
+        await executeReview(diff, metadata, selectedRules, commitReference);
     }
 
     // Command: Review commit range against rules

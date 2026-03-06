@@ -15,7 +15,8 @@ export type {
     ReviewSummary,
     CodeReviewOutput,
     CodeReviewInput,
-    CodeReviewJobOptions
+    CodeReviewJobOptions,
+    CommitReference
 } from './code-review-job';
 
 // Template job

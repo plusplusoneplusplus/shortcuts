@@ -489,6 +489,7 @@ export {
     CodeReviewOutput,
     CodeReviewInput,
     CodeReviewJobOptions,
+    CommitReference,
     TemplateItem,
     TemplateJobInput,
     TemplateWorkItemData,

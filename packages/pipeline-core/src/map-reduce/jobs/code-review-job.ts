@@ -101,11 +101,31 @@ export interface CodeReviewOutput {
 }
 
 /**
+ * Describes how the AI should retrieve the diff instead of receiving it inline.
+ */
+export interface CommitReference {
+    /** The kind of change set */
+    type: 'commit' | 'range' | 'pending' | 'staged';
+    /** Absolute path to the repository root */
+    repositoryRoot: string;
+    /** For type 'commit' */
+    commitSha?: string;
+    /** Commit message (informational) */
+    commitMessage?: string;
+    /** For type 'range' — base ref */
+    baseRef?: string;
+    /** For type 'range' — head ref */
+    headRef?: string;
+}
+
+/**
  * Input for code review job
  */
 export interface CodeReviewInput {
-    /** The diff content to review */
-    diff: string;
+    /** Inline diff content — use when diff is already available and small */
+    diff?: string;
+    /** Commit/range reference — AI retrieves diff via git tools */
+    commitReference?: CommitReference;
     /** Array of rules to check against */
     rules: Rule[];
     /** Additional context */
@@ -172,6 +192,44 @@ Return JSON:
 }`;
 
 /**
+ * Build the "Code Changes" section for a reference-based prompt.
+ * Tells the AI how to retrieve the diff via git commands.
+ */
+function buildReferenceSection(ref: CommitReference): string {
+    const repoPath = ref.repositoryRoot.replace(/\\/g, '/');
+    const lines: string[] = ['## Code Changes', ''];
+    lines.push(`Repository: \`${repoPath}\``);
+
+    switch (ref.type) {
+        case 'commit':
+            lines.push(`Commit: ${ref.commitSha}`);
+            if (ref.commitMessage) {
+                lines.push(`Message: ${ref.commitMessage}`);
+            }
+            lines.push('');
+            lines.push('Retrieve the diff with `git show <commit>` or `git diff <commit>~1 <commit>`.');
+            break;
+        case 'range':
+            lines.push(`Range: ${ref.baseRef}...${ref.headRef}`);
+            lines.push('');
+            lines.push(`Retrieve the diff with \`git diff ${ref.baseRef} ${ref.headRef}\`.`);
+            break;
+        case 'pending':
+            lines.push('Type: Pending Changes (staged + unstaged)');
+            lines.push('');
+            lines.push('Retrieve the changes with `git diff` (unstaged) and `git diff --cached` (staged).');
+            break;
+        case 'staged':
+            lines.push('Type: Staged Changes');
+            lines.push('');
+            lines.push('Retrieve the staged changes with `git diff --cached`.');
+            break;
+    }
+
+    return lines.join('\n');
+}
+
+/**
  * Mapper for code review - reviews a single rule
  */
 class CodeReviewMapper implements Mapper<RuleWorkItemData, RuleReviewResult> {
@@ -185,10 +243,11 @@ class CodeReviewMapper implements Mapper<RuleWorkItemData, RuleReviewResult> {
         item: WorkItem<RuleWorkItemData>,
         context: MapContext
     ): Promise<RuleReviewResult> {
-        const { rule, targetContent } = item.data;
+        const { rule, targetContent, context: itemContext } = item.data;
+        const commitRef = itemContext?.commitReference as CommitReference | undefined;
 
         // Build prompt
-        const prompt = this.buildPrompt(rule, targetContent);
+        const prompt = this.buildPrompt(rule, targetContent, commitRef);
 
         try {
             // Get model from rule's front matter
@@ -226,11 +285,51 @@ class CodeReviewMapper implements Mapper<RuleWorkItemData, RuleReviewResult> {
         }
     }
 
-    private buildPrompt(rule: Rule, diff: string): string {
+    private buildPrompt(rule: Rule, diff: string, commitRef?: CommitReference): string {
+        if (commitRef) {
+            return this.buildReferencePrompt(rule, commitRef);
+        }
         return this.promptTemplate
             .replace(/\{\{ruleName\}\}/g, rule.filename)
             .replace(/\{\{ruleContent\}\}/g, rule.content)
             .replace(/\{\{diff\}\}/g, diff);
+    }
+
+    private buildReferencePrompt(rule: Rule, ref: CommitReference): string {
+        const changeSection = buildReferenceSection(ref);
+
+        return `You are a code reviewer checking for ONE specific rule.
+
+## Rule: ${rule.filename}
+${rule.content}
+
+## Instructions
+1. Retrieve the code changes described below and review for violations of THIS RULE ONLY
+2. For each violation found, provide:
+   - severity: ERROR, WARNING, INFO, or SUGGESTION
+   - file: the file path
+   - line: the line number
+   - description: what's wrong
+   - suggestion: how to fix it
+3. If no violations found, return an empty findings array
+4. Be precise - only flag clear violations
+
+${changeSection}
+
+## Output Format
+Return JSON:
+{
+  "assessment": "pass" | "needs-attention" | "fail",
+  "findings": [
+    {
+      "severity": "error|warning|info|suggestion",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "description": "Description of the problem",
+      "suggestion": "How to fix it"
+    }
+  ]
+}`;
     }
 
     private parseResponse(response: string, rule: Rule): ReviewFinding[] {
@@ -514,8 +613,11 @@ export function createCodeReviewJob(
         split: (input: CodeReviewInput) => {
             const ruleInput: RuleInput = {
                 rules: input.rules,
-                targetContent: input.diff,
-                context: input.context
+                targetContent: input.diff || '',
+                context: {
+                    ...input.context,
+                    ...(input.commitReference ? { commitReference: input.commitReference } : {})
+                }
             };
             return ruleSplitter.split(ruleInput);
         }

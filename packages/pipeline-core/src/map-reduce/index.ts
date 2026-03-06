@@ -145,6 +145,7 @@ export type {
     CodeReviewOutput,
     CodeReviewInput,
     CodeReviewJobOptions,
+    CommitReference,
     TemplateItem,
     TemplateJobInput,
     TemplateWorkItemData,
