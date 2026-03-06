@@ -59,6 +59,7 @@ export const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
     'task-generation',
     'ai-clarification',
     'code-review',
+    'update-document',
 ]);
 
 // ============================================================================

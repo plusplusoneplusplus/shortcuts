@@ -1575,6 +1575,7 @@ const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
     'ai-clarification',
     'code-review',
     'resolve-comments',
+    'update-document',
 ]);
 
 /**
