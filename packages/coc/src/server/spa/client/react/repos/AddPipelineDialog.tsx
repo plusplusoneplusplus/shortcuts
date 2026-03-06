@@ -28,7 +28,7 @@ export interface AddPipelineDialogProps {
 export function AddPipelineDialog({ workspaceId, onCreated, onClose }: AddPipelineDialogProps) {
     const { addToast } = useGlobalToast();
     const [name, setName] = useState('');
-    const [template, setTemplate] = useState<string>('custom');
+    const [template, setTemplate] = useState<string>('ai-generated');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 

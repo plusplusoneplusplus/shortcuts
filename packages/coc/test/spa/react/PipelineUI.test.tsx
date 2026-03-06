@@ -527,6 +527,7 @@ describe('AddPipelineDialog', () => {
                 <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
+        fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         fireEvent.click(screen.getByText('Create'));
         expect(screen.getByText('Name is required')).toBeDefined();
     });
@@ -537,6 +538,7 @@ describe('AddPipelineDialog', () => {
                 <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
+        fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         const input = document.querySelector('input[type="text"]')!;
         fireEvent.change(input, { target: { value: '-bad-name' } });
         fireEvent.click(screen.getByText('Create'));
@@ -550,6 +552,7 @@ describe('AddPipelineDialog', () => {
                 <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
+        fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         fireEvent.click(screen.getByText('Create'));
         expect(createSpy).not.toHaveBeenCalled();
     });
@@ -563,6 +566,7 @@ describe('AddPipelineDialog', () => {
                 <AddPipelineDialog workspaceId="ws-1" onCreated={onCreated} onClose={onClose} />
             </Wrap>
         );
+        fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         const input = document.querySelector('input[type="text"]')!;
         fireEvent.change(input, { target: { value: 'test-pipeline' } });
         await act(async () => {
@@ -598,6 +602,7 @@ describe('AddPipelineDialog', () => {
                 <AddPipelineDialog workspaceId="ws-1" onCreated={vi.fn()} onClose={vi.fn()} />
             </Wrap>
         );
+        fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         const input = document.querySelector('input[type="text"]')!;
         fireEvent.change(input, { target: { value: 'test' } });
         await act(async () => {
@@ -1301,6 +1306,7 @@ describe('PipelinesTab (split-panel layout)', () => {
         });
         render(<Wrap><PipelinesTab repo={repo} /></Wrap>);
         fireEvent.click(screen.getByText('+ New Workflow'));
+        fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         const input = document.querySelector('input[type="text"]')!;
         fireEvent.change(input, { target: { value: 'new-created' } });
         await act(async () => {
