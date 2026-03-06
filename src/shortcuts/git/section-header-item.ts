@@ -35,6 +35,7 @@ export class SectionHeaderItem extends vscode.TreeItem {
 
         this.sectionType = sectionType;
         this.contextValue = `gitSection_${sectionType}`;
+        this.id = `gitSection_${sectionType}`;
 
         // Show count in description, with "+" if there are more
         if (count > 0) {

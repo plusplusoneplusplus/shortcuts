@@ -115,6 +115,16 @@ suite('DiffCommentCategoryItem', () => {
         assert.strictEqual(item.commitHash, 'abc123def');
     });
 
+    test('should have stable id for pending category', () => {
+        const item = new DiffCommentCategoryItem('pending', 1, 0);
+        assert.strictEqual(item.id, 'diffCategory_pending');
+    });
+
+    test('should have stable id based on commit hash for committed category', () => {
+        const item = new DiffCommentCategoryItem('committed', 1, 0, 'abc123def');
+        assert.strictEqual(item.id, 'diffCategory_abc123def');
+    });
+
     test('should have collapsed collapsible state', () => {
         const item = new DiffCommentCategoryItem('pending', 1, 0);
         // TreeItemCollapsibleState.Collapsed = 1

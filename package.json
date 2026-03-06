@@ -1519,6 +1519,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "gitDiffComments.showCommentsForCommit",
+        "title": "Show Comments",
+        "category": "Git Diff Comments",
+        "icon": "$(comment-discussion)"
+      },
+      {
         "command": "gitView.openWithMarkdownReview",
         "title": "Open with Markdown Review Editor",
         "category": "Git",
@@ -2790,18 +2796,23 @@
         },
         {
           "command": "gitView.copyCommitHash",
-          "when": "view == gitView && viewItem == gitCommit",
+          "when": "view == gitView && viewItem =~ /^gitCommit(_hasComments)?$/",
           "group": "gitCommit@1"
         },
         {
           "command": "shortcuts.reviewCommitAgainstRules",
-          "when": "view == gitView && viewItem == gitCommit",
+          "when": "view == gitView && viewItem =~ /^gitCommit(_hasComments)?$/",
           "group": "gitCommit@2"
         },
         {
           "command": "shortcuts.reviewCommitAgainstRulesSelect",
-          "when": "view == gitView && viewItem == gitCommit",
+          "when": "view == gitView && viewItem =~ /^gitCommit(_hasComments)?$/",
           "group": "gitCommit@3"
+        },
+        {
+          "command": "gitDiffComments.showCommentsForCommit",
+          "when": "view == gitView && viewItem == gitCommit_hasComments",
+          "group": "inline@1"
         },
         {
           "command": "gitView.clearLookedUpCommit",
@@ -3773,6 +3784,10 @@
         },
         {
           "command": "gitDiffComments.deleteAll",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.showCommentsForCommit",
           "when": "false"
         },
         {

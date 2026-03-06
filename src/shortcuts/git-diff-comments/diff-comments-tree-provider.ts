@@ -45,6 +45,9 @@ export class DiffCommentCategoryItem extends vscode.TreeItem {
         // Format: diffCommentCategory_hasOpen or diffCommentCategory_noOpen
         this.contextValue = openCount > 0 ? 'diffCommentCategory_hasOpen' : 'diffCommentCategory_noOpen';
 
+        // Stable id for tree view reveal support
+        this.id = category === 'pending' ? 'diffCategory_pending' : `diffCategory_${commitHash}`;
+
         this.description = this.createDescription();
         this.tooltip = this.createTooltip();
         this.iconPath = category === 'pending'
@@ -464,6 +467,18 @@ export class DiffCommentsTreeDataProvider extends CommentsTreeProviderBase<DiffC
      */
     getTotalCommentCount(): number {
         return this.commentsManager.getAllComments().length;
+    }
+
+    /**
+     * Find the category item for a given commit hash (for tree view reveal)
+     */
+    findCategoryItem(commitHash: string): DiffCommentCategoryItem | undefined {
+        const items = this.getCategoryItems();
+        return items.find(
+            item => item instanceof DiffCommentCategoryItem &&
+                item.category === 'committed' &&
+                item.commitHash === commitHash
+        ) as DiffCommentCategoryItem | undefined;
     }
 }
 

@@ -460,6 +460,18 @@ suite('Git View Tests', () => {
                 assert.strictEqual(item.contextValue, 'gitCommit');
             });
 
+            test('should set contextValue to gitCommit when activeCommentCount is 0', () => {
+                const commit = createMockCommit();
+                const item = new GitCommitItem(commit, 0);
+                assert.strictEqual(item.contextValue, 'gitCommit');
+            });
+
+            test('should set contextValue to gitCommit_hasComments when activeCommentCount > 0', () => {
+                const commit = createMockCommit();
+                const item = new GitCommitItem(commit, 3);
+                assert.strictEqual(item.contextValue, 'gitCommit_hasComments');
+            });
+
             test('should be expandable (collapsed by default)', () => {
                 const commit = createMockCommit();
                 const item = new GitCommitItem(commit);

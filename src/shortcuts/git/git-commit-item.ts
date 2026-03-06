@@ -12,8 +12,9 @@ const MAX_SUBJECT_LENGTH = 50;
 export class GitCommitItem extends vscode.TreeItem {
     /**
      * Context value for menu contributions
+     * 'gitCommit_hasComments' when there are active comments, 'gitCommit' otherwise
      */
-    public readonly contextValue = 'gitCommit';
+    public readonly contextValue: string;
 
     /**
      * The commit this item represents
@@ -35,6 +36,7 @@ export class GitCommitItem extends vscode.TreeItem {
         super(label, vscode.TreeItemCollapsibleState.Collapsed);
 
         this.commit = commit;
+        this.contextValue = activeCommentCount > 0 ? 'gitCommit_hasComments' : 'gitCommit';
 
         // Description: "John Doe • 2 hours ago (main, origin/main)"
         this.description = this.createDescription(activeCommentCount);

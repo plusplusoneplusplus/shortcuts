@@ -27,6 +27,7 @@ import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
 import { GIT_SHOW_SCHEME, GitChangeItem, GitCommitFile, GitCommitFileItem, GitCommitItem, GitDragDropController, GitLogService, GitRangeFileItem, GitShowTextDocumentProvider, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
 import {
+    DiffCommentCategoryItem,
     DiffCommentFileItem,
     DiffCommentItem,
     DiffCommentsCommands,
@@ -660,6 +661,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitClearLookedUpCommitCommand: vscode.Disposable | undefined;
         let gitClearAllLookedUpCommitsCommand: vscode.Disposable | undefined;
         let gitDiffCommentsCleanupCommand: vscode.Disposable | undefined;
+        let gitDiffCommentsShowCommentsForCommitCommand: vscode.Disposable | undefined;
         let gitStageFileCommand: vscode.Disposable | undefined;
         let gitUnstageFileCommand: vscode.Disposable | undefined;
         let gitDiscardChangesCommand: vscode.Disposable | undefined;
@@ -907,6 +909,23 @@ export async function activate(context: vscode.ExtensionContext) {
                             `Removed ${result.removed} obsolete comment(s).`
                         );
                     }
+                }
+            );
+
+            // Register command to show comments for a commit in the diff comments tree
+            gitDiffCommentsShowCommentsForCommitCommand = vscode.commands.registerCommand(
+                'gitDiffComments.showCommentsForCommit',
+                async (item: GitCommitItem) => {
+                    if (!item?.commit?.hash || !diffCommentsTreeDataProvider) {
+                        return;
+                    }
+                    const categoryItem = diffCommentsTreeDataProvider.findCategoryItem(item.commit.hash);
+                    if (!categoryItem) {
+                        vscode.window.showInformationMessage('No comments found for this commit.');
+                        return;
+                    }
+                    await vscode.commands.executeCommand('gitView.focus');
+                    await gitTreeView?.reveal(categoryItem, { expand: true, select: true, focus: false });
                 }
             );
 
@@ -2840,6 +2859,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitDiffCommentsResolveCommand) disposables.push(gitDiffCommentsResolveCommand);
         if (gitDiffCommentsReopenCommand) disposables.push(gitDiffCommentsReopenCommand);
         if (gitDiffCommentsCleanupCommand) disposables.push(gitDiffCommentsCleanupCommand);
+        if (gitDiffCommentsShowCommentsForCommitCommand) disposables.push(gitDiffCommentsShowCommentsForCommitCommand);
         if (gitOpenWithMarkdownReviewCommand) disposables.push(gitOpenWithMarkdownReviewCommand);
         if (gitOpenCommitFileWithMarkdownPreviewCommand) disposables.push(gitOpenCommitFileWithMarkdownPreviewCommand);
         if (gitLookupCommitCommand) disposables.push(gitLookupCommitCommand);

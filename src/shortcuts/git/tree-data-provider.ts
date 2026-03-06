@@ -299,6 +299,18 @@ export class GitTreeDataProvider
     }
 
     /**
+     * Get parent of an element (required for TreeView.reveal support)
+     * Only implemented for diff comment items that need reveal
+     */
+    getParent(element: vscode.TreeItem): vscode.TreeItem | undefined {
+        if (element instanceof DiffCommentCategoryItem) {
+            const commentCount = this.getCommentCount();
+            return new SectionHeaderItem('comments', commentCount, false);
+        }
+        return undefined;
+    }
+
+    /**
      * Get children for an element
      */
     async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {

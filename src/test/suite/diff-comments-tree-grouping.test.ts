@@ -600,5 +600,55 @@ suite('DiffCommentsTreeDataProvider Grouping Tests', () => {
             assert.ok(refreshCount > 0, 'Should have refreshed after adding comment');
         });
     });
+
+    suite('findCategoryItem', () => {
+        test('should find category item by commit hash', async () => {
+            await manager.initialize();
+
+            const commitHash = 'abc123def456';
+            await manager.addComment(
+                'file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createCommittedGitContext(tempDir, commitHash)
+            );
+
+            const item = treeProvider.findCategoryItem(commitHash);
+            assert.ok(item instanceof DiffCommentCategoryItem);
+            assert.strictEqual(item.commitHash, commitHash);
+            assert.strictEqual(item.category, 'committed');
+        });
+
+        test('should return undefined for unknown commit hash', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createCommittedGitContext(tempDir, 'existinghash')
+            );
+
+            const item = treeProvider.findCategoryItem('unknownhash');
+            assert.strictEqual(item, undefined);
+        });
+
+        test('should return undefined for pending category commit hash lookup', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createPendingGitContext(tempDir)
+            );
+
+            const item = treeProvider.findCategoryItem('anyhash');
+            assert.strictEqual(item, undefined);
+        });
+    });
 });
 
