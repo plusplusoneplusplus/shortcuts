@@ -114,8 +114,18 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const inputDrafts = useRef<Map<string | null, string>>(new Map());
 
     const processId = task?.processId ?? (chatTaskId ? `queue_${chatTaskId}` : null);
-    const taskFinished = task?.status === 'completed' || task?.status === 'failed';
+    const taskFinished =
+        task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
     const inputDisabled = sending || isStreaming || task?.status === 'queued';
+
+    // Safety net: reset streaming/sending state whenever the task reaches a terminal status.
+    // This handles cases where the SSE connection closes before the final status event fires.
+    useEffect(() => {
+        if (taskFinished) {
+            setIsStreaming(false);
+            setSending(false);
+        }
+    }, [taskFinished]);
 
     // Build a process-like object for ConversationMetadataPopover from the queue task
     const metadataProcess = useMemo(() => {
@@ -417,6 +427,7 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
         return () => {
             es.close();
             eventSourceRef.current = null;
+            setIsStreaming(false);
         };
     }, [chatTaskId, task?.status, processId]);
 

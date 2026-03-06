@@ -76,7 +76,7 @@ describe('RepoChatTab per-chat input state: inputDisabled', () => {
     });
 
     it('still has taskFinished for header resume logic', () => {
-        expect(SRC).toContain("const taskFinished = task?.status === 'completed' || task?.status === 'failed'");
+        expect(SRC).toContain("task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled'");
     });
 });
 

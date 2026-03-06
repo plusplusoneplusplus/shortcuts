@@ -941,7 +941,7 @@ describe('RepoChatTab', () => {
         });
 
         it('declares taskFinished as a const derived from task status', () => {
-            expect(source).toContain("const taskFinished = task?.status === 'completed' || task?.status === 'failed'");
+            expect(source).toContain("task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled'");
         });
 
         it('shows header resume button when taskFinished', () => {
