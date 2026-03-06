@@ -240,19 +240,6 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
-     * Move a parent task from history back to the queue.
-     * Searches all per-repo queues for the task.
-     */
-    requeueParentTask(parentTaskId: string): boolean {
-        for (const manager of this.registry.getAllQueues().values()) {
-            if (manager.requeueFromHistory(parentTaskId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Drain all per-repo executors, waiting for running tasks to finish.
      * Returns the worst-case outcome ('timeout' if any timed out).
      */

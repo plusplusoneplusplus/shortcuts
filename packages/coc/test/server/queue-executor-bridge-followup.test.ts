@@ -244,4 +244,34 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         expect(await store.getProcess('queue_fu-task-1')).toBeUndefined();
         expect(await store.getProcess('proc-1')).toBeDefined();
     });
+
+    // 9 -----------------------------------------------------------------------
+    it('should call reActivate (not requeueFromHistory) on the parent task', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        await store.addProcess(proc);
+
+        // Wire up a mock queue manager
+        const mockQueueManager = {
+            reActivate: vi.fn(),
+            requeueFromHistory: vi.fn(),
+            returnToHistory: vi.fn(),
+            markCompleted: vi.fn(),
+            updateTask: vi.fn(),
+        };
+        executor.setQueueManager(mockQueueManager as any);
+
+        const task = followUpTask({
+            processId: 'proc-1',
+            content: 'follow up',
+        });
+        (task.payload as any).parentTaskId = 'parent-task-1';
+
+        await executor.execute(task);
+
+        // reActivate should be called to move the parent from history → running
+        expect(mockQueueManager.reActivate).toHaveBeenCalledWith('parent-task-1');
+        // requeueFromHistory must NOT be called — it re-enqueues for execution
+        expect(mockQueueManager.requeueFromHistory).not.toHaveBeenCalled();
+    });
 });

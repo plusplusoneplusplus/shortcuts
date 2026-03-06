@@ -36,8 +36,6 @@ export interface QueueExecutorBridge {
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
     findTaskByProcessId?(processId: string): { id: string; type: string } | undefined;
-    /** Move a parent task from history back to the queue so it shows as "queued" while a follow-up waits. */
-    requeueParentTask?(parentTaskId: string): boolean;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }
@@ -1603,11 +1601,6 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                     config: {},
                     displayName,
                 });
-                // Move the parent task from "completed" to "queued" so the UI
-                // shows it under QUEUED TASKS while the follow-up waits.
-                if (parentTask?.id) {
-                    bridge.requeueParentTask?.(parentTask.id);
-                }
             } else {
                 bridge.executeFollowUp(id, messageContent, attachments).catch(() => {
                     // Error handling is done inside executeFollowUp

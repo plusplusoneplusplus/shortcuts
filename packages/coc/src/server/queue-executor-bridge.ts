@@ -857,10 +857,10 @@ export class CLITaskExecutor implements TaskExecutor {
             return this.executeRunPipeline(task);
         }
 
-        // For types that need AI execution
+        // For types that need AI execution (exclude follow-ups — they short-circuit in execute())
         if (
             isAIClarificationPayload(task.payload) ||
-            isChatPayload(task.payload) ||
+            (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) ||
             isCustomTaskPayload(task.payload) ||
             isFollowPromptPayload(task.payload)
         ) {
@@ -875,19 +875,6 @@ export class CLITaskExecutor implements TaskExecutor {
         // Resolve comments: build prompt from payload and execute with AI
         if (isResolveCommentsPayload(task.payload)) {
             return this.executeResolveComments(task);
-        }
-
-        // Chat follow-up: re-run executeFollowUp on an existing session
-        if (isChatFollowUp(task.payload)) {
-            const payload = task.payload as unknown as ChatPayload;
-            try {
-                await this.executeFollowUp(payload.processId!, payload.prompt, payload.attachments);
-            } finally {
-                if (payload.imageTempDir) {
-                    cleanupTempDir(payload.imageTempDir);
-                }
-            }
-            return;
         }
 
         // Run script: spawn a child process and capture stdout/stderr

@@ -211,6 +211,48 @@ describe('POST /api/processes/:id/message', () => {
             expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
         });
 
+        it('should NOT call requeueParentTask when enqueueing a follow-up', async () => {
+            const requeueSpy = vi.fn().mockReturnValue(true);
+            const bridgeWithRequeue = createMockBridge();
+            (bridgeWithRequeue as any).requeueParentTask = requeueSpy;
+            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-task-1', type: 'chat' });
+
+            // Create a fresh server with the augmented bridge
+            const freshRoutes: Route[] = [];
+            registerApiRoutes(freshRoutes, store, bridgeWithRequeue);
+            const freshSpaHtml = generateDashboardHtml();
+            const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: freshSpaHtml, store });
+            const freshServer = http.createServer(freshHandler);
+            await new Promise<void>((resolve, reject) => {
+                freshServer.on('error', reject);
+                freshServer.listen(0, 'localhost', () => resolve());
+            });
+            const freshAddr = freshServer.address() as { port: number };
+            const freshUrl = `http://localhost:${freshAddr.port}`;
+
+            const proc: AIProcess = {
+                id: 'proc-no-requeue',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-no-requeue',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${freshUrl}/api/processes/proc-no-requeue/message`, {
+                content: 'Follow-up that should not re-execute parent',
+            });
+
+            expect(res.status).toBe(202);
+            // requeueParentTask must NOT be called — it caused the parent to re-execute
+            expect(requeueSpy).not.toHaveBeenCalled();
+
+            await new Promise<void>((resolve) => freshServer.close(() => resolve()));
+        });
+
         it('should prepend skill directives when skillNames is provided', async () => {
             const proc: AIProcess = {
                 id: 'proc-skill',
