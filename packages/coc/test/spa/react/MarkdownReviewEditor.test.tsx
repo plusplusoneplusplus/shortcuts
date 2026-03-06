@@ -953,4 +953,160 @@ describe('MarkdownReviewEditor', () => {
             expect(spans.length).toBe(2);
         });
     });
+
+    describe('code file syntax highlighting (fenced block wrapping)', () => {
+        function setupCodeFileFetch(content: string) {
+            const spy = vi.fn();
+            (global as any).fetch = spy;
+            spy.mockImplementation((input: RequestInfo | URL) => {
+                const url = String(input);
+                if (url.includes('/tasks/content?')) {
+                    return Promise.resolve(mockJsonResponse({ content }));
+                }
+                if (url.includes('/comment-counts/')) {
+                    return Promise.resolve(mockJsonResponse({ counts: {} }));
+                }
+                if (url.includes('/comments/')) {
+                    return Promise.resolve(mockJsonResponse({ comments: [] }));
+                }
+                return Promise.resolve(mockJsonResponse({}));
+            });
+            return spy;
+        }
+
+        it('wraps .ts file content in a typescript fenced code block', async () => {
+            setupCodeFileFetch('const x = 1;');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="src/index.ts" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                const html = preview!.innerHTML;
+                expect(html).toContain('```typescript');
+                expect(html).toContain('const x = 1;');
+                expect(html).toContain('```');
+            });
+        });
+
+        it('wraps .py file content in a python fenced code block', async () => {
+            setupCodeFileFetch('def hello(): pass');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="scripts/run.py" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                const html = preview!.innerHTML;
+                expect(html).toContain('```python');
+                expect(html).toContain('def hello(): pass');
+            });
+        });
+
+        it('wraps .json file content in a json fenced code block', async () => {
+            setupCodeFileFetch('{ "key": "value" }');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="config.json" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                expect(preview!.innerHTML).toContain('```json');
+            });
+        });
+
+        it('wraps .yaml file content in a yaml fenced code block', async () => {
+            setupCodeFileFetch('key: value');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="pipeline.yaml" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                expect(preview!.innerHTML).toContain('```yaml');
+            });
+        });
+
+        it('does NOT wrap .md file content in a fenced code block', async () => {
+            setupCodeFileFetch('# Hello\nSome markdown');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="docs/README.md" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                const html = preview!.innerHTML;
+                expect(html).not.toContain('```markdown');
+                expect(html).toContain('# Hello');
+            });
+        });
+
+        it('does NOT wrap .mdx file content in a fenced code block', async () => {
+            setupCodeFileFetch('# MDX Content');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="page.mdx" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                expect(preview!.innerHTML).not.toContain('```');
+            });
+        });
+
+        it('does NOT wrap files with unknown extensions', async () => {
+            setupCodeFileFetch('binary data');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="data.bin" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                expect(preview!.innerHTML).not.toContain('```');
+                expect(preview!.innerHTML).toContain('binary data');
+            });
+        });
+
+        it('does NOT wrap files with no extension', async () => {
+            setupCodeFileFetch('some content');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="Makefile" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                expect(preview).toBeTruthy();
+                expect(preview!.innerHTML).not.toContain('```');
+                expect(preview!.innerHTML).toContain('some content');
+            });
+        });
+
+        it('handles empty content for code files without wrapping', async () => {
+            setupCodeFileFetch('');
+
+            render(
+                <MarkdownReviewEditor wsId="ws1" filePath="empty.ts" fetchMode="tasks" />
+            );
+
+            await waitFor(() => {
+                const preview = document.querySelector('#task-preview-body');
+                // Empty content returns empty html from the mock
+                expect(preview).toBeTruthy();
+            });
+        });
+    });
 });

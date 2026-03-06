@@ -31,6 +31,9 @@ import { getApiBase } from '../utils/config';
 import { useGlobalToast } from '../context/ToastContext';
 import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { getLanguageFromFileName } from '../repos/useSyntaxHighlight';
+
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
 export interface MarkdownReviewEditorProps {
     wsId: string;
@@ -161,9 +164,20 @@ export function MarkdownReviewEditor({
         [comments]
     );
 
+    // For non-markdown code files, wrap content in a fenced code block so the
+    // markdown renderer applies syntax highlighting via highlight.js.
+    const previewContent = useMemo(() => {
+        if (!rawContent) return rawContent;
+        const ext = filePath.split('.').pop()?.toLowerCase();
+        if (!ext || MARKDOWN_EXTENSIONS.has(ext)) return rawContent;
+        const lang = getLanguageFromFileName(filePath);
+        if (!lang) return rawContent;
+        return `\`\`\`${lang}\n${rawContent}\n\`\`\``;
+    }, [rawContent, filePath]);
+
     // Shared markdown rendering (render + hljs + mermaid)
     const { html } = useMarkdownPreview({
-        content: rawContent,
+        content: previewContent,
         containerRef: previewRef,
         loading,
         stripFrontmatter: true,
