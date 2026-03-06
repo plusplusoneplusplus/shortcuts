@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # 004: File Preview Pane

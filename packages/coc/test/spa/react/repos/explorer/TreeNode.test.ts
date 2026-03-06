@@ -55,6 +55,10 @@ describe('TreeNode', () => {
         it('accepts isFocused prop', () => {
             expect(source).toContain('isFocused');
         });
+
+        it('accepts optional onFileOpen callback', () => {
+            expect(source).toContain('onFileOpen?: (entry: TreeEntry) => void');
+        });
     });
 
     describe('file-type icons', () => {
@@ -185,6 +189,15 @@ describe('TreeNode', () => {
 
         it('scrolls focused node into view', () => {
             expect(source).toContain("scrollIntoView({ block: 'nearest' })");
+        });
+
+        it('has onDoubleClick handler for file open', () => {
+            expect(source).toContain('onDoubleClick');
+            expect(source).toContain('onFileOpen?.(entry)');
+        });
+
+        it('only fires onFileOpen on double-click for files, not directories', () => {
+            expect(source).toContain('if (!isDir) onFileOpen?.(entry)');
         });
     });
 });

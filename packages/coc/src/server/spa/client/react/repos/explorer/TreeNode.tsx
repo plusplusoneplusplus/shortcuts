@@ -18,6 +18,7 @@ export interface TreeNodeProps {
     childrenMap: Map<string, TreeEntry[]>;
     onToggle: (path: string) => void;
     onSelect: (path: string, isDirectory: boolean) => void;
+    onFileOpen?: (entry: TreeEntry) => void;
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
     isFocused?: boolean;
     treeIndex?: number;
@@ -35,7 +36,7 @@ function getFileIcon(entry: TreeEntry): string {
 
 export function TreeNode({
     entry, depth, workspaceId, selectedPath, expandedPaths, childrenMap,
-    onToggle, onSelect, onChildrenLoaded, isFocused, treeIndex,
+    onToggle, onSelect, onFileOpen, onChildrenLoaded, isFocused, treeIndex,
 }: TreeNodeProps) {
     const isDir = entry.type === 'dir';
     const isExpanded = expandedPaths.has(entry.path);
@@ -85,6 +86,7 @@ export function TreeNode({
                 data-testid={`tree-node-${entry.path}`}
                 data-tree-index={treeIndex}
                 onClick={handleClick}
+                onDoubleClick={() => { if (!isDir) onFileOpen?.(entry); }}
             >
                 {isDir && (
                     <span className={cn('text-[10px] transition-transform inline-block', isExpanded && 'rotate-90')}>▶</span>
@@ -104,6 +106,7 @@ export function TreeNode({
                     childrenMap={childrenMap}
                     onToggle={onToggle}
                     onSelect={onSelect}
+                    onFileOpen={onFileOpen}
                     onChildrenLoaded={onChildrenLoaded}
                 />
             ))}

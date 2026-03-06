@@ -62,6 +62,11 @@ describe('ExplorerPanel', () => {
             expect(source).toContain('childrenMap');
             expect(source).toContain('setChildrenMap');
         });
+
+        it('manages previewFile state', () => {
+            expect(source).toContain('previewFile');
+            expect(source).toContain('setPreviewFile');
+        });
     });
 
     describe('API integration', () => {
@@ -94,7 +99,7 @@ describe('ExplorerPanel', () => {
             expect(source).toContain('data-testid="explorer-preview-pane"');
         });
 
-        it('shows placeholder text in right pane', () => {
+        it('shows placeholder text when no file selected', () => {
             expect(source).toContain('Double-click a file to preview');
         });
 
@@ -207,6 +212,41 @@ describe('ExplorerPanel', () => {
 
         it('passes childrenMap to FileTree', () => {
             expect(source).toContain('childrenMap={childrenMap}');
+        });
+
+        it('passes onFileOpen to FileTree', () => {
+            expect(source).toContain('onFileOpen={handleFileOpen}');
+        });
+    });
+
+    describe('preview pane integration', () => {
+        it('imports PreviewPane', () => {
+            expect(source).toContain("import { PreviewPane } from './PreviewPane'");
+        });
+
+        it('renders PreviewPane when previewFile is set', () => {
+            expect(source).toContain('<PreviewPane');
+        });
+
+        it('passes repoId to PreviewPane', () => {
+            expect(source).toContain('repoId={workspaceId}');
+        });
+
+        it('passes filePath to PreviewPane from previewFile state', () => {
+            expect(source).toContain('filePath={previewFile.path}');
+        });
+
+        it('passes fileName to PreviewPane from previewFile state', () => {
+            expect(source).toContain('fileName={previewFile.name}');
+        });
+
+        it('passes onClose to PreviewPane that clears previewFile', () => {
+            expect(source).toContain('onClose={() => setPreviewFile(null)}');
+        });
+
+        it('has handleFileOpen callback that sets previewFile', () => {
+            expect(source).toContain('handleFileOpen');
+            expect(source).toContain('setPreviewFile({ path: entry.path, name: entry.name })');
         });
     });
 });

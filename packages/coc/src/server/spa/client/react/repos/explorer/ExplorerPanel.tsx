@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Spinner } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
 import { FileTree } from './FileTree';
+import { PreviewPane } from './PreviewPane';
 import type { TreeEntry } from './types';
 
 export interface ExplorerPanelProps {
@@ -20,6 +21,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const [error, setError] = useState<string | null>(null);
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const [childrenMap, setChildrenMap] = useState<Map<string, TreeEntry[]>>(new Map());
+    const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
 
     // Fetch root entries on mount
     useEffect(() => {
@@ -67,6 +69,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
 
     const handleChildrenLoaded = useCallback((parentPath: string, children: TreeEntry[]) => {
         setChildrenMap(prev => new Map(prev).set(parentPath, children));
+    }, []);
+
+    const handleFileOpen = useCallback((entry: TreeEntry) => {
+        setPreviewFile({ path: entry.path, name: entry.name });
     }, []);
 
     const handleRefresh = useCallback(() => {
@@ -123,13 +129,21 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     childrenMap={childrenMap}
                     onSelect={handleSelect}
                     onToggle={handleToggle}
+                    onFileOpen={handleFileOpen}
                     onChildrenLoaded={handleChildrenLoaded}
                 />
             </aside>
 
-            {/* Right main — preview placeholder */}
-            <main className="flex-1 flex items-center justify-center bg-white dark:bg-[#1e1e1e] text-[#848484] text-sm" data-testid="explorer-preview-pane">
-                <p>Double-click a file to preview</p>
+            {/* Right main — preview pane */}
+            <main className="flex-1 flex items-center justify-center bg-white dark:bg-[#1e1e1e] overflow-hidden" data-testid="explorer-preview-pane">
+                {previewFile
+                    ? <PreviewPane
+                        repoId={workspaceId}
+                        filePath={previewFile.path}
+                        fileName={previewFile.name}
+                        onClose={() => setPreviewFile(null)}
+                      />
+                    : <p className="text-[#848484] text-sm">Double-click a file to preview</p>}
             </main>
         </div>
     );

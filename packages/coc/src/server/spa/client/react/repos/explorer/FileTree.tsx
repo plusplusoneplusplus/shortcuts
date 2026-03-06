@@ -15,6 +15,7 @@ export interface FileTreeProps {
     childrenMap: Map<string, TreeEntry[]>;
     onSelect: (path: string, isDirectory: boolean) => void;
     onToggle: (path: string) => void;
+    onFileOpen?: (entry: TreeEntry) => void;
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
 }
 
@@ -40,7 +41,7 @@ export function flattenVisibleNodes(
 
 export function FileTree({
     workspaceId, entries, selectedPath, expandedPaths, childrenMap,
-    onSelect, onToggle, onChildrenLoaded,
+    onSelect, onToggle, onFileOpen, onChildrenLoaded,
 }: FileTreeProps) {
     const [focusedIndex, setFocusedIndex] = useState(-1);
 
@@ -63,6 +64,8 @@ export function FileTree({
                 const node = visibleNodes[focusedIndex];
                 if (node?.type === 'dir' && !expandedPaths.has(node.path)) {
                     onToggle(node.path);
+                } else if (node?.type === 'file') {
+                    onFileOpen?.(node);
                 }
                 break;
             }
@@ -77,11 +80,14 @@ export function FileTree({
             case ' ': {
                 e.preventDefault();
                 const node = visibleNodes[focusedIndex];
-                if (node) onSelect(node.path, node.type === 'dir');
+                if (node) {
+                    onSelect(node.path, node.type === 'dir');
+                    if (node.type === 'file') onFileOpen?.(node);
+                }
                 break;
             }
         }
-    }, [visibleNodes, focusedIndex, expandedPaths, onToggle, onSelect]);
+    }, [visibleNodes, focusedIndex, expandedPaths, onToggle, onSelect, onFileOpen]);
 
     // Build a set of focused paths for efficient lookup
     const focusedPath = focusedIndex >= 0 && focusedIndex < visibleNodes.length
@@ -107,6 +113,7 @@ export function FileTree({
                         childrenMap={childrenMap}
                         onToggle={onToggle}
                         onSelect={onSelect}
+                        onFileOpen={onFileOpen}
                         onChildrenLoaded={onChildrenLoaded}
                         isFocused={entry.path === focusedPath}
                     />

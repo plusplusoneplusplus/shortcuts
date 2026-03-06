@@ -63,6 +63,10 @@ describe('FileTree', () => {
         it('accepts onChildrenLoaded callback', () => {
             expect(source).toContain('onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void');
         });
+
+        it('accepts optional onFileOpen callback', () => {
+            expect(source).toContain('onFileOpen?: (entry: TreeEntry) => void');
+        });
     });
 
     describe('rendering', () => {
@@ -136,6 +140,11 @@ describe('FileTree', () => {
 
         it('ArrowRight expands collapsed directory', () => {
             expect(source).toContain("node?.type === 'dir' && !expandedPaths.has(node.path)");
+        });
+
+        it('ArrowRight calls onFileOpen for file nodes', () => {
+            expect(source).toContain("node?.type === 'file'");
+            expect(source).toContain("onFileOpen?.(node)");
         });
 
         it('ArrowLeft collapses expanded directory', () => {

@@ -91,6 +91,10 @@ describe('FileTree keyboard navigation', () => {
         it('calls onSelect with path and type', () => {
             expect(source).toContain("onSelect(node.path, node.type === 'dir')");
         });
+
+        it('calls onFileOpen on Enter/Space for file nodes', () => {
+            expect(source).toContain("if (node.type === 'file') onFileOpen?.(node)");
+        });
     });
 
     describe('focus management', () => {
