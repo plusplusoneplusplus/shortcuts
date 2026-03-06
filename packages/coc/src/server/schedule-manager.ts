@@ -176,6 +176,21 @@ export function describeCron(expr: string): string {
             return `${dowNames} at ${timeStr}`;
         }
 
+        const isCommaList = (s: string) => s.split(',').every(p => /^\d+$/.test(p));
+        if (isCommaList(hour) && hour.includes(',') && /^\d+$/.test(min) && dom === '*' && month === '*') {
+            const pad = (n: string) => n.padStart(2, '0');
+            const times = hour
+                .split(',')
+                .map(Number)
+                .sort((a, b) => a - b)
+                .map(h => `${pad(String(h))}:${pad(min)}`)
+                .join(', ');
+            if (dow === '*') return `Every day at ${times}`;
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const dowNames = dow.split(',').map(d => days[parseInt(d, 10)] || d).join(', ');
+            return `${dowNames} at ${times}`;
+        }
+
         return expr;
     } catch {
         return expr;

@@ -140,6 +140,22 @@ describe('describeCron', () => {
     it('returns raw expr for complex expressions', () => {
         expect(describeCron('0 9-17 * * 1-5')).toBe('0 9-17 * * 1-5');
     });
+
+    it('describes multiple hours daily', () => {
+        expect(describeCron('0 1,13 * * *')).toBe('Every day at 01:00, 13:00');
+    });
+
+    it('describes multiple hours daily (four times)', () => {
+        expect(describeCron('0 0,6,12,18 * * *')).toBe('Every day at 00:00, 06:00, 12:00, 18:00');
+    });
+
+    it('describes multiple hours on specific days of week', () => {
+        expect(describeCron('30 8,17 * * 1,5')).toBe('Mon, Fri at 08:30, 17:30');
+    });
+
+    it('sorts hours numerically in output', () => {
+        expect(describeCron('0 13,1 * * *')).toBe('Every day at 01:00, 13:00');
+    });
 });
 
 // ============================================================================
