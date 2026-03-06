@@ -401,6 +401,134 @@ function backtrackLCS(
 }
 
 /**
+ * A discrete hunk of diff lines with context boundaries.
+ */
+export interface Hunk {
+    /** Unified diff header, e.g. "@@ -10,7 +12,9 @@" */
+    headerText: string;
+    /** The AlignedLine entries belonging to this hunk (context + changes) */
+    lines: AlignedLine[];
+    /** First old-side line number in this hunk (from first line with oldLineNum) */
+    startOldLine: number;
+    /** First new-side line number in this hunk (from first line with newLineNum) */
+    startNewLine: number;
+    /** Last old-side line number in this hunk */
+    endOldLine: number;
+    /** Last new-side line number in this hunk */
+    endNewLine: number;
+    /**
+     * Number of aligned lines collapsed (not shown) between the previous hunk
+     * and this one. 0 for the first hunk if it starts at the top of the file.
+     */
+    precedingCollapsedCount: number;
+}
+
+/**
+ * Generate a unified diff hunk header string.
+ */
+export function generateHunkHeader(
+    startOld: number,
+    countOld: number,
+    startNew: number,
+    countNew: number
+): string {
+    return `@@ -${startOld},${countOld} +${startNew},${countNew} @@`;
+}
+
+/**
+ * Partition an AlignedLine[] into discrete hunks with configurable context boundaries.
+ * Returns [] if input is empty or contains no changes (all context).
+ */
+export function groupIntoHunks(aligned: AlignedLine[], contextLines: number = 3): Hunk[] {
+    if (aligned.length === 0) {
+        return [];
+    }
+
+    // Step 1: find indices of all non-context ("changed") lines
+    const changedIndices: number[] = [];
+    for (let i = 0; i < aligned.length; i++) {
+        if (aligned[i].type !== 'context') {
+            changedIndices.push(i);
+        }
+    }
+
+    // No changes at all → return empty (entire file is context)
+    if (changedIndices.length === 0) {
+        return [];
+    }
+
+    // Step 2: build raw ranges — each changed index expanded by contextLines
+    const ranges: [number, number][] = [];
+    for (const idx of changedIndices) {
+        const start = Math.max(0, idx - contextLines);
+        const end = Math.min(aligned.length - 1, idx + contextLines);
+        ranges.push([start, end]);
+    }
+
+    // Step 3: merge overlapping/adjacent ranges
+    const merged: [number, number][] = [ranges[0]];
+    for (let i = 1; i < ranges.length; i++) {
+        const prev = merged[merged.length - 1];
+        const cur = ranges[i];
+        if (cur[0] <= prev[1] + 1) {
+            prev[1] = Math.max(prev[1], cur[1]);
+        } else {
+            merged.push(cur);
+        }
+    }
+
+    // Step 4: convert merged ranges into Hunk objects
+    const hunks: Hunk[] = [];
+    let prevEnd = -1;
+
+    for (const [start, end] of merged) {
+        const lines = aligned.slice(start, end + 1);
+
+        // Compute line-number bounds from the slice
+        let startOldLine = 1;
+        let startNewLine = 1;
+        let endOldLine = 1;
+        let endNewLine = 1;
+
+        // First non-null oldLineNum / newLineNum
+        for (const l of lines) {
+            if (l.oldLineNum !== null) { startOldLine = l.oldLineNum; break; }
+        }
+        for (const l of lines) {
+            if (l.newLineNum !== null) { startNewLine = l.newLineNum; break; }
+        }
+        // Last non-null oldLineNum / newLineNum
+        for (let i = lines.length - 1; i >= 0; i--) {
+            if (lines[i].oldLineNum !== null) { endOldLine = lines[i].oldLineNum!; break; }
+        }
+        for (let i = lines.length - 1; i >= 0; i--) {
+            if (lines[i].newLineNum !== null) { endNewLine = lines[i].newLineNum!; break; }
+        }
+
+        // Count lines where oldLineNum/newLineNum is non-null
+        const countOld = lines.filter(l => l.oldLineNum !== null).length;
+        const countNew = lines.filter(l => l.newLineNum !== null).length;
+
+        const headerText = generateHunkHeader(startOldLine, countOld, startNewLine, countNew);
+        const precedingCollapsedCount = start - (prevEnd + 1);
+
+        hunks.push({
+            headerText,
+            lines,
+            startOldLine,
+            startNewLine,
+            endOldLine,
+            endNewLine,
+            precedingCollapsedCount
+        });
+
+        prevEnd = end;
+    }
+
+    return hunks;
+}
+
+/**
  * Render the diff view (dispatches to split or inline based on view mode)
  */
 export function renderDiff(): void {
