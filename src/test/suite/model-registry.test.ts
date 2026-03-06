@@ -190,7 +190,7 @@ suite('Model Registry - Extension Integration', () => {
                 'claude-sonnet-4.6',
                 'claude-haiku-4.5',
                 'claude-opus-4.6',
-                'gpt-5.2',
+                'gpt-5.4',
                 'gpt-5.3-codex',
                 'gemini-3-pro-preview',
             ];

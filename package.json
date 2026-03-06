@@ -380,7 +380,7 @@
             "claude-sonnet-4.6",
             "claude-haiku-4.5",
             "claude-opus-4.6",
-            "gpt-5.2",
+            "gpt-5.4",
             "gpt-5.3-codex",
             "gemini-3-pro-preview"
           ],
@@ -389,7 +389,7 @@
             "Claude Sonnet 4.6 - Balanced performance",
             "Claude Haiku 4.5 - Fast and efficient",
             "Claude Opus 4.6 - Most capable",
-            "GPT-5.2 - OpenAI model",
+            "GPT-5.4 - OpenAI model",
             "Gemini 3 Pro Preview - Google's latest model"
           ],
           "default": "",
@@ -542,7 +542,7 @@
             "claude-sonnet-4.6",
             "claude-haiku-4.5",
             "claude-opus-4.6",
-            "gpt-5.2",
+            "gpt-5.4",
             "gpt-5.3-codex",
             "gemini-3-pro-preview"
           ],
@@ -550,8 +550,7 @@
             "Claude Sonnet 4.6 (Recommended)",
             "Claude Haiku 4.5 (Fast)",
             "Claude Opus 4.6 (Premium)",
-            "GPT-5.2",
-            "GPT-5.3 Codex",
+            "GPT-5.4",
             "Gemini 3 Pro (Preview)"
           ],
           "default": "claude-sonnet-4.6",

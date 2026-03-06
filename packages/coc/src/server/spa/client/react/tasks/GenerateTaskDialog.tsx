@@ -48,7 +48,7 @@ function pickModel(models: string[], keywords: string[]): string {
 
 export const EFFORT_PRESETS: Record<EffortLevel, EffortPreset> = {
     low: {
-        modelPicker: (models) => pickModel(models, ['sonnet', 'gpt-5.2', 'pro']),
+        modelPicker: (models) => pickModel(models, ['sonnet', 'gpt-5.4', 'pro']),
         priority: 'normal',
         depth: 'normal',
     },

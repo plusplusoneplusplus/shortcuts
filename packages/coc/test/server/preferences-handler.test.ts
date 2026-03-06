@@ -153,11 +153,11 @@ describe('readPreferences / writePreferences', () => {
     it('strips unknown keys in repos during read', () => {
         fs.writeFileSync(
             path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'repo-1': { lastModel: 'gpt-5.2', unknownKey: 42 } } }),
+            JSON.stringify({ repos: { 'repo-1': { lastModel: 'gpt-5.4', unknownKey: 42 } } }),
             'utf-8'
         );
         const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['repo-1']).toEqual({ lastModel: 'gpt-5.2' });
+        expect(prefs.repos?.['repo-1']).toEqual({ lastModel: 'gpt-5.4' });
         expect((prefs.repos?.['repo-1'] as any)?.unknownKey).toBeUndefined();
     });
 
@@ -209,7 +209,7 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips lastDepth normal through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastModel: 'gpt-5.2', lastDepth: 'normal' } } };
+        const data: PreferencesFile = { repos: { 'r': { lastModel: 'gpt-5.4', lastDepth: 'normal' } } };
         writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
         expect(loaded.repos?.['r']?.lastDepth).toBe('normal');
@@ -393,8 +393,8 @@ describe('validatePreferences', () => {
     });
 
     it('accepts lastDepth alongside lastModel', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', lastDepth: 'deep' });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep' });
+        const result = validatePreferences({ lastModel: 'gpt-5.4', lastDepth: 'deep' });
+        expect(result).toEqual({ lastModel: 'gpt-5.4', lastDepth: 'deep' });
     });
 
     // -- lastEffort field --
@@ -414,8 +414,8 @@ describe('validatePreferences', () => {
     });
 
     it('accepts lastEffort alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', lastEffort: 'high', lastDepth: 'deep' });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', lastDepth: 'deep', lastEffort: 'high' });
+        const result = validatePreferences({ lastModel: 'gpt-5.4', lastEffort: 'high', lastDepth: 'deep' });
+        expect(result).toEqual({ lastModel: 'gpt-5.4', lastDepth: 'deep', lastEffort: 'high' });
     });
 
     // -- lastSkill field --
@@ -435,8 +435,8 @@ describe('validatePreferences', () => {
     });
 
     it('accepts lastSkill alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', lastSkill: 'go-deep' });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', lastSkill: 'go-deep' });
+        const result = validatePreferences({ lastModel: 'gpt-5.4', lastSkill: 'go-deep' });
+        expect(result).toEqual({ lastModel: 'gpt-5.4', lastSkill: 'go-deep' });
     });
 
     // -- recentFollowPrompts field --
@@ -561,8 +561,8 @@ describe('validatePreferences', () => {
     });
 
     it('accepts pinnedChats alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id1'] } });
-        expect(result).toEqual({ lastModel: 'gpt-5.2', pinnedChats: { ws1: ['id1'] } });
+        const result = validatePreferences({ lastModel: 'gpt-5.4', pinnedChats: { ws1: ['id1'] } });
+        expect(result).toEqual({ lastModel: 'gpt-5.4', pinnedChats: { ws1: ['id1'] } });
     });
 
     // -- archivedChats field --

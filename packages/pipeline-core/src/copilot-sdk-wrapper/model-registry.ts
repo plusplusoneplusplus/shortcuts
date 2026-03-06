@@ -65,8 +65,8 @@ const MODEL_DEFINITIONS: readonly ModelDefinition[] = [
         tier: 'premium',
     },
     {
-        id: 'gpt-5.2',
-        label: 'GPT-5.2',
+        id: 'gpt-5.4',
+        label: 'GPT-5.4',
         description: '',
         tier: 'standard',
     },
@@ -103,7 +103,7 @@ export const VALID_MODELS = MODEL_DEFINITIONS.map(m => m.id) as unknown as reado
     'claude-sonnet-4.6',
     'claude-haiku-4.5',
     'claude-opus-4.6',
-    'gpt-5.2',
+    'gpt-5.4',
     'gpt-5.3-codex',
     'gemini-3-pro-preview',
 ];
