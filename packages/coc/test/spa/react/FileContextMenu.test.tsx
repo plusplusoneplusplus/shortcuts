@@ -274,7 +274,7 @@ describe('File context menu', () => {
 
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-notes'));
         fireEvent.click(screen.getByText('Copy Path'));
-        expect(clipboardSpy).toHaveBeenCalledWith('notes.md');
+        expect(clipboardSpy).toHaveBeenCalledWith('.vscode/tasks/notes.md');
     });
 
     // ── Rename dialog ──────────────────────────────────────────────────

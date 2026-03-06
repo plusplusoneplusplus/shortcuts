@@ -154,12 +154,12 @@ describe('PipelineRunHistory: workflow navigation', () => {
         expect(PIPELINE_RUN_HISTORY_SRC).not.toContain('<PipelineResultCard');
     });
 
-    it('handleSelectTask navigates to workflow view', () => {
+    it('handleSelectTask navigates to run view', () => {
         const handler = PIPELINE_RUN_HISTORY_SRC.substring(
             PIPELINE_RUN_HISTORY_SRC.indexOf('const handleSelectTask'),
             PIPELINE_RUN_HISTORY_SRC.indexOf('};', PIPELINE_RUN_HISTORY_SRC.indexOf('const handleSelectTask')) + 2
         );
-        expect(handler).toContain('/workflow/');
+        expect(handler).toContain('/run/');
         expect(handler).toContain('location.hash');
     });
 

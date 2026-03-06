@@ -7071,8 +7071,8 @@ describe('ToolCallCapture integration', () => {
         const mockWriteRaw = vi.fn().mockResolvedValue('123-view.json');
         vi.spyOn(Store.prototype, 'writeRaw').mockImplementation(mockWriteRaw);
 
-        const toolStartEvent = { type: 'tool-start', toolCallId: 'tc1', toolName: 'view', parameters: { path: '/foo.ts' } };
-        const toolCompleteEvent = { type: 'tool-complete', toolCallId: 'tc1', toolName: 'view', result: 'file content' };
+        const toolStartEvent = { type: 'tool-start', toolCallId: 'tc1', toolName: 'task', parameters: { prompt: 'Explain /foo.ts' } };
+        const toolCompleteEvent = { type: 'tool-complete', toolCallId: 'tc1', toolName: 'task', result: 'file content' };
 
         mockSendMessage.mockImplementation(async (opts: any) => {
             opts.onToolEvent?.(toolStartEvent);
@@ -7096,7 +7096,7 @@ describe('ToolCallCapture integration', () => {
 
         expect(mockWriteRaw).toHaveBeenCalledOnce();
         const entry = mockWriteRaw.mock.calls[0][0];
-        expect(entry.toolName).toBe('view');
+        expect(entry.toolName).toBe('task');
         expect(entry.question).toContain('/foo.ts');
         expect(entry.answer).toBe('file content');
     });

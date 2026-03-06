@@ -313,8 +313,8 @@ describe('AI Invoker', () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const onToolEvent = sendOptions.onToolEvent as (e: any) => void;
 
-            onToolEvent({ type: 'tool-start', toolName: 'grep', toolCallId: 'tc1', parameters: { pattern: 'foo' } });
-            onToolEvent({ type: 'tool-complete', toolName: 'grep', toolCallId: 'tc1', result: 'some result' });
+            onToolEvent({ type: 'tool-start', toolName: 'task', toolCallId: 'tc1', parameters: { prompt: 'foo' } });
+            onToolEvent({ type: 'tool-complete', toolName: 'task', toolCallId: 'tc1', result: 'some result' });
 
             await new Promise(r => setTimeout(r, 200));
 
@@ -351,8 +351,8 @@ describe('AI Invoker', () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const onToolEvent = sendOptions.onToolEvent as (e: any) => void;
 
-            onToolEvent({ type: 'tool-start', toolName: 'grep', toolCallId: 'tc3', parameters: { pattern: 'bar' } });
-            onToolEvent({ type: 'tool-complete', toolName: 'grep', toolCallId: 'tc3', result: 'result' });
+            onToolEvent({ type: 'tool-start', toolName: 'task', toolCallId: 'tc3', parameters: { prompt: 'bar' } });
+            onToolEvent({ type: 'tool-complete', toolName: 'task', toolCallId: 'tc3', result: 'result' });
 
             expect(callerHandler).toHaveBeenCalledTimes(2);
 

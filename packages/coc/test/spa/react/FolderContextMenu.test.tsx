@@ -239,7 +239,7 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         const copyPathBtn = screen.getByText('Copy Path');
         fireEvent.click(copyPathBtn);
-        expect(clipboardSpy).toHaveBeenCalledWith('feature1');
+        expect(clipboardSpy).toHaveBeenCalledWith('.vscode/tasks/feature1');
     });
 
     it('"Copy Absolute Path" writes rootPath + .vscode/tasks + relativePath to clipboard', async () => {
@@ -441,7 +441,7 @@ describe('Folder context menu', () => {
         // feature1 has relativePath='feature1', so relativePath is used
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         fireEvent.click(screen.getByText('Copy Path'));
-        expect(clipboardSpy).toHaveBeenCalledWith('feature1');
+        expect(clipboardSpy).toHaveBeenCalledWith('.vscode/tasks/feature1');
     });
 
     it('"Generate Task with AI" calls onOpenGenerateDialog and closes context menu', async () => {

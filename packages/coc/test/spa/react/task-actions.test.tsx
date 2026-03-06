@@ -129,7 +129,7 @@ describe('TaskActions — conditional buttons', () => {
         );
         fireEvent.click(screen.getByText('Copy path'));
 
-        expect(writeText).toHaveBeenCalledWith('feature1/task.md');
+        expect(writeText).toHaveBeenCalledWith('.vscode/tasks/feature1/task.md');
     });
 
     it('"Queue all" button appears when non-context files are selected', () => {
