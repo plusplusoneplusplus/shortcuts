@@ -127,9 +127,9 @@ export function invalidateHighlightCache(): void {
 }
 
 /**
- * Create a hunk header element (@@ ... @@) for split view
+ * Create a hunk header element (@@ ... @@) for split view (legacy, replaced by createHunkHeaderElement in 005)
  */
-function createHunkHeaderElement(text: string, side: 'old' | 'new'): HTMLElement {
+function createSplitHunkHeaderElement(text: string, side: 'old' | 'new'): HTMLElement {
     const lineDiv = document.createElement('div');
     lineDiv.className = 'diff-line diff-line-hunk';
 
@@ -292,6 +292,46 @@ function createEmptyLineElement(): HTMLElement {
     lineDiv.appendChild(contentDiv);
 
     return lineDiv;
+}
+
+/**
+ * Create a hunk separator header element showing the @@ range text.
+ */
+function createHunkHeaderElement(hunk: Hunk, viewMode: 'split' | 'inline'): HTMLElement {
+    const container = document.createElement('div');
+    container.className = `hunk-separator hunk-separator-${viewMode}`;
+
+    const headerText = document.createElement('div');
+    headerText.className = 'hunk-header-text';
+    headerText.textContent = hunk.headerText;
+    headerText.title = hunk.headerText;
+
+    container.appendChild(headerText);
+    return container;
+}
+
+/**
+ * Create a collapsed section placeholder showing "Show N hidden lines".
+ */
+function createCollapsedSectionElement(collapsedCount: number, hunkIndex: number): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'collapsed-section';
+    container.dataset.hunkIndex = String(hunkIndex);
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'collapsed-section-text';
+
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'expand-btn';
+    expandBtn.type = 'button';
+    expandBtn.title = 'Show hidden lines';
+    expandBtn.textContent = '⊞';
+
+    textSpan.appendChild(expandBtn);
+    textSpan.appendChild(document.createTextNode(` Show ${collapsedCount} hidden lines`));
+
+    container.appendChild(textSpan);
+    return container;
 }
 
 /**
@@ -581,8 +621,8 @@ export function renderSplitDiff(): void {
         // Detect line number gaps and insert hunk header
         if (hasLineNumberGap(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum)) {
             const hunkText = buildHunkText(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum);
-            oldContainer.appendChild(createHunkHeaderElement(hunkText, 'old'));
-            newContainer.appendChild(createHunkHeaderElement(hunkText, 'new'));
+            oldContainer.appendChild(createSplitHunkHeaderElement(hunkText, 'old'));
+            newContainer.appendChild(createSplitHunkHeaderElement(hunkText, 'new'));
         }
 
         // Track diff info for indicator bar

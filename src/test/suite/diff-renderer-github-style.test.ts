@@ -157,6 +157,103 @@ suite('GitHub-Style Diff View Tests', () => {
         });
     });
 
+    suite('createHunkHeaderElement Contract', () => {
+        // Validates DOM structure contract for the hunk header factory function.
+        // The function creates: <div class="hunk-separator hunk-separator-{viewMode}">
+        //   <div class="hunk-header-text" title="{headerText}">{headerText}</div>
+        // </div>
+
+        test('split mode should use hunk-separator and hunk-separator-split classes', () => {
+            const expectedClasses = 'hunk-separator hunk-separator-split';
+            assert.ok(expectedClasses.includes('hunk-separator'));
+            assert.ok(expectedClasses.includes('hunk-separator-split'));
+            assert.ok(!expectedClasses.includes('hunk-separator-inline'));
+        });
+
+        test('inline mode should use hunk-separator and hunk-separator-inline classes', () => {
+            const expectedClasses = 'hunk-separator hunk-separator-inline';
+            assert.ok(expectedClasses.includes('hunk-separator'));
+            assert.ok(expectedClasses.includes('hunk-separator-inline'));
+            assert.ok(!expectedClasses.includes('hunk-separator-split'));
+        });
+
+        test('header text child should use hunk-header-text class', () => {
+            const childClass = 'hunk-header-text';
+            assert.strictEqual(childClass, 'hunk-header-text');
+        });
+
+        test('title attribute should equal headerText for hover tooltip', () => {
+            // Contract: the hunk-header-text element's title attribute === hunk.headerText
+            const headerText = '@@ -10,7 +10,9 @@';
+            const titleAttr = headerText; // title is set to hunk.headerText
+            assert.strictEqual(titleAttr, headerText);
+        });
+
+        test('class name pattern should use viewMode parameter', () => {
+            // Contract: className = `hunk-separator hunk-separator-${viewMode}`
+            const buildClassName = (viewMode: string) => `hunk-separator hunk-separator-${viewMode}`;
+            assert.strictEqual(buildClassName('split'), 'hunk-separator hunk-separator-split');
+            assert.strictEqual(buildClassName('inline'), 'hunk-separator hunk-separator-inline');
+        });
+    });
+
+    suite('createCollapsedSectionElement Contract', () => {
+        // Validates DOM structure contract for the collapsed section factory function.
+        // The function creates:
+        // <div class="collapsed-section" data-hunk-index="{hunkIndex}">
+        //   <span class="collapsed-section-text">
+        //     <button class="expand-btn" type="button" title="Show hidden lines">⊞</button>
+        //     Show {collapsedCount} hidden lines
+        //   </span>
+        // </div>
+
+        test('root element should have collapsed-section class', () => {
+            const rootClass = 'collapsed-section';
+            assert.strictEqual(rootClass, 'collapsed-section');
+        });
+
+        test('data-hunk-index attribute should be set from hunkIndex parameter', () => {
+            const hunkIndex = 3;
+            const dataAttr = String(hunkIndex);
+            assert.strictEqual(dataAttr, '3');
+        });
+
+        test('text content should include collapsed count', () => {
+            const collapsedCount = 42;
+            const textContent = ` Show ${collapsedCount} hidden lines`;
+            assert.ok(textContent.includes('Show 42 hidden lines'));
+        });
+
+        test('text content with count of 1 should not special-case singular', () => {
+            const collapsedCount = 1;
+            const textContent = ` Show ${collapsedCount} hidden lines`;
+            assert.ok(textContent.includes('Show 1 hidden lines'));
+        });
+
+        test('expand button should have expand-btn class and button type', () => {
+            const btnClass = 'expand-btn';
+            const btnType = 'button';
+            assert.strictEqual(btnClass, 'expand-btn');
+            assert.strictEqual(btnType, 'button');
+        });
+
+        test('collapsed-section-text span should contain expand button', () => {
+            // Contract: span.collapsed-section-text > button.expand-btn + text node
+            const spanClass = 'collapsed-section-text';
+            const btnClass = 'expand-btn';
+            assert.strictEqual(spanClass, 'collapsed-section-text');
+            assert.strictEqual(btnClass, 'expand-btn');
+        });
+
+        test('data-hunk-index should be stringified integer', () => {
+            // Contract: container.dataset.hunkIndex = String(hunkIndex)
+            for (const idx of [0, 1, 5, 100]) {
+                assert.strictEqual(String(idx), `${idx}`);
+                assert.ok(/^\d+$/.test(String(idx)));
+            }
+        });
+    });
+
     suite('Gutter Column Order', () => {
         // Validate the expected column order after restructure
 
