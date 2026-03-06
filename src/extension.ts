@@ -1003,10 +1003,11 @@ export async function activate(context: vscode.ExtensionContext) {
                         // Open the document first to ensure it's loaded
                         const doc = await vscode.workspace.openTextDocument(gitShowUri);
 
-                        // Show the markdown preview using VSCode's built-in preview
-                        // The markdown.showPreview command works with any text document
+                        // Show the markdown preview in the right panel using VSCode's built-in preview
+                        // markdown.showPreviewToSide opens the rendered content to the side,
+                        // keeping the git tree visible and rendering the entire file content
                         await vscode.commands.executeCommand(
-                            'markdown.showPreview',
+                            'markdown.showPreviewToSide',
                             gitShowUri
                         );
                     } catch (error) {
