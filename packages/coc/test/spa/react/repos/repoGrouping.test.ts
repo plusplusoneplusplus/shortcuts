@@ -84,3 +84,106 @@ describe('applyGroupOrder', () => {
         expect(original[0]).toBe(gA);
     });
 });
+
+// ── normalizeRemoteUrl ───────────────────────────────────────────────────────
+
+describe('normalizeRemoteUrl', () => {
+    it('normalizes GitHub SSH URL', () => {
+        expect(normalizeRemoteUrl('git@github.com:user/repo.git')).toBe('github.com/user/repo');
+    });
+
+    it('normalizes GitHub HTTPS URL', () => {
+        expect(normalizeRemoteUrl('https://github.com/user/repo.git')).toBe('github.com/user/repo');
+    });
+
+    it('normalizes Azure DevOps HTTPS URL', () => {
+        expect(normalizeRemoteUrl('https://dev.azure.com/org/project/_git/repo'))
+            .toBe('dev.azure.com/org/project/repo');
+    });
+
+    it('normalizes Azure DevOps HTTPS URL with .git suffix', () => {
+        expect(normalizeRemoteUrl('https://dev.azure.com/org/project/_git/repo.git'))
+            .toBe('dev.azure.com/org/project/repo');
+    });
+
+    it('normalizes Azure DevOps HTTPS URL with PAT auth', () => {
+        expect(normalizeRemoteUrl('https://token@dev.azure.com/org/project/_git/repo'))
+            .toBe('dev.azure.com/org/project/repo');
+    });
+
+    it('normalizes Azure DevOps SSH URL', () => {
+        expect(normalizeRemoteUrl('git@ssh.dev.azure.com:v3/org/project/repo'))
+            .toBe('dev.azure.com/org/project/repo');
+    });
+
+    it('normalizes Azure DevOps SSH URL with .git suffix', () => {
+        expect(normalizeRemoteUrl('git@ssh.dev.azure.com:v3/org/project/repo.git'))
+            .toBe('dev.azure.com/org/project/repo');
+    });
+
+    it('normalizes old visualstudio.com HTTPS URL', () => {
+        expect(normalizeRemoteUrl('https://org.visualstudio.com/project/_git/repo'))
+            .toBe('dev.azure.com/org/project/repo');
+    });
+
+    it('normalizes visualstudio.com with DefaultCollection', () => {
+        expect(normalizeRemoteUrl('https://org.visualstudio.com/DefaultCollection/project/_git/repo'))
+            .toBe('dev.azure.com/org/project/repo');
+    });
+
+    it('all Azure DevOps URL formats produce identical normalized output', () => {
+        const expected = 'dev.azure.com/myorg/myproject/myrepo';
+        const urls = [
+            'https://dev.azure.com/myorg/myproject/_git/myrepo',
+            'git@ssh.dev.azure.com:v3/myorg/myproject/myrepo',
+            'https://myorg.visualstudio.com/myproject/_git/myrepo',
+            'https://myorg.visualstudio.com/DefaultCollection/myproject/_git/myrepo',
+            'https://pat@dev.azure.com/myorg/myproject/_git/myrepo',
+        ];
+        for (const url of urls) {
+            expect(normalizeRemoteUrl(url)).toBe(expected);
+        }
+    });
+});
+
+// ── remoteUrlLabel ───────────────────────────────────────────────────────────
+
+describe('remoteUrlLabel', () => {
+    it('strips host from normalized GitHub URL', () => {
+        expect(remoteUrlLabel('github.com/user/repo')).toBe('user/repo');
+    });
+
+    it('strips host from normalized Azure DevOps URL', () => {
+        expect(remoteUrlLabel('dev.azure.com/org/project/repo')).toBe('org/project/repo');
+    });
+
+    it('returns as-is when fewer than 3 parts', () => {
+        expect(remoteUrlLabel('repo')).toBe('repo');
+    });
+});
+
+// ── groupReposByRemote (Azure DevOps) ────────────────────────────────────────
+
+describe('groupReposByRemote with Azure DevOps URLs', () => {
+    it('groups repos with different Azure DevOps URL formats together', () => {
+        const repos: RepoData[] = [
+            {
+                workspace: { id: '1', name: 'repo-https', rootPath: '/r/1' },
+                gitInfo: { branch: 'main', dirty: false, isGitRepo: true, remoteUrl: 'https://dev.azure.com/org/proj/_git/repo' },
+            },
+            {
+                workspace: { id: '2', name: 'repo-ssh', rootPath: '/r/2' },
+                gitInfo: { branch: 'main', dirty: false, isGitRepo: true, remoteUrl: 'git@ssh.dev.azure.com:v3/org/proj/repo' },
+            },
+            {
+                workspace: { id: '3', name: 'repo-vs', rootPath: '/r/3' },
+                gitInfo: { branch: 'main', dirty: false, isGitRepo: true, remoteUrl: 'https://org.visualstudio.com/proj/_git/repo' },
+            },
+        ];
+        const groups = groupReposByRemote(repos, {});
+        const azureGroups = groups.filter(g => g.normalizedUrl?.includes('dev.azure.com'));
+        expect(azureGroups).toHaveLength(1);
+        expect(azureGroups[0].repos).toHaveLength(3);
+        expect(azureGroups[0].label).toBe('org/proj/repo');
+    });
+});

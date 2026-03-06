@@ -1736,6 +1736,11 @@ export function detectRemoteUrl(cwd: string): string | undefined {
  *   https://github.com/user/repo.git → github.com/user/repo
  *   ssh://git@github.com/user/repo   → github.com/user/repo
  *   git://github.com/user/repo.git/  → github.com/user/repo
+ *
+ * Azure DevOps URLs are normalised to `dev.azure.com/{org}/{project}/{repo}`:
+ *   https://dev.azure.com/{org}/{project}/_git/{repo}
+ *   https://{org}.visualstudio.com/{project}/_git/{repo}
+ *   git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
  */
 export function normalizeRemoteUrl(rawUrl: string): string {
     let url = rawUrl.trim();
@@ -1755,6 +1760,20 @@ export function normalizeRemoteUrl(rawUrl: string): string {
     url = url.replace(/\.git\/?$/, '');
     // Strip trailing slash
     url = url.replace(/\/+$/, '');
+
+    // Azure DevOps: ssh.dev.azure.com/v3/{org}/{project}/{repo} → dev.azure.com/{org}/{project}/{repo}
+    url = url.replace(/^ssh\.dev\.azure\.com\/v3\//, 'dev.azure.com/');
+
+    // Azure DevOps: {org}.visualstudio.com/[DefaultCollection/]{project}/… → dev.azure.com/{org}/…
+    const vsMatch = url.match(/^([^./]+)\.visualstudio\.com\/(?:DefaultCollection\/)?(.+)$/i);
+    if (vsMatch) {
+        url = 'dev.azure.com/' + vsMatch[1] + '/' + vsMatch[2];
+    }
+
+    // Azure DevOps: strip /_git/ path segment
+    if (url.startsWith('dev.azure.com/')) {
+        url = url.replace(/\/_git\//, '/');
+    }
 
     return url;
 }

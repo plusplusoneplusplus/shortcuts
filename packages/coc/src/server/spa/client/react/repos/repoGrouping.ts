@@ -38,6 +38,11 @@ export interface RepoGroup {
  * Normalize a git remote URL for grouping purposes.
  * SSH: `git@github.com:user/repo.git` → `github.com/user/repo`
  * HTTPS: `https://github.com/user/repo.git` → `github.com/user/repo`
+ *
+ * Azure DevOps URLs are normalised to `dev.azure.com/{org}/{project}/{repo}`:
+ *   `https://dev.azure.com/{org}/{project}/_git/{repo}`
+ *   `https://{org}.visualstudio.com/{project}/_git/{repo}`
+ *   `git@ssh.dev.azure.com:v3/{org}/{project}/{repo}`
  */
 export function normalizeRemoteUrl(rawUrl: string): string {
     let u = rawUrl.trim();
@@ -50,6 +55,21 @@ export function normalizeRemoteUrl(rawUrl: string): string {
     }
     u = u.replace(/\.git\/?$/, '');
     u = u.replace(/\/+$/, '');
+
+    // Azure DevOps: ssh.dev.azure.com/v3/{org}/{project}/{repo} → dev.azure.com/{org}/{project}/{repo}
+    u = u.replace(/^ssh\.dev\.azure\.com\/v3\//, 'dev.azure.com/');
+
+    // Azure DevOps: {org}.visualstudio.com/[DefaultCollection/]{project}/… → dev.azure.com/{org}/…
+    const vsMatch = u.match(/^([^./]+)\.visualstudio\.com\/(?:DefaultCollection\/)?(.+)$/i);
+    if (vsMatch) {
+        u = 'dev.azure.com/' + vsMatch[1] + '/' + vsMatch[2];
+    }
+
+    // Azure DevOps: strip /_git/ path segment
+    if (u.startsWith('dev.azure.com/')) {
+        u = u.replace(/\/_git\//, '/');
+    }
+
     return u;
 }
 
