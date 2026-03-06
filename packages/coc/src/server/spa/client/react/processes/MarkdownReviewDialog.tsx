@@ -48,6 +48,28 @@ export function MarkdownReviewDialog({
 
     const headerBtnClass = 'shrink-0 flex items-center justify-center w-8 h-8 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
+    const headerButtons = (
+        <div className="flex items-center gap-0.5 shrink-0">
+            {handleMinimize && (
+                <button
+                    data-testid="markdown-review-minimize-btn"
+                    onClick={handleMinimize}
+                    className={headerBtnClass}
+                    aria-label="Minimize"
+                >
+                    −
+                </button>
+            )}
+            <button
+                onClick={onClose}
+                className={headerBtnClass}
+                aria-label="Close"
+            >
+                ✕
+            </button>
+        </div>
+    );
+
     return (
         <Dialog
             open={open}
@@ -62,25 +84,7 @@ export function MarkdownReviewDialog({
                         <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate mr-2" title={displayPath || filePath}>
                             {title}
                         </span>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                            {handleMinimize && (
-                                <button
-                                    data-testid="markdown-review-minimize-btn"
-                                    onClick={handleMinimize}
-                                    className={headerBtnClass}
-                                    aria-label="Minimize"
-                                >
-                                    −
-                                </button>
-                            )}
-                            <button
-                                onClick={onClose}
-                                className={headerBtnClass}
-                                aria-label="Close"
-                            >
-                                ✕
-                            </button>
-                        </div>
+                        {headerButtons}
                     </div>
                 ) : (
                     /* Desktop: full header with title + subtitle + minimize + close */
@@ -96,25 +100,7 @@ export function MarkdownReviewDialog({
                                 {displayPath || filePath}
                             </div>
                         </div>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                            {handleMinimize && (
-                                <button
-                                    data-testid="markdown-review-minimize-btn"
-                                    onClick={handleMinimize}
-                                    className={headerBtnClass}
-                                    aria-label="Minimize"
-                                >
-                                    −
-                                </button>
-                            )}
-                            <button
-                                onClick={onClose}
-                                className={headerBtnClass}
-                                aria-label="Close"
-                            >
-                                ✕
-                            </button>
-                        </div>
+                        {headerButtons}
                     </div>
                 )}
                 <div className="flex-1 min-h-0 overflow-hidden">

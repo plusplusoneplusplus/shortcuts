@@ -295,40 +295,13 @@ export function MarkdownReviewEditor({
             const sel = window.getSelection();
             if (
                 viewMode !== 'source' &&
-                sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH
+                sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH &&
+                previewRef.current?.contains(sel.anchorNode)
             ) {
-                if (previewRef.current?.contains(sel.anchorNode)) {
-                    const range = sel.getRangeAt(0);
-                    const text = sel.toString().trim();
-
-                    // Use DOM-aware position mapping via data-line attributes
-                    const sourcePos = selectionToSourcePosition(rawContent, previewRef.current, range);
-                    if (sourcePos) {
-                        setSavedSelection({
-                            text,
-                            range: range.cloneRange(),
-                            ...sourcePos,
-                        });
-                        return;
-                    }
-
-                    // Fallback for selections inside block elements (code blocks, tables)
-                    console.warn('Selection is not inside an md-line element; using rendered-text fallback');
-                    const previewText = previewRef.current.textContent || '';
-                    const startOffset = getTextOffset(previewRef.current, range.startContainer, range.startOffset);
-                    const endOffset = getTextOffset(previewRef.current, range.endContainer, range.endOffset);
-                    const startPos = offsetToPosition(previewText, startOffset);
-                    const endPos = offsetToPosition(previewText, endOffset);
-                    setSavedSelection({
-                        text,
-                        range: range.cloneRange(),
-                        startLine: startPos.line,
-                        startColumn: startPos.column,
-                        endLine: endPos.line,
-                        endColumn: endPos.column,
-                    });
-                    return;
-                }
+                const range = sel.getRangeAt(0);
+                const resolved = resolveSelectionPosition(rawContent, previewRef.current!, range, sel.toString().trim());
+                setSavedSelection(resolved);
+                return;
             }
             setSavedSelection(null);
         };
@@ -344,41 +317,13 @@ export function MarkdownReviewEditor({
                 const sel = window.getSelection();
                 if (
                     viewMode !== 'source' &&
-                    sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH
+                    sel && !sel.isCollapsed && sel.rangeCount && sel.toString().trim().length >= MIN_SELECTION_LENGTH &&
+                    previewRef.current?.contains(sel.anchorNode)
                 ) {
-                    if (previewRef.current?.contains(sel.anchorNode)) {
-                        const range = sel.getRangeAt(0);
-                        const text = sel.toString().trim();
-
-                        const sourcePos = selectionToSourcePosition(rawContent, previewRef.current, range);
-                        if (sourcePos) {
-                            setSavedSelection({
-                                text,
-                                range: range.cloneRange(),
-                                ...sourcePos,
-                            });
-                            const rect = range.getBoundingClientRect();
-                            setMobileActionBarPos({
-                                top: Math.max(8, rect.top - 52),
-                                left: Math.max(8, Math.min(rect.left, window.innerWidth - 180)),
-                            });
-                            setMobileActionBarVisible(true);
-                            return;
-                        }
-
-                        const previewText = previewRef.current.textContent || '';
-                        const startOffset = getTextOffset(previewRef.current, range.startContainer, range.startOffset);
-                        const endOffset = getTextOffset(previewRef.current, range.endContainer, range.endOffset);
-                        const startPos = offsetToPosition(previewText, startOffset);
-                        const endPos = offsetToPosition(previewText, endOffset);
-                        setSavedSelection({
-                            text,
-                            range: range.cloneRange(),
-                            startLine: startPos.line,
-                            startColumn: startPos.column,
-                            endLine: endPos.line,
-                            endColumn: endPos.column,
-                        });
+                    const range = sel.getRangeAt(0);
+                    const resolved = resolveSelectionPosition(rawContent, previewRef.current!, range, sel.toString().trim());
+                    setSavedSelection(resolved);
+                    if (resolved) {
                         const rect = range.getBoundingClientRect();
                         setMobileActionBarPos({
                             top: Math.max(8, rect.top - 52),
@@ -437,19 +382,13 @@ export function MarkdownReviewEditor({
             endColumn: pendingSelection.endColumn,
         };
 
-        let anchor;
-        try {
-            anchor = createAnchorData(
-                rawContent,
-                pendingSelection.startLine,
-                pendingSelection.endLine,
-                pendingSelection.startColumn,
-                pendingSelection.endColumn,
-                DEFAULT_ANCHOR_MATCH_CONFIG
-            );
-        } catch {
-            // Anchor creation may fail; proceed without it
-        }
+        const anchor = buildAnchor(
+            rawContent,
+            pendingSelection.startLine,
+            pendingSelection.endLine,
+            pendingSelection.startColumn,
+            pendingSelection.endColumn,
+        );
 
         await addComment({
             filePath,
@@ -499,19 +438,13 @@ export function MarkdownReviewEditor({
             endColumn: savedSelection.endColumn,
         };
 
-        let anchor;
-        try {
-            anchor = createAnchorData(
-                rawContent,
-                savedSelection.startLine,
-                savedSelection.endLine,
-                savedSelection.startColumn,
-                savedSelection.endColumn,
-                DEFAULT_ANCHOR_MATCH_CONFIG
-            );
-        } catch {
-            // proceed without anchor
-        }
+        const anchor = buildAnchor(
+            rawContent,
+            savedSelection.startLine,
+            savedSelection.endLine,
+            savedSelection.startColumn,
+            savedSelection.endColumn,
+        );
 
         const cmd = DASHBOARD_AI_COMMANDS.find(c => c.id === commandId);
         const commentText = cmd?.label ?? commandId;
@@ -543,17 +476,13 @@ export function MarkdownReviewEditor({
             endColumn: savedSelection.endColumn,
         };
 
-        let anchor;
-        try {
-            anchor = createAnchorData(
-                rawContent,
-                savedSelection.startLine,
-                savedSelection.endLine,
-                savedSelection.startColumn,
-                savedSelection.endColumn,
-                DEFAULT_ANCHOR_MATCH_CONFIG
-            );
-        } catch { /* proceed without anchor */ }
+        const anchor = buildAnchor(
+            rawContent,
+            savedSelection.startLine,
+            savedSelection.endLine,
+            savedSelection.startColumn,
+            savedSelection.endColumn,
+        );
 
         const newComment = await addComment({
             filePath,
@@ -646,6 +575,32 @@ export function MarkdownReviewEditor({
         );
     }
 
+    // Shared props for both desktop inline and mobile drawer CommentSidebar instances.
+    const sharedCommentSidebarProps = {
+        taskId: filePath,
+        filePath,
+        comments,
+        loading: commentsLoading,
+        compact: true as const,
+        onResolve: resolveComment,
+        onUnresolve: unresolveComment,
+        onDelete: deleteComment,
+        onEdit: (id: string, text: string) => updateComment(id, { comment: text }),
+        onAskAI: (id: string, commandId?: string, customQuestion?: string) => {
+            const comment = comments.find(c => c.id === id);
+            const context = extractDocumentContext(rawContent, comment);
+            askAI(id, { commandId, customQuestion, documentContext: context });
+        },
+        aiLoadingIds,
+        aiErrors,
+        onClearAiError: clearAiError,
+        onResolveAllWithAI: handleResolveAllWithAI,
+        onCopyPrompt: handleCopyPrompt,
+        resolving,
+        onFixWithAI: handleFixWithAI,
+        resolvingCommentId,
+    };
+
     return (
         <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0">
             <div className="flex h-full flex-1 overflow-hidden min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e]">
@@ -721,29 +676,8 @@ export function MarkdownReviewEditor({
                 {/* Desktop inline sidebar */}
                 {!isMobile && showCommentListPanel && (
                     <CommentSidebar
-                        taskId={filePath}
-                        filePath={filePath}
-                        comments={comments}
-                        loading={commentsLoading}
-                        compact
-                        onResolve={(id) => resolveComment(id)}
-                        onUnresolve={(id) => unresolveComment(id)}
-                        onDelete={(id) => deleteComment(id)}
-                        onEdit={(id, text) => updateComment(id, { comment: text })}
-                        onAskAI={(id, commandId, customQuestion) => {
-                            const comment = comments.find(c => c.id === id);
-                            const context = extractDocumentContext(rawContent, comment);
-                            askAI(id, { commandId, customQuestion, documentContext: context });
-                        }}
+                        {...sharedCommentSidebarProps}
                         onCommentClick={handleCommentClick}
-                        aiLoadingIds={aiLoadingIds}
-                        aiErrors={aiErrors}
-                        onClearAiError={clearAiError}
-                        onResolveAllWithAI={handleResolveAllWithAI}
-                        onCopyPrompt={handleCopyPrompt}
-                        resolving={resolving}
-                        onFixWithAI={handleFixWithAI}
-                        resolvingCommentId={resolvingCommentId}
                     />
                 )}
             </div>
@@ -755,30 +689,9 @@ export function MarkdownReviewEditor({
                     onClose={() => setMobileSidebarOpen(false)}
                 >
                     <CommentSidebar
-                        taskId={filePath}
-                        filePath={filePath}
-                        comments={comments}
-                        loading={commentsLoading}
-                        compact
+                        {...sharedCommentSidebarProps}
                         fullWidth
-                        onResolve={(id) => resolveComment(id)}
-                        onUnresolve={(id) => unresolveComment(id)}
-                        onDelete={(id) => deleteComment(id)}
-                        onEdit={(id, text) => updateComment(id, { comment: text })}
-                        onAskAI={(id, commandId, customQuestion) => {
-                            const comment = comments.find(c => c.id === id);
-                            const context = extractDocumentContext(rawContent, comment);
-                            askAI(id, { commandId, customQuestion, documentContext: context });
-                        }}
                         onCommentClick={(comment) => { handleCommentClick(comment); setMobileSidebarOpen(false); }}
-                        aiLoadingIds={aiLoadingIds}
-                        aiErrors={aiErrors}
-                        onClearAiError={clearAiError}
-                        onResolveAllWithAI={handleResolveAllWithAI}
-                        onCopyPrompt={handleCopyPrompt}
-                        resolving={resolving}
-                        onFixWithAI={handleFixWithAI}
-                        resolvingCommentId={resolvingCommentId}
                     />
                 </ResponsiveSidebar>
             )}
@@ -908,6 +821,56 @@ export function MarkdownReviewEditor({
 }
 
 // ── Helpers (from legacy task-comments-ui.ts) ──
+
+/**
+ * Attempt to create anchor data for a selection range, returning undefined if it fails.
+ */
+function buildAnchor(
+    rawContent: string,
+    startLine: number,
+    endLine: number,
+    startColumn: number,
+    endColumn: number,
+) {
+    try {
+        return createAnchorData(rawContent, startLine, endLine, startColumn, endColumn, DEFAULT_ANCHOR_MATCH_CONFIG);
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Resolve a browser selection range to source-file position coordinates.
+ * Tries the DOM-aware `data-line` approach first; falls back to text-offset mapping.
+ * Returns null if the selection cannot be resolved (e.g. container not found).
+ */
+function resolveSelectionPosition(
+    rawContent: string,
+    previewEl: HTMLElement,
+    range: Range,
+    text: string,
+): { text: string; range: Range; startLine: number; startColumn: number; endLine: number; endColumn: number } | null {
+    const sourcePos = selectionToSourcePosition(rawContent, previewEl, range);
+    if (sourcePos) {
+        return { text, range: range.cloneRange(), ...sourcePos };
+    }
+
+    // Fallback for selections inside block elements (code blocks, tables)
+    console.warn('Selection is not inside an md-line element; using rendered-text fallback');
+    const previewText = previewEl.textContent || '';
+    const startOffset = getTextOffset(previewEl, range.startContainer, range.startOffset);
+    const endOffset = getTextOffset(previewEl, range.endContainer, range.endOffset);
+    const startPos = offsetToPosition(previewText, startOffset);
+    const endPos = offsetToPosition(previewText, endOffset);
+    return {
+        text,
+        range: range.cloneRange(),
+        startLine: startPos.line,
+        startColumn: startPos.column,
+        endLine: endPos.line,
+        endColumn: endPos.column,
+    };
+}
 
 function getTextOffset(container: Node, targetNode: Node, targetOffset: number): number {
     let offset = 0;
