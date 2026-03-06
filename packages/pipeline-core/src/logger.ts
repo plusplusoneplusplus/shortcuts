@@ -34,7 +34,9 @@ export enum LogCategory {
     /** Git operations */
     GIT = 'Git',
     /** Memory system operations */
-    Memory = 'Memory'
+    Memory = 'Memory',
+    /** Azure DevOps operations */
+    ADO = 'ADO'
 }
 
 /**

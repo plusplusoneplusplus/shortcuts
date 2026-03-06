@@ -1057,3 +1057,16 @@ export type {
 } from './skills';
 
 export { SourceDetectionErrors } from './skills';
+
+// ============================================================================
+// ADO (Azure DevOps)
+// ============================================================================
+
+export {
+    AdoConnectionConfig,
+    AdoConnectionResult,
+    AdoClientOptions,
+    AdoConnectionFactory,
+    getAdoConnectionFactory,
+    resetAdoConnectionFactory,
+} from './ado';
