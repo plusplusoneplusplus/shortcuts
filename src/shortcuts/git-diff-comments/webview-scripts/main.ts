@@ -84,6 +84,11 @@ function initialize(): void {
     // Render initial diff
     renderDiff();
 
+    // Auto-scroll to first change when viewing committed files in full-file mode
+    if (getFullFileView()) {
+        scrollToFirstChange();
+    }
+
     // Notify extension we're ready
     sendReady();
 

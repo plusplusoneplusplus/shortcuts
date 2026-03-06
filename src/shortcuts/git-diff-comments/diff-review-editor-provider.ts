@@ -281,7 +281,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             
             // Refresh the diff content in case the file has been updated externally
             const relativePath = path.relative(gitContext.repositoryRoot, filePath);
-            const diffResult = getDiffContent(relativePath, gitContext);
+            const diffResult = isRangeFile && rangeInfo
+                ? getRangeDiffContent(relativePath, rangeInfo.baseRef, rangeInfo.headRef, gitContext.repositoryRoot)
+                : getDiffContent(relativePath, gitContext);
             const isEditable = isEditableDiff(gitContext);
             
             if (!diffResult.isBinary && !diffResult.error) {

@@ -288,7 +288,6 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border-right: 1px solid var(--vscode-panel-border);
 }
 
 .diff-pane:last-child {
@@ -356,7 +355,6 @@ html, body {
     text-align: right;
     color: var(--vscode-editorLineNumber-foreground);
     background-color: var(--vscode-editorGutter-background);
-    border-right: 1px solid var(--vscode-panel-border);
     user-select: none;
     user-select: none;
     flex-shrink: 0;
@@ -434,22 +432,64 @@ html, body {
 
 .diff-line-addition,
 .line-added {
-    background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+    background-color: #dafbe1;
+}
+
+.diff-line-addition .line-gutter,
+.line-added .line-gutter {
+    background-color: #ccffd8;
 }
 
 .diff-line-addition .line-gutter .line-prefix,
 .line-added .line-gutter .line-prefix {
-    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+    color: var(--vscode-gitDecoration-addedResourceForeground, #1a7f37);
 }
 
 .diff-line-deletion,
 .line-deleted {
-    background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+    background-color: #ffebe9;
+}
+
+.diff-line-deletion .line-gutter,
+.line-deleted .line-gutter {
+    background-color: #ffd7d5;
 }
 
 .diff-line-deletion .line-gutter .line-prefix,
 .line-deleted .line-gutter .line-prefix {
-    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #cf222e);
+}
+
+/* Dark theme overrides */
+body.vscode-dark .diff-line-addition,
+body.vscode-dark .line-added {
+    background-color: rgba(46, 160, 67, 0.15);
+}
+
+body.vscode-dark .diff-line-addition .line-gutter,
+body.vscode-dark .line-added .line-gutter {
+    background-color: rgba(46, 160, 67, 0.25);
+}
+
+body.vscode-dark .diff-line-deletion,
+body.vscode-dark .line-deleted {
+    background-color: rgba(248, 81, 73, 0.15);
+}
+
+body.vscode-dark .diff-line-deletion .line-gutter,
+body.vscode-dark .line-deleted .line-gutter {
+    background-color: rgba(248, 81, 73, 0.25);
+}
+
+/* High contrast theme - use VS Code variables */
+body.vscode-high-contrast .diff-line-addition,
+body.vscode-high-contrast .line-added {
+    background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+}
+
+body.vscode-high-contrast .diff-line-deletion,
+body.vscode-high-contrast .line-deleted {
+    background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
 }
 
 .diff-line-empty {
@@ -458,6 +498,66 @@ html, body {
 
 .diff-line-empty .line-gutter {
     background-color: var(--vscode-diffEditor-diagonalFill, rgba(128, 128, 128, 0.1));
+}
+
+/* Hunk header rows (@@ ... @@) */
+.diff-line-hunk {
+    background-color: #ddf4ff;
+    min-height: 28px;
+    border-top: 1px solid var(--vscode-panel-border);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.diff-line-hunk .line-gutter,
+.diff-line-hunk .inline-line-gutter {
+    background-color: #ddf4ff;
+    color: var(--vscode-editorLineNumber-foreground);
+    opacity: 0.6;
+}
+
+.diff-line-hunk .hunk-gutter {
+    background-color: #ddf4ff;
+    min-width: 50px;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--vscode-editorLineNumber-foreground);
+    opacity: 0.6;
+    font-size: 0.9em;
+}
+
+.diff-line-hunk .hunk-content {
+    flex: 1;
+    padding: 0 8px;
+    font-style: italic;
+    font-size: 0.9em;
+    color: var(--vscode-descriptionForeground);
+    display: flex;
+    align-items: center;
+}
+
+/* Dark theme overrides for hunk headers */
+body.vscode-dark .diff-line-hunk {
+    background-color: rgba(56, 139, 253, 0.15);
+}
+
+body.vscode-dark .diff-line-hunk .line-gutter,
+body.vscode-dark .diff-line-hunk .inline-line-gutter,
+body.vscode-dark .diff-line-hunk .hunk-gutter {
+    background-color: rgba(56, 139, 253, 0.15);
+}
+
+/* High contrast theme for hunk headers */
+body.vscode-high-contrast .diff-line-hunk {
+    background-color: var(--vscode-editorGroupHeader-tabsBackground);
+}
+
+body.vscode-high-contrast .diff-line-hunk .line-gutter,
+body.vscode-high-contrast .diff-line-hunk .inline-line-gutter,
+body.vscode-high-contrast .diff-line-hunk .hunk-gutter {
+    background-color: var(--vscode-editorGroupHeader-tabsBackground);
 }
 
 /* Scrollbar styling */
@@ -561,7 +661,6 @@ html, body {
     text-align: right;
     color: var(--vscode-editorLineNumber-foreground);
     background-color: var(--vscode-editorGutter-background);
-    border-right: 1px solid var(--vscode-panel-border);
     user-select: none;
     user-select: none;
     flex-shrink: 0;
@@ -602,13 +701,11 @@ html, body {
 }
 
 .inline-line-gutter .old-line-num {
-    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
-    opacity: 0.8;
+    color: var(--vscode-editorLineNumber-foreground);
 }
 
 .inline-line-gutter .new-line-num {
-    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
-    opacity: 0.8;
+    color: var(--vscode-editorLineNumber-foreground);
 }
 
 .inline-diff-line-context .inline-line-gutter .old-line-num,
@@ -630,19 +727,53 @@ html, body {
 }
 
 .inline-diff-line-addition {
-    background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+    background-color: #dafbe1;
+}
+
+.inline-diff-line-addition .inline-line-gutter {
+    background-color: #ccffd8;
 }
 
 .inline-diff-line-addition .inline-line-gutter .line-prefix {
-    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+    color: var(--vscode-gitDecoration-addedResourceForeground, #1a7f37);
 }
 
 .inline-diff-line-deletion {
-    background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+    background-color: #ffebe9;
+}
+
+.inline-diff-line-deletion .inline-line-gutter {
+    background-color: #ffd7d5;
 }
 
 .inline-diff-line-deletion .inline-line-gutter .line-prefix {
-    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #cf222e);
+}
+
+/* Dark theme overrides for inline view */
+body.vscode-dark .inline-diff-line-addition {
+    background-color: rgba(46, 160, 67, 0.15);
+}
+
+body.vscode-dark .inline-diff-line-addition .inline-line-gutter {
+    background-color: rgba(46, 160, 67, 0.25);
+}
+
+body.vscode-dark .inline-diff-line-deletion {
+    background-color: rgba(248, 81, 73, 0.15);
+}
+
+body.vscode-dark .inline-diff-line-deletion .inline-line-gutter {
+    background-color: rgba(248, 81, 73, 0.25);
+}
+
+/* High contrast theme for inline view */
+body.vscode-high-contrast .inline-diff-line-addition {
+    background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+}
+
+body.vscode-high-contrast .inline-diff-line-deletion {
+    background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
 }
 
 /* ================================== */

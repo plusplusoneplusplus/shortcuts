@@ -3,6 +3,7 @@
  */
 
 import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
+import { buildHunkText, hasLineNumberGap } from '../diff-utils';
 import { getCommentsForLine, getIgnoreWhitespace, getState, getViewMode } from './state';
 import { DiffComment, DiffLineType } from './types';
 
@@ -126,6 +127,55 @@ export function invalidateHighlightCache(): void {
 }
 
 /**
+ * Create a hunk header element (@@ ... @@) for split view
+ */
+function createHunkHeaderElement(text: string, side: 'old' | 'new'): HTMLElement {
+    const lineDiv = document.createElement('div');
+    lineDiv.className = 'diff-line diff-line-hunk';
+
+    const gutterDiv = document.createElement('div');
+    gutterDiv.className = 'hunk-gutter';
+    gutterDiv.textContent = '···';
+    lineDiv.appendChild(gutterDiv);
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'hunk-content';
+    contentDiv.textContent = text;
+    lineDiv.appendChild(contentDiv);
+
+    return lineDiv;
+}
+
+/**
+ * Create a hunk header element for inline view
+ */
+function createInlineHunkHeaderElement(text: string): HTMLElement {
+    const lineDiv = document.createElement('div');
+    lineDiv.className = 'inline-diff-line diff-line-hunk';
+
+    const gutterDiv = document.createElement('div');
+    gutterDiv.className = 'inline-line-gutter';
+    // Empty line number spans for consistent gutter structure
+    const prefixSpan = document.createElement('span');
+    prefixSpan.className = 'line-prefix';
+    gutterDiv.appendChild(prefixSpan);
+    const oldNumSpan = document.createElement('span');
+    oldNumSpan.className = 'old-line-num';
+    gutterDiv.appendChild(oldNumSpan);
+    const newNumSpan = document.createElement('span');
+    newNumSpan.className = 'new-line-num';
+    gutterDiv.appendChild(newNumSpan);
+    lineDiv.appendChild(gutterDiv);
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'hunk-content';
+    contentDiv.textContent = text;
+    lineDiv.appendChild(contentDiv);
+
+    return lineDiv;
+}
+
+/**
  * Create a line element
  * @param highlightedContent - Pre-highlighted HTML content (if available)
  */
@@ -153,7 +203,15 @@ function createLineElement(
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'line-gutter';
 
-    // Add prefix for diff type (to the left of line number)
+    // Line number column
+    const lineNumSpan = document.createElement('span');
+    lineNumSpan.className = 'line-number';
+    if (lineNumber !== null) {
+        lineNumSpan.textContent = String(lineNumber);
+    }
+    gutterDiv.appendChild(lineNumSpan);
+
+    // Prefix column (+/-/space)
     let prefix = '';
     if (type === 'addition') {
         prefix = '+';
@@ -169,14 +227,6 @@ function createLineElement(
     prefixSpan.className = 'line-prefix';
     prefixSpan.textContent = prefix;
     gutterDiv.appendChild(prefixSpan);
-
-    // Wrap line number in a span for proper layout
-    const lineNumSpan = document.createElement('span');
-    lineNumSpan.className = 'line-number';
-    if (lineNumber !== null) {
-        lineNumSpan.textContent = String(lineNumber);
-    }
-    gutterDiv.appendChild(lineNumSpan);
 
     // Comment indicator (positioned absolutely via CSS)
     if (comments.length > 0) {
@@ -397,7 +447,16 @@ export function renderSplitDiff(): void {
 
     // Render aligned lines
     let lineIndex = 0;
+    let prevOldLineNum: number | null = null;
+    let prevNewLineNum: number | null = null;
     for (const line of aligned) {
+        // Detect line number gaps and insert hunk header
+        if (hasLineNumberGap(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum)) {
+            const hunkText = buildHunkText(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum);
+            oldContainer.appendChild(createHunkHeaderElement(hunkText, 'old'));
+            newContainer.appendChild(createHunkHeaderElement(hunkText, 'new'));
+        }
+
         // Track diff info for indicator bar
         const oldComments = line.oldLineNum ? getCommentsForLine('old', line.oldLineNum) : [];
         const newComments = line.newLineNum ? getCommentsForLine('new', line.newLineNum) : [];
@@ -460,6 +519,10 @@ export function renderSplitDiff(): void {
             // Empty line for alignment
             newContainer.appendChild(createEmptyLineElement());
         }
+
+        // Track previous line numbers for hunk detection
+        if (line.oldLineNum !== null) prevOldLineNum = line.oldLineNum;
+        if (line.newLineNum !== null) prevNewLineNum = line.newLineNum;
     }
 
     // Synchronize scroll between panes
@@ -506,7 +569,19 @@ function createInlineLineElement(
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'inline-line-gutter';
 
-    // Add prefix for diff type (to the left of line numbers)
+    // Column 1: old line number
+    const oldNumSpan = document.createElement('span');
+    oldNumSpan.className = 'old-line-num';
+    oldNumSpan.textContent = oldLineNum !== null ? String(oldLineNum) : '';
+    gutterDiv.appendChild(oldNumSpan);
+
+    // Column 2: new line number
+    const newNumSpan = document.createElement('span');
+    newNumSpan.className = 'new-line-num';
+    newNumSpan.textContent = newLineNum !== null ? String(newLineNum) : '';
+    gutterDiv.appendChild(newNumSpan);
+
+    // Column 3: prefix (+/-/space)
     let prefix = '';
     if (type === 'addition') {
         prefix = '+';
@@ -520,16 +595,6 @@ function createInlineLineElement(
     prefixSpan.className = 'line-prefix';
     prefixSpan.textContent = prefix;
     gutterDiv.appendChild(prefixSpan);
-
-    const oldNumSpan = document.createElement('span');
-    oldNumSpan.className = 'old-line-num';
-    oldNumSpan.textContent = oldLineNum !== null ? String(oldLineNum) : '';
-    gutterDiv.appendChild(oldNumSpan);
-
-    const newNumSpan = document.createElement('span');
-    newNumSpan.className = 'new-line-num';
-    newNumSpan.textContent = newLineNum !== null ? String(newLineNum) : '';
-    gutterDiv.appendChild(newNumSpan);
 
     // Comment indicator
     if (comments.length > 0) {
@@ -607,7 +672,15 @@ export function renderInlineDiff(): void {
 
     // Render in unified/inline style
     let lineIndex = 0;
+    let prevOldLineNum: number | null = null;
+    let prevNewLineNum: number | null = null;
     for (const line of aligned) {
+        // Detect line number gaps and insert hunk header
+        if (hasLineNumberGap(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum)) {
+            const hunkText = buildHunkText(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum);
+            inlineContainer.appendChild(createInlineHunkHeaderElement(hunkText));
+        }
+
         if (line.type === 'context') {
             // Context line - show with both line numbers
             const comments = getCommentsForLine('new', line.newLineNum!);
@@ -706,6 +779,10 @@ export function renderInlineDiff(): void {
             );
             inlineContainer.appendChild(lineEl);
         }
+
+        // Track previous line numbers for hunk detection
+        if (line.oldLineNum !== null) prevOldLineNum = line.oldLineNum;
+        if (line.newLineNum !== null) prevNewLineNum = line.newLineNum;
     }
 
     // Render the indicator bar
@@ -760,7 +837,7 @@ export function scrollToFirstChange(): void {
         const inlineContainer = document.getElementById('inline-content');
         if (inlineContainer) {
             const firstChange = inlineContainer.querySelector<HTMLElement>(
-                '.line-added, .line-deleted'
+                '.inline-diff-line-addition, .inline-diff-line-deletion'
             );
             if (firstChange) {
                 firstChange.scrollIntoView({ behavior: 'smooth', block: 'start' });
