@@ -1908,6 +1908,96 @@ describe('CLITaskExecutor', () => {
             // Conversation turn updated
             expect(process?.conversationTurns?.[0]?.content).toBe(process?.fullPrompt);
         });
+
+        it('should apply go-deep prefix for non-from-feature task with depth=deep', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-gen-create-deep',
+                type: 'task-generation',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'task-generation' as const,
+                    workingDirectory: '/workspace',
+                    prompt: 'Add retry logic to API calls',
+                    name: 'retry-logic',
+                    depth: 'deep',
+                },
+                config: { timeoutMs: 30000 },
+                displayName: 'Generate task',
+            };
+
+            await executor.execute(task);
+
+            const processId = 'queue_task-gen-create-deep';
+            const process = await store.getProcess(processId);
+            // Should contain go-deep prefix even without from-feature mode
+            expect(process?.fullPrompt).toContain('Use go-deep skill when available');
+            // Should still contain the user prompt
+            expect(process?.fullPrompt).toContain('Add retry logic to API calls');
+            // Conversation turn should also be updated
+            expect(process?.conversationTurns?.[0]?.content).toContain('Use go-deep skill when available');
+        });
+
+        it('should NOT apply go-deep prefix for non-from-feature task without depth=deep', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-gen-create-normal',
+                type: 'task-generation',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'task-generation' as const,
+                    workingDirectory: '/workspace',
+                    prompt: 'Add retry logic to API calls',
+                    name: 'retry-logic',
+                },
+                config: { timeoutMs: 30000 },
+                displayName: 'Generate task',
+            };
+
+            await executor.execute(task);
+
+            const processId = 'queue_task-gen-create-normal';
+            const process = await store.getProcess(processId);
+            // Should NOT contain go-deep prefix
+            expect(process?.fullPrompt).not.toContain('Use go-deep skill when available');
+            // Should still contain the user prompt
+            expect(process?.fullPrompt).toContain('Add retry logic to API calls');
+        });
+
+        it('should not double-prefix go-deep when from-feature + deep', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'task-gen-from-feature-deep-no-dupe',
+                type: 'task-generation',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'task-generation' as const,
+                    workingDirectory: '/workspace',
+                    prompt: 'Add retry logic',
+                    mode: 'from-feature',
+                    depth: 'deep',
+                },
+                config: { timeoutMs: 30000 },
+                displayName: 'Generate task',
+            };
+
+            await executor.execute(task);
+
+            const processId = 'queue_task-gen-from-feature-deep-no-dupe';
+            const process = await store.getProcess(processId);
+            // Should contain go-deep prefix exactly once
+            const matches = process?.fullPrompt?.match(/Use go-deep skill when available/g);
+            expect(matches).toHaveLength(1);
+        });
     });
 
     // ========================================================================

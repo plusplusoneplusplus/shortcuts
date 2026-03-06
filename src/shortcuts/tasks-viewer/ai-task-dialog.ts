@@ -177,6 +177,7 @@ export class AITaskDialogService {
                             location: message.location,
                             description: message.description,
                             model: message.model,
+                            depth: message.depth,
                             images: message.images
                         };
                     } else {

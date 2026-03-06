@@ -190,6 +190,8 @@ export interface AITaskCreateOptions {
     description: string;
     /** AI model to use (follows AI Action prompt pattern) */
     model: string;
+    /** Generation depth: simple (single-pass) or deep (multi-phase with go-deep skill) */
+    depth?: TaskGenerationDepth;
     /** Optional base64 data URL images pasted by user */
     images?: string[];
 }

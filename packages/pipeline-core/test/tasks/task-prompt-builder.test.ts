@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import {
+    applyDeepModePrefix,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,
@@ -292,6 +293,37 @@ describe('shared IMPORTANT section', () => {
         for (const line of sharedLines) {
             expect(prompt).toContain(line);
         }
+    });
+});
+
+// ============================================================================
+// applyDeepModePrefix
+// ============================================================================
+
+describe('applyDeepModePrefix', () => {
+    it('should prepend go-deep prefix to a plain prompt', () => {
+        const result = applyDeepModePrefix('Do something');
+        expect(result).toBe('Use go-deep skill when available.\n\nDo something');
+    });
+
+    it('should be idempotent — not double-prefix', () => {
+        const once = applyDeepModePrefix('Do something');
+        const twice = applyDeepModePrefix(once);
+        expect(twice).toBe(once);
+    });
+
+    it('should work with buildCreateTaskPrompt output', () => {
+        const base = buildCreateTaskPrompt('Add retry logic', '/tmp/tasks');
+        const deep = applyDeepModePrefix(base);
+        expect(deep).toMatch(/^Use go-deep skill when available\./);
+        expect(deep).toContain('Add retry logic');
+    });
+
+    it('should work with buildCreateTaskPromptWithName output', () => {
+        const base = buildCreateTaskPromptWithName('retry', 'Add retry logic', '/tmp/tasks');
+        const deep = applyDeepModePrefix(base);
+        expect(deep).toMatch(/^Use go-deep skill when available\./);
+        expect(deep).toContain('retry');
     });
 });
 

@@ -313,6 +313,16 @@ async function executeAITaskCreation(
                 } else {
                     throw new Error('Invalid options: missing createOptions or fromFeatureOptions');
                 }
+
+                // Apply go-deep prefix when depth is 'deep', regardless of mode
+                const depth = options.fromFeatureOptions?.depth ?? options.createOptions?.depth;
+                if (depth === 'deep') {
+                    const GO_DEEP_PREFIX = 'Use go-deep skill when available.';
+                    if (!prompt.startsWith(GO_DEEP_PREFIX)) {
+                        prompt = `${GO_DEEP_PREFIX}\n\n${prompt}`;
+                    }
+                    progress.report({ message: `Creating task with AI (Deep mode)...` });
+                }
                 
                 // Materialise pasted images as temp files for SDK attachments
                 let tempDir: string | undefined;

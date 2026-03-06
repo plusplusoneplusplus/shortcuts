@@ -261,6 +261,18 @@ ${important}`;
 }
 
 /**
+ * Prepend the go-deep skill instruction to any prompt.
+ * Idempotent: if the prompt already starts with the go-deep prefix, it is returned unchanged.
+ */
+export function applyDeepModePrefix(prompt: string): string {
+    const prefix = 'Use go-deep skill when available.';
+    if (prompt.startsWith(prefix)) {
+        return prompt;
+    }
+    return `${prefix}\n\n${prompt}`;
+}
+
+/**
  * Build prompt for deep mode task creation.
  * Prepends instruction to use go-deep skill.
  */
@@ -272,7 +284,7 @@ export function buildDeepModePrompt(
     _workspaceRoot: string
 ): string {
     const basePrompt = buildCreateFromFeaturePrompt(context, focus, name, targetPath);
-    return `Use go-deep skill when available.\n\n${basePrompt}`;
+    return applyDeepModePrefix(basePrompt);
 }
 
 /**

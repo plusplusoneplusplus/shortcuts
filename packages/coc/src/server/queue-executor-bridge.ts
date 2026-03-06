@@ -34,6 +34,7 @@ import {
 import type { AIProcess, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
     approveAllPermissions,
+    applyDeepModePrefix,
     AUTO_FOLDER_SENTINEL,
     buildCreateFromFeaturePrompt,
     buildCreateTaskPrompt,
@@ -1129,6 +1130,11 @@ export class CLITaskExecutor implements TaskExecutor {
             aiPrompt = buildCreateTaskPromptWithName(undefined, payload.prompt, resolvedTarget, autoFolderContext);
         } else {
             aiPrompt = buildCreateTaskPrompt(payload.prompt, resolvedTarget);
+        }
+
+        // Apply go-deep prefix when depth is 'deep', regardless of mode
+        if (payload.depth === 'deep') {
+            aiPrompt = applyDeepModePrefix(aiPrompt);
         }
 
         // Update process store with the actual enriched prompt (replaces raw user text)

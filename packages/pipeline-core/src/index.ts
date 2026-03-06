@@ -751,6 +751,7 @@ export {
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,
+    applyDeepModePrefix,
     buildDeepModePrompt,
     gatherFeatureContext,
     parseCreatedFilePath,
