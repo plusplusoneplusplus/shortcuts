@@ -3,7 +3,7 @@
  */
 
 import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
-import { buildHunkText, hasLineNumberGap } from '../diff-utils';
+
 import { getCommentsForLine, getIgnoreWhitespace, getState, getViewMode } from './state';
 import { DiffComment, DiffLineType } from './types';
 
@@ -843,119 +843,105 @@ export function renderInlineDiff(): void {
     const dp = computeLCS(oldLines, newLines, ignoreWhitespace);
     const aligned = backtrackLCS(oldLines, newLines, dp, ignoreWhitespace);
 
-    // Render in unified/inline style
+    // ── PHASE 1: Populate data structures for ALL aligned lines ──
     let lineIndex = 0;
-    let prevOldLineNum: number | null = null;
-    let prevNewLineNum: number | null = null;
     for (const line of aligned) {
-        // Detect line number gaps and insert hunk header
-        if (hasLineNumberGap(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum)) {
-            const hunkText = buildHunkText(prevOldLineNum, prevNewLineNum, line.oldLineNum, line.newLineNum);
-            inlineContainer.appendChild(createInlineHunkHeaderElement(hunkText));
+        const comments = line.type === 'deletion'
+            ? getCommentsForLine('old', line.oldLineNum!)
+            : line.type === 'addition'
+                ? getCommentsForLine('new', line.newLineNum!)
+                : getCommentsForLine('new', line.newLineNum!);
+
+        alignedDiffInfo.push({
+            index: lineIndex,
+            type: line.type === 'context' ? 'context' : (line.type === 'addition' ? 'addition' : 'deletion'),
+            hasComment: comments.length > 0,
+            oldLineNum: line.type === 'addition' ? null : line.oldLineNum,
+            newLineNum: line.type === 'deletion' ? null : line.newLineNum
+        });
+
+        if (line.oldLineNum !== null) {
+            lineToIndexMap.set(`old:${line.oldLineNum}`, lineIndex);
+        }
+        if (line.newLineNum !== null) {
+            lineToIndexMap.set(`new:${line.newLineNum}`, lineIndex);
+        }
+        lineIndex++;
+    }
+
+    // ── PHASE 2: Hunk-based DOM rendering ──
+    const hunks = groupIntoHunks(aligned, 3);
+
+    for (let hunkIdx = 0; hunkIdx < hunks.length; hunkIdx++) {
+        const hunk = hunks[hunkIdx];
+
+        // Collapsed section BEFORE this hunk
+        if (hunk.precedingCollapsedCount > 0) {
+            inlineContainer.appendChild(createCollapsedSectionElement(hunk.precedingCollapsedCount, hunkIdx - 1));
         }
 
-        if (line.type === 'context') {
-            // Context line - show with both line numbers
-            const comments = getCommentsForLine('new', line.newLineNum!);
+        // Hunk header (single element, full width of inline container)
+        inlineContainer.appendChild(createHunkHeaderElement(hunk, 'inline'));
 
-            // Track diff info for indicator bar
-            alignedDiffInfo.push({
-                index: lineIndex,
-                type: 'context',
-                hasComment: comments.length > 0,
-                oldLineNum: line.oldLineNum,
-                newLineNum: line.newLineNum
-            });
+        // Render each line in the hunk
+        for (const line of hunk.lines) {
+            let highlightedContent: string | undefined;
+            let comments: DiffComment[] = [];
+            let type: DiffLineType;
+            let side: 'old' | 'new' | 'context';
+            let content: string;
+            let oldNum: number | null;
+            let newNum: number | null;
 
-            // Build line number to index mapping
-            if (line.oldLineNum !== null) {
-                lineToIndexMap.set(`old:${line.oldLineNum}`, lineIndex);
+            if (line.type === 'context') {
+                type = 'context';
+                side = 'context';
+                content = line.newLine || line.oldLine || '';
+                oldNum = line.oldLineNum;
+                newNum = line.newLineNum;
+                comments = getCommentsForLine('new', line.newLineNum!);
+                highlightedContent = newHighlighted[line.newLineNum! - 1];
+            } else if (line.type === 'deletion') {
+                type = 'deletion';
+                side = 'old';
+                content = line.oldLine || '';
+                oldNum = line.oldLineNum;
+                newNum = null;
+                comments = getCommentsForLine('old', line.oldLineNum!);
+                highlightedContent = oldHighlighted[line.oldLineNum! - 1];
+            } else {
+                type = 'addition';
+                side = 'new';
+                content = line.newLine || '';
+                oldNum = null;
+                newNum = line.newLineNum;
+                comments = getCommentsForLine('new', line.newLineNum!);
+                highlightedContent = newHighlighted[line.newLineNum! - 1];
             }
-            if (line.newLineNum !== null) {
-                lineToIndexMap.set(`new:${line.newLineNum}`, lineIndex);
-            }
 
-            lineIndex++;
-
-            // For context, use the new version's highlighted content
-            const highlightedContent = newHighlighted[line.newLineNum! - 1];
             const lineEl = createInlineLineElement(
-                line.oldLineNum,
-                line.newLineNum,
-                line.newLine || line.oldLine || '',
-                'context',
-                'context',
-                comments,
-                highlightedContent
-            );
-            inlineContainer.appendChild(lineEl);
-        } else if (line.type === 'deletion') {
-            // Deletion - show old line
-            const comments = getCommentsForLine('old', line.oldLineNum!);
-
-            // Track diff info for indicator bar
-            alignedDiffInfo.push({
-                index: lineIndex,
-                type: 'deletion',
-                hasComment: comments.length > 0,
-                oldLineNum: line.oldLineNum,
-                newLineNum: null
-            });
-
-            // Build line number to index mapping
-            if (line.oldLineNum !== null) {
-                lineToIndexMap.set(`old:${line.oldLineNum}`, lineIndex);
-            }
-
-            lineIndex++;
-
-            const highlightedContent = oldHighlighted[line.oldLineNum! - 1];
-            const lineEl = createInlineLineElement(
-                line.oldLineNum,
-                null,
-                line.oldLine || '',
-                'deletion',
-                'old',
-                comments,
-                highlightedContent
-            );
-            inlineContainer.appendChild(lineEl);
-        } else if (line.type === 'addition') {
-            // Addition - show new line
-            const comments = getCommentsForLine('new', line.newLineNum!);
-
-            // Track diff info for indicator bar
-            alignedDiffInfo.push({
-                index: lineIndex,
-                type: 'addition',
-                hasComment: comments.length > 0,
-                oldLineNum: null,
-                newLineNum: line.newLineNum
-            });
-
-            // Build line number to index mapping
-            if (line.newLineNum !== null) {
-                lineToIndexMap.set(`new:${line.newLineNum}`, lineIndex);
-            }
-
-            lineIndex++;
-
-            const highlightedContent = newHighlighted[line.newLineNum! - 1];
-            const lineEl = createInlineLineElement(
-                null,
-                line.newLineNum,
-                line.newLine || '',
-                'addition',
-                'new',
-                comments,
-                highlightedContent
+                oldNum, newNum, content, type, side,
+                comments, highlightedContent
             );
             inlineContainer.appendChild(lineEl);
         }
+    }
 
-        // Track previous line numbers for hunk detection
-        if (line.oldLineNum !== null) prevOldLineNum = line.oldLineNum;
-        if (line.newLineNum !== null) prevNewLineNum = line.newLineNum;
+    // Trailing collapsed section after the last hunk
+    if (hunks.length > 0) {
+        const lastHunk = hunks[hunks.length - 1];
+        const lastLine = lastHunk.lines[lastHunk.lines.length - 1];
+        let lastHunkEndIdx = aligned.length - 1;
+        for (let i = aligned.length - 1; i >= 0; i--) {
+            if (aligned[i] === lastLine) {
+                lastHunkEndIdx = i;
+                break;
+            }
+        }
+        const trailingCount = aligned.length - lastHunkEndIdx - 1;
+        if (trailingCount > 0) {
+            inlineContainer.appendChild(createCollapsedSectionElement(trailingCount, hunks.length - 1));
+        }
     }
 
     // Render the indicator bar
