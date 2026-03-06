@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parsePipelineDeepLink, parsePipelineRunDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
 
@@ -1529,5 +1529,111 @@ describe('handleHash workflow dispatch simulation', () => {
         const dispatches = simulateWorkflowHash('#repos/r1/workflow/proc-1');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_PROCESS', processId: 'proc-1' });
+    });
+});
+
+// ─── parsePipelineRunDeepLink ────────────────────────────────────
+
+describe('parsePipelineRunDeepLink', () => {
+    it('parses #repos/my-repo/pipelines/my-pipe/run/proc-1', () => {
+        const result = parsePipelineRunDeepLink('#repos/my-repo/pipelines/my-pipe/run/proc-1');
+        expect(result).toEqual({ pipelineName: 'my-pipe', processId: 'proc-1' });
+    });
+
+    it('URL-decodes pipelineName and processId', () => {
+        const result = parsePipelineRunDeepLink('#repos/my-repo/pipelines/my%20pipe/run/proc%2F1');
+        expect(result).toEqual({ pipelineName: 'my pipe', processId: 'proc/1' });
+    });
+
+    it('handles queue_ prefixed processId', () => {
+        const result = parsePipelineRunDeepLink('#repos/ws-1/pipelines/pipe1/run/queue_abc123');
+        expect(result).toEqual({ pipelineName: 'pipe1', processId: 'queue_abc123' });
+    });
+
+    it('returns null when processId is missing', () => {
+        expect(parsePipelineRunDeepLink('#repos/my-repo/pipelines/my-pipe/run')).toBeNull();
+    });
+
+    it('returns null when "run" segment is absent', () => {
+        expect(parsePipelineRunDeepLink('#repos/my-repo/pipelines/my-pipe')).toBeNull();
+    });
+
+    it('returns null for non-pipelines sub-tab', () => {
+        expect(parsePipelineRunDeepLink('#repos/my-repo/workflow/proc-1')).toBeNull();
+    });
+
+    it('returns null for non-repo hash', () => {
+        expect(parsePipelineRunDeepLink('#wiki/something')).toBeNull();
+    });
+
+    it('returns null for empty hash', () => {
+        expect(parsePipelineRunDeepLink('#')).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        expect(parsePipelineRunDeepLink('')).toBeNull();
+    });
+});
+
+// ─── handleHash pipeline run dispatch simulation ─────────────────
+
+describe('handleHash pipeline run dispatch simulation', () => {
+    function simulatePipelineRunHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+                // Pipeline deep-link handling (mirrors Router.tsx)
+                if (parts[2] === 'pipelines' && parts[3]) {
+                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: decodeURIComponent(parts[3]) });
+                    if (parts[4] === 'run' && parts[5]) {
+                        dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
+                    } else {
+                        dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                    }
+                } else if (parts[2] === 'pipelines') {
+                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
+                    dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                } else if (parts[2] && parts[2] !== 'pipelines') {
+                    dispatches.push({ type: 'SET_SELECTED_PIPELINE', name: null });
+                    dispatches.push({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SET_PIPELINE_RUN_PROCESS for #repos/r1/pipelines/pipe1/run/proc-1', () => {
+        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines/pipe1/run/proc-1');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: 'pipe1' });
+        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: 'proc-1' });
+    });
+
+    it('dispatches SET_PIPELINE_RUN_PROCESS null for #repos/r1/pipelines/pipe1 (no run)', () => {
+        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines/pipe1');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: 'pipe1' });
+        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+    });
+
+    it('dispatches SET_PIPELINE_RUN_PROCESS null for #repos/r1/pipelines (no name)', () => {
+        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PIPELINE', name: null });
+        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+    });
+
+    it('dispatches SET_PIPELINE_RUN_PROCESS null for non-pipeline sub-tab', () => {
+        const dispatches = simulatePipelineRunHash('#repos/r1/tasks');
+        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+    });
+
+    it('URL-decodes processId in dispatch', () => {
+        const dispatches = simulatePipelineRunHash('#repos/r1/pipelines/pipe1/run/queue_abc%2F1');
+        expect(dispatches).toContainEqual({ type: 'SET_PIPELINE_RUN_PROCESS', processId: 'queue_abc/1' });
     });
 });

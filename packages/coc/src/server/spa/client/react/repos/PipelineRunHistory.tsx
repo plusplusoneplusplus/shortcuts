@@ -51,7 +51,7 @@ export function PipelineRunHistory({ workspaceId, pipelineName, refreshKey }: Pi
 
     const handleSelectTask = (task: any) => {
         const processId = task.processId || `queue_${task.id}`;
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/workflow/' + encodeURIComponent(processId);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/pipelines/' + encodeURIComponent(pipelineName) + '/run/' + encodeURIComponent(processId);
     };
 
     const isEmpty = activeTasks.length === 0 && history.length === 0 && !loading;

@@ -88,6 +88,18 @@ export function parsePipelineDeepLink(hash: string): string | null {
     return null;
 }
 
+export function parsePipelineRunDeepLink(hash: string): { pipelineName: string; processId: string } | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'pipelines' && parts[3] && parts[4] === 'run' && parts[5]) {
+        return {
+            pipelineName: decodeURIComponent(parts[3]),
+            processId: decodeURIComponent(parts[5]),
+        };
+    }
+    return null;
+}
+
 export function parseQueueDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
@@ -197,10 +209,18 @@ export function Router() {
                     // Pipeline deep-link handling
                     if (parts[2] === 'pipelines' && parts[3]) {
                         dispatch({ type: 'SET_SELECTED_PIPELINE', name: decodeURIComponent(parts[3]) });
+                        // Pipeline run detail: #repos/:id/pipelines/:name/run/:processId
+                        if (parts[4] === 'run' && parts[5]) {
+                            dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: decodeURIComponent(parts[5]) });
+                        } else {
+                            dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+                        }
                     } else if (parts[2] === 'pipelines') {
                         dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
+                        dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
                     } else if (parts[2] && parts[2] !== 'pipelines') {
                         dispatch({ type: 'SET_SELECTED_PIPELINE', name: null });
+                        dispatch({ type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
                     }
                     // Queue task deep-link handling
                     if (parts[2] === 'queue' && parts[3]) {

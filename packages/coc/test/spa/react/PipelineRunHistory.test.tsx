@@ -86,7 +86,7 @@ describe('PipelineRunHistory', () => {
             fireEvent.click(screen.getByTestId('run-history-item'));
         });
 
-        expect(location.hash).toBe('#repos/ws-1/workflow/proc-1');
+        expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline/run/proc-1');
     });
 
     it('clicking a history item without processId uses queue_ prefix', async () => {
@@ -109,7 +109,7 @@ describe('PipelineRunHistory', () => {
             fireEvent.click(screen.getByTestId('run-history-item'));
         });
 
-        expect(location.hash).toBe('#repos/ws-1/workflow/queue_t2');
+        expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline/run/queue_t2');
     });
 
     it('does not render PipelineResultCard after click', async () => {

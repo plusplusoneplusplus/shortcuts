@@ -6,10 +6,12 @@ import { useState, useEffect } from 'react';
 import { Button, Badge, Dialog, Spinner, cn } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
 import { useQueue } from '../context/QueueContext';
+import { useApp } from '../context/AppContext';
 import { fetchPipelineContent, savePipelineContent, deletePipeline, runPipeline } from './pipeline-api';
 import { PipelineRunHistory } from './PipelineRunHistory';
 import { PipelineDAGPreview } from './PipelineDAGPreview';
 import { PipelineAIRefinePanel } from './PipelineAIRefinePanel';
+import { WorkflowDetailView } from '../processes/dag/WorkflowDetailView';
 import type { PipelineInfo } from './repoGrouping';
 
 export interface PipelineDetailProps {
@@ -24,8 +26,12 @@ export interface PipelineDetailProps {
 export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess, refreshKey }: PipelineDetailProps) {
     const { addToast } = useGlobalToast();
     const { state: queueState } = useQueue();
+    const { state: appState } = useApp();
     const [mode, setMode] = useState<'view' | 'edit' | 'ai-edit'>('view');
     const [activeTab, setActiveTab] = useState<'pipeline' | 'history'>('pipeline');
+    const selectedRunProcessId = appState.selectedPipelineRunProcessId;
+    // Derive effective tab: when a run is selected, show 'run' regardless of local activeTab
+    const effectiveTab = selectedRunProcessId ? 'run' : activeTab;
     const [content, setContent] = useState('');
     const [editContent, setEditContent] = useState('');
     const [loading, setLoading] = useState(true);
@@ -190,21 +196,39 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                             data-tab={tab}
                             className={cn(
                                 'pipeline-tab px-3 py-2 text-xs font-medium transition-colors relative',
-                                activeTab === tab
+                                effectiveTab === tab
                                     ? 'active text-[#0078d4] dark:text-[#3794ff]'
                                     : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
                             )}
-                            onClick={() => setActiveTab(tab)}
+                            onClick={() => {
+                                setActiveTab(tab);
+                                if (selectedRunProcessId) {
+                                    location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/pipelines/' + encodeURIComponent(pipeline.name);
+                                }
+                            }}
                         >
                             {tab === 'pipeline' ? 'Workflow' : 'Run History'}
                             {tab === 'history' && activeTaskCount > 0 && (
                                 <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="active-task-badge">{activeTaskCount}</span>
                             )}
-                            {activeTab === tab && (
+                            {effectiveTab === tab && (
                                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
                             )}
                         </button>
                     ))}
+                    {selectedRunProcessId && (
+                        <button
+                            key="run"
+                            data-tab="run"
+                            className={cn(
+                                'pipeline-tab px-3 py-2 text-xs font-medium transition-colors relative',
+                                'active text-[#0078d4] dark:text-[#3794ff]'
+                            )}
+                        >
+                            Run Detail
+                            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -212,7 +236,7 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
             <div className="flex-1 overflow-auto px-4">
                 {mode === 'view' ? (
                     <>
-                        {activeTab === 'pipeline' && (
+                        {effectiveTab === 'pipeline' && (
                             <>
                                 <pre className="font-mono text-xs overflow-auto whitespace-pre-wrap bg-[#f5f5f5] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded p-3">
                                     {content}
@@ -222,12 +246,15 @@ export function PipelineDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                                 )}
                             </>
                         )}
-                        {activeTab === 'history' && (
+                        {effectiveTab === 'history' && (
                             <PipelineRunHistory
                                 workspaceId={workspaceId}
                                 pipelineName={pipeline.name}
                                 refreshKey={refreshKey}
                             />
+                        )}
+                        {effectiveTab === 'run' && selectedRunProcessId && (
+                            <WorkflowDetailView processId={selectedRunProcessId} />
                         )}
                     </>
                 ) : mode === 'ai-edit' ? (

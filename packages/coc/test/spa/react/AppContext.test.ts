@@ -26,6 +26,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wikiAutoGenerate: false,
         wikis: [],
         selectedPipelineName: null,
+        selectedPipelineRunProcessId: null,
         selectedChatSessionId: null,
         conversationCache: {},
         wsStatus: 'closed',
@@ -824,6 +825,26 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedWorkflowProcessId: 'proc-1' });
             const result = appReducer(state, { type: 'SET_WORKFLOW_PROCESS', processId: 'proc-2' });
             expect(result.selectedWorkflowProcessId).toBe('proc-2');
+        });
+    });
+
+    // ── SET_PIPELINE_RUN_PROCESS ──────────────────────────────────
+    describe('SET_PIPELINE_RUN_PROCESS', () => {
+        it('sets selectedPipelineRunProcessId to the given processId', () => {
+            const result = appReducer(makeState(), { type: 'SET_PIPELINE_RUN_PROCESS', processId: 'proc-1' });
+            expect(result.selectedPipelineRunProcessId).toBe('proc-1');
+        });
+
+        it('clears selectedPipelineRunProcessId when null', () => {
+            const state = makeState({ selectedPipelineRunProcessId: 'proc-1' });
+            const result = appReducer(state, { type: 'SET_PIPELINE_RUN_PROCESS', processId: null });
+            expect(result.selectedPipelineRunProcessId).toBeNull();
+        });
+
+        it('replaces existing selectedPipelineRunProcessId', () => {
+            const state = makeState({ selectedPipelineRunProcessId: 'proc-1' });
+            const result = appReducer(state, { type: 'SET_PIPELINE_RUN_PROCESS', processId: 'proc-2' });
+            expect(result.selectedPipelineRunProcessId).toBe('proc-2');
         });
     });
 });
