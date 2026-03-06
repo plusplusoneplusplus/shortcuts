@@ -209,7 +209,8 @@ export interface InputConfig {
 
     /** 
      * Generate items using AI based on a prompt and schema.
-     * The user will be able to review and edit generated items before execution.
+     * By default, the user reviews generated items before execution.
+     * Set `autoApprove: true` to skip review and execute immediately.
      */
     generate?: GenerateInputConfig;
 

@@ -952,6 +952,44 @@ describe('Pipeline Executor', () => {
             expect(result.output!.results.length).toBe(2);
         });
 
+        it('merges parameters into generated items', async () => {
+            const generatedItems = [
+                { name: 'item1' },
+                { name: 'item2' }
+            ];
+
+            const mockAI = createMockAIInvoker((prompt: string) => {
+                if (prompt.includes('Generate')) {
+                    return { success: true, response: JSON.stringify(generatedItems) };
+                }
+                return { success: true, response: '{"result": "done"}' };
+            });
+
+            const config = {
+                name: 'Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name'],
+                        autoApprove: true
+                    },
+                    parameters: [
+                        { name: 'env', value: 'production' }
+                    ]
+                },
+                map: { prompt: '{{name}} in {{env}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            const result = await executePipeline(config, {
+                aiInvoker: mockAI,
+                pipelineDirectory: tempDir
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.output!.results.length).toBe(2);
+        });
+
         it('accepts empty output fields (text mode)', async () => {
             // Empty output fields are now valid - enables text mode
             const config: PipelineConfig = {
