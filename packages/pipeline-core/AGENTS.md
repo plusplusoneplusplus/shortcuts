@@ -16,6 +16,7 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep 
 | **process-store** | `src/process-store.ts`, `src/file-process-store.ts` | Abstract `ProcessStore` + `FileProcessStore` (JSON, atomic writes, 500-process cap) |
 | **map-reduce** | `src/map-reduce/` | `MapReduceExecutor`, concurrency limiter, splitters, reducers, pre-built job factories |
 | **pipeline** | `src/pipeline/` | YAML pipeline executor, CSV reader, template engine, filter executor, skill/prompt resolvers |
+| **workflow** | `src/workflow/` | DAG-based workflow engine: `executeWorkflow`, graph builder, scheduler, validator, node executors (load/map/ai/reduce/filter/script/merge/transform). Supports `WorkflowSettings` (model/concurrency/timeout/workingDirectory/toolCallCache), `parameters` (template substitution), `skill` (per-node skill resolution), structured `WorkflowProgressEvent`, per-item `WorkflowItemProcessEvent` |
 | **memory** | `src/memory/` | Persistent AI memory system (see [Memory System](#memory-system) below) |
 | **tasks** | `src/tasks/` | Task scanner, parser, CRUD ops, prompt builders for task discovery |
 | **discovery** | `src/discovery/` | Prompt file and skill file resolution |

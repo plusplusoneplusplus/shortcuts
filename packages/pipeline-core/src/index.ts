@@ -1086,3 +1086,89 @@ export {
     replicateCommit,
     ReplicateProgressCallback,
 } from './templates';
+
+// ============================================================================
+// Workflow Engine
+// ============================================================================
+
+export {
+    // Item types
+    type Item as WorkflowItem,
+    type Items as WorkflowItems,
+
+    // Load source
+    type LoadSource,
+
+    // Filter rule types
+    type WorkflowFilterOp,
+    type WorkflowFilterRule,
+
+    // Transform operations
+    type TransformOp,
+
+    // Reduce strategy
+    type ReduceStrategy,
+
+    // Base node
+    type BaseNode,
+
+    // Concrete node configs
+    type LoadNodeConfig,
+    type ScriptNodeConfig,
+    type FilterNodeConfig,
+    type MapNodeConfig,
+    type ReduceNodeConfig,
+    type MergeNodeConfig,
+    type TransformNodeConfig,
+    type AINodeConfig,
+
+    // Node config union
+    type NodeConfig,
+
+    // Workflow configuration
+    type WorkflowSettings,
+    type WorkflowConfig,
+
+    // Execution results
+    type NodeStats,
+    type NodeResult,
+    type WorkflowResult,
+
+    // DAG graph types
+    type DAGGraph,
+    type ExecutionTier,
+
+    // Execution options
+    type WorkflowExecutionOptions,
+
+    // Progress events
+    type WorkflowNodePhase,
+    type WorkflowProgressEvent,
+    type WorkflowItemProcessEvent,
+
+    // Type guards
+    isLoadNode,
+    isScriptNode,
+    isFilterNode,
+    isMapNode,
+    isReduceNode,
+    isMergeNode,
+    isTransformNode,
+    isAINode,
+    isNodeConfig,
+
+    // Graph utilities
+    buildGraph,
+    detectCycle,
+
+    // Validator
+    validate as validateWorkflow,
+    WorkflowValidationError,
+
+    // Scheduler
+    schedule as scheduleWorkflow,
+    getExecutionOrder,
+
+    // Executor
+    executeWorkflow,
+} from './workflow';
