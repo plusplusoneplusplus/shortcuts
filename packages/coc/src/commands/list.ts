@@ -9,14 +9,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as yaml from 'js-yaml';
 import {
     readCSVFileSync,
     resolveCSVPath,
-    isCSVSource,
-    isGenerateConfig,
+    compileToWorkflow,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { WorkflowConfig, LoadNodeConfig } from '@plusplusoneplusplus/pipeline-core';
 import {
     bold,
     gray,
@@ -105,10 +103,7 @@ export function discoverPipelines(dirPath: string): PipelinePackageInfo[] {
 
         try {
             const content = fs.readFileSync(yamlPath, 'utf-8');
-            const config = yaml.load(content) as PipelineConfig;
-            if (!config || typeof config !== 'object' || !config.name) {
-                throw new Error('Invalid pipeline config');
-            }
+            const config = compileToWorkflow(content);
             const info = buildPackageInfo(entry.name, config, path.dirname(yamlPath));
             packages.push(info);
         } catch {
@@ -127,39 +122,49 @@ export function discoverPipelines(dirPath: string): PipelinePackageInfo[] {
 }
 
 /**
- * Build package info from a parsed pipeline config
+ * Build package info from a compiled workflow config
  */
 function buildPackageInfo(
     name: string,
-    config: PipelineConfig,
+    config: WorkflowConfig,
     pipelineDir: string
 ): PipelinePackageInfo {
     let inputType = '-';
     let itemCount: number | undefined;
 
-    const { input } = config;
+    // Find the load node to determine input type
+    const loadNode = Object.values(config.nodes).find(
+        (n): n is LoadNodeConfig => n.type === 'load'
+    );
 
-    if (input?.items) {
-        inputType = 'inline';
-        itemCount = input.items.length;
-    } else if (input?.from && isCSVSource(input.from)) {
-        inputType = 'CSV';
-        try {
-            const csvPath = resolveCSVPath(input.from.path, pipelineDir);
-            if (fs.existsSync(csvPath)) {
-                const csv = readCSVFileSync(csvPath, {
-                    delimiter: input.from.delimiter,
-                });
-                itemCount = csv.rowCount;
-            }
-        } catch {
-            // Count not available
+    if (loadNode) {
+        const source = loadNode.source;
+        switch (source.type) {
+            case 'inline':
+                inputType = 'inline';
+                itemCount = source.items.length;
+                break;
+            case 'csv':
+                inputType = 'CSV';
+                try {
+                    const csvPath = resolveCSVPath(source.path, pipelineDir);
+                    if (fs.existsSync(csvPath)) {
+                        const csv = readCSVFileSync(csvPath, {
+                            delimiter: source.delimiter,
+                        });
+                        itemCount = csv.rowCount;
+                    }
+                } catch {
+                    // Count not available
+                }
+                break;
+            case 'json':
+                inputType = 'JSON';
+                break;
+            case 'ai':
+                inputType = 'generate';
+                break;
         }
-    } else if (input?.from && Array.isArray(input.from)) {
-        inputType = 'list';
-        itemCount = input.from.length;
-    } else if (input?.generate && isGenerateConfig(input.generate)) {
-        inputType = 'generate';
     }
 
     return {

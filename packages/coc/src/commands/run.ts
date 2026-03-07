@@ -10,15 +10,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-    parsePipelineYAMLSync,
-    executePipeline,
+    compileToWorkflow,
+    executeWorkflow,
+    flattenWorkflowResult,
     setLogger,
     FileProcessStore,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
-    PipelineConfig,
-    JobProgress,
-    PipelineExecutionResult,
+    WorkflowConfig,
+    WorkflowProgressEvent,
+    FlatWorkflowResult,
     AIProcess,
 } from '@plusplusoneplusplus/pipeline-core';
 import {
@@ -103,99 +104,45 @@ export async function executeRun(
     const pipelineDir = path.dirname(yamlPath);
 
     // 2. Parse pipeline YAML
-    let config: PipelineConfig;
+    let config: WorkflowConfig;
     try {
         const content = fs.readFileSync(yamlPath, 'utf-8');
-        config = parsePipelineYAMLSync(content);
+        config = compileToWorkflow(content);
     } catch (error) {
         printError(`Failed to parse pipeline: ${error instanceof Error ? error.message : String(error)}`);
         return 2;
     }
 
-    // 3. Apply CLI overrides
-    const isJobPipeline = !!config.job;
-
-    if (options.model) {
-        if (config.map) {
-            config.map.model = options.model;
-        }
-        if (config.job) {
-            config.job.model = options.model;
-        }
-    }
-    if (options.parallel && config.map) {
-        config.map.parallel = options.parallel;
-    }
-
-    // Apply parameter overrides
-    if (Object.keys(options.params).length > 0) {
-        if (isJobPipeline) {
-            // For job pipelines, parameters are at top level
-            if (!config.parameters) {
-                config.parameters = [];
-            }
-            for (const [key, value] of Object.entries(options.params)) {
-                const existing = config.parameters.find(p => p.name === key);
-                if (existing) {
-                    existing.value = value;
-                } else {
-                    config.parameters.push({ name: key, value });
-                }
-            }
-        } else {
-            // For map-reduce pipelines, parameters are under input
-            if (!config.input!.parameters) {
-                config.input!.parameters = [];
-            }
-            for (const [key, value] of Object.entries(options.params)) {
-                const existing = config.input!.parameters!.find(p => p.name === key);
-                if (existing) {
-                    existing.value = value;
-                } else {
-                    config.input!.parameters!.push({ name: key, value });
-                }
-            }
-        }
-    }
-
-    // 4. Print pipeline info
+    // 3. Print pipeline info
     printHeader(`Pipeline: ${config.name}`);
     printKeyValue('File', yamlPath);
-    if (isJobPipeline) {
-        printKeyValue('Mode', 'Single Job');
-        if (config.job!.model || options.model) {
-            printKeyValue('Model', config.job!.model || options.model || 'default');
-        }
-    } else {
-        if (config.map?.model || options.model) {
-            printKeyValue('Model', config.map!.model || options.model || 'default');
-        }
-        printKeyValue('Parallel', String(config.map!.parallel || 5));
+    if (options.model) {
+        printKeyValue('Model', options.model);
+    }
+    if (options.parallel) {
+        printKeyValue('Parallel', String(options.parallel));
     }
     if (options.dryRun) {
         printKeyValue('Mode', 'Dry Run');
     }
     process.stderr.write('\n');
 
-    // 5. Set up logger
+    // 4. Set up logger
     setLogger(createCLILogger());
 
-    // 6. Create AI invoker
+    // 5. Create AI invoker
     // Working directory priority:
     // 1. --workspace-root CLI flag (explicit override)
-    // 2. config.workingDirectory from YAML (resolved relative to pipeline dir)
-    // 3. pipeline directory (default fallback)
+    // 2. pipeline directory (default fallback)
     let workingDirectory: string;
     if (options.workspaceRoot) {
         workingDirectory = options.workspaceRoot;
-    } else if (config.workingDirectory) {
-        workingDirectory = path.resolve(pipelineDir, config.workingDirectory);
     } else {
         workingDirectory = pipelineDir;
     }
 
     const invokerOptions: CLIAIInvokerOptions = {
-        model: config.job?.model || config.map?.model || options.model,
+        model: options.model,
         approvePermissions: options.approvePermissions,
         workingDirectory,
         timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
@@ -205,15 +152,15 @@ export async function executeRun(
         ? createDryRunAIInvoker()
         : createCLIAIInvoker(invokerOptions);
 
-    // 7. Execute pipeline with progress
-    let cancelled = false;
+    // 6. Execute pipeline with progress
+    const controller = new AbortController();
 
     // Handle SIGINT for graceful cancellation
     const sigintHandler = () => {
-        if (cancelled) {
+        if (controller.signal.aborted) {
             process.exit(130);
         }
-        cancelled = true;
+        controller.abort();
         process.stderr.write('\n');
         printInfo('Cancelling... (press Ctrl+C again to force exit)');
     };
@@ -226,27 +173,34 @@ export async function executeRun(
     try {
         spinner.start('Starting pipeline execution...');
 
-        const result = await executePipeline(config, {
+        const workflowResult = await executeWorkflow(config, {
             aiInvoker,
-            pipelineDirectory: pipelineDir,
+            workflowDirectory: pipelineDir,
             workspaceRoot: options.workspaceRoot,
-            isCancelled: () => cancelled,
-            onProgress: (progress: JobProgress) => {
-                handleProgress(progress, spinner, progressDisplay, options.verbose);
-                if (progress.totalItems && !progressDisplay) {
+            model: options.model,
+            concurrency: options.parallel,
+            timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+            signal: controller.signal,
+            parameters: Object.keys(options.params).length > 0
+                ? { ...config.parameters, ...options.params }
+                : undefined,
+            onProgress: (event: WorkflowProgressEvent) => {
+                handleProgress(event, spinner, progressDisplay, options.verbose);
+                if (event.itemProgress && !progressDisplay) {
                     progressDisplay = new ProgressDisplay({
-                        total: progress.totalItems,
-                        label: 'Mapping',
+                        total: event.itemProgress.total,
+                        label: 'Processing',
                     });
                 }
             },
         });
 
+        const result = flattenWorkflowResult(workflowResult, config);
         spinner.stop();
 
         // 8. Handle results
         const elapsed = Date.now() - startTime;
-        const exitCode = handleResults(result, options, elapsed, cancelled, isJobPipeline);
+        const exitCode = handleResults(result, options, elapsed, controller.signal.aborted);
 
         // 9. Persist to process store
         if (options.persist) {
@@ -274,15 +228,18 @@ export async function executeRun(
 // ============================================================================
 
 function handleProgress(
-    progress: JobProgress,
+    event: WorkflowProgressEvent,
     spinner: Spinner,
     progressDisplay: ProgressDisplay | null,
     verbose: boolean
 ): void {
-    const message = progress.message || `Processing item ${progress.completedItems}/${progress.totalItems}`;
+    const progress = event.itemProgress;
+    const message = progress
+        ? `Processing item ${progress.completed}/${progress.total}`
+        : `Node ${event.nodeId}: ${event.phase}`;
 
-    if (progressDisplay && progress.completedItems !== undefined && progress.totalItems) {
-        progressDisplay.update(progress.completedItems, progress.message);
+    if (progressDisplay && progress) {
+        progressDisplay.update(progress.completed);
     } else if (spinner.isRunning) {
         spinner.update(message);
     }
@@ -293,11 +250,10 @@ function handleProgress(
 // ============================================================================
 
 function handleResults(
-    result: PipelineExecutionResult,
+    result: FlatWorkflowResult,
     options: RunCommandOptions,
     elapsed: number,
     cancelled: boolean,
-    isJobPipeline: boolean
 ): number {
     // Print summary to stderr
     const summary = formatSummary(result);
@@ -310,9 +266,9 @@ function handleResults(
 
     // Format and write results
     let formatted: string;
-    if (isJobPipeline) {
-        // For single-job, output the AI response directly
-        formatted = result.output?.formattedOutput ?? result.error ?? 'No output';
+    if (result.formattedOutput) {
+        // Use pre-formatted output (e.g., from reduce or single-job)
+        formatted = result.formattedOutput;
     } else {
         formatted = formatResults(result, options.output);
     }
@@ -337,7 +293,7 @@ function handleResults(
     }
 
     // Return appropriate exit code
-    if (result.executionStats.failedMaps > 0 && result.executionStats.successfulMaps === 0) {
+    if (result.stats.failedMaps > 0 && result.stats.successfulMaps === 0) {
         return 1;
     }
 
@@ -349,9 +305,9 @@ function handleResults(
 // ============================================================================
 
 async function persistProcess(
-    config: PipelineConfig,
+    config: WorkflowConfig,
     yamlPath: string,
-    result: PipelineExecutionResult,
+    result: FlatWorkflowResult,
     exitCode: number,
     startTime: number,
     elapsed: number,
@@ -372,9 +328,9 @@ async function persistProcess(
             metadata: {
                 type: 'cli-pipeline',
                 pipelineName: config.name,
-                itemCount: result.executionStats.totalItems,
-                successCount: result.executionStats.successfulMaps,
-                failCount: result.executionStats.failedMaps,
+                itemCount: result.stats.totalItems,
+                successCount: result.stats.successfulMaps,
+                failCount: result.stats.failedMaps,
             },
         };
         const store = new FileProcessStore({

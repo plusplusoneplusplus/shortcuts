@@ -12,88 +12,80 @@ import {
 } from '../src/output-formatter';
 import type { OutputFormat } from '../src/output-formatter';
 import { setColorEnabled } from '../src/logger';
-import type { PipelineExecutionResult } from '@plusplusoneplusplus/pipeline-core';
+import type { FlatWorkflowResult } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
 
-function createMockResult(overrides?: Partial<PipelineExecutionResult>): PipelineExecutionResult {
+function createMockResult(overrides?: Partial<FlatWorkflowResult>): FlatWorkflowResult {
     return {
         success: true,
-        mapResults: [
+        items: [
             {
-                workItemId: 'item-1',
+                index: 0,
+                input: { name: 'Item 1', category: 'A' },
+                output: { severity: 'high', category: 'bug' },
                 success: true,
-                output: {
-                    item: { name: 'Item 1', category: 'A' },
-                    output: { severity: 'high', category: 'bug' },
-                    success: true,
-                },
                 executionTimeMs: 100,
             },
             {
-                workItemId: 'item-2',
+                index: 1,
+                input: { name: 'Item 2', category: 'B' },
+                output: { severity: 'low', category: 'feature' },
                 success: true,
-                output: {
-                    item: { name: 'Item 2', category: 'B' },
-                    output: { severity: 'low', category: 'feature' },
-                    success: true,
-                },
                 executionTimeMs: 200,
             },
         ],
-        totalTimeMs: 500,
-        executionStats: {
+        leafOutput: [],
+        stats: {
             totalItems: 2,
             successfulMaps: 2,
             failedMaps: 0,
-            mapPhaseTimeMs: 300,
-            reducePhaseTimeMs: 50,
-            maxConcurrency: 5,
+            totalDurationMs: 500,
+            mapDurationMs: 300,
+            reduceDurationMs: 50,
         },
         ...overrides,
-    } as PipelineExecutionResult;
+    };
 }
 
-function createEmptyResult(): PipelineExecutionResult {
+function createEmptyResult(): FlatWorkflowResult {
     return {
         success: true,
-        mapResults: [],
-        totalTimeMs: 10,
-        executionStats: {
+        items: [],
+        leafOutput: [],
+        stats: {
             totalItems: 0,
             successfulMaps: 0,
             failedMaps: 0,
-            mapPhaseTimeMs: 5,
-            reducePhaseTimeMs: 5,
-            maxConcurrency: 5,
+            totalDurationMs: 10,
+            mapDurationMs: 5,
+            reduceDurationMs: 5,
         },
-    } as PipelineExecutionResult;
+    };
 }
 
-function createResultWithReduceOutput(): PipelineExecutionResult {
+function createResultWithReduceOutput(): FlatWorkflowResult {
     return {
         success: true,
-        output: {
-            results: [
-                { output: { name: 'Alice', role: 'dev' }, success: true, item: {} },
-                { output: { name: 'Bob', role: 'pm' }, success: true, item: {} },
-            ],
-            formattedOutput: '',
-            summary: { totalItems: 2, successfulItems: 2, failedItems: 0, outputFields: ['name', 'role'] },
-        },
-        mapResults: [],
-        totalTimeMs: 300,
-        executionStats: {
+        items: [
+            { index: 0, input: {}, output: { name: 'Alice', role: 'dev' }, success: true },
+            { index: 1, input: {}, output: { name: 'Bob', role: 'pm' }, success: true },
+        ],
+        leafOutput: [
+            { name: 'Alice', role: 'dev' },
+            { name: 'Bob', role: 'pm' },
+        ],
+        stats: {
             totalItems: 2,
             successfulMaps: 2,
             failedMaps: 0,
-            mapPhaseTimeMs: 250,
-            reducePhaseTimeMs: 50,
-            maxConcurrency: 5,
+            totalDurationMs: 300,
+            mapDurationMs: 250,
+            reduceDurationMs: 50,
         },
-    } as PipelineExecutionResult;
+    };
 }
 
 describe('Output Formatter', () => {
@@ -157,17 +149,14 @@ describe('Output Formatter', () => {
 
         it('should escape CSV fields with commas', () => {
             const result = createResultWithReduceOutput();
-            // Modify to include commas
-            const promResult = (result.output as any).results[0];
-            promResult.output.name = 'Alice, Jr.';
+            result.items[0].output = { name: 'Alice, Jr.', role: 'dev' };
             const output = formatResults(result, 'csv');
             expect(output).toContain('"Alice, Jr."');
         });
 
         it('should escape CSV fields with quotes', () => {
             const result = createResultWithReduceOutput();
-            const promResult = (result.output as any).results[0];
-            promResult.output.name = 'Alice "the great"';
+            result.items[0].output = { name: 'Alice "the great"', role: 'dev' };
             const output = formatResults(result, 'csv');
             expect(output).toContain('"Alice ""the great"""');
         });
@@ -197,8 +186,7 @@ describe('Output Formatter', () => {
 
         it('should escape pipe characters in values', () => {
             const result = createResultWithReduceOutput();
-            const promResult = (result.output as any).results[0];
-            promResult.output.name = 'Alice|Bob';
+            result.items[0].output = { name: 'Alice|Bob', role: 'dev' };
             const output = formatResults(result, 'markdown');
             expect(output).toContain('Alice\\|Bob');
         });
@@ -232,8 +220,7 @@ describe('Output Formatter', () => {
 
         it('should truncate long values', () => {
             const result = createResultWithReduceOutput();
-            const promResult = (result.output as any).results[0];
-            promResult.output.name = 'A'.repeat(100);
+            result.items[0].output = { name: 'A'.repeat(100), role: 'dev' };
             const output = formatResults(result, 'table');
             expect(output).toContain('...');
         });
@@ -261,13 +248,13 @@ describe('Output Formatter', () => {
 
         it('should show failure count when there are failures', () => {
             const result = createMockResult({
-                executionStats: {
+                stats: {
                     totalItems: 5,
                     successfulMaps: 3,
                     failedMaps: 2,
-                    mapPhaseTimeMs: 500,
-                    reducePhaseTimeMs: 100,
-                    maxConcurrency: 5,
+                    totalDurationMs: 600,
+                    mapDurationMs: 500,
+                    reduceDurationMs: 100,
                 },
             });
             const summary = formatSummary(result);
@@ -275,29 +262,15 @@ describe('Output Formatter', () => {
             expect(summary).toContain('60%');
         });
 
-        it('should show filter info when filter was used', () => {
+        it('should show duration', () => {
             const result = createMockResult({
-                filterResult: {
-                    included: [],
-                    excluded: [],
-                    stats: {
-                        totalItems: 10,
-                        includedCount: 7,
-                        excludedCount: 3,
-                        executionTimeMs: 50,
-                        filterType: 'rule',
-                    },
+                stats: {
+                    totalItems: 2,
+                    successfulMaps: 2,
+                    failedMaps: 0,
+                    totalDurationMs: 5000,
                 },
             });
-            const summary = formatSummary(result);
-            expect(summary).toContain('Filter');
-            expect(summary).toContain('rule');
-            expect(summary).toContain('7 included');
-            expect(summary).toContain('3 excluded');
-        });
-
-        it('should show duration', () => {
-            const result = createMockResult({ totalTimeMs: 5000 });
             const summary = formatSummary(result);
             expect(summary).toContain('Duration');
         });

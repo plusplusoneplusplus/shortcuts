@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { PipelineExecutionResult, PromptMapOutput, PromptMapResult } from '@plusplusoneplusplus/pipeline-core';
+import type { FlatWorkflowResult } from '@plusplusoneplusplus/pipeline-core';
 import { bold, dim, green, red, yellow, gray } from './logger';
 
 // ============================================================================
@@ -24,7 +24,7 @@ export type OutputFormat = 'table' | 'json' | 'csv' | 'markdown';
  * Format pipeline results according to the specified format
  */
 export function formatResults(
-    result: PipelineExecutionResult,
+    result: FlatWorkflowResult,
     format: OutputFormat
 ): string {
     switch (format) {
@@ -44,7 +44,7 @@ export function formatResults(
 // JSON Format
 // ============================================================================
 
-function formatJSON(result: PipelineExecutionResult): string {
+function formatJSON(result: FlatWorkflowResult): string {
     const output = extractOutputData(result);
     return JSON.stringify(output, null, 2);
 }
@@ -53,7 +53,7 @@ function formatJSON(result: PipelineExecutionResult): string {
 // CSV Format
 // ============================================================================
 
-function formatCSV(result: PipelineExecutionResult): string {
+function formatCSV(result: FlatWorkflowResult): string {
     const rows = extractRows(result);
     if (rows.length === 0) {
         return '';
@@ -83,7 +83,7 @@ function escapeCSVField(field: string): string {
 // Markdown Format
 // ============================================================================
 
-function formatMarkdown(result: PipelineExecutionResult): string {
+function formatMarkdown(result: FlatWorkflowResult): string {
     const rows = extractRows(result);
     if (rows.length === 0) {
         return '_No results_\n';
@@ -109,7 +109,7 @@ function formatMarkdown(result: PipelineExecutionResult): string {
 // Table Format
 // ============================================================================
 
-function formatTable(result: PipelineExecutionResult): string {
+function formatTable(result: FlatWorkflowResult): string {
     const rows = extractRows(result);
     if (rows.length === 0) {
         return dim('  No results') + '\n';
@@ -171,8 +171,8 @@ function truncate(str: string, maxLen: number): string {
 /**
  * Format an execution summary for display
  */
-export function formatSummary(result: PipelineExecutionResult): string {
-    const stats = result.executionStats;
+export function formatSummary(result: FlatWorkflowResult): string {
+    const stats = result.stats;
     const lines: string[] = [];
 
     lines.push('');
@@ -192,14 +192,8 @@ export function formatSummary(result: PipelineExecutionResult): string {
 
     lines.push(`  Success rate: ${successRate === 100 ? green(`${successRate}%`) : successRate >= 80 ? yellow(`${successRate}%`) : red(`${successRate}%`)}`);
 
-    const elapsed = result.totalTimeMs;
+    const elapsed = stats.totalDurationMs;
     lines.push(`  Duration:    ${formatDuration(elapsed)}`);
-
-    if (result.filterResult) {
-        const filter = result.filterResult;
-        lines.push('');
-        lines.push(`  Filter: ${filter.stats.filterType} (${filter.stats.includedCount} included, ${filter.stats.excludedCount} excluded)`);
-    }
 
     return lines.join('\n');
 }
@@ -226,44 +220,18 @@ export function formatDuration(ms: number): string {
 /**
  * Extract structured output data from pipeline results
  */
-function extractOutputData(result: PipelineExecutionResult): unknown {
-    // If there's a reduce output, use its results
-    if (result.output) {
-        const pipelineOutput = result.output as PromptMapOutput;
-        if (pipelineOutput.results) {
-            return pipelineOutput.results.map(r => r.output);
-        }
-        return pipelineOutput;
+function extractOutputData(result: FlatWorkflowResult): unknown {
+    if (result.leafOutput && result.leafOutput.length > 0) {
+        return result.leafOutput;
     }
-
-    // Otherwise collect map results
     return extractRows(result);
 }
 
 /**
- * Extract row data from pipeline map results
+ * Extract row data from pipeline results
  */
-function extractRows(result: PipelineExecutionResult): Record<string, unknown>[] {
-    // If reduce output has results, use them
-    if (result.output) {
-        const pipelineOutput = result.output as PromptMapOutput;
-        if (pipelineOutput.results && Array.isArray(pipelineOutput.results)) {
-            return pipelineOutput.results
-                .filter((r: PromptMapResult) => r.success)
-                .map((r: PromptMapResult) => r.output);
-        }
-    }
-
-    // Fall back to map results
-    const rows: Record<string, unknown>[] = [];
-    for (const mapResult of result.mapResults) {
-        if (mapResult.success && mapResult.output) {
-            const promptResult = mapResult.output as PromptMapResult;
-            if (promptResult.output && typeof promptResult.output === 'object') {
-                rows.push(promptResult.output);
-            }
-        }
-    }
-
-    return rows;
+function extractRows(result: FlatWorkflowResult): Record<string, unknown>[] {
+    return result.items
+        .filter(item => item.success && item.output && typeof item.output === 'object')
+        .map(item => item.output as Record<string, unknown>);
 }

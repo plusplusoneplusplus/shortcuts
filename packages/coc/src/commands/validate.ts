@@ -15,6 +15,7 @@ import {
     resolveCSVPath,
     isCSVSource,
     isGenerateConfig,
+    compileToWorkflow,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { PipelineConfig, FilterConfig } from '@plusplusoneplusplus/pipeline-core';
 import {
@@ -102,13 +103,14 @@ export function resolvePipelinePath(input: string): string | undefined {
 export function validatePipeline(yamlPath: string): ValidationResult {
     const checks: ValidationCheck[] = [];
     let pipelineName = 'Unknown';
-    let config: PipelineConfig | undefined;
+    let config: Record<string, unknown> | undefined;
+    let content: string | undefined;
     let isJobPipeline = false;
 
     // 1. Parse YAML (raw parse without pipeline-core's strict validation)
     try {
-        const content = fs.readFileSync(yamlPath, 'utf-8');
-        const parsed = yaml.load(content) as PipelineConfig;
+        content = fs.readFileSync(yamlPath, 'utf-8');
+        const parsed = yaml.load(content) as Record<string, unknown>;
         if (!parsed || typeof parsed !== 'object') {
             checks.push({
                 label: 'YAML parsing',
@@ -118,7 +120,7 @@ export function validatePipeline(yamlPath: string): ValidationResult {
             return { valid: false, pipelineName, checks };
         }
         config = parsed;
-        pipelineName = config.name || 'Unknown';
+        pipelineName = (config.name as string) || 'Unknown';
 
         if (!config.name) {
             checks.push({
@@ -188,23 +190,42 @@ export function validatePipeline(yamlPath: string): ValidationResult {
 
     const pipelineDir = path.dirname(yamlPath);
 
+    const typedConfig = config as unknown as PipelineConfig;
+
     if (isJobPipeline) {
         // Single-job pipeline validation
-        validateJob(config, checks);
+        validateJob(typedConfig, checks);
     } else {
         // Map-reduce pipeline validation
         // 2. Validate input configuration
-        validateInput(config, pipelineDir, checks);
+        validateInput(typedConfig, pipelineDir, checks);
 
         // 3. Validate map configuration
-        validateMap(config, checks);
+        validateMap(typedConfig, checks);
 
         // 4. Validate reduce configuration
-        validateReduce(config, checks);
+        validateReduce(typedConfig, checks);
 
         // 5. Validate filter configuration (if present)
         if (config.filter) {
-            validateFilter(config.filter, checks);
+            validateFilter(typedConfig.filter!, checks);
+        }
+    }
+
+    // 6. Compile to workflow as final validation step
+    if (content) {
+        try {
+            compileToWorkflow(content);
+            checks.push({
+                label: '\u2713 Compiles to workflow',
+                status: 'pass',
+            });
+        } catch (error) {
+            checks.push({
+                label: 'Workflow compilation',
+                status: 'fail',
+                detail: error instanceof Error ? error.message : String(error),
+            });
         }
     }
 

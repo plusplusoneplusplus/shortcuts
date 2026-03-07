@@ -152,7 +152,7 @@ reduce:
 `);
             const result = discoverPipelines(tmpDir);
             expect(result.length).toBe(1);
-            expect(result[0].inputType).toBe('list');
+            expect(result[0].inputType).toBe('inline');
             expect(result[0].itemCount).toBe(2);
         });
 
