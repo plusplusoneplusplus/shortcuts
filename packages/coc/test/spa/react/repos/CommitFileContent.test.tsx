@@ -60,4 +60,24 @@ describe('CommitFileContent', () => {
         expect(classes.some(c => c.includes('bg-[#fecaca]'))).toBe(true);
         expect(classes.some(c => c.includes('bg-[#d1f7c4]'))).toBe(true);
     });
+
+    it('renders DiffMiniMap when diff has changes', async () => {
+        mockFetchApi.mockResolvedValue({
+            diff: 'diff --git a/src/app.ts b/src/app.ts\nindex abc..def 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,2 +1,2 @@\n-const a = 1;\n+const a = 2;\n const b = 2;',
+        });
+
+        render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="src/app.ts" />);
+
+        await waitFor(() => expect(screen.getByTestId('commit-file-diff-content')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('diff-minimap')).toBeInTheDocument());
+    });
+
+    it('does not render DiffMiniMap when diff is empty', async () => {
+        mockFetchApi.mockResolvedValue({ diff: '' });
+
+        render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="src/app.ts" />);
+
+        await waitFor(() => expect(screen.getByTestId('commit-file-content-empty')).toBeInTheDocument());
+        expect(screen.queryByTestId('diff-minimap')).not.toBeInTheDocument();
+    });
 });

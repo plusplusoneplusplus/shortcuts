@@ -7,7 +7,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button, TruncatedPath } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
-import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+import { DiffMiniMap } from './DiffMiniMap';
 
 export interface CommitFileContentProps {
     workspaceId: string;
@@ -20,6 +21,8 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
 
     const fetchDiff = useCallback(() => {
         setLoading(true);
@@ -50,26 +53,32 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto px-1 py-1" data-testid="commit-file-content-body">
-                {loading ? (
-                    <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="commit-file-content-loading">
-                        <Spinner size="sm" /> Loading diff...
-                    </div>
-                ) : error ? (
-                    <div className="flex items-center gap-2" data-testid="commit-file-content-error">
-                        <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{error}</span>
-                        <Button variant="secondary" size="sm" onClick={fetchDiff}>Retry</Button>
-                    </div>
-                ) : diff ? (
-                    <UnifiedDiffViewer
-                        ref={viewerRef}
-                        diff={diff}
-                        fileName={filePath}
-                        showLineNumbers
-                        data-testid="commit-file-diff-content"
-                    />
-                ) : (
-                    <div className="text-xs text-[#848484]" data-testid="commit-file-content-empty">(empty diff)</div>
+            <div className="flex flex-1 min-h-0">
+                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="commit-file-content-body">
+                    {loading ? (
+                        <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="commit-file-content-loading">
+                            <Spinner size="sm" /> Loading diff...
+                        </div>
+                    ) : error ? (
+                        <div className="flex items-center gap-2" data-testid="commit-file-content-error">
+                            <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{error}</span>
+                            <Button variant="secondary" size="sm" onClick={fetchDiff}>Retry</Button>
+                        </div>
+                    ) : diff ? (
+                        <UnifiedDiffViewer
+                            ref={viewerRef}
+                            diff={diff}
+                            fileName={filePath}
+                            showLineNumbers
+                            onLinesReady={(lines) => { setDiffLines(lines); }}
+                            data-testid="commit-file-diff-content"
+                        />
+                    ) : (
+                        <div className="text-xs text-[#848484]" data-testid="commit-file-content-empty">(empty diff)</div>
+                    )}
+                </div>
+                {diff && !loading && !error && (
+                    <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
                 )}
             </div>
         </div>

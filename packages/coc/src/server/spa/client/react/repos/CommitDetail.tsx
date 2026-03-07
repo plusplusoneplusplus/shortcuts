@@ -8,7 +8,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
-import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+import { DiffMiniMap } from './DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -34,6 +35,8 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
 
     const diffUrl = filePath
         ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
@@ -108,7 +111,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
 
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
-                <div className="flex-1 overflow-auto px-1 py-1" data-testid="diff-section">
+                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="diff-section">
                     {diffLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
                             <Spinner size="sm" /> Loading diff...
@@ -126,7 +129,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
                             enableComments={!!filePath}
                             showLineNumbers={!!filePath}
                             comments={comments}
-                            onLinesReady={filePath ? runRelocation : undefined}
+                            onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
                             onAddComment={filePath ? handleAddComment : undefined}
                             onCommentClick={filePath ? handleCommentClick : undefined}
                             data-testid="diff-content"
@@ -135,6 +138,9 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
                         <div className="text-xs text-[#848484]" data-testid="diff-empty">(empty diff)</div>
                     )}
                 </div>
+                {diff && !diffLoading && !diffError && (
+                    <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
+                )}
 
                 {sidebarOpen && filePath && (
                     <CommentSidebar
