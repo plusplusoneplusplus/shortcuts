@@ -87,6 +87,10 @@ Use the `ask_user` tool to gather requirements:
 
 Based on answers, choose the appropriate pattern:
 
+> All patterns generate valid YAML that compiles to the same workflow engine.
+> Patterns A–D generate linear format; Pattern E generates DAG format.
+> Users can freely mix — the engine handles both.
+
 **Pattern A: Map-Reduce Classification**
 - Use when: Batch classification/analysis of structured data
 - Characteristics: CSV/inline input, parallel processing, structured output
@@ -378,7 +382,7 @@ reduce:
 
 ### Step 7: Validate Configuration
 
-Check for anti-patterns and issues:
+Check for anti-patterns and issues. Run `coc validate <path>` to validate either format. The validator compiles to workflow format and checks graph integrity.
 
 **Schema Validation (Map-Reduce pipelines):**
 - ✓ Exactly ONE input source (items/from/generate)
@@ -419,12 +423,14 @@ Check for anti-patterns and issues:
 
 ### Step 8: Generate Complete YAML
 
-Produce the final pipeline YAML with:
+Produce the final YAML with:
 1. Descriptive name (from user's goal)
-2. All required sections (input, map, reduce)
+2. All required sections (linear: input/map/reduce; DAG: nodes)
 3. Optional filter (if applicable)
 4. Inline comments explaining design decisions
 5. Usage instructions
+
+Both formats compile to a single workflow engine via `compileToWorkflow()`. The linear format is syntactic sugar for simple cases. To execute: `compileToWorkflow(yaml)` then `executeWorkflow(config, options)`.
 
 ## Output Format
 
@@ -454,10 +460,10 @@ nodes:
 ```
 
 **How to use:**
-1. Save this as `.vscode/pipelines/[name]/pipeline.yaml`
+1. Save this as `.vscode/workflows/[name]/pipeline.yaml`
 2. Place any referenced CSV/JSON files in the same directory
 3. Place any referenced scripts in the same directory (or adjust `cwd`)
-4. Execute from the VSCode Pipelines view or via `coc run`
+4. Execute from the VSCode Workflows view or via `coc run`
 ````
 
 **For Linear Pipelines:**
@@ -490,9 +496,9 @@ reduce:
 ```
 
 **How to use:**
-1. Save this as `.vscode/pipelines/[name]/pipeline.yaml`
+1. Save this as `.vscode/workflows/[name]/pipeline.yaml`
 2. If using CSV input, create the CSV file at the specified path
-3. Execute from the VSCode Pipelines view
+3. Execute from the VSCode Workflows view or via `coc run`
 4. For testing: The `limit: 100` setting processes only the first 100 items
 
 **Key design decisions:**
