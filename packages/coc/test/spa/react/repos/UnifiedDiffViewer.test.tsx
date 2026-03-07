@@ -516,6 +516,25 @@ describe('UnifiedDiffViewer — line number column alignment', () => {
         }
     });
 
+    it('line number spans have whitespace-nowrap to prevent wrapping onto two lines', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} showLineNumbers data-testid="diff" />
+        );
+        const allLines = container.querySelectorAll<HTMLElement>('.whitespace-pre-wrap');
+        const gutterSpans: HTMLElement[] = [];
+        allLines.forEach(line => {
+            line.querySelectorAll<HTMLElement>('span').forEach(span => {
+                if (span.className.includes('w-8')) {
+                    gutterSpans.push(span);
+                }
+            });
+        });
+        expect(gutterSpans.length).toBeGreaterThan(0);
+        for (const span of gutterSpans) {
+            expect(span.className).toContain('whitespace-nowrap');
+        }
+    });
+
     it('removed line has same number of gutter spans as context line', () => {
         const { container } = render(
             <UnifiedDiffViewer diff={SIMPLE_DIFF} showLineNumbers enableComments data-testid="diff" />

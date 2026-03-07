@@ -378,10 +378,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                         >
                             {showLineNumbers && (
                                 <>
-                                    <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
+                                    <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1 whitespace-nowrap">
                                         {oldLine ?? ''}
                                     </span>
-                                    <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
+                                    <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1 whitespace-nowrap">
                                         {newLine ?? ''}
                                     </span>
                                 </>
@@ -422,10 +422,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     >
                         {showLineNumbers && (
                             <>
-                                <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
+                                <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1 whitespace-nowrap">
                                     {oldLine ?? ''}
                                 </span>
-                                <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
+                                <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1 whitespace-nowrap">
                                     {newLine ?? ''}
                                 </span>
                             </>
