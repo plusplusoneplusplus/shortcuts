@@ -24,7 +24,7 @@ const VIEW_IDS = [
     'shortcutsView',
     'globalNotesView',
     'gitView',
-    'pipelinesView',
+    'workflowsView',
     'markdownCommentsView',
     'debugPanelView',
 ];
@@ -39,7 +39,7 @@ const COMMAND_VIEW_MAP: Record<string, string> = {
     'shortcuts.queue.': 'clarificationProcessesView',
     'gitView.': 'gitView',
     'gitDiffComments.': 'gitView',
-    'pipelinesViewer.': 'pipelinesView',
+    'workflowsViewer.': 'workflowsView',
     'markdownComments.': 'markdownCommentsView',
 };
 
@@ -293,7 +293,7 @@ suite('Menu Scoping Tests', () => {
             );
         });
 
-        test('all pipelinesViewer commands are hidden from command palette', () => {
+        test('all workflowsViewer commands are hidden from command palette', () => {
             const paletteEntries = pkg.contributes.menus.commandPalette || [];
             const paletteCommands = new Set(paletteEntries.map(e => e.command));
 
@@ -301,7 +301,7 @@ suite('Menu Scoping Tests', () => {
 
             const pipelineCommands = new Set<string>();
             for (const entry of viewItemEntries) {
-                if (entry.command.startsWith('pipelinesViewer.')) {
+                if (entry.command.startsWith('workflowsViewer.')) {
                     pipelineCommands.add(entry.command);
                 }
             }
@@ -357,8 +357,8 @@ suite('Menu Scoping Tests', () => {
             'clarificationProcess_',
             'codeReviewProcess_',
             'codeReviewGroupProcess_',
-            'pipelineExecutionProcess_',
-            'pipelineItemProcess_',
+            'workflowExecutionProcess_',
+            'workflowItemProcess_',
             'discoveryProcess_',
             'interactiveSession_',
             'interactiveSessionSection',
@@ -404,7 +404,7 @@ suite('Menu Scoping Tests', () => {
                 'clarificationProcess_completed',
                 'codeReviewProcess_running',
                 'codeReviewGroupProcess_completed',
-                'pipelineExecutionProcess_running',
+                'workflowExecutionProcess_running',
                 'discoveryProcess_completed',
                 'interactiveSession_active',
                 'queuedTask_high',
@@ -431,8 +431,8 @@ suite('Menu Scoping Tests', () => {
                 /^clarificationProcess_/,
                 /^codeReviewProcess_/,
                 /^codeReviewGroupProcess_/,
-                /^pipelineExecutionProcess_/,
-                /^pipelineItemProcess_/,
+                /^workflowExecutionProcess_/,
+                /^workflowItemProcess_/,
                 /^discoveryProcess_/,
                 /^interactiveSession_/,
                 /^queuedTask_/,

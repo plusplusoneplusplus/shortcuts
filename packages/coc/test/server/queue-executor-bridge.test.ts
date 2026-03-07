@@ -5683,7 +5683,7 @@ job:
                 return '';
             });
 
-            mockExecutePipeline.mockRejectedValue(new Error('Pipeline execution failed'));
+            mockExecutePipeline.mockRejectedValue(new Error('Workflow execution failed'));
 
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
@@ -5703,7 +5703,7 @@ job:
             const result = await executor.execute(task);
 
             expect(result.success).toBe(false);
-            expect(result.error?.message).toContain('Pipeline execution failed');
+            expect(result.error?.message).toContain('Workflow execution failed');
         });
 
         it('should extract prompt as workflow basename', async () => {

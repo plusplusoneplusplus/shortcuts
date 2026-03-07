@@ -25,7 +25,7 @@ suite('Pipelines Viewer Tests (Package Structure)', () => {
         // Mock vscode.workspace.getConfiguration
         const originalGetConfiguration = vscode.workspace.getConfiguration;
         (vscode.workspace as any).getConfiguration = (section?: string) => {
-            if (section === 'workspaceShortcuts.pipelinesViewer') {
+            if (section === 'workspaceShortcuts.workflowsViewer') {
                 return {
                     get: <T>(key: string, defaultValue?: T): T => {
                         const defaults: Record<string, any> = {
@@ -895,7 +895,7 @@ reduce:
 
             assert.strictEqual(item.label, 'Test Pipeline');
             assert.strictEqual(item.description, 'test-pipeline');
-            assert.strictEqual(item.contextValue, 'pipeline');
+            assert.strictEqual(item.contextValue, 'workflow');
             assert.strictEqual(item.itemType, 'package');
         });
 
@@ -961,7 +961,7 @@ reduce:
 
             const item = new PipelineItem(pipeline);
 
-            assert.strictEqual(item.contextValue, 'pipeline_invalid');
+            assert.strictEqual(item.contextValue, 'workflow_invalid');
         });
 
         test('should set open command', () => {
@@ -1585,7 +1585,7 @@ reduce:
 
             const originalGetConfiguration = vscode.workspace.getConfiguration;
             (vscode.workspace as any).getConfiguration = (section?: string) => {
-                if (section === 'workspaceShortcuts.pipelinesViewer') {
+                if (section === 'workspaceShortcuts.workflowsViewer') {
                     return {
                         get: <T>(key: string, defaultValue?: T): T => {
                             const defaults: Record<string, any> = {
@@ -1647,7 +1647,7 @@ reduce:
         test('skips migration when user has custom folderPath', async () => {
             const originalGetConfiguration = vscode.workspace.getConfiguration;
             (vscode.workspace as any).getConfiguration = (section?: string) => {
-                if (section === 'workspaceShortcuts.pipelinesViewer') {
+                if (section === 'workspaceShortcuts.workflowsViewer') {
                     return {
                         get: <T>(key: string, defaultValue?: T): T => {
                             const defaults: Record<string, any> = {

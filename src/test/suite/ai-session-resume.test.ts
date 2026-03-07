@@ -836,7 +836,7 @@ suite('AI Session Resume', () => {
 
             const item = new AIProcessItem(process);
 
-            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed');
+            assert.strictEqual(item.contextValue, 'workflowItemProcess_completed');
         });
 
         test('should set resumable context value for resumable pipeline item children', () => {
@@ -855,7 +855,7 @@ suite('AI Session Resume', () => {
 
             const item = new AIProcessItem(process, true);
 
-            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed_child_resumable');
+            assert.strictEqual(item.contextValue, 'workflowItemProcess_completed_child_resumable');
         });
 
         test('should set non-resumable context for pipeline items without result', () => {
@@ -872,7 +872,7 @@ suite('AI Session Resume', () => {
 
             const item = new AIProcessItem(process);
 
-            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed');
+            assert.strictEqual(item.contextValue, 'workflowItemProcess_completed');
         });
 
         test('should set non-resumable context for pipeline items without fullPrompt', () => {
@@ -889,7 +889,7 @@ suite('AI Session Resume', () => {
 
             const item = new AIProcessItem(process);
 
-            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed');
+            assert.strictEqual(item.contextValue, 'workflowItemProcess_completed');
         });
 
         test('should set regular context value for running pipeline items', () => {
@@ -906,7 +906,7 @@ suite('AI Session Resume', () => {
 
             const item = new AIProcessItem(process);
 
-            assert.strictEqual(item.contextValue, 'pipelineItemProcess_running');
+            assert.strictEqual(item.contextValue, 'workflowItemProcess_running');
         });
 
         test('should set regular context value for failed pipeline items', () => {
@@ -925,7 +925,7 @@ suite('AI Session Resume', () => {
 
             const item = new AIProcessItem(process);
 
-            assert.strictEqual(item.contextValue, 'pipelineItemProcess_failed');
+            assert.strictEqual(item.contextValue, 'workflowItemProcess_failed');
         });
 
         test('should include resume hint in tooltip for resumable pipeline items', () => {

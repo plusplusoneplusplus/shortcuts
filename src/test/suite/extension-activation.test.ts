@@ -46,7 +46,7 @@ suite('Extension Activation Test Suite', () => {
             'onCommand:shortcuts.createLogicalGroup',
             'onCustomEditor:reviewEditorView',
             'onCustomEditor:gitDiffReviewEditor',
-            'onCustomEditor:pipelinePreviewEditor',
+            'onCustomEditor:workflowPreviewEditor',
             'onViewContainer:shortcuts'
         ];
         

@@ -85,7 +85,7 @@ suite('Bundled Pipelines Tests', () => {
         // Mock vscode.workspace.getConfiguration
         const originalGetConfiguration = vscode.workspace.getConfiguration;
         (vscode.workspace as any).getConfiguration = (section?: string) => {
-            if (section === 'workspaceShortcuts.pipelinesViewer') {
+            if (section === 'workspaceShortcuts.workflowsViewer') {
                 return {
                     get: <T>(key: string, defaultValue?: T): T => {
                         const defaults: Record<string, any> = {
