@@ -15,58 +15,49 @@ describe('CommitFileContent', () => {
         vi.clearAllMocks();
     });
 
-    it('fetches and renders line-numbered source for non-markdown files', async () => {
+    it('fetches per-file diff and renders with UnifiedDiffViewer', async () => {
         mockFetchApi.mockResolvedValue({
-            path: 'src/app.ts',
-            fileName: 'app.ts',
-            lines: ['const a = 1;', 'const b = 2;'],
-            totalLines: 2,
-            truncated: false,
-            language: 'ts',
-            resolvedRef: 'abc123:src/app.ts',
+            diff: 'diff --git a/src/app.ts b/src/app.ts\nindex abc..def 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,2 +1,2 @@\n-const a = 1;\n+const a = 2;\n const b = 2;',
         });
 
         render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="src/app.ts" />);
 
-        await waitFor(() => expect(screen.getByTestId('commit-file-code')).toBeInTheDocument());
-        expect(mockFetchApi).toHaveBeenCalledWith('/workspaces/ws-1/git/commits/abc123/files/src%2Fapp.ts/content');
-        const codeLines = screen.getAllByTestId('commit-file-code-line');
-        expect(codeLines).toHaveLength(2);
-        expect(codeLines[0].textContent).toContain('const a = 1;');
-        expect(codeLines[1].textContent).toContain('const b = 2;');
+        await waitFor(() => expect(screen.getByTestId('commit-file-diff-content')).toBeInTheDocument());
+        expect(mockFetchApi).toHaveBeenCalledWith('/workspaces/ws-1/git/commits/abc123/files/src%2Fapp.ts/diff');
     });
 
-    it('renders markdown files with markdown-body output', async () => {
-        mockFetchApi.mockResolvedValue({
-            path: 'docs/README.md',
-            fileName: 'README.md',
-            lines: ['# Heading', '', 'Some text'],
-            totalLines: 3,
-            truncated: false,
-            language: 'md',
-            resolvedRef: 'abc123:docs/README.md',
-        });
+    it('shows empty diff message when diff is empty', async () => {
+        mockFetchApi.mockResolvedValue({ diff: '' });
 
-        render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="docs/README.md" />);
+        render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="src/app.ts" />);
 
-        await waitFor(() => expect(screen.getByTestId('commit-file-markdown')).toBeInTheDocument());
-        expect(screen.getByTestId('commit-file-markdown').innerHTML).toContain('data-line=');
+        await waitFor(() => expect(screen.getByTestId('commit-file-content-empty')).toBeInTheDocument());
+        expect(screen.getByTestId('commit-file-content-empty').textContent).toContain('empty diff');
     });
 
-    it('shows the parent-version badge when the server falls back for deleted files', async () => {
+    it('shows error state with retry button on fetch failure', async () => {
+        mockFetchApi.mockRejectedValue(new Error('Network error'));
+
+        render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="src/app.ts" />);
+
+        await waitFor(() => expect(screen.getByTestId('commit-file-content-error')).toBeInTheDocument());
+        expect(screen.getByTestId('commit-file-content-error').textContent).toContain('Network error');
+    });
+
+    it('applies green/red coloring to added and removed lines', async () => {
         mockFetchApi.mockResolvedValue({
-            path: 'docs/removed.md',
-            fileName: 'removed.md',
-            lines: ['gone'],
-            totalLines: 1,
-            truncated: false,
-            language: 'md',
-            resolvedRef: 'abc123^:docs/removed.md',
+            diff: '@@ -1,2 +1,2 @@\n-old line\n+new line\n context line',
         });
 
-        render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="docs/removed.md" />);
+        render(<CommitFileContent workspaceId="ws-1" hash="abc123" filePath="src/app.ts" />);
 
-        await waitFor(() => expect(screen.getByTestId('commit-file-fallback-badge')).toBeInTheDocument());
-        expect(screen.getByTestId('commit-file-fallback-badge').textContent).toContain('Showing parent version');
+        await waitFor(() => expect(screen.getByTestId('commit-file-diff-content')).toBeInTheDocument());
+        const viewer = screen.getByTestId('commit-file-diff-content');
+
+        // The removed line should have a red background class
+        const lines = viewer.querySelectorAll('[class*="bg-"]');
+        const classes = Array.from(lines).map(el => el.className);
+        expect(classes.some(c => c.includes('bg-[#fecaca]'))).toBe(true);
+        expect(classes.some(c => c.includes('bg-[#d1f7c4]'))).toBe(true);
     });
 });
