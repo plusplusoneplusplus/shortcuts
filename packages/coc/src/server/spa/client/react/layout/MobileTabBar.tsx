@@ -1,6 +1,6 @@
 /**
  * MobileTabBar — replaces the horizontal top tab strip on mobile.
- * Fixed bottom bar with pinned tabs (Tasks, Queue, Chat) + a "···" More button.
+ * Fixed bottom bar with pinned tabs (Tasks, Activity, Git) + a "···" More button.
  * Tapping More opens a BottomSheet listing the remaining tabs.
  */
 

@@ -1,5 +1,5 @@
 /**
- * QueueView — top-level Queue sub-tab.
+ * QueueView — queue state hydrator embedded in the Processes view.
  * Hydrates queue state on mount.
  * The sidebar queue summary is rendered inside ProcessesView.
  * EnqueueDialog is rendered at the App level so it's accessible from any tab.
