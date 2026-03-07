@@ -113,6 +113,7 @@ input:
     prompt: string              # Generation instruction
     schema: string[]            # Field names (valid identifiers)
     model?: string              # Optional, defaults to system default
+    autoApprove?: boolean       # When true, skip interactive review (enables CLI/queue execution)
 ```
 
 ### Common Options (All Types)

@@ -2,6 +2,8 @@
 
 Complete specification for DAG workflow YAML configuration. For the linear pipeline format (`input`/`map`/`reduce` or `job:`), see [schema.md](schema.md).
 
+> **Note:** Linear pipeline YAML is automatically compiled to this format by the engine via `compileToWorkflow()`.
+
 ## Root Configuration
 
 ```yaml
@@ -103,6 +105,7 @@ Runs an external command (shell, Python, Node.js, etc.) with optional stdin/stdo
   timeoutMs?: 120000             # Optional: Script timeout
   input?: json | csv | none      # How to send parent data to stdin (default: none)
   output?: json | csv | text | passthrough  # How to parse stdout (default: text)
+  shell?: default | powershell | bash       # Shell to use (default: system shell)
 ```
 
 **Input/Output modes:**
@@ -113,6 +116,13 @@ Runs an external command (shell, Python, Node.js, etc.) with optional stdin/stdo
 - `output: csv` — Parse stdout as CSV
 - `output: text` — Stdout as single item with `text` field
 - `output: passthrough` — Pass parent items through unchanged (ignore stdout)
+
+**Shell modes:**
+- `shell: default` (or omitted) — system shell: `cmd.exe` on Windows, `/bin/sh` on Unix
+- `shell: powershell` — `powershell.exe` — enables PowerShell cmdlets (`ConvertTo-Json`, `ForEach-Object`, etc.)
+- `shell: bash` — `bash` — Bash syntax on Unix/WSL
+
+> **Windows note:** When using `output: json`, the script must print a valid JSON array to stdout. On Windows with `shell: powershell`, use `ConvertTo-Json -AsArray` to produce the correct array output even when there is only one item.
 
 ---
 
@@ -384,3 +394,17 @@ Makes a single AI call with all input items. Use for comparison, deduplication, 
 ## Node Naming Convention
 
 Use **kebab-case** for node IDs (e.g., `load-bugs`, `filter-critical`, `map-analyze`). This is consistent with pipeline package naming and produces readable log/error messages. This is a recommendation, not a hard requirement.
+
+---
+
+## Linear → Workflow Compilation
+
+When a linear pipeline YAML is passed to `compileToWorkflow()`, each section maps to a workflow node:
+
+| Linear key | Workflow node | Node type |
+|------------|---------------|-----------|
+| `input:` | `load` | `load` (source: csv/inline/ai) |
+| `filter:` | `filter` | `filter` (rule mapping) |
+| `map:` | `map` | `map` (parallel→concurrency) |
+| `reduce:` | `reduce` | `reduce` (type→strategy) |
+| `job:` | `job` | `ai` (root node) |
