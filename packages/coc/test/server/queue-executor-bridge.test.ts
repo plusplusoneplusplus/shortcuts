@@ -2316,6 +2316,8 @@ describe('CLITaskExecutor', () => {
                 queueTaskId: 'task-meta-1',
                 priority: 'high',
                 model: undefined,
+                mode: 'ask',
+                workflowName: undefined,
             });
         });
 
