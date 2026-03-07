@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MemoryStore, RawObservation } from '../../src/memory/types';
-import type { AIInvoker, AIInvokerResult } from '../../src/map-reduce/types';
+import type { AIInvoker, AIInvokerResult } from '../../src/ai/types';
 import { MemoryAggregator, countFacts } from '../../src/memory/memory-aggregator';
 
 function makeRawObservation(filename: string, content: string): RawObservation {

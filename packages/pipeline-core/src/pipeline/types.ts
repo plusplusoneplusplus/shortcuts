@@ -2,12 +2,11 @@
  * YAML Pipeline Framework Types
  *
  * Configuration types for YAML-based pipeline definitions.
- * Execution types are re-exported from the map-reduce framework.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { OutputFormat as MROutputFormat, PromptItem as MRPromptItem } from '../map-reduce/jobs/prompt-map-job';
+import type { PromptItem } from '../ai/types';
 import type { ToolCallCacheConfig } from '../memory/tool-call-cache-types';
 
 // Re-export shared AI types from canonical location
@@ -21,20 +20,53 @@ export type {
     PromptItem
 } from '../ai/types';
 
-// Re-export execution types still in map-reduce (until deletion)
-export type {
-    ExecutorOptions,
-    MapReduceResult
-} from '../map-reduce';
+/** Output format for reduce/result */
+export type OutputFormat = 'list' | 'table' | 'json' | 'csv' | 'ai' | 'text';
 
-export type {
-    PromptMapResult,
-    PromptMapInput,
-    PromptMapOutput,
-    PromptMapSummary,
-    PromptMapJobOptions,
-    OutputFormat
-} from '../map-reduce';
+/** Result from processing a single map item */
+export interface PromptMapResult {
+    /** The original input item */
+    item: PromptItem;
+    /** The AI-generated output (with declared fields) - empty object in text mode */
+    output: Record<string, unknown>;
+    /** Raw text output when in text mode (no output fields specified) */
+    rawText?: string;
+    /** Whether processing succeeded */
+    success: boolean;
+    /** Error message if failed */
+    error?: string;
+    /** Time taken for this map operation in ms */
+    executionTimeMs: number;
+    /** Optional process ID for tracking */
+    processId?: string;
+}
+
+/** Input for a prompt map job */
+export interface PromptMapInput {
+    items: PromptItem[];
+    promptTemplate: string;
+    outputFields: string[];
+}
+
+/** Output from a prompt map job */
+export interface PromptMapOutput {
+    /** Per-item map results */
+    results: PromptMapResult[];
+    /** Summary text */
+    text?: string;
+    /** Summary stats */
+    summary?: PromptMapSummary;
+    /** Formatted output string (for display) */
+    formattedOutput?: string;
+}
+
+/** Summary stats from prompt map */
+export interface PromptMapSummary {
+    totalItems: number;
+    successful: number;
+    failed: number;
+    averageTimeMs: number;
+}
 
 /**
  * Single AI job configuration (alternative to map-reduce pipeline)
@@ -202,14 +234,14 @@ export function isGenerateConfig(value: unknown): value is GenerateInputConfig {
  */
 export interface InputConfig {
     /** Direct list of items (inline) */
-    items?: MRPromptItem[];
+    items?: PromptItem[];
 
     /** 
      * Load items from source:
      * - CSVSource: Load from CSV file
      * - PromptItem[]: Inline list (useful for multi-model fanout with parameters)
      */
-    from?: CSVSource | MRPromptItem[];
+    from?: CSVSource | PromptItem[];
 
     /** 
      * Generate items using AI based on a prompt and schema.
@@ -297,7 +329,7 @@ export interface MapConfig {
  */
 export interface ReduceConfig {
     /** Reduce type / output format (includes 'text' for pure text concatenation) */
-    type: MROutputFormat;
+    type: OutputFormat;
     /** 
      * AI prompt template (required if type is 'ai', unless promptFile is specified).
      * Either `prompt` or `promptFile` must be specified for AI reduce (mutually exclusive).
@@ -348,7 +380,7 @@ export interface CSVParseOptions {
  */
 export interface CSVParseResult {
     /** Parsed items */
-    items: MRPromptItem[];
+    items: PromptItem[];
     /** Column headers */
     headers: string[];
     /** Number of rows (excluding header) */
@@ -442,9 +474,9 @@ export interface FilterStats {
  */
 export interface FilterResult {
     /** Items that passed the filter */
-    included: MRPromptItem[];
+    included: PromptItem[];
     /** Items that were filtered out */
-    excluded: MRPromptItem[];
+    excluded: PromptItem[];
     /** Filter statistics */
     stats: FilterStats;
 }

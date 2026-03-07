@@ -5,7 +5,7 @@ import { setLogger, nullLogger, resetLogger } from '../../../src/logger';
 import type {
     MapNodeConfig, AINodeConfig, WorkflowExecutionOptions, WorkflowItemProcessEvent,
 } from '../../../src/workflow/types';
-import type { AIInvokerResult, AIInvokerOptions, ProcessTracker } from '../../../src/map-reduce/types';
+import type { AIInvokerResult, AIInvokerOptions, ProcessTracker } from '../../../src/ai/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

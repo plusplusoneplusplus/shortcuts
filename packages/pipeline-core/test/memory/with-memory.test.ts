@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../../src/map-reduce/types';
+import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../../src/ai/types';
 import type { MemoryStore, MemoryLevel } from '../../src/memory/types';
 
 vi.mock('../../src/memory/memory-retriever');

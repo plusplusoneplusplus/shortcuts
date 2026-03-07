@@ -1,8 +1,9 @@
 /**
  * Pipeline Module - Public API
  *
- * YAML-based pipeline execution framework.
- * Provides configuration types, execution, and utilities for AI pipelines.
+ * YAML-based pipeline configuration types and utilities.
+ * The executor has been replaced by the workflow engine
+ * (compileToWorkflow + executeWorkflow).
  */
 
 // Types
@@ -31,35 +32,22 @@ export type {
     ItemProcessEventData,
     PipelinePhaseInfo,
     PipelineProcessMetadata,
-    // Re-exported from map-reduce
+    // Re-exported from ai/types
     AIInvoker,
     AIInvokerOptions,
     AIInvokerResult,
     ProcessTracker,
     SessionMetadata,
-    ExecutorOptions,
     JobProgress,
-    MapReduceResult,
     PromptItem,
+    // Pipeline-specific result types
     PromptMapResult,
     PromptMapInput,
     PromptMapOutput,
     PromptMapSummary,
-    PromptMapJobOptions,
     OutputFormat
 } from './types';
 export { isCSVSource, isGenerateConfig } from './types';
-
-// Executor
-export {
-    executePipeline,
-    executePipelineWithItems,
-    parsePipelineYAML,
-    parsePipelineYAMLSync,
-    PipelineExecutionError,
-    DEFAULT_PARALLEL_LIMIT
-} from './executor';
-export type { ExecutePipelineOptions, PipelineExecutionResult, ItemProcessEvent } from './executor';
 
 // CSV Reader
 export {

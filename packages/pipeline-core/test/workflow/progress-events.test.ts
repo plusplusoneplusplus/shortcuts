@@ -4,7 +4,7 @@ import { setLogger, nullLogger, resetLogger } from '../../src/logger';
 import type {
     WorkflowConfig, WorkflowExecutionOptions, WorkflowProgressEvent,
 } from '../../src/workflow/types';
-import type { AIInvokerResult } from '../../src/map-reduce/types';
+import type { AIInvokerResult } from '../../src/ai/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

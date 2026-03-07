@@ -86,25 +86,9 @@ describe('Pipeline Index Exports', () => {
         });
     });
 
-    describe('Executor exports', () => {
-        it('exports executePipeline', () => {
-            expect(typeof PipelineCore.executePipeline).toBe('function');
-        });
-
-        it('exports parsePipelineYAML', () => {
-            expect(typeof PipelineCore.parsePipelineYAML).toBe('function');
-        });
-
-        it('exports parsePipelineYAMLSync', () => {
-            expect(typeof PipelineCore.parsePipelineYAMLSync).toBe('function');
-        });
-
-        it('exports PipelineExecutionError', () => {
-            expect(typeof PipelineCore.PipelineExecutionError).toBe('function');
-        });
-
-        it('exports DEFAULT_PARALLEL_LIMIT', () => {
-            expect(PipelineCore.DEFAULT_PARALLEL_LIMIT).toBe(5);
+    describe('Executor removed (use workflow engine)', () => {
+        it('no longer exports executePipeline (replaced by compileToWorkflow + executeWorkflow)', () => {
+            expect((PipelineCore as any).executePipeline).toBeUndefined();
         });
     });
 

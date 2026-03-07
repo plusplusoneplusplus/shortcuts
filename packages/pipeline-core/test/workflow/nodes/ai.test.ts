@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { executeAI } from '../../../src/workflow/nodes/ai';
 import type { AINodeConfig, WorkflowExecutionOptions, Items } from '../../../src/workflow/types';
-import type { AIInvokerResult } from '../../../src/map-reduce/types';
+import type { AIInvokerResult } from '../../../src/ai/types';
 
 // ---------------------------------------------------------------------------
 // Test helpers

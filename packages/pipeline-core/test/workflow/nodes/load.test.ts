@@ -5,7 +5,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { executeLoad } from '../../../src/workflow/nodes/load';
 import type { LoadNodeConfig, WorkflowExecutionOptions } from '../../../src/workflow/types';
-import type { AIInvokerResult } from '../../../src/map-reduce/types';
+import type { AIInvokerResult } from '../../../src/ai/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { executeMap } from '../../../src/workflow/nodes/map';
 import type { MapNodeConfig, WorkflowExecutionOptions, Items } from '../../../src/workflow/types';
-import type { AIInvokerResult } from '../../../src/map-reduce/types';
+import type { AIInvokerResult } from '../../../src/ai/types';
 
 // ---------------------------------------------------------------------------
 // Test helpers

@@ -8,7 +8,7 @@ import { executeAI } from '../../src/workflow/nodes/ai';
 import { executeReduce } from '../../src/workflow/nodes/reduce';
 import { setLogger, nullLogger, resetLogger } from '../../src/logger';
 import type { WorkflowConfig, WorkflowExecutionOptions, MapNodeConfig, AINodeConfig, ReduceNodeConfig } from '../../src/workflow/types';
-import type { AIInvokerResult, AIInvokerOptions } from '../../src/map-reduce/types';
+import type { AIInvokerResult, AIInvokerOptions } from '../../src/ai/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

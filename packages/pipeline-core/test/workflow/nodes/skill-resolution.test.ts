@@ -4,7 +4,7 @@ import { executeAI } from '../../../src/workflow/nodes/ai';
 import { executeReduce } from '../../../src/workflow/nodes/reduce';
 import { setLogger, nullLogger, resetLogger } from '../../../src/logger';
 import type { MapNodeConfig, AINodeConfig, ReduceNodeConfig, WorkflowExecutionOptions } from '../../../src/workflow/types';
-import type { AIInvokerResult, AIInvokerOptions } from '../../../src/map-reduce/types';
+import type { AIInvokerResult, AIInvokerOptions } from '../../../src/ai/types';
 
 // Mock the skill resolver
 vi.mock('../../../src/pipeline/skill-resolver', () => ({

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { executeWorkflow } from '../../src/workflow/executor';
 import { setLogger, nullLogger, resetLogger } from '../../src/logger';
 import type { WorkflowConfig, WorkflowExecutionOptions } from '../../src/workflow/types';
-import type { AIInvokerResult, AIInvokerOptions } from '../../src/map-reduce/types';
+import type { AIInvokerResult, AIInvokerOptions } from '../../src/ai/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -373,150 +373,7 @@ export {
 } from './file-process-store';
 
 // ============================================================================
-// Map-Reduce Framework
-// ============================================================================
-
-export {
-    // Core types
-    WorkItem,
-    MapContext,
-    MapResult,
-    ReduceContext,
-    ReduceResult,
-    ReduceStats,
-    ReduceMode,
-    MapReduceOptions,
-    Splitter,
-    Mapper,
-    Reducer,
-    MapReduceJob,
-    ProgressCallback,
-    JobProgress,
-    MapReduceResult,
-    ExecutionStats,
-    PromptTemplate,
-    PromptRenderOptions,
-    AIInvoker,
-    AIInvokerOptions,
-    AIInvokerResult,
-    ProcessTracker,
-    ExecutorOptions,
-    SessionMetadata,
-    ItemCompleteCallback,
-    DEFAULT_MAP_REDUCE_OPTIONS,
-    // Executor
-    MapReduceExecutor,
-    createExecutor,
-    // Concurrency limiter
-    ConcurrencyLimiter,
-    // CancellationError is now exported from ./runtime
-    // DEFAULT_MAX_CONCURRENCY is exported from ./config
-    // Prompt template
-    renderTemplate,
-    createTemplate,
-    extractVariables,
-    validateTemplate,
-    composeTemplates,
-    TemplateHelpers,
-    ResponseParsers,
-    MissingVariableError,
-    TemplateRenderError,
-    // Reducers
-    BaseReducer,
-    IdentityReducer,
-    FlattenReducer,
-    AggregatingReducer,
-    DeterministicReducer,
-    createDeterministicReducer,
-    StringDeduplicationReducer,
-    NumericAggregationReducer,
-    AIReducer,
-    createAIReducer,
-    createTextSynthesisReducer,
-    HybridReducer,
-    createHybridReducer,
-    createSimpleHybridReducer,
-    Deduplicatable,
-    DeterministicReducerOptions,
-    DeterministicReduceOutput,
-    AIReducerOptions,
-    TextSynthesisOutput,
-    TextSynthesisOptions,
-    HybridReducerOptions,
-    SimplePolishedOutput,
-    // Splitters
-    FileSplitter,
-    createFileSplitter,
-    createExtensionFilteredSplitter,
-    BatchedFileSplitter,
-    createBatchedFileSplitter,
-    ChunkSplitter,
-    createChunkSplitter,
-    createLineChunkSplitter,
-    createParagraphChunkSplitter,
-    RuleSplitter,
-    createRuleSplitter,
-    createAlphabeticRuleSplitter,
-    createPriorityRuleSplitter,
-    createPatternFilteredRuleSplitter,
-    BatchedRuleSplitter,
-    createBatchedRuleSplitter,
-    FileItem,
-    FileInput,
-    FileWorkItemData,
-    FileSplitterOptions,
-    BatchedFileWorkItemData,
-    ChunkInput,
-    ChunkWorkItemData,
-    ChunkSplitterOptions,
-    Rule,
-    RuleInput,
-    RuleWorkItemData,
-    RuleSplitterOptions,
-    BatchedRuleWorkItemData,
-    // Jobs
-    createCodeReviewJob,
-    createTemplateJob,
-    createSimpleTemplateJob,
-    createJsonTemplateJob,
-    createListProcessingJob,
-    createPromptMapJob,
-    createPromptMapInput,
-    ReviewSeverity,
-    ReviewFinding,
-    RuleReviewResult,
-    ReviewSummary,
-    CodeReviewOutput,
-    CodeReviewInput,
-    CodeReviewJobOptions,
-    CommitReference,
-    TemplateItem,
-    TemplateJobInput,
-    TemplateWorkItemData,
-    TemplateItemResult,
-    TemplateJobOptions,
-    PromptItem,
-    PromptMapInput,
-    PromptWorkItemData,
-    PromptMapResult,
-    PromptMapOutput,
-    PromptMapSummary,
-    PromptMapJobOptions,
-    OutputFormat,
-    // Temp file utilities
-    writeTempFile,
-    readTempFile,
-    cleanupTempFile,
-    cleanupAllTempFiles,
-    ensureTempDir,
-    generateTempFileName,
-    isTempFilePath,
-    getTempDirPath,
-    TempFileResult
-} from './map-reduce';
-
-// ============================================================================
-// Pipeline Framework
+// Pipeline Framework (types + utilities; executor removed — use workflow engine)
 // ============================================================================
 
 export {
@@ -546,15 +403,14 @@ export {
     ItemProcessEventData,
     PipelinePhaseInfo,
     PipelineProcessMetadata,
-    // Executor
-    executePipeline,
-    executePipelineWithItems,
-    parsePipelineYAML,
-    parsePipelineYAMLSync,
-    PipelineExecutionError,
-    // DEFAULT_PARALLEL_LIMIT is exported from ./config
-    ExecutePipelineOptions,
-    PipelineExecutionResult,
+    // Pipeline-specific result types
+    PromptMapResult,
+    PromptMapInput,
+    PromptMapOutput,
+    PromptMapSummary,
+    OutputFormat,
+    // Re-exported shared types
+    PromptItem,
     // CSV Reader
     parseCSVContent,
     readCSVFile,
@@ -1178,4 +1034,7 @@ export {
     detectFormat,
     CompilerError,
     type DetectedFormat,
+
+    // Concurrency limiter (relocated from map-reduce)
+    ConcurrencyLimiter,
 } from './workflow';

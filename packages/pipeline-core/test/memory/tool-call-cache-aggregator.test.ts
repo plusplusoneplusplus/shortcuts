@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ToolCallCacheStore, ToolCallQAEntry, ConsolidatedToolCallEntry } from '../../src/memory/tool-call-cache-types';
-import type { AIInvoker, AIInvokerResult } from '../../src/map-reduce/types';
+import type { AIInvoker, AIInvokerResult } from '../../src/ai/types';
 import { ToolCallCacheAggregator } from '../../src/memory/tool-call-cache-aggregator';
 
 function makeRawEntry(id: string, question: string, answer: string, toolName = 'grep'): ToolCallQAEntry {

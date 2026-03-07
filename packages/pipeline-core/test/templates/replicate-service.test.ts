@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { replicateCommit } from '../../src/templates/replicate-service';
 import { ReplicateOptions, CommitTemplate } from '../../src/templates/types';
-import { AIInvoker } from '../../src/map-reduce';
+import { AIInvoker } from '../../src/ai/types';
 import { execGit } from '../../src/git';
 
 const CANNED_RESPONSE = [
