@@ -95,7 +95,7 @@ describe('CommitDetail', () => {
         });
 
         it('imports UnifiedDiffViewer', () => {
-            expect(source).toContain("import { UnifiedDiffViewer } from './UnifiedDiffViewer'");
+            expect(source).toContain("import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer'");
         });
 
         it('renders diff content with data-testid', () => {

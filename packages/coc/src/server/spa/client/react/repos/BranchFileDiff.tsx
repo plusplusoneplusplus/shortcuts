@@ -6,10 +6,11 @@
  * the branch-range endpoint on mount.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button, TruncatedPath } from '../shared';
-import { UnifiedDiffViewer } from './UnifiedDiffViewer';
+import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -33,6 +34,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
+    const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
 
     const diffContext = { repositoryId: workspaceId, filePath, oldRef: 'branch-base', newRef: 'branch-head' };
 
@@ -85,6 +87,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-file-diff-header">
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">Branch diff</span>
                     <button
                         onClick={() => setSidebarOpen(o => !o)}
@@ -111,6 +114,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                         </div>
                     ) : diff ? (
                         <UnifiedDiffViewer
+                            ref={viewerRef}
                             diff={diff}
                             fileName={filePath}
                             enableComments

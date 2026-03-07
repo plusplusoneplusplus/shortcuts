@@ -4,10 +4,11 @@
  * Shows only the unified diff for the full commit or a single file.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
-import { UnifiedDiffViewer } from './UnifiedDiffViewer';
+import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -32,6 +33,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
     const [diffError, setDiffError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
+    const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
 
     const diffUrl = filePath
         ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
@@ -90,14 +92,17 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
             {filePath && (
                 <div className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between" data-testid="diff-file-path">
                     <span className="text-xs font-mono text-[#616161] dark:text-[#999]">{filePath}</span>
-                    <button
-                        onClick={() => setSidebarOpen(o => !o)}
-                        title="Toggle comments"
-                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                        data-testid="toggle-comments-btn"
-                    >
-                        💬 {comments.length > 0 ? comments.length : ''}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                        <button
+                            onClick={() => setSidebarOpen(o => !o)}
+                            title="Toggle comments"
+                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid="toggle-comments-btn"
+                        >
+                            💬 {comments.length > 0 ? comments.length : ''}
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -115,6 +120,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
                         </div>
                     ) : diff ? (
                         <UnifiedDiffViewer
+                            ref={viewerRef}
                             diff={diff}
                             fileName={filePath}
                             enableComments={!!filePath}

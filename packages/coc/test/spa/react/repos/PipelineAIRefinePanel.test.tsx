@@ -16,6 +16,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
     UnifiedDiffViewer: ({ diff, 'data-testid': testId }: any) => (
         <div data-testid={testId}>{diff}</div>
     ),
+    HunkNavButtons: () => null,
 }));
 
 // Mock generateUnifiedDiff

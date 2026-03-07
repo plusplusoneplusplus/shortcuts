@@ -179,7 +179,7 @@ describe('BranchFileDiff', () => {
         });
 
         it('imports UnifiedDiffViewer', () => {
-            expect(source).toContain("import { UnifiedDiffViewer } from './UnifiedDiffViewer'");
+            expect(source).toContain("import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer'");
         });
 
         it('shows empty diff message', () => {

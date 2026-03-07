@@ -26,7 +26,7 @@ describe('UnifiedDiffViewer', () => {
 
     describe('exports', () => {
         it('exports UnifiedDiffViewer as a named export', () => {
-            expect(source).toContain('export function UnifiedDiffViewer');
+            expect(source).toContain('export const UnifiedDiffViewer');
         });
 
         it('exports UnifiedDiffViewerProps interface', () => {

@@ -64,6 +64,7 @@ vi.mock('../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
                 onClick: () => onCommentClick?.({ id: 'c1', context: {}, selection: {}, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' }),
             }, 'View Comment'),
         ),
+    HunkNavButtons: () => null,
 }));
 
 import { CommitDetail } from '../../../src/server/spa/client/react/repos/CommitDetail';

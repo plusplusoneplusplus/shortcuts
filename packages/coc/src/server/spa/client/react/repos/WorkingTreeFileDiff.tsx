@@ -6,10 +6,11 @@
  * and renders it in UnifiedDiffViewer. Untracked files show a placeholder.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
-import { UnifiedDiffViewer } from './UnifiedDiffViewer';
+import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -40,6 +41,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
+    const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
 
     const diffContext = stage !== 'untracked'
         ? { repositoryId: workspaceId, filePath, oldRef: stage === 'staged' ? 'HEAD' : 'INDEX', newRef: 'working-tree' as const }
@@ -96,6 +98,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="working-tree-file-diff-header">
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate font-mono">{filePath}</span>
+                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
                     {stage !== 'untracked' && (
                         <button
@@ -128,6 +131,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                         </div>
                     ) : diff ? (
                         <UnifiedDiffViewer
+                            ref={viewerRef}
                             diff={diff}
                             fileName={filePath}
                             enableComments

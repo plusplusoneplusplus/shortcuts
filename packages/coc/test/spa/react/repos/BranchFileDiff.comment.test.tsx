@@ -45,6 +45,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
             >Click Comment</button>
         </div>
     ),
+    HunkNavButtons: () => null,
 }));
 
 // Mock TruncatedPath (used in header)

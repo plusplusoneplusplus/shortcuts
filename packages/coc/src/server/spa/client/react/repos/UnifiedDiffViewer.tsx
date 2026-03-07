@@ -6,7 +6,7 @@
  * Code content lines are syntax-highlighted using highlight.js token spans.
  */
 
-import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { getLanguageFromFileName, highlightLine } from './useSyntaxHighlight';
 import { SelectionToolbar } from '../tasks/comments/SelectionToolbar';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
@@ -119,6 +119,36 @@ export function getLanguagesForLines(lines: string[], fileName: string | undefin
     return result;
 }
 
+export interface UnifiedDiffViewerHandle {
+    scrollToNextHunk: () => void;
+    scrollToPrevHunk: () => void;
+    getHunkCount: () => number;
+}
+
+/** Reusable up/down buttons for navigating between diff hunks. */
+export function HunkNavButtons({ onPrev, onNext }: { onPrev: () => void; onNext: () => void }) {
+    return (
+        <span className="inline-flex items-center gap-0.5 flex-shrink-0">
+            <button
+                onClick={onPrev}
+                title="Previous change"
+                className="w-6 h-6 flex items-center justify-center rounded text-xs text-[#616161] dark:text-[#999] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                data-testid="prev-hunk-btn"
+            >
+                ▲
+            </button>
+            <button
+                onClick={onNext}
+                title="Next change"
+                className="w-6 h-6 flex items-center justify-center rounded text-xs text-[#616161] dark:text-[#999] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                data-testid="next-hunk-btn"
+            >
+                ▼
+            </button>
+        </span>
+    );
+}
+
 /** Build a map from diff-line index → comments covering that line. */
 export function buildLineCommentMap(comments: DiffComment[]): Map<number, DiffComment[]> {
     const map = new Map<number, DiffComment[]>();
@@ -161,7 +191,7 @@ function findLineElement(node: Node, boundary: Element | null): Element | null {
     return null;
 }
 
-export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, comments, onCommentClick }: UnifiedDiffViewerProps) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, comments, onCommentClick }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -175,6 +205,42 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
     }, [diffLines, onLinesReady]);
 
     const containerRef = useRef<HTMLDivElement>(null);
+
+    useImperativeHandle(ref, () => ({
+        scrollToNextHunk: () => {
+            const container = containerRef.current;
+            if (!container) return;
+            const hunks = Array.from(container.querySelectorAll<HTMLElement>('[data-hunk-header]'));
+            if (hunks.length === 0) return;
+            const scrollParent = container.parentElement;
+            const viewportTop = scrollParent?.getBoundingClientRect().top ?? 0;
+            for (const hunk of hunks) {
+                if (hunk.getBoundingClientRect().top > viewportTop + 20) {
+                    hunk.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return;
+                }
+            }
+            hunks[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+        scrollToPrevHunk: () => {
+            const container = containerRef.current;
+            if (!container) return;
+            const hunks = Array.from(container.querySelectorAll<HTMLElement>('[data-hunk-header]'));
+            if (hunks.length === 0) return;
+            const scrollParent = container.parentElement;
+            const viewportTop = scrollParent?.getBoundingClientRect().top ?? 0;
+            for (let i = hunks.length - 1; i >= 0; i--) {
+                if (hunks[i].getBoundingClientRect().top < viewportTop - 5) {
+                    hunks[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return;
+                }
+            }
+            hunks[hunks.length - 1].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+        getHunkCount: () => {
+            return containerRef.current?.querySelectorAll('[data-hunk-header]').length ?? 0;
+        },
+    }));
 
     const [toolbar, setToolbar] = useState<{
         visible: boolean;
@@ -324,6 +390,7 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                         data-old-line={enableComments ? (oldLine ?? '') : undefined}
                         data-new-line={enableComments ? (newLine ?? '') : undefined}
                         data-line-type={enableComments ? type : undefined}
+                        data-hunk-header={type === 'hunk-header' ? '' : undefined}
                     >
                         {showLineNumbers && (
                             <>
@@ -372,4 +439,4 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
         )}
         </>
     );
-}
+});

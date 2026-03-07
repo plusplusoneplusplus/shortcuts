@@ -3,10 +3,11 @@
  * file in a commit, with green/red coloring via UnifiedDiffViewer.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button, TruncatedPath } from '../shared';
-import { UnifiedDiffViewer } from './UnifiedDiffViewer';
+import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
 
 export interface CommitFileContentProps {
     workspaceId: string;
@@ -18,6 +19,7 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
 
     const fetchDiff = useCallback(() => {
         setLoading(true);
@@ -43,6 +45,7 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
             >
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">Commit diff</span>
                 </div>
             </div>
@@ -59,6 +62,7 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
                     </div>
                 ) : diff ? (
                     <UnifiedDiffViewer
+                        ref={viewerRef}
                         diff={diff}
                         fileName={filePath}
                         showLineNumbers
