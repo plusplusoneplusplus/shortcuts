@@ -197,9 +197,11 @@ describe('GET /api/repos/:repoId/blob', () => {
 
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/blob?path=README.md`);
         expect(res.status).toBe(200);
-        const body = await res.text();
-        expect(body).toBe(content);
-        expect(res.headers.get('content-type')).toMatch(/text\/markdown/);
+        expect(res.headers.get('content-type')).toMatch(/application\/json/);
+        const body = await res.json() as any;
+        expect(body.content).toBe(content);
+        expect(body.encoding).toBe('utf-8');
+        expect(body.mimeType).toMatch(/text\/markdown/);
     });
 
     it('returns 400 when path is missing', async () => {
@@ -222,5 +224,19 @@ describe('GET /api/repos/:repoId/blob', () => {
         expect(res.status).toBe(400);
         const body = await res.json() as any;
         expect(body.error).toMatch(/directory traversal/i);
+    });
+
+    it('returns base64-encoded JSON for binary files', async () => {
+        seedDefaultRepo();
+        const binaryContent = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]);
+        fs.writeFileSync(path.join(repoDir, 'image.png'), binaryContent);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/blob?path=image.png`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-type')).toMatch(/application\/json/);
+        const body = await res.json() as any;
+        expect(body.encoding).toBe('base64');
+        expect(body.mimeType).toBe('image/png');
+        expect(Buffer.from(body.content, 'base64')).toEqual(binaryContent);
     });
 });

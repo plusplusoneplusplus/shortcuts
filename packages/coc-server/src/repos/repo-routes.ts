@@ -139,17 +139,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
 
                 const blob = await service.readBlob(parsed.repoId, parsed.path);
 
-                if (blob.encoding === 'base64') {
-                    const buf = Buffer.from(blob.content, 'base64');
-                    res.writeHead(200, {
-                        'Content-Type': blob.mimeType,
-                        'Content-Length': buf.length,
-                    });
-                    res.end(buf);
-                } else {
-                    res.writeHead(200, { 'Content-Type': blob.mimeType });
-                    res.end(blob.content);
-                }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(blob));
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('File not found'))) {
                     send404(res, `Path not found: ${err.message}`);
