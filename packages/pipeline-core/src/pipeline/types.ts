@@ -10,20 +10,24 @@
 import type { OutputFormat as MROutputFormat, PromptItem as MRPromptItem } from '../map-reduce/jobs/prompt-map-job';
 import type { ToolCallCacheConfig } from '../memory/tool-call-cache-types';
 
-// Re-export execution types from map-reduce framework
+// Re-export shared AI types from canonical location
 export type {
     AIInvoker,
     AIInvokerOptions,
     AIInvokerResult,
     ProcessTracker,
     SessionMetadata,
-    ExecutorOptions,
     JobProgress,
+    PromptItem
+} from '../ai/types';
+
+// Re-export execution types still in map-reduce (until deletion)
+export type {
+    ExecutorOptions,
     MapReduceResult
 } from '../map-reduce';
 
 export type {
-    PromptItem,
     PromptMapResult,
     PromptMapInput,
     PromptMapOutput,
