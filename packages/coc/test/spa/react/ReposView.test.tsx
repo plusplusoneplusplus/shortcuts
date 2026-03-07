@@ -654,12 +654,11 @@ describe('RepoDetail', () => {
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
-        // Sub-tab buttons are present
         const buttons = document.querySelectorAll('button');
         const tabLabels = Array.from(buttons).map(b => b.textContent?.trim());
         expect(tabLabels).toContain('Info');
         expect(tabLabels).toContain('Workflows');
-        expect(tabLabels).toContain('Queue');
+        expect(tabLabels).toContain('Activity');
     });
 
     it('renders Edit and Remove buttons', () => {
@@ -694,7 +693,7 @@ describe('RepoDetail', () => {
         expect(badges.length).toBe(0);
     });
 
-    it('shows separate running and queued badges', async () => {
+    it('shows separate running and queued badges on activity tab', async () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({
@@ -708,11 +707,11 @@ describe('RepoDetail', () => {
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
         await vi.waitFor(() => {
-            const queueBtn = document.querySelector('button[data-subtab="queue"]');
-            const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
+            const activityBtn = document.querySelector('button[data-subtab="activity"]');
+            const badges = activityBtn?.querySelectorAll('span.rounded-full') || [];
             expect(badges.length).toBe(2);
-            const runningBadge = queueBtn?.querySelector('[data-testid="queue-running-badge"]');
-            const queuedBadge = queueBtn?.querySelector('[data-testid="queue-queued-badge"]');
+            const runningBadge = activityBtn?.querySelector('[data-testid="activity-running-badge"]');
+            const queuedBadge = activityBtn?.querySelector('[data-testid="activity-queued-badge"]');
             expect(runningBadge?.textContent).toBe('1');
             expect(queuedBadge?.textContent).toBe('2');
         });
@@ -732,9 +731,9 @@ describe('RepoDetail', () => {
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
         await vi.waitFor(() => {
-            const queueBtn = document.querySelector('button[data-subtab="queue"]');
-            const runningBadge = queueBtn?.querySelector('[data-testid="queue-running-badge"]');
-            const queuedBadge = queueBtn?.querySelector('[data-testid="queue-queued-badge"]');
+            const activityBtn = document.querySelector('button[data-subtab="activity"]');
+            const runningBadge = activityBtn?.querySelector('[data-testid="activity-running-badge"]');
+            const queuedBadge = activityBtn?.querySelector('[data-testid="activity-queued-badge"]');
             expect(runningBadge?.textContent).toBe('1');
             expect(queuedBadge).toBeNull();
         });
@@ -754,9 +753,9 @@ describe('RepoDetail', () => {
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
         await vi.waitFor(() => {
-            const queueBtn = document.querySelector('button[data-subtab="queue"]');
-            const runningBadge = queueBtn?.querySelector('[data-testid="queue-running-badge"]');
-            const queuedBadge = queueBtn?.querySelector('[data-testid="queue-queued-badge"]');
+            const activityBtn = document.querySelector('button[data-subtab="activity"]');
+            const runningBadge = activityBtn?.querySelector('[data-testid="activity-running-badge"]');
+            const queuedBadge = activityBtn?.querySelector('[data-testid="activity-queued-badge"]');
             expect(runningBadge).toBeNull();
             expect(queuedBadge?.textContent).toBe('4');
         });

@@ -27,7 +27,6 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wikis: [],
         selectedWorkflowName: null,
         selectedWorkflowRunProcessId: null,
-        selectedChatSessionId: null,
         conversationCache: {},
         wsStatus: 'closed',
         selectedGitCommitHash: null,
@@ -250,9 +249,9 @@ describe('AppContext reducer', () => {
             expect(result.selectedRepoId).toBeNull();
         });
 
-        it('SET_REPO_SUB_TAB switches to queue', () => {
-            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'queue' });
-            expect(result.activeRepoSubTab).toBe('queue');
+        it('SET_REPO_SUB_TAB switches to activity', () => {
+            const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+            expect(result.activeRepoSubTab).toBe('activity');
         });
 
         it('SET_REPO_SUB_TAB switches to tasks', () => {
@@ -266,7 +265,7 @@ describe('AppContext reducer', () => {
         });
 
         it('SET_REPO_SUB_TAB switches to info', () => {
-            const state = makeState({ activeRepoSubTab: 'queue' });
+            const state = makeState({ activeRepoSubTab: 'activity' });
             const result = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'info' });
             expect(result.activeRepoSubTab).toBe('info');
         });
@@ -281,23 +280,23 @@ describe('AppContext reducer', () => {
     describe('per-repo tab state', () => {
         it('restores last active sub-tab when switching back to a repo', () => {
             let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'info' });
-            // Switch to chat on repo-a
-            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'chat' });
+            // Switch to activity on repo-a
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
             // Switch to repo-b — saves repo-a's tab, defaults to info for repo-b
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
             expect(state.activeRepoSubTab).toBe('info');
             // Switch to wiki on repo-b
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
-            // Switch back to repo-a — should restore chat
+            // Switch back to repo-a — should restore activity
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-a' });
-            expect(state.activeRepoSubTab).toBe('chat');
+            expect(state.activeRepoSubTab).toBe('activity');
             // Switch back to repo-b — should restore wiki
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
             expect(state.activeRepoSubTab).toBe('wiki');
         });
 
         it('defaults to info when visiting a repo for the first time', () => {
-            const state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'queue' });
+            const state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'activity' });
             const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-new' });
             expect(result.activeRepoSubTab).toBe('info');
         });
@@ -325,7 +324,7 @@ describe('AppContext reducer', () => {
 
         it('explicit SET_REPO_SUB_TAB after SET_SELECTED_REPO overrides the restored tab', () => {
             let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'info' });
-            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'chat' });
+            state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
             // Router dispatches explicit sub-tab from deep-link
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
@@ -458,26 +457,6 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedWorkflowName: 'old' });
             const result = appReducer(state, { type: 'SET_SELECTED_WORKFLOW', name: 'new' });
             expect(result.selectedWorkflowName).toBe('new');
-        });
-    });
-
-    // ── SET_SELECTED_CHAT_SESSION ──────────────────────────────────
-    describe('SET_SELECTED_CHAT_SESSION', () => {
-        it('sets selectedChatSessionId to a string', () => {
-            const result = appReducer(makeState(), { type: 'SET_SELECTED_CHAT_SESSION', id: 'task-abc' });
-            expect(result.selectedChatSessionId).toBe('task-abc');
-        });
-
-        it('clears selectedChatSessionId to null', () => {
-            const state = makeState({ selectedChatSessionId: 'task-abc' });
-            const result = appReducer(state, { type: 'SET_SELECTED_CHAT_SESSION', id: null });
-            expect(result.selectedChatSessionId).toBeNull();
-        });
-
-        it('overwrites existing selectedChatSessionId', () => {
-            const state = makeState({ selectedChatSessionId: 'old-task' });
-            const result = appReducer(state, { type: 'SET_SELECTED_CHAT_SESSION', id: 'new-task' });
-            expect(result.selectedChatSessionId).toBe('new-task');
         });
     });
 

@@ -76,13 +76,13 @@ describe('RepoDetail Activity tab rendering', () => {
     });
 });
 
-describe('RepoDetail legacy Chat/Queue render branches (transitional)', () => {
-    it('still renders RepoChatTab for hidden chat sub-tab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chat' && <RepoChatTab");
+describe('RepoDetail: Chat/Queue tabs removed', () => {
+    it('does not render RepoChatTab', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('RepoChatTab');
     });
 
-    it('still renders RepoQueueTab for hidden queue sub-tab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue' && <RepoQueueTab");
+    it('does not render RepoQueueTab', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('RepoQueueTab');
     });
 
     it('chat and queue are not in visible SUB_TABS', () => {
@@ -231,8 +231,8 @@ describe('RepoDetail Resume Queue button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-resume-btn"');
     });
 
-    it('shows resume button when activeSubTab is queue or activity and isRepoPaused', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue' || activeSubTab === 'activity'");
+    it('shows resume button when activeSubTab is activity and isRepoPaused', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
         expect(REPO_DETAIL_SOURCE).toContain('isRepoPaused');
     });
 

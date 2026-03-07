@@ -1,8 +1,6 @@
 /**
- * Tests for navigation integration (Commit 8):
- * - RepoQueueTab: run-workflow tasks navigate to workflow view
- * - RepoQueueTab: chat/non-workflow tasks unchanged (no regression)
- * - RepoQueueTab: mini progress indicator on running workflow cards
+ * Tests for navigation integration:
+ * - ActivityListPane: mini progress indicator on running workflow cards
  * - WorkflowRunHistory: clicks navigate to workflow view
  * - RepoDetail: workflow sub-tab renders WorkflowDetailView
  * - ProcessDetail: "View Workflow →" button for workflow processes
@@ -14,11 +12,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const SRC_ROOT = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
-
-const REPO_QUEUE_TAB_SRC = fs.readFileSync(
-    path.join(SRC_ROOT, 'repos', 'RepoQueueTab.tsx'),
-    'utf-8',
-);
 
 const PIPELINE_RUN_HISTORY_SRC = fs.readFileSync(
     path.join(SRC_ROOT, 'repos', 'WorkflowRunHistory.tsx'),
@@ -45,63 +38,8 @@ const ACTIVITY_LIST_PANE_SRC = fs.readFileSync(
     'utf-8',
 );
 
-// ─── RepoQueueTab: selectTask run-workflow branch ──────────────
-describe('RepoQueueTab selectTask: run-workflow navigation', () => {
-    it('has a run-workflow branch in selectTask that navigates to workflow', () => {
-        const handler = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
-        );
-        expect(handler).toContain("task?.type === 'run-workflow'");
-        expect(handler).toContain('/workflow/');
-    });
-
-    it('run-workflow branch returns early before SELECT_QUEUE_TASK', () => {
-        const handler = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
-        );
-        const pipelineBranch = handler.indexOf("task?.type === 'run-workflow'");
-        const returnAfterPipeline = handler.indexOf('return;', pipelineBranch);
-        const selectDispatch = handler.indexOf("'SELECT_QUEUE_TASK'");
-        expect(returnAfterPipeline).toBeLessThan(selectDispatch);
-    });
-
-    it('uses task.processId preferentially, falling back to task.id', () => {
-        const handler = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf("task?.type === 'run-workflow'"),
-            REPO_QUEUE_TAB_SRC.indexOf('return;', REPO_QUEUE_TAB_SRC.indexOf("task?.type === 'run-workflow'"))
-        );
-        expect(handler).toContain('task.processId || task.id');
-    });
-});
-
-// ─── RepoQueueTab: non-workflow tasks unchanged ────────────────
-describe('RepoQueueTab selectTask: no regression for other types', () => {
-    it('chat branch is preserved before run-workflow', () => {
-        const handler = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
-        );
-        const chatIdx = handler.indexOf("task?.type === 'chat'");
-        const pipelineIdx = handler.indexOf("task?.type === 'run-workflow'");
-        expect(chatIdx).toBeGreaterThan(-1);
-        expect(pipelineIdx).toBeGreaterThan(chatIdx);
-    });
-
-    it('generic fallback dispatches SELECT_QUEUE_TASK after run-workflow', () => {
-        const handler = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SRC.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
-        );
-        const pipelineReturn = handler.indexOf('return;', handler.indexOf("task?.type === 'run-workflow'"));
-        const selectDispatch = handler.indexOf("'SELECT_QUEUE_TASK'");
-        expect(selectDispatch).toBeGreaterThan(pipelineReturn);
-    });
-});
-
-// ─── RepoQueueTab: mini progress indicator (QueueTaskItem is in shared ActivityListPane) ─────
-describe('RepoQueueTab: mini progress indicator', () => {
+// ─── ActivityListPane: mini progress indicator ─────
+describe('ActivityListPane: mini progress indicator', () => {
     it('imports useWorkflowProgress', () => {
         expect(ACTIVITY_LIST_PANE_SRC).toContain("import { useWorkflowProgress } from '../hooks/useWorkflowProgress'");
     });

@@ -21,7 +21,6 @@ let mockAppState: Record<string, any> = {
     reposSidebarCollapsed: false,
     activeRepoSubTab: 'info',
     workspaces: [],
-    selectedChatSessionId: null,
 };
 
 // ── Module mocks (before imports) ──────────────────────────────────────
@@ -58,7 +57,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useRepoQueueStats', () => ({
-    useRepoQueueStats: () => ({ running: 0, queued: 0, chatPending: 0 }),
+    useRepoQueueStats: () => ({ running: 0, queued: 0 }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/usePreferences', () => ({
@@ -81,9 +80,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoDetail', () => ({
         { key: 'info', label: 'Info' },
         { key: 'git', label: 'Git' },
         { key: 'tasks', label: 'Tasks' },
-        { key: 'chat', label: 'Chats' },
-        { key: 'queue', label: 'Queue' },
-        { key: 'pipelines', label: 'Workflows' },
+        { key: 'activity', label: 'Activity' },
+        { key: 'workflows', label: 'Workflows' },
         { key: 'schedules', label: 'Schedules' },
         { key: 'copilot', label: 'Copilot' },
     ],
@@ -125,16 +123,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/WorkflowsTab', () => ({
     WorkflowsTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/repos/RepoQueueTab', () => ({
-    RepoQueueTab: () => null,
-}));
-
 vi.mock('../../../../src/server/spa/client/react/repos/RepoSchedulesTab', () => ({
     RepoSchedulesTab: () => null,
-}));
-
-vi.mock('../../../../src/server/spa/client/react/repos/RepoChatTab', () => ({
-    RepoChatTab: () => null,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/RepoGitTab', () => ({
@@ -176,7 +166,6 @@ describe('ReposView — responsive layout', () => {
             reposSidebarCollapsed: false,
             activeRepoSubTab: 'info',
             workspaces: [],
-            selectedChatSessionId: null,
         };
         location.hash = '';
     });
@@ -368,7 +357,6 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
             activeRepoSubTab: 'info',
             workspaces: [],
             wikis: [],
-            selectedChatSessionId: null,
         };
         const mod = await vi.importActual<any>(
             '../../../../src/server/spa/client/react/repos/RepoDetail'

@@ -3,7 +3,7 @@
  *
  * Renders running/queued/history sections with filters, drag/drop,
  * pause markers, context menus, and selection highlighting.
- * Extracted from RepoQueueTab so both Queue and Activity can share the list.
+ * Shared queue task list used by the Activity tab.
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';

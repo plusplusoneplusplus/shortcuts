@@ -47,7 +47,6 @@ export interface AppContextState {
     repoWikiInitialComponentId: string | null;
     selectedWorkflowName: string | null;
     selectedWorkflowRunProcessId: string | null;
-    selectedChatSessionId: string | null;
     selectedGitCommitHash: string | null;
     selectedGitFilePath: string | null;
     selectedWorkflowProcessId: string | null;
@@ -84,7 +83,6 @@ const initialState: AppContextState = {
     repoWikiInitialComponentId: null,
     selectedWorkflowName: null,
     selectedWorkflowRunProcessId: null,
-    selectedChatSessionId: null,
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
     selectedWorkflowProcessId: null,
@@ -136,7 +134,6 @@ export type AppAction =
     | { type: 'INVALIDATE_CONVERSATION'; processId: string }
     | { type: 'SET_SELECTED_WORKFLOW'; name: string | null }
     | { type: 'SET_WORKFLOW_RUN_PROCESS'; processId: string | null }
-    | { type: 'SET_SELECTED_CHAT_SESSION'; id: string | null }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
     | { type: 'SET_GIT_FILE_PATH'; filePath: string }
     | { type: 'CLEAR_GIT_FILE_PATH' }
@@ -314,8 +311,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedWorkflowName: action.name };
         case 'SET_WORKFLOW_RUN_PROCESS':
             return { ...state, selectedWorkflowRunProcessId: action.processId };
-        case 'SET_SELECTED_CHAT_SESSION':
-            return { ...state, selectedChatSessionId: action.id };
         case 'SET_GIT_COMMIT_HASH':
             return { ...state, selectedGitCommitHash: action.hash };
         case 'SET_GIT_FILE_PATH':

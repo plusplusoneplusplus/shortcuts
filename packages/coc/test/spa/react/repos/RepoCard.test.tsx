@@ -7,7 +7,7 @@ import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 // Mock useRepoQueueStats to return zeroes by default
-const mockQueueStats = vi.fn(() => ({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 }));
+const mockQueueStats = vi.fn(() => ({ running: 0, queued: 0 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useRepoQueueStats', () => ({
     useRepoQueueStats: (...args: any[]) => mockQueueStats(...args),
@@ -114,19 +114,19 @@ describe('branch badge', () => {
 
 describe('queue status', () => {
     it('hides queue-status span when both running and queued are 0', () => {
-        mockQueueStats.mockReturnValue({ running: 0, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 });
+        mockQueueStats.mockReturnValue({ running: 0, queued: 0 });
         renderCard();
         expect(screen.queryByTestId('repo-card-queue-status')).toBeNull();
     });
 
     it('shows running indicator when running > 0', () => {
-        mockQueueStats.mockReturnValue({ running: 3, queued: 0, chatRunning: 0, chatQueued: 0, chatPending: 0 });
+        mockQueueStats.mockReturnValue({ running: 3, queued: 0 });
         renderCard();
         expect(screen.getByTestId('repo-card-queue-running').textContent).toBe('⏳3');
     });
 
     it('shows queued indicator when queued > 0', () => {
-        mockQueueStats.mockReturnValue({ running: 0, queued: 2, chatRunning: 0, chatQueued: 0, chatPending: 0 });
+        mockQueueStats.mockReturnValue({ running: 0, queued: 2 });
         renderCard();
         expect(screen.getByTestId('repo-card-queue-queued').textContent).toBe('⏸2');
     });

@@ -22,10 +22,6 @@ const CHAT_UTILS_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'chatConversationUtils.ts'
 );
 
-const REPO_CHAT_TAB_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'
-);
-
 describe('ChatStartPane (standalone)', () => {
     let source: string;
 
@@ -281,51 +277,3 @@ describe('chatConversationUtils (standalone)', () => {
     });
 });
 
-describe('RepoChatTab uses extracted components', () => {
-    let source: string;
-
-    beforeAll(() => {
-        source = fs.readFileSync(REPO_CHAT_TAB_PATH, 'utf-8');
-    });
-
-    it('imports getConversationTurns from chatConversationUtils', () => {
-        expect(source).toContain("import { getConversationTurns } from '../chat/chatConversationUtils'");
-    });
-
-    it('imports ChatStartPane from chat module', () => {
-        expect(source).toContain("import { ChatStartPane } from '../chat/ChatStartPane'");
-    });
-
-    it('imports ChatConversationPane from chat module', () => {
-        expect(source).toContain("import { ChatConversationPane } from '../chat/ChatConversationPane'");
-    });
-
-    it('no longer defines getConversationTurns inline', () => {
-        expect(source).not.toContain('function getConversationTurns(data: any');
-    });
-
-    it('renderStartScreen delegates to ChatStartPane', () => {
-        expect(source).toContain('<ChatStartPane');
-    });
-
-    it('renderConversation delegates to ChatConversationPane', () => {
-        expect(source).toContain('<ChatConversationPane');
-    });
-
-    it('still exports RepoChatTab', () => {
-        expect(source).toContain('export function RepoChatTab');
-    });
-
-    it('still renders chat-split-panel data-testid', () => {
-        expect(source).toContain('data-testid="chat-split-panel"');
-    });
-
-    it('still renders ChatSessionSidebar', () => {
-        expect(source).toContain('<ChatSessionSidebar');
-    });
-
-    it('still uses renderStartScreen and renderConversation as local helpers', () => {
-        expect(source).toContain('const renderStartScreen');
-        expect(source).toContain('const renderConversation');
-    });
-});

@@ -101,24 +101,6 @@ export function parseWorkflowsRunDeepLink(hash: string): { workflowName: string;
     return null;
 }
 
-export function parseQueueDeepLink(hash: string): string | null {
-    const cleaned = hash.replace(/^#/, '');
-    const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'queue' && parts[3]) {
-        return decodeURIComponent(parts[3]);
-    }
-    return null;
-}
-
-export function parseChatDeepLink(hash: string): string | null {
-    const cleaned = hash.replace(/^#/, '');
-    const parts = cleaned.split('/');
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'chat' && parts[3]) {
-        return decodeURIComponent(parts[3]);
-    }
-    return null;
-}
-
 export function parseGitCommitDeepLink(hash: string): string | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');
@@ -161,7 +143,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'templates', 'chat', 'wiki', 'copilot', 'workflow', 'explorer', 'activity']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'templates', 'wiki', 'copilot', 'workflow', 'explorer', 'activity']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -231,18 +213,6 @@ export function Router() {
                     } else if (parts[2] && parts[2] !== 'workflows') {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
-                    }
-                    // Queue task deep-link handling
-                    if (parts[2] === 'queue' && parts[3]) {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]) });
-                    } else if (parts[2] === 'queue') {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
-                    }
-                    // Chat session deep-link handling
-                    if (parts[2] === 'chat' && parts[3]) {
-                        dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: decodeURIComponent(parts[3]) });
-                    } else if (parts[2] === 'chat') {
-                        dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null });
                     }
                     // Activity deep-link handling — select queue task when task ID present
                     if (parts[2] === 'activity' && parts[3]) {

@@ -11,11 +11,9 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { WorkflowsTab } from './WorkflowsTab';
 import { TasksPanel } from '../tasks/TasksPanel';
-import { RepoQueueTab } from './RepoQueueTab';
 import { RepoActivityTab } from './RepoActivityTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoTemplatesTab } from './RepoTemplatesTab';
-import { RepoChatTab } from './RepoChatTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { RepoCopilotTab } from './RepoCopilotTab';
@@ -151,13 +149,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             .catch(() => {});
     }, [ws.id]);
 
-    // Clear chat deep-link after consuming it (one-shot signal)
-    useEffect(() => {
-        if (state.selectedChatSessionId && activeSubTab === 'chat') {
-            dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null });
-        }
-    }, [state.selectedChatSessionId, activeSubTab, dispatch]);
-
     const switchSubTab = (tab: RepoSubTab) => {
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
         if (tab !== 'git') {
@@ -209,7 +200,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 </div>
                 {/* Action buttons */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                    {(activeSubTab === 'queue' || activeSubTab === 'activity') && isRepoPaused && (
+                    {activeSubTab === 'activity' && isRepoPaused && (
                         <Button
                             variant="secondary"
                             size="sm"
@@ -376,14 +367,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'queue' || activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'templates' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'templates' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab repo={repo} />}
-                        {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'activity' && <RepoActivityTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
                         {activeSubTab === 'templates' && <RepoTemplatesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'chat' && <RepoChatTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab workspaceId={ws.id} />}

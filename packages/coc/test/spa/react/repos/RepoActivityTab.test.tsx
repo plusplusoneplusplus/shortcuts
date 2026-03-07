@@ -6,7 +6,6 @@
  * - Selecting a top-level chat task renders inline chat detail (ActivityChatDetail)
  * - Selecting a non-chat task renders QueueTaskDetail
  * - Follow-up child chat tasks remain hidden in the Activity left rail
- * - RepoQueueTab continues to work (shared ActivityListPane)
  * - ActivityDetailPane switches between chat and queue detail
  * - Mobile layout with back/list behavior
  * - Empty state rendering
@@ -22,7 +21,6 @@ const ACTIVITY_TAB_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'RepoActivityTa
 const ACTIVITY_LIST_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityListPane.tsx'), 'utf-8');
 const ACTIVITY_CHAT_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityChatDetail.tsx'), 'utf-8');
 const ACTIVITY_DETAIL_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityDetailPane.tsx'), 'utf-8');
-const REPO_QUEUE_TAB_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'RepoQueueTab.tsx'), 'utf-8');
 const INDEX_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'index.ts'), 'utf-8');
 const REPO_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'RepoDetail.tsx'), 'utf-8');
 
@@ -339,59 +337,6 @@ describe('ActivityListPane: shared list component', () => {
     });
 });
 
-// ── RepoQueueTab still works ───────────────────────────────────────────
-
-describe('RepoQueueTab: continues to work with shared ActivityListPane', () => {
-    it('imports ActivityListPane', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain("import { ActivityListPane } from './ActivityListPane'");
-    });
-
-    it('renders ActivityListPane', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('<ActivityListPane');
-    });
-
-    it('still imports QueueTaskDetail', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain("import { QueueTaskDetail } from '../queue/QueueTaskDetail'");
-    });
-
-    it('still renders QueueTaskDetail when a task is selected', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('<QueueTaskDetail />');
-    });
-
-    it('still has data-testid for split-panel', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('data-testid="repo-queue-split-panel"');
-    });
-
-    it('still has data-testid for detail panel', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('data-testid="repo-queue-detail-panel"');
-    });
-
-    it('still has data-testid for mobile list', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('data-testid="repo-queue-mobile-list"');
-    });
-
-    it('still navigates chat tasks to Chat tab', () => {
-        const selectBlock = REPO_QUEUE_TAB_SOURCE.substring(
-            REPO_QUEUE_TAB_SOURCE.indexOf('const selectTask = useCallback'),
-            REPO_QUEUE_TAB_SOURCE.indexOf('}, [queueDispatch, appDispatch, workspaceId, isMobile, selectedTaskId])')
-        );
-        expect(selectBlock).toContain('SET_SELECTED_CHAT_SESSION');
-        expect(selectBlock).toContain('SET_REPO_SUB_TAB');
-    });
-
-    it('still shows empty-state placeholder', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('Select a task to view details');
-    });
-
-    it('has flex h-full overflow-hidden layout', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('flex h-full overflow-hidden');
-    });
-
-    it('has left panel with flex-shrink-0 and border-r', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('flex-shrink-0 border-r border-[#e0e0e0]');
-    });
-});
-
 // ── Barrel export ──────────────────────────────────────────────────────
 
 describe('repos/index.ts: exports RepoActivityTab', () => {
@@ -411,8 +356,8 @@ describe('RepoDetail: wires RepoActivityTab for activity sub-tab', () => {
         expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity' && <RepoActivityTab");
     });
 
-    it('still renders RepoQueueTab for queue sub-tab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue' && <RepoQueueTab");
+    it('does not render RepoQueueTab (removed in Activity migration)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('RepoQueueTab');
     });
 });
 
