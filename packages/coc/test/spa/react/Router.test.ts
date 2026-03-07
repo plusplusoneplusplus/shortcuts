@@ -1419,6 +1419,92 @@ describe('W keyboard shortcut simulation', () => {
     });
 });
 
+// ─── A keyboard shortcut simulation ─────────────────────────────
+// Mirrors the A-key useEffect handler logic from Router.tsx
+
+describe('A keyboard shortcut simulation', () => {
+    type MockEvent = {
+        key: string;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        altKey?: boolean;
+        target?: { tagName?: string; isContentEditable?: boolean };
+    };
+    type MockState = { activeTab: string; selectedRepoId: string | null };
+
+    function simulateAKeyHandler(
+        e: MockEvent,
+        state: MockState,
+    ): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const target = e.target ?? { tagName: 'BODY', isContentEditable: false };
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return dispatches;
+        if (e.ctrlKey || e.metaKey || e.altKey) return dispatches;
+        if (state.activeTab !== 'repos' || !state.selectedRepoId) return dispatches;
+        if (e.key === 'a' || e.key === 'A') {
+            dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        }
+        return dispatches;
+    }
+
+    const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
+
+    it('dispatches SET_REPO_SUB_TAB activity for key A', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A' }, repoState);
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+    });
+
+    it('dispatches SET_REPO_SUB_TAB activity for lowercase key a', () => {
+        const dispatches = simulateAKeyHandler({ key: 'a' }, repoState);
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+    });
+
+    it('does not dispatch when activeTab is not repos', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A' }, { activeTab: 'wiki', selectedRepoId: 'my-repo' });
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when selectedRepoId is null', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A' }, { activeTab: 'repos', selectedRepoId: null });
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is INPUT', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A', target: { tagName: 'INPUT' } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is TEXTAREA', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A', target: { tagName: 'TEXTAREA' } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when target is contentEditable', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A', target: { tagName: 'DIV', isContentEditable: true } }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when ctrlKey is pressed', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A', ctrlKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when metaKey is pressed', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A', metaKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch when altKey is pressed', () => {
+        const dispatches = simulateAKeyHandler({ key: 'A', altKey: true }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+
+    it('does not dispatch for unrelated keys', () => {
+        const dispatches = simulateAKeyHandler({ key: 'c' }, repoState);
+        expect(dispatches).toHaveLength(0);
+    });
+});
+
 // ─── handleHash wiki deep-link in repos context ──────────────────
 
 describe('handleHash wiki deep-link dispatch simulation (repos context)', () => {
@@ -1740,5 +1826,32 @@ describe('handleHash workflow run dispatch simulation', () => {
     it('URL-decodes processId in dispatch', () => {
         const dispatches = simulateWorkflowRunHash('#repos/r1/workflows/pipe1/run/queue_abc%2F1');
         expect(dispatches).toContainEqual({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'queue_abc/1' });
+    });
+});
+
+// ─── Router source-level smoke: A shortcut for Activity ──────────
+
+describe('Router source-level: A keyboard shortcut for Activity', () => {
+    const ROUTER_SOURCE = require('fs').readFileSync(
+        require('path').join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'layout', 'Router.tsx'),
+        'utf-8',
+    );
+
+    it('has an A-key handler that dispatches activity sub-tab', () => {
+        expect(ROUTER_SOURCE).toContain("e.key === 'a' || e.key === 'A'");
+        expect(ROUTER_SOURCE).toContain("tab: 'activity'");
+    });
+
+    it('A shortcut updates hash to activity route', () => {
+        expect(ROUTER_SOURCE).toContain("+ '/activity'");
+    });
+
+    it('no longer has a C-key handler for chat', () => {
+        expect(ROUTER_SOURCE).not.toContain("e.key === 'c' || e.key === 'C'");
+        expect(ROUTER_SOURCE).not.toContain("tab: 'chat'");
+    });
+
+    it('activity route is in VALID_REPO_SUB_TABS', () => {
+        expect(VALID_REPO_SUB_TABS.has('activity')).toBe(true);
     });
 });

@@ -13,10 +13,15 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
 );
 
 describe('RepoDetail SUB_TABS', () => {
-    it('includes a "chat" entry', () => {
-        const chatTab = SUB_TABS.find(t => t.key === 'chat');
-        expect(chatTab).toBeDefined();
-        expect(chatTab!.label).toBe('Chats');
+    it('includes an "activity" entry', () => {
+        const activityTab = SUB_TABS.find(t => t.key === 'activity');
+        expect(activityTab).toBeDefined();
+        expect(activityTab!.label).toBe('Activity');
+    });
+
+    it('does not include separate "chat" or "queue" entries', () => {
+        expect(SUB_TABS.find(t => t.key === 'chat')).toBeUndefined();
+        expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 
     it('"info" is followed by "git" entry', () => {
@@ -29,13 +34,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 10 entries', () => {
-        expect(SUB_TABS).toHaveLength(10);
+    it('has exactly 9 entries', () => {
+        expect(SUB_TABS).toHaveLength(9);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'tasks', 'chat', 'queue', 'workflows', 'schedules', 'templates', 'copilot', 'explorer']);
+        expect(keys).toEqual(['info', 'git', 'tasks', 'activity', 'workflows', 'schedules', 'templates', 'copilot', 'explorer']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {
@@ -46,39 +51,43 @@ describe('RepoDetail SUB_TABS', () => {
     it('has explorer as the last tab', () => {
         expect(SUB_TABS[SUB_TABS.length - 1].key).toBe('explorer');
     });
+
+    it('activity is the fourth entry (after tasks)', () => {
+        expect(SUB_TABS[3].key).toBe('activity');
+    });
 });
 
-describe('RepoDetail Activity tab fallback', () => {
+describe('RepoDetail Activity tab rendering', () => {
     it('activity sub-tab renders RepoActivityTab', () => {
         expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity' && <RepoActivityTab");
     });
 
-    it('activity is not in SUB_TABS (not yet visible in tab strip)', () => {
+    it('activity is in SUB_TABS (visible in tab strip)', () => {
         const activityTab = SUB_TABS.find(t => t.key === 'activity');
-        expect(activityTab).toBeUndefined();
+        expect(activityTab).toBeDefined();
     });
 
     it('activity sub-tab uses overflow-hidden layout like queue', () => {
         expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
         const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
-            l.includes("activeSubTab === 'queue'") && l.includes("activeSubTab === 'activity'") && l.includes('overflow-hidden')
+            l.includes("activeSubTab === 'activity'") && l.includes('overflow-hidden')
         );
         expect(overflowLine).toBeDefined();
     });
 });
 
-describe('RepoDetail RepoChatTab wiring', () => {
-    it('passes ws.rootPath (not ws.path) as workspacePath to RepoChatTab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('workspacePath={ws.rootPath}');
-        expect(REPO_DETAIL_SOURCE).not.toContain('workspacePath={ws.path}');
+describe('RepoDetail legacy Chat/Queue render branches (transitional)', () => {
+    it('still renders RepoChatTab for hidden chat sub-tab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'chat' && <RepoChatTab");
     });
 
-    it('passes initialSessionId from AppContext to RepoChatTab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('initialSessionId={state.selectedChatSessionId}');
+    it('still renders RepoQueueTab for hidden queue sub-tab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue' && <RepoQueueTab");
     });
 
-    it('clears selectedChatSessionId after consuming it (one-shot signal)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null })");
+    it('chat and queue are not in visible SUB_TABS', () => {
+        expect(SUB_TABS.find(t => t.key === 'chat')).toBeUndefined();
+        expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 });
 
@@ -135,23 +144,26 @@ describe('RepoDetail Generate button in header', () => {
     });
 });
 
-describe('RepoDetail Queue badge wiring', () => {
+describe('RepoDetail Activity badge wiring', () => {
     it('imports useRepoQueueStats from hooks', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { useRepoQueueStats } from '../hooks/useRepoQueueStats'");
     });
 
-    it('destructures running, queued, and chatPending from useRepoQueueStats', () => {
+    it('destructures running and queued from useRepoQueueStats', () => {
         expect(REPO_DETAIL_SOURCE).toContain('running: queueRunningCount');
         expect(REPO_DETAIL_SOURCE).toContain('queued: queueQueuedCount');
-        expect(REPO_DETAIL_SOURCE).toContain('chatPending: chatPendingCount');
     });
 
-    it('renders running badge only when queueRunningCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'queue' && queueRunningCount > 0");
+    it('does not destructure chatPending (removed from visible nav)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('chatPending: chatPendingCount');
     });
 
-    it('renders queued badge only when queueQueuedCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'queue' && queueQueuedCount > 0");
+    it('renders activity running badge only when queueRunningCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueRunningCount > 0");
+    });
+
+    it('renders activity queued badge only when queueQueuedCount > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'activity' && queueQueuedCount > 0");
     });
 
     it('running badge uses green background color', () => {
@@ -165,11 +177,11 @@ describe('RepoDetail Queue badge wiring', () => {
     });
 
     it('running badge has data-testid for testing', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="queue-running-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="activity-running-badge"');
     });
 
     it('queued badge has data-testid for testing', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="queue-queued-badge"');
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="activity-queued-badge"');
     });
 
     it('running badge has title attribute', () => {
@@ -195,72 +207,22 @@ describe('RepoDetail Queue badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('existing.running.length > 0 || existing.queued.length > 0 || existing.history.length > 0');
     });
 
-    it('re-fetches when repoQueueMap has only stats-seeded (empty arrays) entry', () => {
-        // The guard should NOT skip fetch when only a stats-only entry exists
-        expect(REPO_DETAIL_SOURCE).toContain('existing.running.length > 0 || existing.queued.length > 0 || existing.history.length > 0');
-        // Verifies the entry is checked for actual task data, not mere existence
-        expect(REPO_DETAIL_SOURCE).not.toContain('if (queueState.repoQueueMap[ws.id]) return');
-    });
-
     it('does not use combined queueCount variable', () => {
         expect(REPO_DETAIL_SOURCE).not.toMatch(/\bqueueCount\b/);
     });
 
     it('does not compute counts from raw repoQueue arrays directly', () => {
-        // Counts now come from useRepoQueueStats, not from repoQueue.running.length
         expect(REPO_DETAIL_SOURCE).not.toContain('repoQueue.running.length');
         expect(REPO_DETAIL_SOURCE).not.toContain('repoQueue.queued.length');
     });
-});
 
-describe('RepoDetail Chat badge wiring', () => {
-    it('destructures chatPending from useRepoQueueStats', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('chatPending: chatPendingCount');
+    it('does not render old queue-running-badge or queue-queued-badge', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="queue-running-badge"');
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="queue-queued-badge"');
     });
 
-    it('does not destructure chatTotal, chatRunning, or chatQueued individually', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('chatTotal: chatTotalCount');
-        expect(REPO_DETAIL_SOURCE).not.toContain('chatRunning: chatRunningCount');
-        expect(REPO_DETAIL_SOURCE).not.toContain('chatQueued: chatQueuedCount');
-    });
-
-    it('renders chat pending badge only when chatPendingCount > 0', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'chat' && chatPendingCount > 0");
-    });
-
-    it('chat pending badge has data-testid for testing', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="chat-pending-badge"');
-    });
-
-    it('chat pending badge uses blue background', () => {
-        const chatPendingLine = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('chat-pending-badge'));
-        expect(chatPendingLine).toContain('bg-[#0078d4]');
-    });
-
-    it('chat pending badge has title attribute', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('title="Pending chats"');
-    });
-
-    it('chat pending badge displays chatPendingCount', () => {
-        const chatPendingLine = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('chat-pending-badge'));
-        expect(chatPendingLine).toContain('{chatPendingCount}');
-    });
-
-    it('does not render old chat-total-badge, chat-running-badge, or chat-queued-badge', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('chat-total-badge');
-        expect(REPO_DETAIL_SOURCE).not.toContain('chat-running-badge');
-        expect(REPO_DETAIL_SOURCE).not.toContain('chat-queued-badge');
-    });
-
-    it('only one chat badge exists (pending)', () => {
-        const chatBadgeMatches = REPO_DETAIL_SOURCE.match(/chat-.*-badge/g) || [];
-        expect(chatBadgeMatches.every(m => m === 'chat-pending-badge')).toBe(true);
-    });
-
-    it('chat badge renders after queue badges', () => {
-        const queueBadgeIdx = REPO_DETAIL_SOURCE.indexOf('queue-queued-badge');
-        const chatBadgeIdx = REPO_DETAIL_SOURCE.indexOf('chat-pending-badge');
-        expect(chatBadgeIdx).toBeGreaterThan(queueBadgeIdx);
+    it('does not render chat-pending-badge', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="chat-pending-badge"');
     });
 });
 
@@ -269,8 +231,9 @@ describe('RepoDetail Resume Queue button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-resume-btn"');
     });
 
-    it('only shows resume button when activeSubTab is queue and isRepoPaused', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue' && isRepoPaused");
+    it('shows resume button when activeSubTab is queue or activity and isRepoPaused', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'queue' || activeSubTab === 'activity'");
+        expect(REPO_DETAIL_SOURCE).toContain('isRepoPaused');
     });
 
     it('resume button appears before Queue Task button', () => {
@@ -296,7 +259,6 @@ describe('RepoDetail Resume Queue button in header', () => {
     it('resume button text contains "Resume Queue"', () => {
         const lines = REPO_DETAIL_SOURCE.split('\n');
         const btnLine = lines.findIndex(l => l.includes('repo-header-resume-btn'));
-        // Check a few lines after for text content
         const nearbyBlock = lines.slice(btnLine, btnLine + 5).join('\n');
         expect(nearbyBlock).toContain('Resume Queue');
     });
@@ -329,14 +291,6 @@ describe('RepoDetail Resume Queue button in header', () => {
 describe('RepoDetail Queue Task button in header', () => {
     it('renders + Queue Task button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-queue-task-btn"');
-    });
-
-    it('is not gated behind activeSubTab queue conditional', () => {
-        const lines = REPO_DETAIL_SOURCE.split('\n');
-        const conditionLine = lines.findIndex(l => l.includes("activeSubTab === 'queue' && ("));
-        const btnLine = lines.findIndex(l => l.includes('repo-queue-task-btn'));
-        expect(conditionLine).toBe(-1);
-        expect(btnLine).toBeGreaterThan(conditionLine);
     });
 
     it('dispatches OPEN_DIALOG with workspaceId on click', () => {
@@ -377,120 +331,45 @@ describe('RepoDetail Git tab wiring', () => {
     });
 
     it('mounts a fresh RepoGitTab on every repo switch via key={ws.id}', () => {
-        // Ensure key prop is set so React fully remounts (and resets all state)
-        // when the user switches between repos, preventing stale actionError/
-        // refreshError from a previous repo appearing in the new one.
         expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
     });
 });
 
-describe('RepoDetail New Chat button in header', () => {
-    it('renders + New Chat button with data-testid', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-btn"');
+describe('RepoDetail New Chat button removed from header', () => {
+    it('does not render repo-new-chat-btn', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-btn"');
     });
 
-    it('uses primary variant and sm size', () => {
-        const line = REPO_DETAIL_SOURCE.split('\n').find(l => l.includes('repo-new-chat-btn'));
-        expect(line).toBeDefined();
-        const idx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
-        expect(block).toContain('variant="primary"');
-        expect(block).toContain('size="sm"');
+    it('does not render repo-new-chat-split-btn', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-split-btn"');
     });
 
-    it('button text is "+ New Chat"', () => {
-        const lines = REPO_DETAIL_SOURCE.split('\n');
-        const btnIdx = lines.findIndex(l => l.includes('repo-new-chat-btn'));
-        const nearbyBlock = lines.slice(btnIdx, btnIdx + 5).join('\n');
-        expect(nearbyBlock).toContain('+ New Chat');
+    it('does not render repo-new-chat-dropdown-toggle', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-dropdown-toggle"');
     });
 
-    it('button appears before Queue Task button', () => {
-        const newChatIdx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
-        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
-        expect(newChatIdx).toBeGreaterThan(-1);
-        expect(newChatIdx).toBeLessThan(queueBtnIdx);
+    it('does not render repo-new-chat-dropdown-menu', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-dropdown-menu"');
     });
 
-    it('has handleNewChatFromTopBar handler that opens the floating chat dialog', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar');
-        const fnStart = REPO_DETAIL_SOURCE.indexOf('handleNewChatFromTopBar');
-        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
-        expect(fnBody).toContain('setChatDialog');
+    it('does not import NewChatDialog', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain("import { NewChatDialog }");
     });
 
-    it('handleNewChatFromTopBar accepts readOnly parameter with default false', () => {
-        const fnStart = REPO_DETAIL_SOURCE.indexOf('const handleNewChatFromTopBar');
-        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
-        expect(fnBody).toContain('readOnly = false');
+    it('does not render NewChatDialog', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('<NewChatDialog');
     });
 
-    it('opens floating chat dialog with readOnly param on click', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('setChatDialog');
-        expect(REPO_DETAIL_SOURCE).toContain('readOnly');
+    it('does not have chatDialog state', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('setChatDialog');
     });
 
-    it('newChatTrigger state is an object with count and readOnly', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false }');
+    it('does not have handleNewChatFromTopBar', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('handleNewChatFromTopBar');
     });
 
-    it('passes newChatTrigger prop to RepoChatTab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('newChatTrigger={newChatTrigger}');
-    });
-
-    it('button has a title attribute', () => {
-        const idx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
-        expect(block).toContain('title=');
-    });
-
-    it('renders split button container with data-testid', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-split-btn"');
-    });
-
-    it('renders dropdown toggle button', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-dropdown-toggle"');
-    });
-
-    it('renders dropdown menu with normal, read-only, and terminal options', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-dropdown-menu"');
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-normal"');
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-readonly"');
-    });
-
-    it('renders terminal option in dropdown (replaces project-root)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-new-chat-option-terminal"');
-        expect(REPO_DETAIL_SOURCE).toContain('New Chat (Terminal)');
-        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-option-project-root"');
-        expect(REPO_DETAIL_SOURCE).not.toContain('New Chat (Project Root)');
-    });
-    it('terminal option calls handleLaunchInTerminal', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('handleLaunchInTerminal');
-    });
-
-    it('handleNewChatFromTopBar does not accept useProjectRoot parameter', () => {
-        const fnStart = REPO_DETAIL_SOURCE.indexOf('const handleNewChatFromTopBar');
-        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 300);
-        expect(fnBody).not.toContain('useProjectRoot');
-    });
-
-    it('newChatTrigger state does not include useProjectRoot', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain('useProjectRoot: false');
-        expect(REPO_DETAIL_SOURCE).toContain('{ count: 0, readOnly: false }');
-    });
-
-    it('read-only option calls handleNewChatFromTopBar(true)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar(true)');
-    });
-
-    it('normal option calls handleNewChatFromTopBar(false)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('handleNewChatFromTopBar(false)');
-    });
-
-    it('primary button calls handleNewChatFromTopBar(false)', () => {
-        const idx = REPO_DETAIL_SOURCE.indexOf('repo-new-chat-btn');
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
-        expect(block).toContain('handleNewChatFromTopBar(false)');
+    it('does not have handleLaunchInTerminal', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('handleLaunchInTerminal');
     });
 });
 
@@ -530,13 +409,6 @@ describe('RepoDetail Wiki badge wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('wikiWarningCount > 0 && wikiGeneratingCount === 0');
     });
 
-    it('no wiki badge conditions include loaded status', () => {
-        expect(REPO_DETAIL_SOURCE).not.toContain("w.status === 'loaded'");
-        expect(REPO_DETAIL_SOURCE).toContain("w.status === 'generating'");
-        expect(REPO_DETAIL_SOURCE).toContain("w.status === 'error'");
-        expect(REPO_DETAIL_SOURCE).toContain("w.status === 'pending'");
-    });
-
     it('filters wikis by ws.rootPath for badge counts', () => {
         expect(REPO_DETAIL_SOURCE).toContain('w.repoPath === ws.rootPath');
     });
@@ -557,36 +429,26 @@ describe('RepoDetail switchSubTab git deep-link', () => {
         const switchFnStart = REPO_DETAIL_SOURCE.indexOf('const switchSubTab');
         const switchFnBody = REPO_DETAIL_SOURCE.slice(switchFnStart, switchFnStart + 400);
         expect(switchFnBody).toContain("if (tab !== 'git')");
-        // Ensure the dispatch is inside the conditional (not unconditional)
         const hashDispatchIdx = switchFnBody.indexOf("SET_GIT_COMMIT_HASH");
         const ifIdx = switchFnBody.indexOf("if (tab !== 'git')");
         expect(hashDispatchIdx).toBeGreaterThan(ifIdx);
     });
 });
 
-describe('RepoDetail cross-repo event leakage fixes', () => {
-    it('adds key={ws.id} to RepoChatTab to force remount on workspace switch', () => {
-        const chatTabLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
-            l.includes('RepoChatTab') && l.includes('workspaceId={ws.id}')
-        );
-        expect(chatTabLine).toBeDefined();
-        expect(chatTabLine).toContain('key={ws.id}');
+describe('RepoDetail MobileTabBar Activity badge wiring', () => {
+    it('passes activityCount to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('activityCount={');
     });
 
-    it('RepoChatTab key appears before workspaceId on the same line', () => {
-        const chatTabLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
-            l.includes('RepoChatTab') && l.includes('workspaceId={ws.id}')
-        );
-        expect(chatTabLine).toBeDefined();
-        const keyIdx = chatTabLine!.indexOf('key={ws.id}');
-        const wsIdx = chatTabLine!.indexOf('workspaceId={ws.id}');
-        expect(keyIdx).toBeGreaterThan(-1);
-        expect(wsIdx).toBeGreaterThan(-1);
-        expect(keyIdx).toBeLessThan(wsIdx);
+    it('does not pass chatPendingCount to MobileTabBar', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('chatPendingCount={');
     });
 
-    it('RepoChatTab uses same key pattern as RepoGitTab', () => {
-        expect(REPO_DETAIL_SOURCE).toMatch(/<RepoChatTab key=\{ws\.id\}/);
-        expect(REPO_DETAIL_SOURCE).toMatch(/<RepoGitTab key=\{ws\.id\}/);
+    it('does not pass queueRunningCount directly to MobileTabBar', () => {
+        const mobileBarSection = REPO_DETAIL_SOURCE.substring(
+            REPO_DETAIL_SOURCE.indexOf('<MobileTabBar'),
+            REPO_DETAIL_SOURCE.indexOf('<MobileTabBar') + 400,
+        );
+        expect(mobileBarSection).not.toContain('queueRunningCount={');
     });
 });

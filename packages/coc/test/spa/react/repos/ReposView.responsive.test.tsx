@@ -397,7 +397,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(10);
+        expect(tabs.length).toBe(9);
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');
@@ -409,7 +409,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         Element.prototype.scrollIntoView = scrollIntoViewMock;
 
         const repo = makeRepo();
-        mockAppState.activeRepoSubTab = 'chat';
+        mockAppState.activeRepoSubTab = 'activity';
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         expect(scrollIntoViewMock).toHaveBeenCalledWith({

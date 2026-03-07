@@ -24,10 +24,8 @@ import { WorkflowDetailView } from '../processes/dag';
 import { AddRepoDialog } from './AddRepoDialog';
 
 import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
-import { NewChatDialog } from '../chat/NewChatDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
-import { useGlobalToast } from '../context/ToastContext';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
 import { MobileTabBar } from '../layout/MobileTabBar';
 import type { RepoData } from './repoGrouping';
@@ -43,8 +41,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'info', label: 'Info' },
     { key: 'git', label: 'Git' },
     { key: 'tasks', label: 'Tasks' },
-    { key: 'chat', label: 'Chats' },
-    { key: 'queue', label: 'Queue' },
+    { key: 'activity', label: 'Activity' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'templates', label: 'Templates' },
@@ -55,7 +52,6 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
-    const { addToast } = useGlobalToast();
     const { isMobile } = useBreakpoint();
     const [editOpen, setEditOpen] = useState(false);
     const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -64,16 +60,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         minimized: boolean;
         targetFolder: string | undefined;
     }>({ open: false, minimized: false, targetFolder: undefined });
-    const [chatDialog, setChatDialog] = useState<{
-        open: boolean;
-        minimized: boolean;
-        readOnly: boolean;
-    }>({ open: false, minimized: false, readOnly: false });
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
-    const { running: queueRunningCount, queued: queueQueuedCount, chatPending: chatPendingCount } = useRepoQueueStats(ws.id);
+    const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -86,8 +77,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
-    const [newChatTrigger, setNewChatTrigger] = useState<{ count: number; readOnly: boolean }>({ count: 0, readOnly: false });
-    const newChatTriggerProcessedRef = useRef(0);
     const tabStripRef = useRef<HTMLDivElement>(null);
     const moreMenuRef = useRef<HTMLDivElement>(null);
     const [tabScrollState, setTabScrollState] = useState<{ canScrollLeft: boolean; canScrollRight: boolean }>({ canScrollLeft: false, canScrollRight: false });
@@ -183,41 +172,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         setGenerateDialog({ open: true, minimized: false, targetFolder });
     }, []);
 
-    const [newChatDropdownOpen, setNewChatDropdownOpen] = useState(false);
-    const newChatDropdownRef = useRef<HTMLDivElement>(null);
-
-    // Close dropdown when clicking outside
-    useEffect(() => {
-        if (!newChatDropdownOpen) return;
-        const handler = (e: MouseEvent) => {
-            if (newChatDropdownRef.current && !newChatDropdownRef.current.contains(e.target as Node)) {
-                setNewChatDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [newChatDropdownOpen]);
-
-    const handleNewChatFromTopBar = useCallback((readOnly = false) => {
-        setChatDialog({ open: true, minimized: false, readOnly });
-    }, []);
-
-    const handleLaunchInTerminal = useCallback(async () => {
-        try {
-            const response = await fetch(getApiBase() + '/chat/launch-terminal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workingDirectory: ws.rootPath }),
-            });
-            if (!response.ok) {
-                const body = await response.json().catch(() => null);
-                throw new Error(body?.error ?? `Launch failed (${response.status})`);
-            }
-        } catch (err: any) {
-            addToast(err?.message ?? 'Failed to launch chat terminal', 'error');
-        }
-    }, [ws.rootPath, addToast]);
-
     const handleRemove = async () => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
         await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(ws.id), { method: 'DELETE' });
@@ -255,7 +209,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 </div>
                 {/* Action buttons */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                    {activeSubTab === 'queue' && isRepoPaused && (
+                    {(activeSubTab === 'queue' || activeSubTab === 'activity') && isRepoPaused && (
                         <Button
                             variant="secondary"
                             size="sm"
@@ -265,58 +219,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         >
                             ▶ Resume Queue
                         </Button>
-                    )}
-                    {/* New Chat — hidden on mobile when Chat tab is active (dedup with sidebar) */}
-                    {!(isMobile && activeSubTab === 'chat') && (
-                        <div className="relative inline-flex" ref={newChatDropdownRef} data-testid="repo-new-chat-split-btn">
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => handleNewChatFromTopBar(false)}
-                                title="Start a new chat"
-                                data-testid="repo-new-chat-btn"
-                                className="rounded-r-none"
-                            >
-                                {isMobile ? '+' : '+ New Chat'}
-                            </Button>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => setNewChatDropdownOpen(prev => !prev)}
-                                data-testid="repo-new-chat-dropdown-toggle"
-                                className="rounded-l-none border-l border-white/30 px-1.5"
-                            >
-                                ▾
-                            </Button>
-                            {newChatDropdownOpen && (
-                                <div
-                                    className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
-                                    data-testid="repo-new-chat-dropdown-menu"
-                                >
-                                    <button
-                                        className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                        data-testid="repo-new-chat-option-normal"
-                                        onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(false); }}
-                                    >
-                                        New Chat
-                                    </button>
-                                    <button
-                                        className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                        data-testid="repo-new-chat-option-readonly"
-                                        onClick={() => { setNewChatDropdownOpen(false); handleNewChatFromTopBar(true); }}
-                                    >
-                                        New Chat (Read-Only)
-                                    </button>
-                                    <button
-                                        className="w-full text-left px-3 py-2 text-xs hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                        data-testid="repo-new-chat-option-terminal"
-                                        onClick={() => { setNewChatDropdownOpen(false); void handleLaunchInTerminal(); }}
-                                    >
-                                        New Chat (Terminal)
-                                    </button>
-                                </div>
-                            )}
-                        </div>
                     )}
                     {/* On mobile: collapse Queue Task, Generate, Edit, Remove into overflow menu */}
                     {isMobile ? (
@@ -433,14 +335,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {t.key === 'tasks' && taskCount > 0 && (
                             <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
                         )}
-                        {t.key === 'queue' && queueRunningCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="queue-running-badge" title="Running">{queueRunningCount}</span>
+                        {t.key === 'activity' && queueRunningCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
                         )}
-                        {t.key === 'queue' && queueQueuedCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="queue-queued-badge" title="Queued">{queueQueuedCount}</span>
-                        )}
-                        {t.key === 'chat' && chatPendingCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="chat-pending-badge" title="Pending chats">{chatPendingCount}</span>
+                        {t.key === 'activity' && queueQueuedCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
                         )}
                         {t.key === 'wiki' && wikiGeneratingCount > 0 && (
                             <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
@@ -468,9 +367,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     onTabChange={switchSubTab}
                     tabs={SUB_TABS}
                     taskCount={taskCount}
-                    queueRunningCount={queueRunningCount}
-                    queueQueuedCount={queueQueuedCount}
-                    chatPendingCount={chatPendingCount}
+                    activityCount={queueRunningCount + queueQueuedCount}
                 />
             )}
 
@@ -486,7 +383,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'activity' && <RepoActivityTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
                         {activeSubTab === 'templates' && <RepoTemplatesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'chat' && <RepoChatTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} onOpenNewChatDialog={(readOnly) => handleNewChatFromTopBar(readOnly)} />}
+                        {activeSubTab === 'chat' && <RepoChatTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab workspaceId={ws.id} />}
@@ -508,19 +405,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     onSuccess={() => {
                         setGenerateDialog({ open: false, minimized: false, targetFolder: undefined });
                     }}
-                />
-            )}
-
-            {/* New Chat floating dialog */}
-            {chatDialog.open && (
-                <NewChatDialog
-                    workspaceId={ws.id}
-                    workspacePath={ws.rootPath}
-                    readOnly={chatDialog.readOnly}
-                    minimized={chatDialog.minimized}
-                    onMinimize={() => setChatDialog(prev => ({ ...prev, minimized: true }))}
-                    onRestore={() => setChatDialog(prev => ({ ...prev, minimized: false }))}
-                    onClose={() => setChatDialog({ open: false, minimized: false, readOnly: false })}
                 />
             )}
 

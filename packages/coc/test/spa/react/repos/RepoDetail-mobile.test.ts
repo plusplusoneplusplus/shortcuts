@@ -110,14 +110,13 @@ describe('RepoDetail mobile: overflow menu', () => {
     });
 });
 
-describe('RepoDetail mobile: New Chat button deduplication', () => {
-    it('hides New Chat button on mobile when chat tab is active', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("isMobile && activeSubTab === 'chat'");
+describe('RepoDetail mobile: New Chat button removed from header', () => {
+    it('does not render New Chat button (removed in Activity cutover)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-new-chat-btn"');
     });
 
-    it('uses conditional rendering to hide (not CSS display:none)', () => {
-        // It should use !(isMobile && chat) guard, not display class
-        expect(REPO_DETAIL_SOURCE).toContain("!(isMobile && activeSubTab === 'chat')");
+    it('does not have chat deduplication guard (no longer needed)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain("!(isMobile && activeSubTab === 'chat')");
     });
 });
 
@@ -236,9 +235,7 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
 
     it('passes badge counts to MobileTabBar', () => {
         expect(REPO_DETAIL_SOURCE).toContain('taskCount={taskCount}');
-        expect(REPO_DETAIL_SOURCE).toContain('queueRunningCount={queueRunningCount}');
-        expect(REPO_DETAIL_SOURCE).toContain('queueQueuedCount={queueQueuedCount}');
-        expect(REPO_DETAIL_SOURCE).toContain('chatPendingCount={chatPendingCount}');
+        expect(REPO_DETAIL_SOURCE).toContain('activityCount={');
     });
 
     it('hides top tab strip on mobile', () => {
