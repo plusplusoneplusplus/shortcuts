@@ -1,4 +1,3 @@
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGNodeData } from './types';
 import { getNodeColors, getNodeIcon } from './dag-colors';
 import { formatDuration } from '../../utils/format';
@@ -11,9 +10,9 @@ export interface DAGNodeProps {
     x: number;
     y: number;
     isDark: boolean;
-    onClick?: (phase: PipelinePhase) => void;
-    onMouseEnter?: (phase: PipelinePhase, e: React.MouseEvent) => void;
-    onMouseLeave?: (phase: PipelinePhase) => void;
+    onClick?: (phase: string) => void;
+    onMouseEnter?: (phase: string, e: React.MouseEvent) => void;
+    onMouseLeave?: (phase: string) => void;
     elapsedMs?: number;
     selected?: boolean;
     parallelCount?: number;

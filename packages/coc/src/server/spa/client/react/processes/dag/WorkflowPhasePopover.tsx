@@ -1,11 +1,10 @@
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGNodeState } from './types';
 import { cn } from '../../shared/cn';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 
 export interface PhaseDetail {
-    phase: PipelinePhase;
+    phase: string;
     status: DAGNodeState;
     durationMs?: number;
     error?: string;

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
 import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildDAGData } from './buildDAGData';
 import { MapItemGrid } from './MapItemGrid';
@@ -30,7 +29,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
     const [children, setChildren] = useState<ChildProcess[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [expandedPhase, setExpandedPhase] = useState<PipelinePhase | null>(null);
+    const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
     const [now, setNow] = useState(Date.now());
     const [selectedItemProcessId, setSelectedItemProcessId] = useState<string | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);

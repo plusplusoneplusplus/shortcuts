@@ -1,8 +1,8 @@
 import type { DAGChartData, DAGNodeData, DAGNodeState } from './types';
-import type { PipelinePhase, PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
 import type { LivePhaseEntry, LiveProgress } from '../../hooks/useWorkflowPhase';
 
-const phaseLabels: Record<PipelinePhase, string> = {
+const knownPhaseLabels: Record<string, string> = {
     input: 'Input',
     filter: 'Filter',
     map: 'Map',
@@ -10,12 +10,17 @@ const phaseLabels: Record<PipelinePhase, string> = {
     job: 'Job',
 };
 
+/** Return a display label for a phase/node ID, falling back to the ID itself. */
+function phaseLabel(phase: string): string {
+    return knownPhaseLabels[phase] ?? phase;
+}
+
 function deriveNodeStates(
-    phases: PipelinePhase[],
+    phases: string[],
     processStatus: string,
     phaseInfos?: Array<{ phase: string; status: string }>,
-): Record<PipelinePhase, DAGNodeState> {
-    const states: Partial<Record<PipelinePhase, DAGNodeState>> = {};
+): Record<string, DAGNodeState> {
+    const states: Record<string, DAGNodeState> = {};
 
     if (processStatus === 'completed') {
         for (const p of phases) states[p] = 'completed';
@@ -71,7 +76,7 @@ function deriveNodeStates(
         for (const p of phases) states[p] = 'waiting';
     }
 
-    return states as Record<PipelinePhase, DAGNodeState>;
+    return states;
 }
 
 export function buildDAGData(process: any): DAGChartData | null {
@@ -94,7 +99,7 @@ export function buildDAGData(process: any): DAGChartData | null {
     if (!stats && !pipelinePhases) return null;
 
     // Determine which phases exist
-    const phases: PipelinePhase[] = [];
+    const phases: string[] = [];
     phases.push('input');
 
     const hasFilter = stats?.filterPhaseTimeMs != null ||
@@ -124,7 +129,7 @@ export function buildDAGData(process: any): DAGChartData | null {
         const node: DAGNodeData = {
             phase,
             state: stateMap[phase],
-            label: phaseLabels[phase],
+            label: phaseLabel(phase),
         };
 
         if (phase === 'map' && stats) {
@@ -167,19 +172,19 @@ const phaseStatusToNodeState: Record<PipelinePhaseStatus, DAGNodeState> = {
  * Used when a workflow process is actively running.
  */
 export function buildDAGDataFromLive(
-    phases: Map<PipelinePhase, LivePhaseEntry>,
+    phases: Map<string, LivePhaseEntry>,
     progress: LiveProgress | null,
     metadata?: any,
 ): DAGChartData | null {
     if (phases.size === 0) return null;
 
     // Determine ordered phase list from metadata or from the live phases
-    const orderedPhases: PipelinePhase[] = [];
-    const canonicalOrder: PipelinePhase[] = ['input', 'filter', 'map', 'reduce', 'job'];
+    const orderedPhases: string[] = [];
+    const canonicalOrder: string[] = ['input', 'filter', 'map', 'reduce', 'job'];
 
     // Prefer metadata-based ordering if available (includes future phases)
     if (metadata?.pipelinePhases && Array.isArray(metadata.pipelinePhases)) {
-        const seen = new Set<PipelinePhase>();
+        const seen = new Set<string>();
         for (const p of metadata.pipelinePhases) {
             if (!seen.has(p.phase)) {
                 seen.add(p.phase);
@@ -188,9 +193,14 @@ export function buildDAGDataFromLive(
         }
     }
 
-    // Add any phases from live data not yet in the list
+    // Add any phases from live data not yet in the list — canonical phases first, then remaining
     for (const phase of canonicalOrder) {
         if (phases.has(phase) && !orderedPhases.includes(phase)) {
+            orderedPhases.push(phase);
+        }
+    }
+    for (const phase of phases.keys()) {
+        if (!orderedPhases.includes(phase)) {
             orderedPhases.push(phase);
         }
     }
@@ -206,7 +216,7 @@ export function buildDAGDataFromLive(
         const node: DAGNodeData = {
             phase,
             state,
-            label: phaseLabels[phase],
+            label: phaseLabel(phase),
         };
 
         if (liveEntry?.durationMs != null) {

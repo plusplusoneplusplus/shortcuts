@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { PipelinePhase, PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
 import { DAGEdge } from './DAGEdge';
@@ -18,7 +18,7 @@ import type { EdgeState } from './dag-colors';
 export interface WorkflowDAGChartProps {
     data: DAGChartData;
     isDark: boolean;
-    onNodeClick?: (phase: PipelinePhase) => void;
+    onNodeClick?: (phase: string) => void;
     /** Current timestamp, used to compute elapsed time for running nodes. */
     now?: number;
     /** Phase detail metadata keyed by phase name. */
@@ -53,7 +53,7 @@ function deriveEdgeState(fromState: string, toState: string): EdgeState {
 
 export function WorkflowDAGChart({ data, isDark, onNodeClick, now, phaseDetails, onScrollToConversation, parallelCount, pipelineConfig, validationErrors, previewMode, onMapNodeExpand, mapExpanded }: WorkflowDAGChartProps) {
     const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
-    const [hoveredPhase, setHoveredPhase] = useState<PipelinePhase | null>(null);
+    const [hoveredPhase, setHoveredPhase] = useState<string | null>(null);
     const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -62,7 +62,7 @@ export function WorkflowDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
     const nodeCount = data.nodes.length;
     if (nodeCount === 0) return null;
 
-    const handleNodeClick = (phase: PipelinePhase) => {
+    const handleNodeClick = (phase: string) => {
         setSelectedPhase(prev => prev === phase ? null : phase);
         // Dismiss hover tooltip on click
         setHoveredPhase(null);
@@ -106,7 +106,7 @@ export function WorkflowDAGChart({ data, isDark, onNodeClick, now, phaseDetails,
         };
     }, []);
 
-    const handleNodeMouseEnter = (phase: PipelinePhase, e: React.MouseEvent) => {
+    const handleNodeMouseEnter = (phase: string, e: React.MouseEvent) => {
         if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
         setHoveredPhase(phase);
         if (containerRef.current) {

@@ -1,13 +1,11 @@
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
-
 export interface PhaseErrors {
-    /** Errors mapped to specific phases, keyed by PipelinePhase */
-    byPhase: Partial<Record<PipelinePhase, string[]>>;
+    /** Errors mapped to specific phases, keyed by node ID */
+    byPhase: Record<string, string[]>;
     /** Errors that could not be mapped to any specific phase */
     unmapped: string[];
 }
 
-const phaseKeywords: Array<{ phase: PipelinePhase; keywords: string[] }> = [
+const phaseKeywords: Array<{ phase: string; keywords: string[] }> = [
     { phase: 'input',  keywords: ['input', 'csv', 'path', 'file', 'source'] },
     { phase: 'filter', keywords: ['filter'] },
     { phase: 'map',    keywords: ['map', 'prompt', 'output', 'model', 'parallel', 'concurrency', 'batch'] },
@@ -44,7 +42,7 @@ export interface GetNodeErrorsOptions {
     /** When true, unmapped errors are only shown on the first node (by `firstPhase`), not all nodes. */
     previewMode?: boolean;
     /** The phase of the first node in the DAG — receives unmapped errors in preview mode. */
-    firstPhase?: PipelinePhase;
+    firstPhase?: string;
 }
 
 /**
@@ -52,7 +50,7 @@ export interface GetNodeErrorsOptions {
  * In normal mode, returns phase-specific errors plus unmapped errors (shown on all nodes).
  * In preview mode, unmapped errors are only shown on the first node to avoid misleading badges.
  */
-export function getNodeErrors(phaseErrors: PhaseErrors, phase: PipelinePhase, options?: GetNodeErrorsOptions): string[] {
+export function getNodeErrors(phaseErrors: PhaseErrors, phase: string, options?: GetNodeErrorsOptions): string[] {
     const specific = phaseErrors.byPhase[phase] ?? [];
     if (options?.previewMode) {
         const isFirst = phase === options.firstPhase;

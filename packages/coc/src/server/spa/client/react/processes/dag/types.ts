@@ -1,9 +1,7 @@
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
-
 export type DAGNodeState = 'waiting' | 'running' | 'completed' | 'failed' | 'skipped' | 'cancelled';
 
 export interface DAGNodeData {
-    phase: PipelinePhase;
+    phase: string;
     state: DAGNodeState;
     label: string;
     itemCount?: number;

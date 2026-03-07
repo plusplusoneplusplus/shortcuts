@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { PipelinePhase, PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
 import type { DAGChartData } from '../processes/dag/types';
 import { buildDAGDataFromLive } from '../processes/dag/buildDAGData';
 
@@ -27,7 +27,7 @@ export interface LiveProgress {
 
 export interface UsePipelinePhaseResult {
     dagData: DAGChartData | null;
-    phases: Map<PipelinePhase, LivePhaseEntry>;
+    phases: Map<string, LivePhaseEntry>;
     progress: LiveProgress | null;
     disconnected: boolean;
 }
@@ -38,7 +38,7 @@ export function useWorkflowPhase(
     eventSource: EventSource | null,
     metadata: any | undefined,
 ): UsePipelinePhaseResult {
-    const [phases, setPhases] = useState<Map<PipelinePhase, LivePhaseEntry>>(new Map());
+    const [phases, setPhases] = useState<Map<string, LivePhaseEntry>>(new Map());
     const [progress, setProgress] = useState<LiveProgress | null>(null);
     const [disconnected, setDisconnected] = useState(false);
 
@@ -69,7 +69,7 @@ export function useWorkflowPhase(
         const handlePhase = (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
-                const phase = data.phase as PipelinePhase;
+                const phase = data.phase as string;
                 const status = data.status as PipelinePhaseStatus;
                 setPhasesRef.current(prev => {
                     const next = new Map(prev);

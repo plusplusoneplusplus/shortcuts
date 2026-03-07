@@ -1,11 +1,9 @@
-import type { PipelinePhase } from '@plusplusoneplusplus/pipeline-core';
-
 /**
  * Compute the short badge text for an edge between two phases.
  */
 export function getEdgeBadgeText(
-    fromPhase: PipelinePhase,
-    toPhase: PipelinePhase,
+    fromPhase: string,
+    toPhase: string,
     config?: any,
 ): string | null {
     if (!config) return null;
@@ -55,8 +53,8 @@ function getMapOutputBadge(config: any): string | null {
  * Compute the full schema text for an edge hover tooltip.
  */
 export function getEdgeSchemaText(
-    fromPhase: PipelinePhase,
-    toPhase: PipelinePhase,
+    fromPhase: string,
+    toPhase: string,
     config?: any,
 ): string | null {
     if (!config) return null;

@@ -1,7 +1,7 @@
-import type { PipelinePhase, PipelineConfig, InputConfig, FilterConfig, MapConfig, ReduceConfig, JobConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelineConfig, InputConfig, FilterConfig, MapConfig, ReduceConfig, JobConfig } from '@plusplusoneplusplus/pipeline-core';
 
 export interface DAGHoverTooltipProps {
-    phase: PipelinePhase;
+    phase: string;
     config: PipelineConfig;
     anchor: { x: number; y: number };
     onMouseEnter: () => void;
@@ -136,7 +136,7 @@ const phaseLabels: Record<string, string> = {
     job: 'Job',
 };
 
-function PhaseTooltipContent({ phase, config }: { phase: PipelinePhase; config: PipelineConfig }) {
+function PhaseTooltipContent({ phase, config }: { phase: string; config: PipelineConfig }) {
     switch (phase) {
         case 'input':
             return config.input ? <InputTooltip config={config.input} /> : null;
