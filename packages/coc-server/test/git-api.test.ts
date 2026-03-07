@@ -227,6 +227,62 @@ describe('Git API endpoints', () => {
     });
 
     // ========================================================================
+    // GET /api/workspaces/:id/git/commits/:hash (single commit)
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/git/commits/:hash', () => {
+        it('returns single commit details', async () => {
+            const logOutput = 'abc123def456789\nabc123d\nInitial commit\nJohn Doe\njohn@example.com\n2026-01-15T10:00:00+00:00\n\nBody text';
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('log -1')) return logOutput;
+                return '';
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456789`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.hash).toBe('abc123def456789');
+            expect(data.shortHash).toBe('abc123d');
+            expect(data.subject).toBe('Initial commit');
+            expect(data.author).toBe('John Doe');
+            expect(data.authorEmail).toBe('john@example.com');
+            expect(data.body).toBe('Body text');
+        });
+
+        it('returns 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/unknown-ws/git/commits/abc123def456789`);
+            expect(res.status).toBe(404);
+        });
+
+        it('returns 404 when commit does not exist', async () => {
+            mockExecSync.mockImplementation(() => {
+                throw new Error('fatal: bad object');
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/deadbeefdeadbeef`);
+            expect(res.status).toBe(404);
+        });
+
+        it('caches the result on subsequent calls', async () => {
+            const logOutput = 'abc123def456789\nabc123d\nCached commit\nDev\ndev@test.com\n2026-01-01T00:00:00Z\n\n';
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('log -1')) return logOutput;
+                return '';
+            });
+
+            const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456789`);
+            expect(res1.status).toBe(200);
+
+            // Second call should use cache — reset mock to confirm it's not called again
+            mockExecSync.mockReset();
+            const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456789`);
+            expect(res2.status).toBe(200);
+            expect(res2.json().subject).toBe('Cached commit');
+            expect(mockExecSync).not.toHaveBeenCalled();
+        });
+    });
+
+    // ========================================================================
     // GET /api/workspaces/:id/git-info
     // ========================================================================
 

@@ -450,6 +450,50 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // GET /api/workspaces/:id/git/commits/:hash — Single commit details
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const hash = match![2];
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+
+            const cacheKey = `${id}:commit:${hash}`;
+            const cached = gitCache.get<Record<string, string>>(cacheKey);
+            if (cached) {
+                return sendJSON(res, 200, cached);
+            }
+
+            try {
+                const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
+                const raw = execGitSync(`log -1 --format="${format}" ${hash}`, ws.rootPath);
+                const lines = raw.trim().split('\n');
+                if (lines.length < 6) {
+                    return handleAPIError(res, notFound('Commit'));
+                }
+                const result = {
+                    hash: lines[0],
+                    shortHash: lines[1],
+                    subject: lines[2],
+                    author: lines[3],
+                    authorEmail: lines[4],
+                    date: lines[5],
+                    parentHashes: lines[6] ? lines[6].split(' ').filter(Boolean) : [],
+                    body: lines.slice(7).join('\n').trim(),
+                };
+                gitCache.set(cacheKey, result);
+                sendJSON(res, 200, result);
+            } catch {
+                return handleAPIError(res, notFound('Commit'));
+            }
+        },
+    });
+
     // GET /api/workspaces/:id/git/commits/:hash/files — Files changed in a commit
     routes.push({
         method: 'GET',
