@@ -17,15 +17,21 @@ const REPO_QUEUE_TAB_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoQueueTab.tsx'
 );
 
+const ACTIVITY_LIST_PANE_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityListPane.tsx'
+);
+
 const QUEUE_TASK_DETAIL_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'QueueTaskDetail.tsx'
 );
 
 describe('RepoQueueTab split-panel layout', () => {
     let source: string;
+    let listPaneSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_QUEUE_TAB_PATH, 'utf-8');
+        listPaneSource = fs.readFileSync(ACTIVITY_LIST_PANE_PATH, 'utf-8');
     });
 
     describe('split-panel container', () => {
@@ -71,36 +77,36 @@ describe('RepoQueueTab split-panel layout', () => {
 
     describe('selected state highlighting', () => {
         it('QueueTaskItem accepts selected prop', () => {
-            expect(source).toContain('selected?: boolean');
+            expect(listPaneSource).toContain('selected?: boolean');
         });
 
         it('applies ring-2 ring-[#0078d4] when selected', () => {
-            expect(source).toContain('ring-2 ring-[#0078d4]');
+            expect(listPaneSource).toContain('ring-2 ring-[#0078d4]');
         });
 
         it('passes selected prop to running task items', () => {
-            expect(source).toContain('selected={selectedTaskId === task.id}');
+            expect(listPaneSource).toContain('selected={selectedTaskId === task.id}');
         });
 
         it('uses cursor-pointer class on task items', () => {
-            expect(source).toContain('cursor-pointer');
+            expect(listPaneSource).toContain('cursor-pointer');
         });
     });
 
     describe('history items are clickable', () => {
         it('history Card has onClick handler for selection', () => {
             // The history Card should have onClick to select the task
-            const historySection = source.slice(source.indexOf('Completed Tasks'));
-            expect(historySection).toContain('onClick={() => selectTask(task.id, task)');
+            const historySection = listPaneSource.slice(listPaneSource.indexOf('Completed Tasks'));
+            expect(historySection).toContain('onClick={() => onSelectTask(task.id, task)');
         });
 
         it('history Card has cursor-pointer class', () => {
-            const historySection = source.slice(source.indexOf('Completed Tasks'));
+            const historySection = listPaneSource.slice(listPaneSource.indexOf('Completed Tasks'));
             expect(historySection).toContain('cursor-pointer');
         });
 
         it('history Card applies selected ring highlight', () => {
-            const historySection = source.slice(source.indexOf('Completed Tasks'));
+            const historySection = listPaneSource.slice(listPaneSource.indexOf('Completed Tasks'));
             expect(historySection).toContain('ring-2 ring-[#0078d4]');
         });
     });
@@ -158,33 +164,33 @@ describe('RepoQueueTab split-panel layout', () => {
 
     describe('history default expanded', () => {
         it('showHistory defaults to true so completed tasks are visible on load', () => {
-            expect(source).toContain('useState(true)');
+            expect(listPaneSource).toContain('useState(true)');
             // Verify it's the showHistory state specifically
-            expect(source).toMatch(/\[showHistory,\s*setShowHistory\]\s*=\s*useState\(true\)/);
+            expect(listPaneSource).toMatch(/\[showHistory,\s*setShowHistory\]\s*=\s*useState\(true\)/);
         });
     });
 
     describe('preserves existing functionality', () => {
         it('still has pause/resume toolbar', () => {
-            expect(source).toContain('data-testid="repo-pause-resume-btn"');
+            expect(listPaneSource).toContain('data-testid="repo-pause-resume-btn"');
         });
 
         it('still has pause-aware empty state', () => {
-            expect(source).toContain('Queue is paused');
-            expect(source).toContain('No tasks in queue');
+            expect(listPaneSource).toContain('Queue is paused');
+            expect(listPaneSource).toContain('No tasks in queue');
         });
 
         it('still shows running/queued/history sections', () => {
-            expect(source).toContain('Running Tasks');
-            expect(source).toContain('Queued Tasks');
-            expect(source).toContain('Completed Tasks');
+            expect(listPaneSource).toContain('Running Tasks');
+            expect(listPaneSource).toContain('Queued Tasks');
+            expect(listPaneSource).toContain('Completed Tasks');
         });
 
         it('still uses correct API paths for cancel/move', () => {
-            expect(source).not.toContain('/queue/tasks/');
-            expect(source).toContain("method: 'DELETE'");
-            expect(source).toContain("+ '/move-up'");
-            expect(source).toContain("+ '/move-to-top'");
+            expect(listPaneSource).not.toContain('/queue/tasks/');
+            expect(listPaneSource).toContain("method: 'DELETE'");
+            expect(listPaneSource).toContain("+ '/move-up'");
+            expect(listPaneSource).toContain("+ '/move-to-top'");
         });
     });
 });
@@ -231,9 +237,11 @@ describe('QueueTaskDetail repoQueueMap lookup', () => {
 
 describe('RepoQueueTab URL deep-link support', () => {
     let source: string;
+    let listPaneSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_QUEUE_TAB_PATH, 'utf-8');
+        listPaneSource = fs.readFileSync(ACTIVITY_LIST_PANE_PATH, 'utf-8');
     });
 
     describe('hash update on task selection', () => {
@@ -302,14 +310,14 @@ describe('RepoQueueTab URL deep-link support', () => {
 
     describe('data-task-id attributes', () => {
         it('QueueTaskItem Card has data-task-id', () => {
-            const itemIdx = source.indexOf('function QueueTaskItem');
-            const itemBlock = source.slice(itemIdx);
+            const itemIdx = listPaneSource.indexOf('function QueueTaskItem');
+            const itemBlock = listPaneSource.slice(itemIdx);
             expect(itemBlock).toContain('data-task-id={task.id}');
         });
 
         it('history Card has data-task-id', () => {
-            const historyIdx = source.indexOf('Completed Tasks');
-            const historyBlock = source.slice(historyIdx, historyIdx + 900);
+            const historyIdx = listPaneSource.indexOf('Completed Tasks');
+            const historyBlock = listPaneSource.slice(historyIdx, historyIdx + 900);
             expect(historyBlock).toContain('data-task-id={task.id}');
         });
     });

@@ -16,11 +16,17 @@ const REPO_QUEUE_TAB_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoQueueTab.tsx'
 );
 
+const ACTIVITY_LIST_PANE_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityListPane.tsx'
+);
+
 describe('RepoQueueTab pause/resume', () => {
     let source: string;
+    let listPaneSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_QUEUE_TAB_PATH, 'utf-8');
+        listPaneSource = fs.readFileSync(ACTIVITY_LIST_PANE_PATH, 'utf-8');
     });
 
     describe('state declarations', () => {
@@ -99,95 +105,95 @@ describe('RepoQueueTab pause/resume', () => {
 
     describe('toolbar UI', () => {
         it('renders pause/resume button with distinct data-testid', () => {
-            expect(source).toContain('data-testid="repo-pause-resume-btn"');
+            expect(listPaneSource).toContain('data-testid="repo-pause-resume-btn"');
         });
 
         it('does not use the global pause-resume-btn testid', () => {
             // All occurrences should be prefixed with "repo-"
-            const matches = source.match(/data-testid="pause-resume-btn"/g);
+            const matches = listPaneSource.match(/data-testid="pause-resume-btn"/g);
             expect(matches).toBeNull();
         });
 
         it('shows Paused badge when isPaused is true', () => {
-            expect(source).toContain('isPaused && <Badge');
-            expect(source).toContain('Paused');
+            expect(listPaneSource).toContain('isPaused && <Badge');
+            expect(listPaneSource).toContain('Paused');
         });
 
         it('toolbar visibility depends on isPaused or active queue items', () => {
-            expect(source).toContain('isPaused || running.length > 0 || queued.length > 0');
+            expect(listPaneSource).toContain('isPaused || running.length > 0 || queued.length > 0');
         });
 
         it('button shows ▶ when paused and ⏸ when running', () => {
             // Check the ternary for button content
-            expect(source).toMatch(/isPaused \? '▶' : '⏸'/);
+            expect(listPaneSource).toMatch(/isPaused \? '▶' : '⏸'/);
         });
 
         it('button is disabled during loading', () => {
-            expect(source).toContain('disabled={isPauseResumeLoading}');
+            expect(listPaneSource).toContain('disabled={isPauseResumeLoading}');
         });
     });
 
     describe('empty state', () => {
         it('has pause-aware empty state with repo-pause-resume-btn-empty testid', () => {
-            expect(source).toContain('data-testid="repo-pause-resume-btn-empty"');
+            expect(listPaneSource).toContain('data-testid="repo-pause-resume-btn-empty"');
         });
 
         it('shows "Queue is paused" message when paused', () => {
-            expect(source).toContain('Queue is paused');
+            expect(listPaneSource).toContain('Queue is paused');
         });
 
         it('shows "No tasks in queue" when not paused', () => {
-            expect(source).toContain('No tasks in queue');
+            expect(listPaneSource).toContain('No tasks in queue');
         });
 
         it('shows resume button in empty paused state', () => {
             // The empty state resume button text
-            expect(source).toContain('▶ Resume');
+            expect(listPaneSource).toContain('▶ Resume');
         });
     });
 
     describe('pause banner', () => {
         it('renders a pause banner with data-testid', () => {
-            expect(source).toContain('data-testid="queue-paused-banner"');
+            expect(listPaneSource).toContain('data-testid="queue-paused-banner"');
         });
 
         it('banner is conditionally rendered when isPaused is true', () => {
             // Find the banner block: isPaused && (...banner...)
-            const bannerIdx = source.indexOf('queue-paused-banner');
-            const precedingBlock = source.substring(Math.max(0, bannerIdx - 500), bannerIdx);
+            const bannerIdx = listPaneSource.indexOf('queue-paused-banner');
+            const precedingBlock = listPaneSource.substring(Math.max(0, bannerIdx - 500), bannerIdx);
             expect(precedingBlock).toContain('isPaused && (');
         });
 
         it('banner displays paused message', () => {
-            expect(source).toContain('Queue is paused — new tasks will not start.');
+            expect(listPaneSource).toContain('Queue is paused — new tasks will not start.');
         });
 
         it('banner includes a labeled Resume button', () => {
-            expect(source).toContain('data-testid="queue-banner-resume-btn"');
+            expect(listPaneSource).toContain('data-testid="queue-banner-resume-btn"');
         });
 
         it('banner resume button calls handlePauseResume', () => {
-            const idx = source.indexOf('queue-banner-resume-btn');
-            const block = source.substring(Math.max(0, idx - 300), idx);
-            expect(block).toContain('onClick={handlePauseResume}');
+            const idx = listPaneSource.indexOf('queue-banner-resume-btn');
+            const block = listPaneSource.substring(Math.max(0, idx - 300), idx);
+            expect(block).toContain('onClick={onPauseResume}');
         });
 
         it('banner resume button is disabled during loading', () => {
-            const idx = source.indexOf('queue-banner-resume-btn');
-            const block = source.substring(Math.max(0, idx - 300), idx);
+            const idx = listPaneSource.indexOf('queue-banner-resume-btn');
+            const block = listPaneSource.substring(Math.max(0, idx - 300), idx);
             expect(block).toContain('disabled={isPauseResumeLoading}');
         });
 
         it('banner appears before the toolbar', () => {
-            const bannerIdx = source.indexOf('queue-paused-banner');
-            const toolbarIdx = source.indexOf('repo-pause-resume-btn"');
+            const bannerIdx = listPaneSource.indexOf('queue-paused-banner');
+            const toolbarIdx = listPaneSource.indexOf('repo-pause-resume-btn"');
             expect(bannerIdx).toBeGreaterThan(-1);
             expect(toolbarIdx).toBeGreaterThan(-1);
             expect(bannerIdx).toBeLessThan(toolbarIdx);
         });
 
         it('banner uses warning styling (yellow)', () => {
-            const bannerLine = source.split('\n').find(l => l.includes('queue-paused-banner'));
+            const bannerLine = listPaneSource.split('\n').find(l => l.includes('queue-paused-banner'));
             expect(bannerLine).toContain('bg-yellow-500/10');
             expect(bannerLine).toContain('text-yellow-700');
         });

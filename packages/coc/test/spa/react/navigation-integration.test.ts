@@ -40,6 +40,11 @@ const USE_PIPELINE_PROGRESS_SRC = fs.readFileSync(
     'utf-8',
 );
 
+const ACTIVITY_LIST_PANE_SRC = fs.readFileSync(
+    path.join(SRC_ROOT, 'repos', 'ActivityListPane.tsx'),
+    'utf-8',
+);
+
 // ─── RepoQueueTab: selectTask run-workflow branch ──────────────
 describe('RepoQueueTab selectTask: run-workflow navigation', () => {
     it('has a run-workflow branch in selectTask that navigates to workflow', () => {
@@ -95,41 +100,41 @@ describe('RepoQueueTab selectTask: no regression for other types', () => {
     });
 });
 
-// ─── RepoQueueTab: mini progress indicator ─────────────────────
+// ─── RepoQueueTab: mini progress indicator (QueueTaskItem is in shared ActivityListPane) ─────
 describe('RepoQueueTab: mini progress indicator', () => {
     it('imports useWorkflowProgress', () => {
-        expect(REPO_QUEUE_TAB_SRC).toContain("import { useWorkflowProgress } from '../hooks/useWorkflowProgress'");
+        expect(ACTIVITY_LIST_PANE_SRC).toContain("import { useWorkflowProgress } from '../hooks/useWorkflowProgress'");
     });
 
     it('QueueTaskItem calls useWorkflowProgress for running pipeline tasks', () => {
-        const itemFn = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('function QueueTaskItem'),
+        const itemFn = ACTIVITY_LIST_PANE_SRC.substring(
+            ACTIVITY_LIST_PANE_SRC.indexOf('function QueueTaskItem'),
         );
         expect(itemFn).toContain("task.type === 'run-workflow'");
         expect(itemFn).toContain('useWorkflowProgress');
     });
 
     it('renders progress indicator with data-testid', () => {
-        expect(REPO_QUEUE_TAB_SRC).toContain('data-testid="workflow-progress-indicator"');
+        expect(ACTIVITY_LIST_PANE_SRC).toContain('data-testid="workflow-progress-indicator"');
     });
 
     it('shows Map: N/M text in the progress indicator', () => {
-        const itemFn = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('function QueueTaskItem'),
+        const itemFn = ACTIVITY_LIST_PANE_SRC.substring(
+            ACTIVITY_LIST_PANE_SRC.indexOf('function QueueTaskItem'),
         );
         expect(itemFn).toContain('▶ Map: {progress.completed}/{progress.total}');
     });
 
     it('only renders progress when showProgress is true and total > 0', () => {
-        const itemFn = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('function QueueTaskItem'),
+        const itemFn = ACTIVITY_LIST_PANE_SRC.substring(
+            ACTIVITY_LIST_PANE_SRC.indexOf('function QueueTaskItem'),
         );
         expect(itemFn).toContain('showProgress && progress && progress.total > 0');
     });
 
     it('does not subscribe to SSE for non-pipeline or queued tasks', () => {
-        const itemFn = REPO_QUEUE_TAB_SRC.substring(
-            REPO_QUEUE_TAB_SRC.indexOf('function QueueTaskItem'),
+        const itemFn = ACTIVITY_LIST_PANE_SRC.substring(
+            ACTIVITY_LIST_PANE_SRC.indexOf('function QueueTaskItem'),
         );
         expect(itemFn).toContain("task.type === 'run-workflow' && status === 'running'");
     });

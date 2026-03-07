@@ -49,9 +49,8 @@ describe('RepoDetail SUB_TABS', () => {
 });
 
 describe('RepoDetail Activity tab fallback', () => {
-    it('activity sub-tab renders RepoQueueTab as fallback', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
-        expect(REPO_DETAIL_SOURCE).toContain("(activeSubTab === 'queue' || activeSubTab === 'activity') && <RepoQueueTab");
+    it('activity sub-tab renders RepoActivityTab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity' && <RepoActivityTab");
     });
 
     it('activity is not in SUB_TABS (not yet visible in tab strip)', () => {

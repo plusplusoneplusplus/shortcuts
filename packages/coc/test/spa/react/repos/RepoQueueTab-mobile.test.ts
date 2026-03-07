@@ -26,6 +26,11 @@ const QUEUE_TASK_DETAIL_SOURCE = fs.readFileSync(
     'utf-8',
 );
 
+const ACTIVITY_LIST_PANE_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityListPane.tsx'),
+    'utf-8',
+);
+
 describe('RepoQueueTab mobile: imports', () => {
     it('imports useBreakpoint', () => {
         expect(REPO_QUEUE_TAB_SOURCE).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
@@ -100,8 +105,8 @@ describe('RepoQueueTab tablet: narrower left panel', () => {
 });
 
 describe('RepoQueueTab mobile: drag-and-drop disabled', () => {
-    it('draggable is conditionally set based on isMobile', () => {
-        expect(REPO_QUEUE_TAB_SOURCE).toContain('draggable={!isMobile}');
+    it('draggable is conditionally set based on isMobile (in shared ActivityListPane)', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('draggable={!isMobile}');
     });
 });
 
