@@ -245,7 +245,7 @@ export class PipelineManager implements vscode.Disposable {
 
         // Check if destination already exists
         if (safeExists(destDir)) {
-            throw new Error(`Pipeline already exists: ${destName}`);
+            throw new Error(`Workflow already exists: ${destName}`);
         }
 
         // Ensure pipelines folder exists
@@ -331,7 +331,7 @@ export class PipelineManager implements vscode.Disposable {
         const packagePath = path.join(this.getPipelinesFolder(), sanitizedName);
 
         if (safeExists(packagePath)) {
-            throw new Error(`Pipeline "${name}" already exists`);
+            throw new Error(`Workflow "${name}" already exists`);
         }
 
         // Create the package directory
@@ -375,7 +375,7 @@ export class PipelineManager implements vscode.Disposable {
     async renamePipeline(oldPath: string, newName: string): Promise<string> {
         const oldPackagePath = this.getPackagePath(oldPath);
         if (!safeExists(oldPackagePath)) {
-            throw new Error(`Pipeline package not found: ${oldPackagePath}`);
+            throw new Error(`Workflow package not found: ${oldPackagePath}`);
         }
 
         const sanitizedName = this.sanitizeFileName(newName);
@@ -383,7 +383,7 @@ export class PipelineManager implements vscode.Disposable {
         const newPackagePath = path.join(pipelinesFolder, sanitizedName);
 
         if (oldPackagePath !== newPackagePath && safeExists(newPackagePath)) {
-            throw new Error(`Pipeline "${newName}" already exists`);
+            throw new Error(`Workflow "${newName}" already exists`);
         }
 
         // Update the name field in the YAML content
@@ -412,7 +412,7 @@ export class PipelineManager implements vscode.Disposable {
     async deletePipeline(filePath: string): Promise<void> {
         const packagePath = this.getPackagePath(filePath);
         if (!safeExists(packagePath)) {
-            throw new Error(`Pipeline package not found: ${packagePath}`);
+            throw new Error(`Workflow package not found: ${packagePath}`);
         }
 
         // Remove the entire package directory
@@ -636,7 +636,7 @@ export class PipelineManager implements vscode.Disposable {
      * Get settings from VSCode configuration
      */
     getSettings(): PipelinesViewerSettings {
-        const config = vscode.workspace.getConfiguration('workspaceShortcuts.pipelinesViewer');
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.workflowsViewer');
         return {
             enabled: config.get<boolean>('enabled', true),
             folderPath: config.get<string>('folderPath', DEFAULT_WORKFLOWS_FOLDER),

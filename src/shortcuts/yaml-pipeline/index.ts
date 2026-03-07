@@ -1,8 +1,10 @@
 /**
- * YAML Pipeline Framework
+ * YAML Workflow Framework
  *
- * A YAML-based configuration layer on top of the map-reduce framework.
- * Provides easy configuration for AI MapReduce workflows via YAML files.
+ * A YAML-based configuration layer on top of the workflow engine.
+ * Provides easy configuration for AI workflows via YAML files.
+ *
+ * // TODO: Rename directory to yaml-workflow to match UX terminology
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  *

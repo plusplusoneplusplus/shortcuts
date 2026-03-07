@@ -378,7 +378,7 @@ export class PipelineResultViewerProvider {
 
         // Check if pipeline config is available
         if (!data.pipelineConfig) {
-            vscode.window.showErrorMessage('Pipeline configuration not available. Cannot retry.');
+            vscode.window.showErrorMessage('Workflow configuration not available. Cannot retry.');
             return;
         }
         if (!data.pipelineConfig.map) {
@@ -387,7 +387,7 @@ export class PipelineResultViewerProvider {
         }
 
         // Get max retry attempts from settings
-        const maxRetryAttempts = vscode.workspace.getConfiguration('workspaceShortcuts.pipeline')
+        const maxRetryAttempts = vscode.workspace.getConfiguration('workspaceShortcuts.workflow')
             .get<number>('maxRetryAttempts', 2);
 
         // Filter items that can be retried (failed and under max retry count)
@@ -426,7 +426,7 @@ export class PipelineResultViewerProvider {
         const aiInvoker: AIInvoker = createAIInvoker({
             workingDirectory: data.pipelineDirectory || workspaceRoot,
             model: data.pipelineConfig.map.model || defaultModel,
-            featureName: 'Pipeline Retry'
+            featureName: 'Workflow Retry'
         });
 
         // Get concurrency from pipeline config
@@ -792,7 +792,7 @@ export class PipelineResultViewerProvider {
     private formatAsMarkdown(data: PipelineResultViewData): string {
         const lines: string[] = [];
 
-        lines.push(`# Pipeline Results: ${data.pipelineName}`);
+        lines.push(`# Workflow Results: ${data.pipelineName}`);
         lines.push('');
         lines.push(`**Package:** ${data.packageName}`);
         lines.push(`**Status:** ${data.success ? '✅ Completed' : '❌ Failed'}`);
@@ -919,7 +919,7 @@ export function registerPipelineResultViewer(
     // Command to show results (can be called from commands.ts after execution)
     disposables.push(
         vscode.commands.registerCommand(
-            'pipelinesViewer.showResults',
+            'workflowsViewer.showResults',
             async (
                 result: FlatWorkflowResult,
                 pipelineName: string,

@@ -44,7 +44,7 @@
     "onCommand:shortcuts.createLogicalGroup",
     "onCustomEditor:reviewEditorView",
     "onCustomEditor:gitDiffReviewEditor",
-    "onCustomEditor:pipelinePreviewEditor",
+    "onCustomEditor:workflowPreviewEditor",
     "onViewContainer:shortcuts"
   ],
   "main": "./dist/extension.js",
@@ -66,9 +66,9 @@
           "when": "true"
         },
         {
-          "id": "pipelinesView",
-          "name": "Pipelines",
-          "when": "config.workspaceShortcuts.pipelinesViewer.enabled"
+          "id": "workflowsView",
+          "name": "Workflows",
+          "when": "config.workspaceShortcuts.workflowsViewer.enabled"
         },
         {
           "id": "globalNotesView",
@@ -132,8 +132,8 @@
         "contents": "🐛 **Debug Commands**\n\nQuick access to Copilot Chat commands.\n\n**Available Commands:**\n• New Chat - Open Copilot Chat\n• Inline Chat - Start inline chat\n• Explain/Fix/Generate Tests/Docs"
       },
       {
-        "view": "pipelinesView",
-        "contents": "📋 **Workflows**\n\n[Create First Pipeline](command:pipelinesViewer.create)\n\nManage YAML-based AI workflows.\n\n**Features:**\n• Workflows stored in `.vscode/workflows/`\n• One-click execution\n• Validation and error checking\n• Template-based AI processing"
+        "view": "workflowsView",
+        "contents": "📋 **Workflows**\n\n[Create First Workflow](command:workflowsViewer.create)\n\nManage YAML-based AI workflows.\n\n**Features:**\n• Workflows stored in `.vscode/workflows/`\n• One-click execution\n• Validation and error checking\n• Template-based AI processing"
       }
     ],
     "configuration": {
@@ -853,17 +853,17 @@
           "default": false,
           "description": "Enable the Debugging Panel for triggering Copilot Chat commands"
         },
-        "workspaceShortcuts.pipelinesViewer.enabled": {
+        "workspaceShortcuts.workflowsViewer.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable the Pipelines Viewer panel"
         },
-        "workspaceShortcuts.pipelinesViewer.folderPath": {
+        "workspaceShortcuts.workflowsViewer.folderPath": {
           "type": "string",
           "default": ".vscode/workflows",
           "description": "Path to workflows folder relative to workspace root"
         },
-        "workspaceShortcuts.pipelinesViewer.sortBy": {
+        "workspaceShortcuts.workflowsViewer.sortBy": {
           "type": "string",
           "enum": [
             "name",
@@ -876,7 +876,7 @@
           "default": "name",
           "description": "How to sort pipelines in the Pipelines Viewer"
         },
-        "workspaceShortcuts.pipeline.retryBehavior": {
+        "workspaceShortcuts.workflow.retryBehavior": {
           "type": "string",
           "enum": [
             "prompt",
@@ -891,7 +891,7 @@
           "default": "immediate",
           "description": "Behavior when clicking Retry Failed button in pipeline results"
         },
-        "workspaceShortcuts.pipeline.maxRetryAttempts": {
+        "workspaceShortcuts.workflow.maxRetryAttempts": {
           "type": "number",
           "default": 2,
           "minimum": 1,
@@ -1991,69 +1991,69 @@
         "category": "Debug Panel"
       },
       {
-        "command": "pipelinesViewer.create",
-        "title": "Create Pipeline",
-        "category": "Pipelines",
+        "command": "workflowsViewer.create",
+        "title": "Create Workflow",
+        "category": "Workflows",
         "icon": "$(add)"
       },
       {
-        "command": "pipelinesViewer.open",
-        "title": "Open Pipeline",
-        "category": "Pipelines",
+        "command": "workflowsViewer.open",
+        "title": "Open Workflow",
+        "category": "Workflows",
         "icon": "$(go-to-file)"
       },
       {
-        "command": "pipelinesViewer.execute",
-        "title": "Execute Pipeline",
-        "category": "Pipelines",
+        "command": "workflowsViewer.execute",
+        "title": "Execute Workflow",
+        "category": "Workflows",
         "icon": "$(run)"
       },
       {
-        "command": "pipelinesViewer.rename",
-        "title": "Rename Pipeline",
-        "category": "Pipelines",
+        "command": "workflowsViewer.rename",
+        "title": "Rename Workflow",
+        "category": "Workflows",
         "icon": "$(edit)"
       },
       {
-        "command": "pipelinesViewer.delete",
-        "title": "Delete Pipeline",
-        "category": "Pipelines",
+        "command": "workflowsViewer.delete",
+        "title": "Delete Workflow",
+        "category": "Workflows",
         "icon": "$(trash)"
       },
       {
-        "command": "pipelinesViewer.refresh",
-        "title": "Refresh Pipelines",
-        "category": "Pipelines",
+        "command": "workflowsViewer.refresh",
+        "title": "Refresh Workflows",
+        "category": "Workflows",
         "icon": "$(refresh)"
       },
       {
-        "command": "pipelinesViewer.openFolder",
-        "title": "Open Pipelines Folder",
-        "category": "Pipelines",
+        "command": "workflowsViewer.openFolder",
+        "title": "Open Workflows Folder",
+        "category": "Workflows",
         "icon": "$(folder-opened)"
       },
       {
-        "command": "pipelinesViewer.validate",
-        "title": "Validate Pipeline",
-        "category": "Pipelines",
+        "command": "workflowsViewer.validate",
+        "title": "Validate Workflow",
+        "category": "Workflows",
         "icon": "$(check)"
       },
       {
-        "command": "pipelinesViewer.preview",
-        "title": "Preview Pipeline",
-        "category": "Pipelines",
+        "command": "workflowsViewer.preview",
+        "title": "Preview Workflow",
+        "category": "Workflows",
         "icon": "$(preview)"
       },
       {
-        "command": "pipelinesViewer.copyToWorkspace",
+        "command": "workflowsViewer.copyToWorkspace",
         "title": "Copy to Workspace",
-        "category": "Pipelines",
+        "category": "Workflows",
         "icon": "$(copy)"
       },
       {
-        "command": "pipelinesViewer.viewBundled",
+        "command": "workflowsViewer.viewBundled",
         "title": "View Pipeline",
-        "category": "Pipelines",
+        "category": "Workflows",
         "icon": "$(eye)"
       },
       {
@@ -2187,18 +2187,18 @@
           "group": "navigation"
         },
         {
-          "command": "pipelinesViewer.create",
-          "when": "view == pipelinesView",
+          "command": "workflowsViewer.create",
+          "when": "view == workflowsView",
           "group": "navigation"
         },
         {
-          "command": "pipelinesViewer.refresh",
-          "when": "view == pipelinesView",
+          "command": "workflowsViewer.refresh",
+          "when": "view == workflowsView",
           "group": "navigation"
         },
         {
-          "command": "pipelinesViewer.openFolder",
-          "when": "view == pipelinesView",
+          "command": "workflowsViewer.openFolder",
+          "when": "view == workflowsView",
           "group": "navigation"
         }
       ],
@@ -2655,7 +2655,7 @@
         },
         {
           "command": "clarificationProcesses.cancel",
-          "when": "view == clarificationProcessesView && viewItem == pipelineExecutionProcess_running",
+          "when": "view == clarificationProcessesView && viewItem == workflowExecutionProcess_running",
           "group": "process@1"
         },
         {
@@ -2675,27 +2675,27 @@
         },
         {
           "command": "clarificationProcesses.viewPipelineExecutionDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_completed$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^workflowExecutionProcess_completed$/",
           "group": "process@2"
         },
         {
           "command": "clarificationProcesses.viewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_completed$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^workflowExecutionProcess_completed$/",
           "group": "process@3"
         },
         {
           "command": "clarificationProcesses.viewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineItemProcess_completed_child$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^workflowItemProcess_completed_child$/",
           "group": "process@2"
         },
         {
           "command": "clarificationProcesses.viewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_(running|failed|cancelled)$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^workflowExecutionProcess_(running|failed|cancelled)$/",
           "group": "process@2"
         },
         {
           "command": "clarificationProcesses.remove",
-          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_(completed|failed|cancelled)$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^workflowExecutionProcess_(completed|failed|cancelled)$/",
           "group": "process@4"
         },
         {
@@ -2770,7 +2770,7 @@
         },
         {
           "command": "clarificationProcesses.copySessionId",
-          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineItemProcess_completed(_child)?_resumable$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^workflowItemProcess_completed(_child)?_resumable$/",
           "group": "copy@2"
         },
         {
@@ -3169,43 +3169,43 @@
           "group": "inline@2"
         },
         {
-          "command": "pipelinesViewer.execute",
-          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "command": "workflowsViewer.execute",
+          "when": "view == workflowsView && viewItem =~ /^workflow/",
           "group": "pipeline@1"
         },
         {
-          "command": "pipelinesViewer.preview",
-          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "command": "workflowsViewer.preview",
+          "when": "view == workflowsView && viewItem =~ /^workflow/",
           "group": "pipeline@2"
         },
         {
-          "command": "pipelinesViewer.open",
-          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "command": "workflowsViewer.open",
+          "when": "view == workflowsView && viewItem =~ /^workflow/",
           "group": "pipeline@3"
         },
         {
-          "command": "pipelinesViewer.validate",
-          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "command": "workflowsViewer.validate",
+          "when": "view == workflowsView && viewItem =~ /^workflow/",
           "group": "pipeline@4"
         },
         {
-          "command": "pipelinesViewer.rename",
-          "when": "view == pipelinesView && (viewItem == pipeline || viewItem == pipeline_invalid)",
+          "command": "workflowsViewer.rename",
+          "when": "view == workflowsView && (viewItem == workflow || viewItem == workflow_invalid)",
           "group": "pipeline@5"
         },
         {
-          "command": "pipelinesViewer.delete",
-          "when": "view == pipelinesView && (viewItem == pipeline || viewItem == pipeline_invalid)",
+          "command": "workflowsViewer.delete",
+          "when": "view == workflowsView && (viewItem == workflow || viewItem == workflow_invalid)",
           "group": "pipeline@6"
         },
         {
-          "command": "pipelinesViewer.copyToWorkspace",
-          "when": "view == pipelinesView && viewItem == pipeline_bundled",
+          "command": "workflowsViewer.copyToWorkspace",
+          "when": "view == workflowsView && viewItem == workflow_bundled",
           "group": "pipeline@1"
         },
         {
-          "command": "pipelinesViewer.viewBundled",
-          "when": "view == pipelinesView && viewItem == pipeline_bundled",
+          "command": "workflowsViewer.viewBundled",
+          "when": "view == workflowsView && viewItem == workflow_bundled",
           "group": "pipeline@3"
         },
         {
@@ -3790,35 +3790,35 @@
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.execute",
+          "command": "workflowsViewer.execute",
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.preview",
+          "command": "workflowsViewer.preview",
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.open",
+          "command": "workflowsViewer.open",
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.validate",
+          "command": "workflowsViewer.validate",
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.rename",
+          "command": "workflowsViewer.rename",
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.delete",
+          "command": "workflowsViewer.delete",
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.copyToWorkspace",
+          "command": "workflowsViewer.copyToWorkspace",
           "when": "false"
         },
         {
-          "command": "pipelinesViewer.viewBundled",
+          "command": "workflowsViewer.viewBundled",
           "when": "false"
         },
         {
@@ -3909,8 +3909,8 @@
         "priority": "default"
       },
       {
-        "viewType": "pipelinePreviewEditor",
-        "displayName": "Pipeline Preview",
+        "viewType": "workflowPreviewEditor",
+        "displayName": "Workflow Preview",
         "selector": [
           {
             "filenamePattern": "**/pipeline.yaml"

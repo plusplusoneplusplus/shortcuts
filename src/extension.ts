@@ -328,7 +328,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         // Initialize Pipelines Viewer
-        const pipelinesViewerEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.pipelinesViewer').get<boolean>('enabled', true);
+        const pipelinesViewerEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.workflowsViewer').get<boolean>('enabled', true);
         let pipelinesTreeView: vscode.TreeView<PipelineTreeItem> | undefined;
         let pipelineManager: PipelineManager | undefined;
         let pipelinesTreeDataProvider: PipelinesTreeDataProvider | undefined;
@@ -350,7 +350,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 pipelinesTreeDataProvider?.refresh();
             });
 
-            pipelinesTreeView = vscode.window.createTreeView('pipelinesView', {
+            pipelinesTreeView = vscode.window.createTreeView('workflowsView', {
                 treeDataProvider: pipelinesTreeDataProvider,
                 showCollapseAll: false
             });
@@ -360,7 +360,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 if (pipelineManager && pipelinesTreeView) {
                     const pipelines = await pipelineManager.getPipelines();
                     const count = pipelines.length;
-                    pipelinesTreeView.description = `${count} pipeline${count !== 1 ? 's' : ''}`;
+                    pipelinesTreeView.description = `${count} workflow${count !== 1 ? 's' : ''}`;
                 }
             };
             pipelinesTreeDataProvider.onDidChangeTreeData(updatePipelinesViewDescription);

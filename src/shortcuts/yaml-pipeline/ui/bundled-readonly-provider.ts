@@ -15,7 +15,7 @@ import {
     ReadOnlyDocumentProvider,
 } from '../../shared';
 
-export const BUNDLED_PIPELINE_SCHEME = 'bundled-pipeline';
+export const BUNDLED_WORKFLOW_SCHEME = 'bundled-pipeline';
 
 /**
  * Bundled pipeline content provider using the shared ReadOnlyDocumentProvider.
@@ -35,7 +35,7 @@ export class BundledPipelineContentProvider
         this.strategy = new FileContentStrategy({
             errorMessagePrefix: 'Error loading bundled pipeline',
         });
-        this.provider.registerScheme(BUNDLED_PIPELINE_SCHEME, this.strategy);
+        this.provider.registerScheme(BUNDLED_WORKFLOW_SCHEME, this.strategy);
         this.onDidChange = this.provider.onDidChange;
     }
 
@@ -63,7 +63,7 @@ export class BundledPipelineContentProvider
  * Create a read-only URI for a bundled pipeline file
  */
 export function createBundledPipelineUri(filePath: string): vscode.Uri {
-    return createSchemeUri(BUNDLED_PIPELINE_SCHEME, filePath);
+    return createSchemeUri(BUNDLED_WORKFLOW_SCHEME, filePath);
 }
 
 /**
@@ -76,7 +76,7 @@ export function registerBundledPipelineProvider(
 
     context.subscriptions.push(
         vscode.workspace.registerTextDocumentContentProvider(
-            BUNDLED_PIPELINE_SCHEME,
+            BUNDLED_WORKFLOW_SCHEME,
             provider
         ),
         provider

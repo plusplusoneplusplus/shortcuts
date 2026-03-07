@@ -26,7 +26,7 @@ export class PipelineCategoryItem extends vscode.TreeItem {
         this.categoryType = categoryType;
         this.description = `(${count})`;
         this.tooltip = tooltip;
-        this.contextValue = `pipelineCategory_${categoryType}`;
+        this.contextValue = `workflowCategory_${categoryType}`;
         this.iconPath = categoryType === 'bundled'
             ? new vscode.ThemeIcon('package')
             : new vscode.ThemeIcon('folder');
@@ -57,9 +57,9 @@ export class PipelineItem extends vscode.TreeItem {
         
         // Set context value based on source and validity
         if (pipeline.source === PipelineSource.Bundled) {
-            this.contextValue = 'pipeline_bundled';
+            this.contextValue = 'workflow_bundled';
         } else {
-            this.contextValue = pipeline.isValid ? 'pipeline' : 'pipeline_invalid';
+            this.contextValue = pipeline.isValid ? 'workflow' : 'workflow_invalid';
         }
         
         // Show "(read-only)" for bundled pipelines, package name for workspace
@@ -81,7 +81,7 @@ export class PipelineItem extends vscode.TreeItem {
         
         this.command = {
             command: 'vscode.open',
-            title: 'Open Pipeline',
+            title: 'Open Workflow',
             arguments: [openUri]
         };
     }
@@ -107,7 +107,7 @@ export class PipelineItem extends vscode.TreeItem {
             tooltip.appendMarkdown(`📦 *Bundled with extension (read-only)*\n\n`);
             tooltip.appendMarkdown(`Right-click to copy to workspace for editing.\n\n`);
         } else {
-            tooltip.appendMarkdown(`📁 *Workspace pipeline*\n\n`);
+            tooltip.appendMarkdown(`📁 *Workspace workflow*\n\n`);
         }
 
         // Package info

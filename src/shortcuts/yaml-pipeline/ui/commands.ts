@@ -65,18 +65,18 @@ export class PipelineCommands {
         const disposables: vscode.Disposable[] = [];
 
         disposables.push(
-            vscode.commands.registerCommand('pipelinesViewer.create', () => this.createPipelineFromTemplate()),
-            vscode.commands.registerCommand('pipelinesViewer.open', (item: PipelineItem) => this.openPipeline(item)),
-            vscode.commands.registerCommand('pipelinesViewer.execute', (item: PipelineItem) => this.executePipeline(item)),
-            vscode.commands.registerCommand('pipelinesViewer.executeWithItems', (item: PipelineItem, items: PromptItem[]) => this.executePipelineWithItems(item, items)),
-            vscode.commands.registerCommand('pipelinesViewer.rename', (item: PipelineItem) => this.renamePipeline(item)),
-            vscode.commands.registerCommand('pipelinesViewer.delete', (item: PipelineItem) => this.deletePipeline(item)),
-            vscode.commands.registerCommand('pipelinesViewer.validate', (item: PipelineItem) => this.validatePipeline(item)),
-            vscode.commands.registerCommand('pipelinesViewer.refresh', () => this.refreshPipelines()),
-            vscode.commands.registerCommand('pipelinesViewer.openFolder', () => this.openPipelinesFolder()),
+            vscode.commands.registerCommand('workflowsViewer.create', () => this.createPipelineFromTemplate()),
+            vscode.commands.registerCommand('workflowsViewer.open', (item: PipelineItem) => this.openPipeline(item)),
+            vscode.commands.registerCommand('workflowsViewer.execute', (item: PipelineItem) => this.executePipeline(item)),
+            vscode.commands.registerCommand('workflowsViewer.executeWithItems', (item: PipelineItem, items: PromptItem[]) => this.executePipelineWithItems(item, items)),
+            vscode.commands.registerCommand('workflowsViewer.rename', (item: PipelineItem) => this.renamePipeline(item)),
+            vscode.commands.registerCommand('workflowsViewer.delete', (item: PipelineItem) => this.deletePipeline(item)),
+            vscode.commands.registerCommand('workflowsViewer.validate', (item: PipelineItem) => this.validatePipeline(item)),
+            vscode.commands.registerCommand('workflowsViewer.refresh', () => this.refreshPipelines()),
+            vscode.commands.registerCommand('workflowsViewer.openFolder', () => this.openPipelinesFolder()),
             // Bundled pipeline commands
-            vscode.commands.registerCommand('pipelinesViewer.copyToWorkspace', (item: PipelineItem) => this.copyBundledToWorkspace(item)),
-            vscode.commands.registerCommand('pipelinesViewer.viewBundled', (item: PipelineItem) => this.viewBundledPipeline(item))
+            vscode.commands.registerCommand('workflowsViewer.copyToWorkspace', (item: PipelineItem) => this.copyBundledToWorkspace(item)),
+            vscode.commands.registerCommand('workflowsViewer.viewBundled', (item: PipelineItem) => this.viewBundledPipeline(item))
         );
 
         return disposables;
@@ -95,8 +95,8 @@ export class PipelineCommands {
         }));
 
         const selectedTemplate = await vscode.window.showQuickPick(templateItems, {
-            placeHolder: 'Select a pipeline template',
-            title: 'Create Pipeline from Template'
+            placeHolder: 'Select a workflow template',
+            title: 'Create Workflow from Template'
         });
 
         if (!selectedTemplate) {
@@ -108,14 +108,14 @@ export class PipelineCommands {
 
         // Ask for pipeline name
         const name = await vscode.window.showInputBox({
-            prompt: `Enter pipeline name for ${selectedTemplate.label}`,
+            prompt: `Enter workflow name for ${selectedTemplate.label}`,
             placeHolder: this.getDefaultNameForTemplate(templateType),
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
-                    return 'Pipeline name cannot be empty';
+                    return 'Workflow name cannot be empty';
                 }
                 if (value.includes('/') || value.includes('\\')) {
-                    return 'Pipeline name cannot contain path separators';
+                    return 'Workflow name cannot contain path separators';
                 }
                 return null;
             }
@@ -136,11 +136,11 @@ export class PipelineCommands {
             );
 
             vscode.window.showInformationMessage(
-                `Pipeline "${name}" created from ${selectedTemplate.label} template`
+                `Workflow "${name}" created from ${selectedTemplate.label} template`
             );
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            vscode.window.showErrorMessage(`Failed to create pipeline: ${err.message}`);
+            vscode.window.showErrorMessage(`Failed to create workflow: ${err.message}`);
         }
     }
 
@@ -150,14 +150,14 @@ export class PipelineCommands {
     private getDefaultNameForTemplate(templateType: PipelineTemplateType): string {
         switch (templateType) {
             case 'data-fanout':
-                return 'my-data-pipeline';
+                return 'my-data-workflow';
             case 'model-fanout':
                 return 'my-model-comparison';
             case 'ai-generated':
-                return 'my-ai-generated-pipeline';
+                return 'my-ai-generated-workflow';
             case 'custom':
             default:
-                return 'my-pipeline';
+                return 'my-workflow';
         }
     }
 
@@ -176,7 +176,7 @@ export class PipelineCommands {
             );
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            vscode.window.showErrorMessage(`Failed to open pipeline: ${err.message}`);
+            vscode.window.showErrorMessage(`Failed to open workflow: ${err.message}`);
         }
     }
 
@@ -192,7 +192,7 @@ export class PipelineCommands {
         const validation = await this.pipelineManager.validatePipeline(item.pipeline.filePath);
         if (!validation.valid) {
             const result = await vscode.window.showWarningMessage(
-                `Pipeline "${item.pipeline.name}" has validation errors. Execute anyway?`,
+                `Workflow "${item.pipeline.name}" has validation errors. Execute anyway?`,
                 { modal: true, detail: validation.errors.join('\n') },
                 'Execute Anyway',
                 'Cancel'
@@ -205,7 +205,7 @@ export class PipelineCommands {
 
         // Check for workspace root
         if (!this.workspaceRoot) {
-            vscode.window.showErrorMessage('No workspace folder open. Please open a workspace to execute pipelines.');
+            vscode.window.showErrorMessage('No workspace folder open. Please open a workspace to execute workflows.');
             return;
         }
 
@@ -223,7 +223,7 @@ export class PipelineCommands {
             if (executionResult.success && executionResult.result) {
                 // Show success message with options
                 const stats = executionResult.result.stats;
-                const successMsg = `Pipeline "${item.pipeline.name}" completed: ${stats.successfulMaps}/${stats.totalItems} items processed`;
+                const successMsg = `Workflow "${item.pipeline.name}" completed: ${stats.successfulMaps}/${stats.totalItems} items processed`;
 
                 const action = await vscode.window.showInformationMessage(
                     successMsg,
@@ -254,16 +254,16 @@ export class PipelineCommands {
             } else if (!executionResult.success) {
                 // Check if it was cancelled
                 if (executionResult.error?.includes('cancelled')) {
-                    vscode.window.showWarningMessage(`Pipeline "${item.pipeline.name}" was cancelled.`);
+                    vscode.window.showWarningMessage(`Workflow "${item.pipeline.name}" was cancelled.`);
                 } else {
                     vscode.window.showErrorMessage(
-                        `Pipeline "${item.pipeline.name}" failed: ${executionResult.error || 'Unknown error'}`
+                        `Workflow "${item.pipeline.name}" failed: ${executionResult.error || 'Unknown error'}`
                     );
                 }
             }
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(`Failed to execute pipeline: ${errorMsg}`);
+            vscode.window.showErrorMessage(`Failed to execute workflow: ${errorMsg}`);
         }
     }
 
@@ -283,7 +283,7 @@ export class PipelineCommands {
 
         // Check for workspace root
         if (!this.workspaceRoot) {
-            vscode.window.showErrorMessage('No workspace folder open. Please open a workspace to execute pipelines.');
+            vscode.window.showErrorMessage('No workspace folder open. Please open a workspace to execute workflows.');
             return;
         }
 
@@ -302,7 +302,7 @@ export class PipelineCommands {
             if (executionResult.success && executionResult.result) {
                 // Show success message with options
                 const stats = executionResult.result.stats;
-                const successMsg = `Pipeline "${item.pipeline.name}" completed: ${stats.successfulMaps}/${stats.totalItems} items processed`;
+                const successMsg = `Workflow "${item.pipeline.name}" completed: ${stats.successfulMaps}/${stats.totalItems} items processed`;
 
                 const action = await vscode.window.showInformationMessage(
                     successMsg,
@@ -333,16 +333,16 @@ export class PipelineCommands {
             } else if (!executionResult.success) {
                 // Check if it was cancelled
                 if (executionResult.error?.includes('cancelled')) {
-                    vscode.window.showWarningMessage(`Pipeline "${item.pipeline.name}" was cancelled.`);
+                    vscode.window.showWarningMessage(`Workflow "${item.pipeline.name}" was cancelled.`);
                 } else {
                     vscode.window.showErrorMessage(
-                        `Pipeline "${item.pipeline.name}" failed: ${executionResult.error || 'Unknown error'}`
+                        `Workflow "${item.pipeline.name}" failed: ${executionResult.error || 'Unknown error'}`
                     );
                 }
             }
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(`Failed to execute pipeline: ${errorMsg}`);
+            vscode.window.showErrorMessage(`Failed to execute workflow: ${errorMsg}`);
         }
     }
 
@@ -356,14 +356,14 @@ export class PipelineCommands {
 
         const currentName = item.pipeline.packageName;
         const newName = await vscode.window.showInputBox({
-            prompt: 'Enter new pipeline package name',
+            prompt: 'Enter new workflow package name',
             value: currentName,
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
-                    return 'Pipeline name cannot be empty';
+                    return 'Workflow name cannot be empty';
                 }
                 if (value.includes('/') || value.includes('\\')) {
-                    return 'Pipeline name cannot contain path separators';
+                    return 'Workflow name cannot contain path separators';
                 }
                 return null;
             }
@@ -376,10 +376,10 @@ export class PipelineCommands {
         try {
             await this.pipelineManager.renamePipeline(item.pipeline.filePath, newName.trim());
             this.treeDataProvider.refresh();
-            vscode.window.showInformationMessage(`Pipeline package renamed to "${newName}"`);
+            vscode.window.showInformationMessage(`Workflow package renamed to "${newName}"`);
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            vscode.window.showErrorMessage(`Failed to rename pipeline: ${err.message}`);
+            vscode.window.showErrorMessage(`Failed to rename workflow: ${err.message}`);
         }
     }
 
@@ -410,10 +410,10 @@ export class PipelineCommands {
         try {
             await this.pipelineManager.deletePipeline(item.pipeline.filePath);
             this.treeDataProvider.refresh();
-            vscode.window.showInformationMessage(`Pipeline package "${pipelineName}" deleted`);
+            vscode.window.showInformationMessage(`Workflow package "${pipelineName}" deleted`);
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            vscode.window.showErrorMessage(`Failed to delete pipeline: ${err.message}`);
+            vscode.window.showErrorMessage(`Failed to delete workflow: ${err.message}`);
         }
     }
 
@@ -429,13 +429,13 @@ export class PipelineCommands {
             const validation = await this.pipelineManager.validatePipeline(item.pipeline.filePath);
 
             if (validation.valid) {
-                let message = `✅ Pipeline "${item.pipeline.name}" is valid`;
+                let message = `✅ Workflow "${item.pipeline.name}" is valid`;
                 if (validation.warnings.length > 0) {
                     message += `\n\nWarnings:\n${validation.warnings.join('\n')}`;
                 }
                 vscode.window.showInformationMessage(message);
             } else {
-                const message = `Pipeline "${item.pipeline.name}" has errors:\n\n${validation.errors.join('\n')}`;
+                const message = `Workflow "${item.pipeline.name}" has errors:\n\n${validation.errors.join('\n')}`;
                 vscode.window.showWarningMessage(message);
             }
 
@@ -443,7 +443,7 @@ export class PipelineCommands {
             this.treeDataProvider.refresh();
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            vscode.window.showErrorMessage(`Failed to validate pipeline: ${err.message}`);
+            vscode.window.showErrorMessage(`Failed to validate workflow: ${err.message}`);
         }
     }
 
@@ -474,13 +474,13 @@ export class PipelineCommands {
         }
 
         if (item.pipeline.source !== PipelineSource.Bundled) {
-            vscode.window.showWarningMessage('This pipeline is already in your workspace.');
+            vscode.window.showWarningMessage('This workflow is already in your workspace.');
             return;
         }
 
         const bundledId = item.pipeline.bundledId;
         if (!bundledId) {
-            vscode.window.showErrorMessage('Invalid bundled pipeline.');
+            vscode.window.showErrorMessage('Invalid bundled workflow.');
             return;
         }
 
@@ -488,7 +488,7 @@ export class PipelineCommands {
         const exists = await this.pipelineManager.isBundledPipelineInWorkspace(bundledId);
         if (exists) {
             const choice = await vscode.window.showWarningMessage(
-                `Pipeline "${item.pipeline.name}" already exists in workspace.`,
+                `Workflow "${item.pipeline.name}" already exists in workspace.`,
                 'Open Existing',
                 'Create Copy'
             );
@@ -505,7 +505,7 @@ export class PipelineCommands {
 
             if (choice === 'Create Copy') {
                 const newName = await vscode.window.showInputBox({
-                    prompt: 'Enter a name for the copied pipeline',
+                    prompt: 'Enter a name for the copied workflow',
                     value: `${item.pipeline.packageName}-copy`,
                     validateInput: this.validatePipelineName.bind(this)
                 });
@@ -534,17 +534,17 @@ export class PipelineCommands {
             this.treeDataProvider.refresh();
 
             const choice = await vscode.window.showInformationMessage(
-                `Pipeline copied to workspace: ${path.basename(path.dirname(destPath))}`,
-                'Open Pipeline'
+                `Workflow copied to workspace: ${path.basename(path.dirname(destPath))}`,
+                'Open Workflow'
             );
 
-            if (choice === 'Open Pipeline') {
+            if (choice === 'Open Workflow') {
                 const doc = await vscode.workspace.openTextDocument(destPath);
                 await vscode.window.showTextDocument(doc);
             }
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(`Failed to copy pipeline: ${errorMsg}`);
+            vscode.window.showErrorMessage(`Failed to copy workflow: ${errorMsg}`);
         }
     }
 
@@ -572,12 +572,12 @@ export class PipelineCommands {
 
         // Show info message about read-only
         const choice = await vscode.window.showInformationMessage(
-            'This is a bundled pipeline (read-only). Copy to workspace to edit.',
+            'This is a bundled workflow (read-only). Copy to workspace to edit.',
             'Copy to Workspace'
         );
 
         if (choice === 'Copy to Workspace') {
-            await vscode.commands.executeCommand('pipelinesViewer.copyToWorkspace', item);
+            await vscode.commands.executeCommand('workflowsViewer.copyToWorkspace', item);
         }
     }
 
@@ -586,10 +586,10 @@ export class PipelineCommands {
      */
     private validatePipelineName(value: string): string | null {
         if (!value || value.trim().length === 0) {
-            return 'Pipeline name cannot be empty';
+            return 'Workflow name cannot be empty';
         }
         if (value.includes('/') || value.includes('\\')) {
-            return 'Pipeline name cannot contain path separators';
+            return 'Workflow name cannot contain path separators';
         }
         return null;
     }

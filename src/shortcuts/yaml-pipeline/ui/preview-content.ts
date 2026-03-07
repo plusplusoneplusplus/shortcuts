@@ -128,7 +128,7 @@ export function getPreviewContent(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; img-src ${webview.cspSource} data: https:;">
-    <title>Pipeline Preview</title>
+    <title>Workflow Preview</title>
     <style>
         ${getStyles(isDark)}
     </style>
@@ -219,7 +219,7 @@ function getToolbar(
         }
     } else {
         executeButton = `
-            <button class="toolbar-btn" id="executeBtn" title="Execute Pipeline" ${!validation.valid ? 'disabled' : ''}>
+            <button class="toolbar-btn" id="executeBtn" title="Execute Workflow" ${!validation.valid ? 'disabled' : ''}>
                 <span class="icon">▶️</span> Execute
             </button>
         `;
@@ -227,11 +227,11 @@ function getToolbar(
 
     return `
         <div class="toolbar">
-            <button class="toolbar-btn" id="editBtn" title="Edit Pipeline">
+            <button class="toolbar-btn" id="editBtn" title="Edit Workflow">
                 <span class="icon">✏️</span> Edit
             </button>
             ${executeButton}
-            <button class="toolbar-btn" id="validateBtn" title="Validate Pipeline">
+            <button class="toolbar-btn" id="validateBtn" title="Validate Workflow">
                 <span class="icon">✅</span> Validate
             </button>
             <button class="toolbar-btn" id="refreshBtn" title="Refresh Preview">
@@ -322,7 +322,7 @@ function getDiagramSection(mermaidDiagram: string): string {
         <div class="diagram-section">
             <div class="diagram-header">
                 <div class="diagram-title-container">
-                    <button class="diagram-collapse-btn" id="diagramCollapseBtn" title="Collapse/Expand Pipeline Flow">▼</button>
+                    <button class="diagram-collapse-btn" id="diagramCollapseBtn" title="Collapse/Expand Workflow Flow">▼</button>
                     <h3 class="section-title">Pipeline Flow</h3>
                 </div>
                 <div class="diagram-zoom-controls" id="diagramZoomControls">

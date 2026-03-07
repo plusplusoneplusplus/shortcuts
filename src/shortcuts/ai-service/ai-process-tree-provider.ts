@@ -62,19 +62,19 @@ export class AIProcessItem extends vscode.TreeItem {
         } else if (process.type === 'pipeline-execution') {
             const isResumable = this.isProcessResumable(process);
             this.contextValue = isResumable
-                ? `pipelineExecutionProcess_${process.status}_resumable`
-                : `pipelineExecutionProcess_${process.status}`;
+                ? `workflowExecutionProcess_${process.status}_resumable`
+                : `workflowExecutionProcess_${process.status}`;
         } else if (process.type === 'pipeline-item') {
             // For pipeline items, check if resumable (completed + prompt + result + session ID)
             const isResumable = this.isProcessResumable(process);
             if (isChild) {
                 this.contextValue = isResumable
-                    ? `pipelineItemProcess_${process.status}_child_resumable`
-                    : `pipelineItemProcess_${process.status}_child`;
+                    ? `workflowItemProcess_${process.status}_child_resumable`
+                    : `workflowItemProcess_${process.status}_child`;
             } else {
                 this.contextValue = isResumable
-                    ? `pipelineItemProcess_${process.status}_resumable`
-                    : `pipelineItemProcess_${process.status}`;
+                    ? `workflowItemProcess_${process.status}_resumable`
+                    : `workflowItemProcess_${process.status}`;
             }
         } else {
             // For clarification processes, check if resumable

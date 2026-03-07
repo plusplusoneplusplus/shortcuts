@@ -123,10 +123,10 @@ export class PipelinesTreeDataProvider extends FilterableTreeDataProvider<Pipeli
         // Always show Bundled category (even if empty, for discoverability)
         if (bundled.length > 0 || !this.hasFilter) {
             items.push(new PipelineCategoryItem(
-                'Bundled Pipelines',
+                'Bundled Workflows',
                 'bundled',
                 bundled.length,
-                'Pre-installed pipeline templates (read-only)'
+                'Pre-installed workflow templates (read-only)'
             ));
         }
 
@@ -134,10 +134,10 @@ export class PipelinesTreeDataProvider extends FilterableTreeDataProvider<Pipeli
         const workspaceFolderExists = await this.pipelineManager.workspaceFolderExists();
         if (workspace.length > 0 || workspaceFolderExists || !this.hasFilter) {
             items.push(new PipelineCategoryItem(
-                'Workspace Pipelines',
+                'Workspace Workflows',
                 'workspace',
                 workspace.length,
-                `Pipelines in ${this.pipelineManager.getRelativePipelinesFolder()}`
+                `Workflows in ${this.pipelineManager.getRelativePipelinesFolder()}`
             ));
         }
 

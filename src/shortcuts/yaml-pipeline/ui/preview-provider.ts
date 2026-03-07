@@ -51,7 +51,7 @@ import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/e
  * Uses shared webview utilities for consistent setup and message handling.
  */
 export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorProvider {
-    public static readonly viewType = 'pipelinePreviewEditor';
+    public static readonly viewType = 'workflowPreviewEditor';
 
     /** Track generate state per document */
     private generateStates = new Map<string, GenerateState>();
@@ -656,7 +656,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         if (pipeline) {
             const item = new PipelineItem(pipeline);
             // Execute with the approved items
-            await vscode.commands.executeCommand('pipelinesViewer.executeWithItems', item, items);
+            await vscode.commands.executeCommand('workflowsViewer.executeWithItems', item, items);
         }
     }
 
@@ -673,7 +673,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
 
         if (pipeline) {
             const item = new PipelineItem(pipeline);
-            await vscode.commands.executeCommand('pipelinesViewer.execute', item);
+            await vscode.commands.executeCommand('workflowsViewer.execute', item);
         }
     }
 
@@ -689,7 +689,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
 
         if (pipeline) {
             const item = new PipelineItem(pipeline);
-            await vscode.commands.executeCommand('pipelinesViewer.validate', item);
+            await vscode.commands.executeCommand('workflowsViewer.validate', item);
         }
     }
 
@@ -727,7 +727,7 @@ export function registerPipelinePreview(
 
     // Register command to open preview for a pipeline from the tree view
     const previewCommandDisposable = vscode.commands.registerCommand(
-        'pipelinesViewer.preview',
+        'workflowsViewer.preview',
         async (item: PipelineItem) => {
             if (item?.pipeline?.filePath) {
                 const uri = vscode.Uri.file(item.pipeline.filePath);

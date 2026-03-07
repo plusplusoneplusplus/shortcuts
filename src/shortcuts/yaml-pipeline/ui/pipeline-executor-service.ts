@@ -107,7 +107,7 @@ export async function executeVSCodePipeline(
         workflowConfig = compileToWorkflow(yamlContent);
         rawConfig = yaml.load(yamlContent) as PipelineConfig;
     } catch (error) {
-        const errorMsg = `Failed to parse pipeline: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse workflow: ${error instanceof Error ? error.message : String(error)}`;
         return { success: false, error: errorMsg };
     }
 
@@ -115,7 +115,7 @@ export async function executeVSCodePipeline(
     let groupProcessId: string | undefined;
     if (processManager) {
         groupProcessId = processManager.registerProcessGroup(
-            `Pipeline: ${workflowConfig.name}`,
+            `Workflow: ${workflowConfig.name}`,
             {
                 type: 'pipeline-execution',
                 idPrefix: 'pipeline',
@@ -137,7 +137,7 @@ export async function executeVSCodePipeline(
     const aiInvoker: AIInvoker = createAIInvoker({
         workingDirectory: effectiveWorkingDirectory,
         model: defaultModel,
-        featureName: 'Pipeline'
+        featureName: 'Workflow'
     });
 
     // Create process tracker if we have a process manager
@@ -149,7 +149,7 @@ export async function executeVSCodePipeline(
     // Execute with progress reporting
     return await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Executing pipeline: ${workflowConfig.name}`,
+        title: `Executing workflow: ${workflowConfig.name}`,
         cancellable: true
     }, async (progress, token) => {
         const controller = new AbortController();
@@ -257,10 +257,10 @@ export async function executeVSCodePipelineWithItems(
         rawConfig = yaml.load(yamlContent) as PipelineConfig;
 
         if (!workflowConfig.name) {
-            return { success: false, error: 'Invalid pipeline configuration: missing name' };
+            return { success: false, error: 'Invalid workflow configuration: missing name' };
         }
     } catch (error) {
-        const errorMsg = `Failed to parse pipeline: ${error instanceof Error ? error.message : String(error)}`;
+        const errorMsg = `Failed to parse workflow: ${error instanceof Error ? error.message : String(error)}`;
         return { success: false, error: errorMsg };
     }
 
@@ -271,7 +271,7 @@ export async function executeVSCodePipelineWithItems(
     let groupProcessId: string | undefined;
     if (processManager) {
         groupProcessId = processManager.registerProcessGroup(
-            `Pipeline: ${workflowConfig.name}`,
+            `Workflow: ${workflowConfig.name}`,
             {
                 type: 'pipeline-execution',
                 idPrefix: 'pipeline',
@@ -294,7 +294,7 @@ export async function executeVSCodePipelineWithItems(
     const aiInvoker: AIInvoker = createAIInvoker({
         workingDirectory: effectiveWorkingDirectory,
         model: defaultModel,
-        featureName: 'Pipeline'
+        featureName: 'Workflow'
     });
 
     // Create process tracker if we have a process manager
@@ -306,7 +306,7 @@ export async function executeVSCodePipelineWithItems(
     // Execute with progress reporting
     return await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Executing pipeline: ${workflowConfig.name}`,
+        title: `Executing workflow: ${workflowConfig.name}`,
         cancellable: true
     }, async (progress, token) => {
         const controller = new AbortController();
@@ -529,7 +529,7 @@ function formatExecutionSummary(result: FlatWorkflowResult): string {
     const stats = result.stats;
     const lines: string[] = [];
 
-    lines.push('# Pipeline Execution Results\n');
+    lines.push('# Workflow Execution Results\n');
 
     // Summary stats
     lines.push('## Summary\n');
@@ -696,5 +696,5 @@ export async function copyPipelineResults(
 ): Promise<void> {
     const content = formatExecutionSummary(result);
     await vscode.env.clipboard.writeText(content);
-    vscode.window.showInformationMessage('Pipeline results copied to clipboard');
+    vscode.window.showInformationMessage('Workflow results copied to clipboard');
 }
