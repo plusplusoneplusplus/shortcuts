@@ -106,32 +106,25 @@ describe('PendingTaskPayload (standalone)', () => {
         expect(source).toContain('export function FilePathValue');
     });
 
-    it('handles follow-prompt type', () => {
-        expect(source).toContain("type === 'follow-prompt'");
-    });
-
-    it('handles resolve-comments type', () => {
-        expect(source).toContain("type === 'resolve-comments'");
-    });
-
-    it('handles chat type', () => {
+    it('handles chat type with mode-based dispatch', () => {
         expect(source).toContain("type === 'chat'");
     });
 
-    it('handles ai-clarification type', () => {
-        expect(source).toContain("type === 'ai-clarification'");
+    it('handles follow-up messages via processId', () => {
+        expect(source).toContain('payload.processId');
     });
 
-    it('handles task-generation type', () => {
-        expect(source).toContain("type === 'task-generation'");
+    it('handles task generation context', () => {
+        expect(source).toContain('ctx.taskGeneration');
     });
 
-    it('handles code-review type', () => {
-        expect(source).toContain("type === 'code-review'");
+    it('handles resolve comments context', () => {
+        expect(source).toContain('ctx.resolveComments');
     });
 
-    it('handles custom type with data', () => {
-        expect(source).toContain("type === 'custom'");
+    it('handles standard chat with skills and files context', () => {
+        expect(source).toContain('ctx.skills');
+        expect(source).toContain('ctx.files');
     });
 
     it('fetches images when payload.hasImages is true', () => {
@@ -147,18 +140,12 @@ describe('PendingTaskPayload (standalone)', () => {
         expect(source).toContain('<FilePathLink path={value}');
     });
 
-    it('uses FilePathValue for Prompt File', () => {
-        expect(source).toContain('<FilePathValue label="Prompt File" value={payload.promptFilePath}');
+    it('uses FilePathValue for Target Folder in task generation', () => {
+        expect(source).toContain('<FilePathValue label="Target Folder" value={tg.targetFolder}');
     });
 
-    it('uses FilePathValue for Plan File', () => {
-        expect(source).toContain('<FilePathValue label="Plan File" value={payload.planFilePath}');
-    });
-
-    it('uses FilePathValue for file-path fields', () => {
-        expect(source).toContain('<FilePathValue label="File" value={payload.filePath}');
-        expect(source).toContain('<FilePathValue label="Target Folder" value={payload.targetFolder}');
-        expect(source).toContain('<FilePathValue label="Rules Folder" value={payload.rulesFolder}');
+    it('uses FilePathValue for Document in resolve comments', () => {
+        expect(source).toContain('<FilePathValue label="Document" value={rc.filePath}');
     });
 
     it('clears payloadImages and loading state before the early-return guard', () => {

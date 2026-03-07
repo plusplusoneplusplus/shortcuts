@@ -700,10 +700,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('/git/branch-range/diff');
         });
 
-        it('handleEnqueueSkill enqueues follow-prompt task', () => {
-            expect(source).toContain("type: 'follow-prompt'");
+        it('handleEnqueueSkill enqueues chat task with skill context', () => {
+            expect(source).toContain("type: 'chat'");
             expect(source).toContain("priority: 'normal'");
-            expect(source).toContain('skillName');
+            expect(source).toContain('skills');
             expect(source).toContain('promptContent');
         });
 

@@ -52,15 +52,17 @@ function SeededQueueTaskDetail({ task }: { task: any }) {
 function makePendingTask(overrides?: Partial<any>): any {
     return {
         id: 'task-123',
-        type: 'follow-prompt',
+        type: 'chat',
         status: 'queued',
         displayName: 'My Task',
         createdAt: '2025-01-15T10:00:00Z',
         priority: 'normal',
         repoId: 'repo-abc',
         payload: {
+            kind: 'chat',
+            mode: 'autopilot',
+            prompt: 'Please implement the feature.',
             workingDirectory: '/home/user/project',
-            promptContent: 'Please implement the feature.',
         },
         config: { model: 'gpt-4' },
         ...overrides,
@@ -129,12 +131,14 @@ describe('PendingTaskInfoPanel', () => {
         });
     });
 
-    it('renders promptContent area for follow-prompt task type', async () => {
+    it('renders prompt area for chat task type', async () => {
         const task = makePendingTask({
-            type: 'follow-prompt',
+            type: 'chat',
             payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Please implement the feature.',
                 workingDirectory: '/home/user/project',
-                promptContent: 'Please implement the feature.',
             },
         });
         setupFetchForTask(task);
@@ -150,13 +154,14 @@ describe('PendingTaskInfoPanel', () => {
         });
     });
 
-    it('renders selectedText for ai-clarification task type', async () => {
+    it('renders prompt for chat task with mode', async () => {
         const task = makePendingTask({
-            type: 'ai-clarification',
+            type: 'chat',
             payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Clarify this function.\n\nfunction doSomething()',
                 workingDirectory: '/home/user/project',
-                selectedText: 'function doSomething()',
-                prompt: 'Clarify this function.',
             },
         });
         setupFetchForTask(task);
@@ -174,12 +179,20 @@ describe('PendingTaskInfoPanel', () => {
 
     it('renders resolve-comments payload with document, comments, and prompt', async () => {
         const task = makePendingTask({
-            type: 'resolve-comments',
+            type: 'chat',
             payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: '# Document Revision Request\n\nPlease address these comments.',
                 workingDirectory: '/home/user/project',
-                filePath: 'docs/readme.md',
-                commentIds: ['c-1', 'c-2'],
-                promptTemplate: '# Document Revision Request\n\nPlease address these comments.',
+                context: {
+                    resolveComments: {
+                        filePath: 'docs/readme.md',
+                        commentIds: ['c-1', 'c-2'],
+                        documentContent: 'content',
+                        documentUri: '/tmp/doc',
+                    },
+                },
             },
         });
         setupFetchForTask(task);
@@ -201,13 +214,17 @@ describe('PendingTaskInfoPanel', () => {
         });
     });
 
-    it('renders commitSha and "Diff Type" for code-review task type', async () => {
+    it('renders context files and mode for chat task', async () => {
         const task = makePendingTask({
-            type: 'code-review',
+            type: 'chat',
             payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Review these files.',
                 workingDirectory: '/home/user/project',
-                commitSha: 'abc123def',
-                diffType: 'staged',
+                context: {
+                    files: ['/home/user/project/src/auth.ts'],
+                },
             },
         });
         setupFetchForTask(task);
@@ -219,10 +236,8 @@ describe('PendingTaskInfoPanel', () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByText('Commit SHA')).toBeTruthy();
-            expect(screen.getByText('abc123def')).toBeTruthy();
-            expect(screen.getByText('Diff Type')).toBeTruthy();
-            expect(screen.getByText('staged')).toBeTruthy();
+            expect(screen.getByText('Mode')).toBeTruthy();
+            expect(screen.getByText('ask')).toBeTruthy();
         });
     });
 

@@ -35,8 +35,8 @@ describe('useRepoQueueStats', () => {
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: 'ws-test',
                     queue: {
-                        queued: [{ id: 'q1', type: 'run-pipeline' }],
-                        running: [{ id: 'r1', type: 'follow-prompt' }, { id: 'r2', type: 'chat' }],
+                        queued: [{ id: 'q1', type: 'run-workflow' }],
+                        running: [{ id: 'r1', type: 'chat' }, { id: 'r2', type: 'chat' }],
                         stats: { queued: 1, running: 2, completed: 0, failed: 0, cancelled: 0, total: 3, isPaused: false, isDraining: false },
                     },
                 });
@@ -60,13 +60,13 @@ describe('useRepoQueueStats', () => {
                     repoId: 'ws-mixed',
                     queue: {
                         queued: [
-                            { id: 'q1', type: 'run-pipeline' },
+                            { id: 'q1', type: 'run-workflow' },
                             { id: 'q2', type: 'chat' },
                             { id: 'q3', type: 'chat' },
                         ],
                         running: [
                             { id: 'r1', type: 'chat' },
-                            { id: 'r2', type: 'code-review' },
+                            { id: 'r2', type: 'run-workflow' },
                         ],
                     },
                 });
@@ -112,7 +112,7 @@ describe('useRepoQueueStats', () => {
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: 'ws-different',
                     queue: {
-                        queued: [{ id: 'q1', type: 'run-pipeline' }],
+                        queued: [{ id: 'q1', type: 'run-workflow' }],
                         running: [{ id: 'r1', type: 'chat' }],
                         stats: { queued: 1, running: 1, completed: 0, failed: 0, cancelled: 0, total: 2, isPaused: false, isDraining: false },
                     },
@@ -159,11 +159,11 @@ describe('useRepoQueueStats', () => {
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: 'ws-followup',
                     queue: {
-                        queued: [{ id: 'q1', type: 'run-pipeline' }],
+                        queued: [{ id: 'q1', type: 'run-workflow' }],
                         running: [
                             { id: 'r1', type: 'chat' },
                             { id: 'r2', type: 'chat', payload: { processId: 'parent-1' } },
-                            { id: 'r3', type: 'follow-prompt' },
+                            { id: 'r3', type: 'chat' },
                         ],
                     },
                 });
@@ -188,7 +188,7 @@ describe('useRepoQueueStats', () => {
                     queue: {
                         queued: [
                             { id: 'q1', type: 'chat', payload: { processId: 'parent-q' } },
-                            { id: 'q2', type: 'run-pipeline' },
+                            { id: 'q2', type: 'run-workflow' },
                         ],
                         running: [],
                     },
@@ -218,7 +218,7 @@ describe('useRepoQueueStats', () => {
                             { id: 'followup-1', type: 'chat', payload: { processId: 'parent-chat' } },
                         ],
                         history: [
-                            { id: 'h1', type: 'follow-prompt' },
+                            { id: 'h1', type: 'chat' },
                         ],
                     },
                 });

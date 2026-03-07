@@ -270,10 +270,10 @@ describe('BulkFollowPromptDialog', () => {
             expect(postCalls.length).toBe(2);
 
             const bodies = postCalls.map(([_, opts]: [string, any]) => JSON.parse(opts.body));
-            expect(bodies[0].type).toBe('follow-prompt');
-            expect(bodies[1].type).toBe('follow-prompt');
-            expect(bodies[0].payload.planFilePath).toContain('design.md');
-            expect(bodies[1].payload.planFilePath).toContain('spec.md');
+            expect(bodies[0].type).toBe('chat');
+            expect(bodies[1].type).toBe('chat');
+            expect(bodies[0].payload.context.files.some((f: string) => f.includes('design.md'))).toBe(true);
+            expect(bodies[1].payload.context.files.some((f: string) => f.includes('spec.md'))).toBe(true);
             expect(bodies[0].displayName).toContain('design');
             expect(bodies[1].displayName).toContain('spec');
         });
@@ -329,8 +329,8 @@ describe('BulkFollowPromptDialog', () => {
             expect(postCalls.length).toBe(2);
 
             const bodies = postCalls.map(([_, opts]: [string, any]) => JSON.parse(opts.body));
-            expect(bodies[0].payload.skillName).toBe('draft');
-            expect(bodies[1].payload.skillName).toBe('draft');
+            expect(bodies[0].payload.context.skills).toContain('draft');
+            expect(bodies[1].payload.context.skills).toContain('draft');
         });
     });
 
@@ -631,7 +631,7 @@ describe('BulkFollowPromptDialog', () => {
         expect(recentBtn.disabled).toBe(true);
     });
 
-    it('normalizes backslashes in planFilePath when workingDirectory has backslashes', async () => {
+    it('normalizes backslashes in context.files when workingDirectory has backslashes', async () => {
         const onClose = vi.fn();
         const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];
         const folder = makeFolder({
@@ -684,9 +684,9 @@ describe('BulkFollowPromptDialog', () => {
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
             // Windows drive-letter paths should use backslashes (native style)
-            expect(body.payload.planFilePath).not.toContain('/');
-            expect(body.payload.planFilePath).toBe('D:\\projects\\shortcuts\\.vscode\\tasks\\feature1\\task.md');
-            expect(body.payload.promptFilePath).not.toContain('/');
+            const files: string[] = body.payload.context.files;
+            files.forEach((f: string) => expect(f).not.toContain('/'));
+            expect(files.some((f: string) => f === 'D:\\projects\\shortcuts\\.vscode\\tasks\\feature1\\task.md')).toBe(true);
         });
     });
 
@@ -762,7 +762,7 @@ describe('BulkFollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.payload.additionalInfo).toBe('output in JSON');
+            expect(body.payload.context.blocks[0].content).toBe('output in JSON');
         });
     });
 
@@ -818,7 +818,7 @@ describe('BulkFollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.payload.additionalInfo).toBeUndefined();
+            expect(body.payload.context?.blocks).toBeUndefined();
         });
     });
 

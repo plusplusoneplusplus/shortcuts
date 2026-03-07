@@ -1026,7 +1026,7 @@ describe('ProcessesSidebar (queue panel)', () => {
                     historyItem={{
                         id: 'task-route-1',
                         status: 'completed',
-                        type: 'ai-clarification',
+                        type: 'chat',
                         prompt: 'History route test',
                     }}
                 />
@@ -1045,7 +1045,7 @@ describe('ProcessesSidebar (queue panel)', () => {
                     historyItem={{
                         id: 'task-compact-1',
                         status: 'completed',
-                        type: 'follow-prompt',
+                        type: 'chat',
                         prompt: 'Compact history item should stay on one line',
                     }}
                 />
@@ -1057,7 +1057,7 @@ describe('ProcessesSidebar (queue panel)', () => {
         expect(card.className).toContain('py-1.5');
         expect((card as HTMLElement).querySelector('.line-clamp-1')).toBeNull();
         expect(card.textContent).not.toContain('Completed');
-        expect(card.textContent).toContain('follow-prompt');
+        expect(card.textContent).toContain('chat');
     });
 
     it('shows repo name in compact history card when repoId is present', async () => {
@@ -1091,7 +1091,7 @@ describe('ProcessesSidebar (queue panel)', () => {
                     historyItem={{
                         id: 'task-no-repo-1',
                         status: 'completed',
-                        type: 'follow-prompt',
+                        type: 'chat',
                         prompt: 'No repo task',
                     }}
                 />
@@ -1110,7 +1110,7 @@ describe('ProcessesSidebar (queue panel)', () => {
                     historyItem={{
                         id: 'task-failed-repo-1',
                         status: 'failed',
-                        type: 'code-review',
+                        type: 'chat',
                         prompt: 'Review the auth module',
                         repoId: '/home/user/workspace/backend-api',
                     }}
@@ -1121,9 +1121,9 @@ describe('ProcessesSidebar (queue panel)', () => {
         const card = await screen.findByLabelText(/Task failed: Review the auth module/);
         expect(card.textContent).not.toContain('Failed');
         expect(card.textContent).toContain('[backend-api]');
-        expect(card.textContent).toContain('Code Review');
+        expect(card.textContent).toContain('chat');
         const text = card.textContent || '';
-        expect(text.indexOf('[backend-api]')).toBeLessThan(text.indexOf('Code Review'));
+        expect(text.indexOf('[backend-api]')).toBeLessThan(text.indexOf('chat'));
     });
 
     it('falls back to workingDirectory when repoId is absent', async () => {
@@ -1133,7 +1133,7 @@ describe('ProcessesSidebar (queue panel)', () => {
                     historyItem={{
                         id: 'task-wd-1',
                         status: 'completed',
-                        type: 'follow-prompt',
+                        type: 'chat',
                         prompt: 'Task with working dir',
                         workingDirectory: '/Users/dev/projects/frontend-app',
                     }}
@@ -1236,7 +1236,7 @@ describe('QueueTaskDetail metadata popover', () => {
                         id: 'task-meta-1',
                         processId,
                         status: 'completed',
-                        type: 'ai-clarification',
+                        type: 'chat',
                         prompt: 'what was my last question?',
                     }}
                 />
@@ -1331,7 +1331,7 @@ describe('QueueTaskDetail follow-up input', () => {
                         id: 'task-follow-1',
                         processId,
                         status: 'completed',
-                        type: 'ai-clarification',
+                        type: 'chat',
                         prompt: 'First question',
                     }}
                 />
@@ -1406,7 +1406,7 @@ describe('QueueTaskDetail follow-up input', () => {
                         id: 'task-expired-1',
                         processId,
                         status: 'completed',
-                        type: 'ai-clarification',
+                        type: 'chat',
                         prompt: 'Start',
                     }}
                 />
@@ -1460,7 +1460,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         const { container } = render(
             <Wrap>
                 <SeededQueueTaskDetail
-                    task={{ id: 'task-hooks-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Hello' }}
+                    task={{ id: 'task-hooks-1', processId, status: 'completed', type: 'chat', prompt: 'Hello' }}
                 />
             </Wrap>
         );
@@ -1508,7 +1508,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         const { container } = render(
             <Wrap>
                 <SeededQueueTaskDetail
-                    task={{ id: 'task-err-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Q' }}
+                    task={{ id: 'task-err-1', processId, status: 'completed', type: 'chat', prompt: 'Q' }}
                 />
             </Wrap>
         );
@@ -1558,7 +1558,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         const { container } = render(
             <Wrap>
                 <SeededQueueTaskDetail
-                    task={{ id: 'task-retry-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Q' }}
+                    task={{ id: 'task-retry-1', processId, status: 'completed', type: 'chat', prompt: 'Q' }}
                 />
             </Wrap>
         );
@@ -1602,7 +1602,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         const { container } = render(
             <Wrap>
                 <SeededQueueTaskDetail
-                    task={{ id: 'task-scroll-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'X' }}
+                    task={{ id: 'task-scroll-1', processId, status: 'completed', type: 'chat', prompt: 'X' }}
                 />
             </Wrap>
         );
@@ -1641,7 +1641,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         const { container } = render(
             <Wrap>
                 <SeededQueueTaskDetail
-                    task={{ id: 'task-rel-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Hi' }}
+                    task={{ id: 'task-rel-1', processId, status: 'completed', type: 'chat', prompt: 'Hi' }}
                 />
             </Wrap>
         );
@@ -1686,7 +1686,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         const { container } = render(
             <Wrap>
                 <SeededQueueTaskDetail
-                    task={{ id: 'task-stream-1', processId, status: 'running', type: 'ai-clarification', prompt: 'Go' }}
+                    task={{ id: 'task-stream-1', processId, status: 'running', type: 'chat', prompt: 'Go' }}
                 />
             </Wrap>
         );
@@ -1736,7 +1736,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         const { container } = render(
             <Wrap>
                 <SeededQueueTaskDetail
-                    task={{ id: 'task-410-1', processId, status: 'completed', type: 'ai-clarification', prompt: 'Q' }}
+                    task={{ id: 'task-410-1', processId, status: 'completed', type: 'chat', prompt: 'Q' }}
                 />
             </Wrap>
         );

@@ -1,98 +1,27 @@
 /**
  * Task Types Tests
  *
- * Tests for the domain-specific task type guards that were moved from
- * pipeline-core to coc-server.
+ * Tests for the unified task type guards:
+ *   TaskType = 'chat' | 'run-workflow' | 'run-script'
+ *   ChatMode = 'ask' | 'plan' | 'autopilot'
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-    isFollowPromptPayload,
-    isResolveCommentsPayload,
-    isAIClarificationPayload,
     isChatPayload,
-    isCustomTaskPayload,
-    isTaskGenerationPayload,
+    isChatFollowUp,
     isRunWorkflowPayload,
     isRunScriptPayload,
-    isReplicateTemplatePayload,
+    hasTaskGenerationContext,
+    hasResolveCommentsContext,
+    hasReplicationContext,
 } from '../src/task-types';
 import type {
-    FollowPromptPayload,
-    ResolveCommentsPayload,
-    AIClarificationPayload,
     ChatPayload,
-    TaskGenerationPayload,
     RunWorkflowPayload,
     RunScriptPayload,
-    ReplicateTemplatePayload,
-    CustomTaskPayload,
 } from '../src/task-types';
 import type { MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
-
-// ============================================================================
-// isFollowPromptPayload
-// ============================================================================
-
-describe('isFollowPromptPayload', () => {
-    it('returns true when promptFilePath is present', () => {
-        const payload: Record<string, unknown> = { promptFilePath: '/tmp/prompt.md' };
-        expect(isFollowPromptPayload(payload)).toBe(true);
-    });
-
-    it('returns true when promptContent is present', () => {
-        const payload: Record<string, unknown> = { promptContent: 'Do something' };
-        expect(isFollowPromptPayload(payload)).toBe(true);
-    });
-
-    it('returns false for unrelated payload', () => {
-        const payload: Record<string, unknown> = { documentUri: '/tmp/doc' };
-        expect(isFollowPromptPayload(payload)).toBe(false);
-    });
-});
-
-// ============================================================================
-// isResolveCommentsPayload
-// ============================================================================
-
-describe('isResolveCommentsPayload', () => {
-    it('returns true for valid payload', () => {
-        const payload: Record<string, unknown> = {
-            documentUri: '/tmp/doc',
-            commentIds: ['c1'],
-            promptTemplate: 'tmpl',
-            documentContent: 'content',
-            filePath: '/path',
-        };
-        expect(isResolveCommentsPayload(payload)).toBe(true);
-    });
-
-    it('returns false when commentIds is missing', () => {
-        const payload: Record<string, unknown> = { documentUri: '/tmp/doc' };
-        expect(isResolveCommentsPayload(payload)).toBe(false);
-    });
-});
-
-// ============================================================================
-// isAIClarificationPayload
-// ============================================================================
-
-describe('isAIClarificationPayload', () => {
-    it('returns true for payload with prompt and no data', () => {
-        const payload: Record<string, unknown> = { prompt: 'explain this' };
-        expect(isAIClarificationPayload(payload)).toBe(true);
-    });
-
-    it('returns false when data is present (CustomTaskPayload)', () => {
-        const payload: Record<string, unknown> = { prompt: 'x', data: {} };
-        expect(isAIClarificationPayload(payload)).toBe(false);
-    });
-
-    it('returns false when prompt is missing', () => {
-        const payload: Record<string, unknown> = { workingDirectory: '/tmp' };
-        expect(isAIClarificationPayload(payload)).toBe(false);
-    });
-});
 
 // ============================================================================
 // isChatPayload
@@ -104,60 +33,40 @@ describe('isChatPayload', () => {
         expect(isChatPayload(payload)).toBe(true);
     });
 
-    it('returns true for payload with kind: chat and skillNames', () => {
-        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello', skillNames: ['impl'] };
+    it('returns true for payload with kind: chat and context.skills', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello', context: { skills: ['impl'] } };
+        expect(isChatPayload(payload)).toBe(true);
+    });
+
+    it('returns true for payload with mode: ask', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', mode: 'ask', prompt: 'explain' };
         expect(isChatPayload(payload)).toBe(true);
     });
 
     it('returns false for different kind', () => {
-        const payload: Record<string, unknown> = { kind: 'task-generation', prompt: 'x' };
+        const payload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
         expect(isChatPayload(payload)).toBe(false);
     });
 });
 
 // ============================================================================
-// isCustomTaskPayload
+// isChatFollowUp
 // ============================================================================
 
-describe('isCustomTaskPayload', () => {
-    it('returns true when data is present', () => {
-        const payload: Record<string, unknown> = { data: { prompt: 'custom' } };
-        expect(isCustomTaskPayload(payload)).toBe(true);
+describe('isChatFollowUp', () => {
+    it('returns true for chat payload with processId', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'follow up', processId: 'proc-1' };
+        expect(isChatFollowUp(payload)).toBe(true);
     });
 
-    it('returns false when data is missing', () => {
-        const payload: Record<string, unknown> = { prompt: 'not custom' };
-        expect(isCustomTaskPayload(payload)).toBe(false);
-    });
-});
-
-// ============================================================================
-// isTaskGenerationPayload
-// ============================================================================
-
-describe('isTaskGenerationPayload', () => {
-    it('returns true for payload with kind: task-generation', () => {
-        const payload: Record<string, unknown> = {
-            kind: 'task-generation',
-            workingDirectory: '/tmp',
-            prompt: 'Create feature',
-        };
-        expect(isTaskGenerationPayload(payload)).toBe(true);
+    it('returns false for chat payload without processId', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(isChatFollowUp(payload)).toBe(false);
     });
 
-    it('returns false for FollowPromptPayload', () => {
-        const payload: Record<string, unknown> = { promptFilePath: '/tmp/prompt.md' };
-        expect(isTaskGenerationPayload(payload)).toBe(false);
-    });
-
-    it('returns false for AIClarificationPayload', () => {
-        const payload: Record<string, unknown> = { prompt: 'explain', workingDirectory: '/tmp' };
-        expect(isTaskGenerationPayload(payload)).toBe(false);
-    });
-
-    it('returns false for CustomTaskPayload', () => {
-        const payload: Record<string, unknown> = { data: { prompt: 'custom' } };
-        expect(isTaskGenerationPayload(payload)).toBe(false);
+    it('returns false for non-chat payload with processId', () => {
+        const payload: Record<string, unknown> = { kind: 'run-workflow', processId: 'proc-1', workflowPath: '/p', workingDirectory: '/tmp' };
+        expect(isChatFollowUp(payload)).toBe(false);
     });
 });
 
@@ -166,7 +75,7 @@ describe('isTaskGenerationPayload', () => {
 // ============================================================================
 
 describe('isRunWorkflowPayload', () => {
-    it('returns true for payload with kind: run-pipeline', () => {
+    it('returns true for payload with kind: run-workflow', () => {
         const payload: Record<string, unknown> = {
             kind: 'run-workflow',
             workflowPath: '/tmp/pipeline',
@@ -175,10 +84,9 @@ describe('isRunWorkflowPayload', () => {
         expect(isRunWorkflowPayload(payload)).toBe(true);
     });
 
-    it('returns false for task-generation kind', () => {
+    it('returns false for chat kind', () => {
         const payload: Record<string, unknown> = {
-            kind: 'task-generation',
-            workingDirectory: '/tmp',
+            kind: 'chat',
             prompt: 'x',
         };
         expect(isRunWorkflowPayload(payload)).toBe(false);
@@ -229,112 +137,98 @@ describe('isRunScriptPayload', () => {
         expect(isRunScriptPayload(payload)).toBe(false);
     });
 
-    it('returns false for kind: run-pipeline', () => {
+    it('returns false for kind: run-workflow', () => {
         const payload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
         expect(isRunScriptPayload(payload)).toBe(false);
     });
 });
 
 // ============================================================================
-// isReplicateTemplatePayload
+// hasTaskGenerationContext
 // ============================================================================
 
-describe('isReplicateTemplatePayload', () => {
-    it('returns true for a valid replicate-template payload', () => {
-        const payload: Record<string, unknown> = {
-            kind: 'replicate-template',
-            templateName: 'add-endpoint',
-            commitHash: 'abc123def',
-            instruction: 'Add a DELETE endpoint',
-        };
-        expect(isReplicateTemplatePayload(payload)).toBe(true);
-    });
-
-    it('returns true with optional fields present', () => {
-        const payload: Record<string, unknown> = {
-            kind: 'replicate-template',
-            templateName: 'add-endpoint',
-            commitHash: 'abc123def',
-            instruction: 'Add a DELETE endpoint',
-            hints: ['look at the POST handler'],
-            model: 'gpt-4',
-            workingDirectory: '/tmp/repo',
-        };
-        expect(isReplicateTemplatePayload(payload)).toBe(true);
-    });
-
-    it('returns false when kind is wrong', () => {
+describe('hasTaskGenerationContext', () => {
+    it('returns true for chat payload with context.taskGeneration', () => {
         const payload: Record<string, unknown> = {
             kind: 'chat',
-            templateName: 'add-endpoint',
-            commitHash: 'abc123def',
-            instruction: 'do stuff',
+            prompt: 'Create feature',
+            context: { taskGeneration: { targetFolder: '/tasks', depth: 'normal' } },
         };
-        expect(isReplicateTemplatePayload(payload)).toBe(false);
+        expect(hasTaskGenerationContext(payload)).toBe(true);
     });
 
-    it('returns false when templateName is missing', () => {
+    it('returns false for chat payload without taskGeneration', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(hasTaskGenerationContext(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload with taskGeneration', () => {
         const payload: Record<string, unknown> = {
-            kind: 'replicate-template',
-            commitHash: 'abc123def',
-            instruction: 'do stuff',
+            kind: 'run-workflow',
+            workflowPath: '/p',
+            workingDirectory: '/tmp',
+            context: { taskGeneration: { targetFolder: '/tasks' } },
         };
-        expect(isReplicateTemplatePayload(payload)).toBe(false);
+        expect(hasTaskGenerationContext(payload)).toBe(false);
     });
+});
 
-    it('returns false when commitHash is missing', () => {
+// ============================================================================
+// hasResolveCommentsContext
+// ============================================================================
+
+describe('hasResolveCommentsContext', () => {
+    it('returns true for chat payload with context.resolveComments', () => {
         const payload: Record<string, unknown> = {
-            kind: 'replicate-template',
-            templateName: 'add-endpoint',
-            instruction: 'do stuff',
+            kind: 'chat',
+            prompt: 'Resolve',
+            context: { resolveComments: { documentUri: '/doc', commentIds: ['c1'], documentContent: 'x', filePath: '/f' } },
         };
-        expect(isReplicateTemplatePayload(payload)).toBe(false);
+        expect(hasResolveCommentsContext(payload)).toBe(true);
     });
 
-    it('returns false when instruction is missing', () => {
+    it('returns false for chat payload without resolveComments', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(hasResolveCommentsContext(payload)).toBe(false);
+    });
+
+    it('returns false for non-chat payload', () => {
         const payload: Record<string, unknown> = {
-            kind: 'replicate-template',
-            templateName: 'add-endpoint',
-            commitHash: 'abc123def',
+            kind: 'run-script',
+            script: 'echo',
+            context: { resolveComments: { documentUri: '/d', commentIds: ['c1'], documentContent: 'x', filePath: '/f' } },
         };
-        expect(isReplicateTemplatePayload(payload)).toBe(false);
+        expect(hasResolveCommentsContext(payload)).toBe(false);
     });
+});
 
-    it('returns false when templateName is not a string', () => {
+// ============================================================================
+// hasReplicationContext
+// ============================================================================
+
+describe('hasReplicationContext', () => {
+    it('returns true for chat payload with context.replication', () => {
         const payload: Record<string, unknown> = {
-            kind: 'replicate-template',
-            templateName: 42,
-            commitHash: 'abc123def',
-            instruction: 'do stuff',
+            kind: 'chat',
+            prompt: 'Replicate',
+            context: { replication: { commitHash: 'abc123', templateName: 'add-endpoint' } },
         };
-        expect(isReplicateTemplatePayload(payload)).toBe(false);
+        expect(hasReplicationContext(payload)).toBe(true);
     });
 
-    it('returns false for null payload', () => {
-        expect(isReplicateTemplatePayload(null as any)).toBe(false);
+    it('returns false for chat payload without replication', () => {
+        const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello' };
+        expect(hasReplicationContext(payload)).toBe(false);
     });
 
-    it('returns false for payload with no kind field', () => {
+    it('returns false for non-chat payload', () => {
         const payload: Record<string, unknown> = {
-            templateName: 'x',
-            commitHash: 'abc',
-            instruction: 'do it',
+            kind: 'run-workflow',
+            workflowPath: '/p',
+            workingDirectory: '/tmp',
+            context: { replication: { commitHash: 'abc', templateName: 'x' } },
         };
-        expect(isReplicateTemplatePayload(payload)).toBe(false);
-    });
-
-    it('is mutually exclusive with other discriminant-based guards', () => {
-        const payload: Record<string, unknown> = {
-            kind: 'replicate-template',
-            templateName: 'x',
-            commitHash: 'abc',
-            instruction: 'do it',
-        };
-        expect(isReplicateTemplatePayload(payload)).toBe(true);
-        expect(isChatPayload(payload)).toBe(false);
-        expect(isTaskGenerationPayload(payload)).toBe(false);
-        expect(isRunWorkflowPayload(payload)).toBe(false);
-        expect(isRunScriptPayload(payload)).toBe(false);
+        expect(hasReplicationContext(payload)).toBe(false);
     });
 });
 
@@ -345,42 +239,66 @@ describe('isReplicateTemplatePayload', () => {
 describe('type narrowing', () => {
     it('guards correctly narrow Record<string, unknown> payloads', () => {
         const payloads: Record<string, unknown>[] = [
-            { promptFilePath: '/tmp/prompt.md' },
-            { documentUri: '/tmp/doc', commentIds: ['c1'] },
-            { prompt: 'explain' },
             { kind: 'chat', prompt: 'hi' },
-            { data: { x: 1 } },
-            { kind: 'task-generation', workingDirectory: '/tmp', prompt: 'Create' },
+            { kind: 'chat', prompt: 'follow', processId: 'proc-1' },
             { kind: 'run-workflow', workflowPath: '/tmp/p', workingDirectory: '/tmp' },
+            { kind: 'run-script', script: 'echo hi' },
         ];
 
-        expect(isFollowPromptPayload(payloads[0])).toBe(true);
-        expect(isResolveCommentsPayload(payloads[1])).toBe(true);
-        expect(isAIClarificationPayload(payloads[2])).toBe(true);
-        expect(isChatPayload(payloads[3])).toBe(true);
-        expect(isCustomTaskPayload(payloads[4])).toBe(true);
-        expect(isTaskGenerationPayload(payloads[5])).toBe(true);
-        expect(isRunWorkflowPayload(payloads[6])).toBe(true);
+        expect(isChatPayload(payloads[0])).toBe(true);
+        expect(isChatFollowUp(payloads[1])).toBe(true);
+        expect(isRunWorkflowPayload(payloads[2])).toBe(true);
+        expect(isRunScriptPayload(payloads[3])).toBe(true);
     });
 
     it('discriminant-based guards are mutually exclusive', () => {
         const chatPayload: Record<string, unknown> = { kind: 'chat', prompt: 'hi' };
-        const taskGenPayload: Record<string, unknown> = { kind: 'task-generation', workingDirectory: '/tmp', prompt: 'x' };
-        const runPipePayload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
+        const runWorkflowPayload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
+        const runScriptPayload: Record<string, unknown> = { kind: 'run-script', script: 'echo' };
 
-        // Chat is not task-generation or run-pipeline
+        // Chat is not run-workflow or run-script
         expect(isChatPayload(chatPayload)).toBe(true);
-        expect(isTaskGenerationPayload(chatPayload)).toBe(false);
         expect(isRunWorkflowPayload(chatPayload)).toBe(false);
+        expect(isRunScriptPayload(chatPayload)).toBe(false);
 
-        // Task-generation is not chat or run-pipeline
-        expect(isTaskGenerationPayload(taskGenPayload)).toBe(true);
-        expect(isChatPayload(taskGenPayload)).toBe(false);
-        expect(isRunWorkflowPayload(taskGenPayload)).toBe(false);
+        // Run-workflow is not chat or run-script
+        expect(isRunWorkflowPayload(runWorkflowPayload)).toBe(true);
+        expect(isChatPayload(runWorkflowPayload)).toBe(false);
+        expect(isRunScriptPayload(runWorkflowPayload)).toBe(false);
 
-        // Run-pipeline is not chat or task-generation
-        expect(isRunWorkflowPayload(runPipePayload)).toBe(true);
-        expect(isChatPayload(runPipePayload)).toBe(false);
-        expect(isTaskGenerationPayload(runPipePayload)).toBe(false);
+        // Run-script is not chat or run-workflow
+        expect(isRunScriptPayload(runScriptPayload)).toBe(true);
+        expect(isChatPayload(runScriptPayload)).toBe(false);
+        expect(isRunWorkflowPayload(runScriptPayload)).toBe(false);
+    });
+
+    it('context helpers are only true for chat payloads with matching context', () => {
+        const taskGenPayload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'gen',
+            context: { taskGeneration: { targetFolder: '/t' } },
+        };
+        const resolvePayload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'resolve',
+            context: { resolveComments: { documentUri: '/d', commentIds: ['c1'], documentContent: 'x', filePath: '/f' } },
+        };
+        const replicatePayload: Record<string, unknown> = {
+            kind: 'chat',
+            prompt: 'replicate',
+            context: { replication: { commitHash: 'abc', templateName: 'x' } },
+        };
+
+        expect(hasTaskGenerationContext(taskGenPayload)).toBe(true);
+        expect(hasResolveCommentsContext(taskGenPayload)).toBe(false);
+        expect(hasReplicationContext(taskGenPayload)).toBe(false);
+
+        expect(hasResolveCommentsContext(resolvePayload)).toBe(true);
+        expect(hasTaskGenerationContext(resolvePayload)).toBe(false);
+        expect(hasReplicationContext(resolvePayload)).toBe(false);
+
+        expect(hasReplicationContext(replicatePayload)).toBe(true);
+        expect(hasTaskGenerationContext(replicatePayload)).toBe(false);
+        expect(hasResolveCommentsContext(replicatePayload)).toBe(false);
     });
 });

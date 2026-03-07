@@ -127,8 +127,8 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.type).toBe('follow-prompt');
-            expect(body.payload.skillName).toBe('impl');
+            expect(body.type).toBe('chat');
+            expect(body.payload.context.skills).toContain('impl');
         });
     });
 
@@ -392,8 +392,8 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.type).toBe('follow-prompt');
-            expect(body.payload.promptFilePath).toContain('review.prompt.md');
+            expect(body.type).toBe('chat');
+            expect(body.payload.context.files.some((f: string) => f.includes('review.prompt.md'))).toBe(true);
         });
     });
 
@@ -450,11 +450,10 @@ describe('FollowPromptDialog', () => {
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
             // Windows drive-letter paths should use backslashes (native style)
-            expect(body.payload.planFilePath).not.toContain('/');
-            expect(body.payload.planFilePath).toBe('D:\\projects\\shortcuts\\.vscode\\tasks\\test\\task.md');
-            // promptFilePath should also use backslashes for Windows paths
-            expect(body.payload.promptFilePath).not.toContain('/');
-            expect(body.payload.promptFilePath).toBe('D:\\projects\\shortcuts\\.vscode\\impl.prompt.md');
+            const files: string[] = body.payload.context.files;
+            files.forEach((f: string) => expect(f).not.toContain('/'));
+            expect(files.some((f: string) => f === 'D:\\projects\\shortcuts\\.vscode\\tasks\\test\\task.md')).toBe(true);
+            expect(files.some((f: string) => f === 'D:\\projects\\shortcuts\\.vscode\\impl.prompt.md')).toBe(true);
         });
     });
 
@@ -519,7 +518,7 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.payload.additionalInfo).toBe('focus on auth module');
+            expect(body.payload.context.blocks[0].content).toBe('focus on auth module');
         });
     });
 
@@ -563,7 +562,7 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            expect(body.payload.additionalInfo).toBeUndefined();
+            expect(body.payload.context?.blocks).toBeUndefined();
         });
     });
 

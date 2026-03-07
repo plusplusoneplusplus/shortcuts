@@ -296,8 +296,8 @@ describe('EnqueueDialog', () => {
             expect(postBody).toBeTruthy();
         });
         expect(postUrl).toContain('/queue/tasks');
-        expect(postBody.type).toBe('follow-prompt');
-        expect(postBody.payload.promptContent).toBe('Test prompt');
+        expect(postBody.type).toBe('chat');
+        expect(postBody.payload.prompt).toBe('Test prompt');
         expect(postBody.payload.workingDirectory).toBe('/home/user/project');
     });
 
@@ -334,8 +334,8 @@ describe('EnqueueDialog', () => {
             expect(postBody).toBeTruthy();
         });
         expect(postUrl).toContain('/queue/tasks');
-        expect(postBody.type).toBe('follow-prompt');
-        expect(postBody.payload.promptContent).toBe('Test prompt');
+        expect(postBody.type).toBe('chat');
+        expect(postBody.payload.prompt).toBe('Test prompt');
         expect(postBody.payload.workingDirectory).toBeUndefined();
     });
 
@@ -454,10 +454,10 @@ describe('EnqueueDialog', () => {
             expect(postBody).toBeTruthy();
         });
         expect(postUrl).toContain('/queue/tasks');
-        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.type).toBe('chat');
         expect(postBody.displayName).toBe('Skill: impl');
-        expect(postBody.payload.skillName).toBe('impl');
-        expect(postBody.payload.promptContent).toBe('Use the impl skill.');
+        expect(postBody.payload.context.skills).toEqual(['impl']);
+        expect(postBody.payload.prompt).toBe('Use the impl skill.');
         expect(postBody.payload.workingDirectory).toBe('/home/user/project');
     });
 
@@ -517,7 +517,7 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postBody.payload.promptContent).toBe('Fix the login bug');
+        expect(postBody.payload.prompt).toBe('Fix the login bug');
     });
 
     it('pre-selects workspace when dialogInitialWorkspaceId is set', async () => {
@@ -674,8 +674,8 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postBody.type).toBe('follow-prompt');
-        expect(postBody.payload.promptContent).toBe('Test with images');
+        expect(postBody.type).toBe('chat');
+        expect(postBody.payload.prompt).toBe('Test with images');
         // images should be undefined when no images were successfully added
         expect(postBody.images).toBeUndefined();
     });
@@ -730,8 +730,7 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postBody.type).toBe('follow-prompt');
-        expect(postBody.images).toBeUndefined();
+        expect(postBody.type).toBe('chat');
     });
 
     it('includes model in config when skill task is submitted with model', async () => {
@@ -791,7 +790,7 @@ describe('EnqueueDialog', () => {
         expect(postBody.config).toEqual({ model: 'claude-sonnet' });
     });
 
-    it('freeform submit sends follow-prompt type, never chat (regression)', async () => {
+    it('freeform submit sends chat type with autopilot mode', async () => {
         let postBody: any = null;
         let postUrl: string = '';
         fetchSpy.mockImplementation((url: string, opts?: any) => {
@@ -826,10 +825,11 @@ describe('EnqueueDialog', () => {
         // Must use /queue/tasks endpoint, NOT /queue/enqueue
         expect(postUrl).toContain('/queue/tasks');
         expect(postUrl).not.toContain('/queue/enqueue');
-        // Must be follow-prompt, NOT chat
-        expect(postBody.type).toBe('follow-prompt');
-        expect(postBody.type).not.toBe('chat');
-        expect(postBody.payload.promptContent).toBe('My freeform task');
+        // Must be chat with autopilot mode
+        expect(postBody.type).toBe('chat');
+        expect(postBody.payload.kind).toBe('chat');
+        expect(postBody.payload.mode).toBe('autopilot');
+        expect(postBody.payload.prompt).toBe('My freeform task');
     });
 
     it('freeform submit includes model in config when set', async () => {
@@ -866,7 +866,7 @@ describe('EnqueueDialog', () => {
         await waitFor(() => {
             expect(postBody).toBeTruthy();
         });
-        expect(postBody.type).toBe('follow-prompt');
+        expect(postBody.type).toBe('chat');
         expect(postBody.config).toEqual({ model: 'gpt-4' });
     });
 
@@ -1585,10 +1585,10 @@ describe('EnqueueDialog slash commands', () => {
         await waitFor(() => expect(posts.length).toBeGreaterThan(0));
 
         const body = posts[0].body;
-        expect(body.type).toBe('follow-prompt');
+        expect(body.type).toBe('chat');
         expect(body.displayName).toBe('Skill: impl');
-        expect(body.payload.skillName).toBe('impl');
-        expect(body.payload.promptContent).toBe('fix the bug');
+        expect(body.payload.context.skills).toEqual(['impl']);
+        expect(body.payload.prompt).toBe('fix the bug');
     });
 
     it('placeholder text includes slash-command hint', async () => {
@@ -1665,7 +1665,7 @@ describe('EnqueueDialog slash commands', () => {
 
         const body = posts[0].body;
         // Dropdown selection ('draft') takes priority over /impl in prompt
-        expect(body.payload.skillName).toBe('draft');
+        expect(body.payload.context.skills).toEqual(['draft']);
     });
 });
 
@@ -1727,7 +1727,7 @@ describe('EnqueueDialog ask mode', () => {
         });
     });
 
-    it('submits a chat task with readonly:true in ask mode', async () => {
+    it('submits a chat task with mode:ask in ask mode', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
             if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
@@ -1761,7 +1761,7 @@ describe('EnqueueDialog ask mode', () => {
 
         expect(postBody.type).toBe('chat');
         expect(postBody.payload.kind).toBe('chat');
-        expect(postBody.payload.readonly).toBe(true);
+        expect(postBody.payload.mode).toBe('ask');
         expect(postBody.payload.prompt).toBe('What does this function do?');
     });
 });
