@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
+import { copyToClipboard } from '../utils/format';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
@@ -15,6 +16,7 @@ import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
+import type { GitCommitItem } from './CommitList';
 
 type PopupState = {
     position: { top: number; left: number };
@@ -26,9 +28,10 @@ export interface CommitDetailProps {
     workspaceId: string;
     hash: string;
     filePath?: string;
+    commit?: GitCommitItem;
 }
 
-export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDetailProps) {
     const [diff, setDiff] = useState<string | null>(null);
     const [diffLoading, setDiffLoading] = useState(true);
     const [diffError, setDiffError] = useState<string | null>(null);
@@ -37,6 +40,7 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
+    const [hashCopied, setHashCopied] = useState(false);
 
     const diffUrl = filePath
         ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
@@ -89,8 +93,55 @@ export function CommitDetail({ workspaceId, hash, filePath }: CommitDetailProps)
         [popupState, addComment],
     );
 
+    const handleCopyHash = useCallback(() => {
+        copyToClipboard(commit?.hash ?? hash).then(() => {
+            setHashCopied(true);
+            setTimeout(() => setHashCopied(false), 2000);
+        });
+    }, [commit, hash]);
+
+    const formattedDate = (() => {
+        if (!commit?.date) return '';
+        try { return new Date(commit.date).toLocaleString(); } catch { return commit.date; }
+    })();
+
     return (
         <div className="commit-detail flex flex-col h-full overflow-hidden" data-testid="commit-detail">
+            {/* Commit info header */}
+            {commit && (
+                <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="commit-info-header">
+                    <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-1.5 break-words" data-testid="commit-info-subject">
+                        {commit.subject}
+                    </div>
+                    <div className="flex flex-col gap-0.5 text-[11px] text-[#616161] dark:text-[#999]">
+                        <div data-testid="commit-info-author">
+                            <span className="font-semibold text-[#1e1e1e] dark:text-[#ccc]">{commit.author}</span>
+                            {commit.authorEmail && <span className="ml-1">&lt;{commit.authorEmail}&gt;</span>}
+                        </div>
+                        <div data-testid="commit-info-date">{formattedDate}</div>
+                        <div className="flex items-center gap-1" data-testid="commit-info-hash">
+                            <span className="font-mono text-[#0078d4] dark:text-[#3794ff]">{commit.hash.substring(0, 8)}</span>
+                            <button
+                                onClick={handleCopyHash}
+                                className="text-[10px] px-1.5 py-0 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-[#616161] dark:text-[#999]"
+                                data-testid="commit-info-copy-hash"
+                            >
+                                {hashCopied ? 'Copied!' : 'Copy'}
+                            </button>
+                        </div>
+                        {commit.parentHashes.length > 0 && (
+                            <div className="font-mono text-[10px]" data-testid="commit-info-parents">
+                                Parents: {commit.parentHashes.map(p => p.substring(0, 7)).join(', ')}
+                            </div>
+                        )}
+                    </div>
+                    {commit.body && (
+                        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 mt-1.5" data-testid="commit-info-body">
+                            <pre className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap font-sans leading-relaxed m-0 max-h-[80px] overflow-y-auto">{commit.body}</pre>
+                        </div>
+                    )}
+                </div>
+            )}
             {/* Diff label with comment toggle */}
             {filePath && (
                 <div className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between" data-testid="diff-file-path">

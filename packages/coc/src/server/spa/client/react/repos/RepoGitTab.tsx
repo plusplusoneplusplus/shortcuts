@@ -439,6 +439,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             key={rightPanelView.commit.hash}
             workspaceId={workspaceId}
             hash={rightPanelView.commit.hash}
+            commit={rightPanelView.commit}
         />
     ) : rightPanelView?.type === 'commit-file' ? (
         <CommitFileContent

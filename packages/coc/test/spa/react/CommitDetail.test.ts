@@ -54,24 +54,8 @@ describe('CommitDetail', () => {
             expect(source).toContain('filePath?: string');
         });
 
-        it('does NOT accept subject prop', () => {
-            expect(source).not.toContain('subject?: string');
-        });
-
-        it('does NOT accept author prop', () => {
-            expect(source).not.toContain('author?: string');
-        });
-
-        it('does NOT accept date prop', () => {
-            expect(source).not.toContain('date?: string');
-        });
-
-        it('does NOT accept parentHashes prop', () => {
-            expect(source).not.toContain('parentHashes?: string[]');
-        });
-
-        it('does NOT accept body prop', () => {
-            expect(source).not.toContain('body?: string');
+        it('accepts optional commit prop', () => {
+            expect(source).toContain('commit?: GitCommitItem');
         });
     });
 
@@ -151,53 +135,45 @@ describe('CommitDetail', () => {
         });
     });
 
-    describe('commit info header — metadata removed from right panel', () => {
-        it('does NOT have commit-info-header section', () => {
-            expect(source).not.toContain('data-testid="commit-info-header"');
+    describe('commit info header — metadata in right panel', () => {
+        it('has commit-info-header section', () => {
+            expect(source).toContain('data-testid="commit-info-header"');
         });
 
-        it('does NOT have commit-info-subject section', () => {
-            expect(source).not.toContain('data-testid="commit-info-subject"');
+        it('has commit-info-subject section', () => {
+            expect(source).toContain('data-testid="commit-info-subject"');
         });
 
-        it('does NOT have commit-info-author section', () => {
-            expect(source).not.toContain('data-testid="commit-info-author"');
+        it('has commit-info-author section', () => {
+            expect(source).toContain('data-testid="commit-info-author"');
         });
 
-        it('does NOT have commit-info-date section', () => {
-            expect(source).not.toContain('data-testid="commit-info-date"');
+        it('has commit-info-date section', () => {
+            expect(source).toContain('data-testid="commit-info-date"');
         });
 
-        it('does NOT have commit-info-hash section', () => {
-            expect(source).not.toContain('data-testid="commit-info-hash"');
+        it('has commit-info-hash section', () => {
+            expect(source).toContain('data-testid="commit-info-hash"');
         });
 
-        it('does NOT have commit-info-parents section', () => {
-            expect(source).not.toContain('data-testid="commit-info-parents"');
+        it('has commit-info-parents section', () => {
+            expect(source).toContain('data-testid="commit-info-parents"');
         });
 
-        it('does NOT have commit-info-body section', () => {
-            expect(source).not.toContain('data-testid="commit-info-body"');
+        it('has commit-info-body section', () => {
+            expect(source).toContain('data-testid="commit-info-body"');
         });
 
-        it('does NOT import copyToClipboard', () => {
-            expect(source).not.toContain('copyToClipboard');
+        it('imports copyToClipboard', () => {
+            expect(source).toContain('copyToClipboard');
         });
 
-        it('does NOT have file-change-list section', () => {
-            expect(source).not.toContain('data-testid="file-change-list"');
+        it('imports GitCommitItem type', () => {
+            expect(source).toContain("import type { GitCommitItem } from './CommitList'");
         });
 
-        it('does NOT have files-loading indicator', () => {
-            expect(source).not.toContain('data-testid="files-loading"');
-        });
-
-        it('does NOT have files-error indicator', () => {
-            expect(source).not.toContain('data-testid="files-error"');
-        });
-
-        it('does NOT have no-files-changed indicator', () => {
-            expect(source).not.toContain('data-testid="no-files-changed"');
+        it('conditionally renders header only when commit is provided', () => {
+            expect(source).toContain('commit &&');
         });
     });
 
