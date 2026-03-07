@@ -156,7 +156,7 @@ export function useDiffComments(
         ? `${context.repositoryId}:${context.oldRef}:${context.newRef}:${context.filePath}`
         : null;
 
-    const isEphemeral = context?.newRef === 'working-tree' ?? false;
+    const isEphemeral = context?.newRef === 'working-tree';
 
     // ------------------------------------------------------------------
     // fetchComments — GET collection URL (query-param based), filter client-side
