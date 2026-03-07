@@ -1,5 +1,5 @@
 /**
- * Tests for hunk navigation: HunkNavButtons, data-hunk-header attribute,
+ * Tests for hunk navigation: HunkNavButtons, data-edit-start attribute,
  * and UnifiedDiffViewerHandle (scrollToNextHunk/scrollToPrevHunk/getHunkCount).
  */
 
@@ -9,6 +9,8 @@ import React, { createRef } from 'react';
 import {
     UnifiedDiffViewer,
     HunkNavButtons,
+    computeEditStarts,
+    computeDiffLines,
 } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
 
@@ -34,6 +36,15 @@ const SINGLE_HUNK_DIFF = `@@ -1,2 +1,2 @@
 
 const NO_HUNK_DIFF = `diff --git a/foo.ts b/foo.ts
 index 0000000..1111111 100644`;
+
+/** One hunk with two edit groups separated by a context line. */
+const MULTI_EDIT_SINGLE_HUNK_DIFF = `@@ -1,7 +1,7 @@
+-removed1
++added1
+ context
+-removed2
++added2
+ more context`;
 
 // ============================================================================
 // HunkNavButtons
@@ -82,6 +93,40 @@ describe('HunkNavButtons', () => {
 });
 
 // ============================================================================
+// computeEditStarts
+// ============================================================================
+
+describe('computeEditStarts', () => {
+    it('identifies edit starts from multi-hunk diff', () => {
+        const lines = MULTI_HUNK_DIFF.split('\n');
+        const diffLines = computeDiffLines(lines);
+        const starts = computeEditStarts(diffLines);
+        expect(starts.size).toBe(3);
+    });
+
+    it('identifies two edit groups within a single hunk', () => {
+        const lines = MULTI_EDIT_SINGLE_HUNK_DIFF.split('\n');
+        const diffLines = computeDiffLines(lines);
+        const starts = computeEditStarts(diffLines);
+        expect(starts.size).toBe(2);
+    });
+
+    it('returns empty set for diff with no edits', () => {
+        const lines = NO_HUNK_DIFF.split('\n');
+        const diffLines = computeDiffLines(lines);
+        const starts = computeEditStarts(diffLines);
+        expect(starts.size).toBe(0);
+    });
+
+    it('identifies single edit group', () => {
+        const lines = SINGLE_HUNK_DIFF.split('\n');
+        const diffLines = computeDiffLines(lines);
+        const starts = computeEditStarts(diffLines);
+        expect(starts.size).toBe(1);
+    });
+});
+
+// ============================================================================
 // data-hunk-header attribute
 // ============================================================================
 
@@ -112,6 +157,36 @@ describe('UnifiedDiffViewer — data-hunk-header attribute', () => {
 });
 
 // ============================================================================
+// data-edit-start attribute
+// ============================================================================
+
+describe('UnifiedDiffViewer — data-edit-start attribute', () => {
+    it('marks the first line of each edit group', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={MULTI_HUNK_DIFF} data-testid="diff" />
+        );
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        expect(editStarts.length).toBe(3);
+    });
+
+    it('marks two edit groups within a single hunk', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={MULTI_EDIT_SINGLE_HUNK_DIFF} data-testid="diff" />
+        );
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        expect(editStarts.length).toBe(2);
+    });
+
+    it('no data-edit-start on diff with no edits', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={NO_HUNK_DIFF} data-testid="diff" />
+        );
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        expect(editStarts.length).toBe(0);
+    });
+});
+
+// ============================================================================
 // UnifiedDiffViewerHandle (via ref)
 // ============================================================================
 
@@ -120,51 +195,55 @@ describe('UnifiedDiffViewerHandle', () => {
         vi.restoreAllMocks();
     });
 
-    it('getHunkCount returns the number of hunks', () => {
+    it('getHunkCount returns the number of edit groups', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         render(<UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="diff" />);
         expect(ref.current?.getHunkCount()).toBe(3);
     });
 
-    it('getHunkCount returns 0 for no-hunk diff', () => {
+    it('getHunkCount returns 0 for no-edit diff', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         render(<UnifiedDiffViewer ref={ref} diff={NO_HUNK_DIFF} data-testid="diff" />);
         expect(ref.current?.getHunkCount()).toBe(0);
     });
 
-    it('scrollToNextHunk calls scrollIntoView on a hunk element', () => {
+    it('getHunkCount counts edit groups, not hunk headers', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        render(<UnifiedDiffViewer ref={ref} diff={MULTI_EDIT_SINGLE_HUNK_DIFF} data-testid="diff" />);
+        expect(ref.current?.getHunkCount()).toBe(2);
+    });
+
+    it('scrollToNextHunk scrolls the parent to an edit-start element', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         const { container } = render(
             <UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="diff" />
         );
-        const hunkHeaders = container.querySelectorAll<HTMLElement>('[data-hunk-header]');
-        // jsdom doesn't have scrollIntoView; define it before spying
-        hunkHeaders.forEach(el => { el.scrollIntoView = vi.fn(); });
+        const viewer = container.querySelector('[data-testid="diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.scrollTo = vi.fn();
         ref.current?.scrollToNextHunk();
-        const called = Array.from(hunkHeaders).some(el => (el.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length > 0);
-        expect(called).toBe(true);
+        expect(scrollParent.scrollTo).toHaveBeenCalled();
     });
 
-    it('scrollToPrevHunk calls scrollIntoView on a hunk element', () => {
+    it('scrollToPrevHunk scrolls the parent to an edit-start element', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         const { container } = render(
             <UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="diff" />
         );
-        const hunkHeaders = container.querySelectorAll<HTMLElement>('[data-hunk-header]');
-        hunkHeaders.forEach(el => { el.scrollIntoView = vi.fn(); });
+        const viewer = container.querySelector('[data-testid="diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.scrollTo = vi.fn();
         ref.current?.scrollToPrevHunk();
-        const called = Array.from(hunkHeaders).some(el => (el.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length > 0);
-        expect(called).toBe(true);
+        expect(scrollParent.scrollTo).toHaveBeenCalled();
     });
 
-    it('scrollToNextHunk is a no-op when diff has no hunks', () => {
+    it('scrollToNextHunk is a no-op when diff has no edits', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         render(<UnifiedDiffViewer ref={ref} diff={NO_HUNK_DIFF} data-testid="diff" />);
-        // Should not throw
         expect(() => ref.current?.scrollToNextHunk()).not.toThrow();
     });
 
-    it('scrollToPrevHunk is a no-op when diff has no hunks', () => {
+    it('scrollToPrevHunk is a no-op when diff has no edits', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         render(<UnifiedDiffViewer ref={ref} diff={NO_HUNK_DIFF} data-testid="diff" />);
         expect(() => ref.current?.scrollToPrevHunk()).not.toThrow();

@@ -65,6 +65,20 @@ export function parseHunkHeader(line: string): { oldStart: number; newStart: num
     return m ? { oldStart: parseInt(m[1], 10), newStart: parseInt(m[2], 10) } : null;
 }
 
+/** Identify indices where an edit group starts (first added/removed line after a non-change line). */
+export function computeEditStarts(diffLines: DiffLine[]): Set<number> {
+    const starts = new Set<number>();
+    for (let i = 0; i < diffLines.length; i++) {
+        const { type } = diffLines[i];
+        if (type === 'added' || type === 'removed') {
+            if (i === 0 || (diffLines[i - 1].type !== 'added' && diffLines[i - 1].type !== 'removed')) {
+                starts.add(i);
+            }
+        }
+    }
+    return starts;
+}
+
 /** Compute per-line identity (old/new line numbers) for a unified diff. */
 export function computeDiffLines(lines: string[]): DiffLine[] {
     let oldLine: number | undefined;
@@ -195,6 +209,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
+    const editStarts = useMemo(() => computeEditStarts(diffLines), [diffLines]);
     const lineCommentMap = useMemo(
         () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
         [comments]
@@ -210,35 +225,49 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         scrollToNextHunk: () => {
             const container = containerRef.current;
             if (!container) return;
-            const hunks = Array.from(container.querySelectorAll<HTMLElement>('[data-hunk-header]'));
-            if (hunks.length === 0) return;
+            const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
+            if (edits.length === 0) return;
             const scrollParent = container.parentElement;
-            const viewportTop = scrollParent?.getBoundingClientRect().top ?? 0;
-            for (const hunk of hunks) {
-                if (hunk.getBoundingClientRect().top > viewportTop + 20) {
-                    hunk.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (!scrollParent) return;
+            const parentTop = scrollParent.getBoundingClientRect().top;
+            for (const edit of edits) {
+                if (edit.getBoundingClientRect().top > parentTop + 20) {
+                    scrollParent.scrollTo({
+                        top: scrollParent.scrollTop + edit.getBoundingClientRect().top - parentTop,
+                        behavior: 'smooth',
+                    });
                     return;
                 }
             }
-            hunks[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            scrollParent.scrollTo({
+                top: scrollParent.scrollTop + edits[0].getBoundingClientRect().top - parentTop,
+                behavior: 'smooth',
+            });
         },
         scrollToPrevHunk: () => {
             const container = containerRef.current;
             if (!container) return;
-            const hunks = Array.from(container.querySelectorAll<HTMLElement>('[data-hunk-header]'));
-            if (hunks.length === 0) return;
+            const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
+            if (edits.length === 0) return;
             const scrollParent = container.parentElement;
-            const viewportTop = scrollParent?.getBoundingClientRect().top ?? 0;
-            for (let i = hunks.length - 1; i >= 0; i--) {
-                if (hunks[i].getBoundingClientRect().top < viewportTop - 5) {
-                    hunks[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (!scrollParent) return;
+            const parentTop = scrollParent.getBoundingClientRect().top;
+            for (let i = edits.length - 1; i >= 0; i--) {
+                if (edits[i].getBoundingClientRect().top < parentTop - 5) {
+                    scrollParent.scrollTo({
+                        top: scrollParent.scrollTop + edits[i].getBoundingClientRect().top - parentTop,
+                        behavior: 'smooth',
+                    });
                     return;
                 }
             }
-            hunks[hunks.length - 1].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            scrollParent.scrollTo({
+                top: scrollParent.scrollTop + edits[edits.length - 1].getBoundingClientRect().top - parentTop,
+                behavior: 'smooth',
+            });
         },
         getHunkCount: () => {
-            return containerRef.current?.querySelectorAll('[data-hunk-header]').length ?? 0;
+            return containerRef.current?.querySelectorAll('[data-edit-start]').length ?? 0;
         },
     }));
 
@@ -345,6 +374,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                             data-old-line={enableComments ? (oldLine ?? '') : undefined}
                             data-new-line={enableComments ? (newLine ?? '') : undefined}
                             data-line-type={enableComments ? type : undefined}
+                            data-edit-start={editStarts.has(i) ? '' : undefined}
                         >
                             {showLineNumbers && (
                                 <>
