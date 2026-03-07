@@ -119,6 +119,9 @@ export class QueueJobDialogService {
 
                     if (message.mode === 'prompt') {
                         result.prompt = message.prompt;
+                        if (message.selectedSkills && message.selectedSkills.length > 0) {
+                            result.selectedSkills = message.selectedSkills;
+                        }
                     } else {
                         result.skillName = message.skillName;
                         result.additionalContext = message.additionalContext || undefined;

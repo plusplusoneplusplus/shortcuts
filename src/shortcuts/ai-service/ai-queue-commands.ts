@@ -266,6 +266,25 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
             // Store freeform prompt directly in payload (no temp file needed for SDK)
             promptContent = options.prompt!;
             displayName = 'Queue Job: Prompt';
+
+            // If skills were selected via /slash-commands, resolve the first one
+            if (options.selectedSkills && options.selectedSkills.length > 0) {
+                const skills = await getSkills(workspaceRoot || undefined);
+                const firstSkillName = options.selectedSkills[0];
+                const skill = skills.find(s => s.name === firstSkillName);
+                if (skill) {
+                    const promptMd = path.join(skill.absolutePath, 'prompt.md');
+                    const skillMd = path.join(skill.absolutePath, 'SKILL.md');
+                    if (fs.existsSync(promptMd)) {
+                        promptFilePath = promptMd;
+                    } else if (fs.existsSync(skillMd)) {
+                        promptFilePath = skillMd;
+                    }
+                    skillName = firstSkillName;
+                    additionalContext = promptContent;
+                    displayName = `Queue Job: Prompt + Skill (${firstSkillName})`;
+                }
+            }
         } else {
             // Skill mode: resolve the skill's prompt file path
             const skills = await getSkills(workspaceRoot || undefined);

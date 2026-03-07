@@ -1127,4 +1127,155 @@ suite('Queue Job Dialog Service Tests', () => {
             assert.ok(formGroupCount >= 4, `Should have at least 4 form groups, found ${formGroupCount}`);
         });
     });
+
+    suite('getQueueJobDialogHtml - Slash-command skill chips', () => {
+        function createMockWebview(): any {
+            return {
+                asWebviewUri: (uri: vscode.Uri) => uri,
+                cspSource: 'mock-csp-source',
+            };
+        }
+
+        function generateHtml(skills: string[] = ['impl', 'go-deep']): string {
+            return getQueueJobDialogHtml(
+                createMockWebview(),
+                vscode.Uri.file('/mock/extension'),
+                [{ id: 'gpt-4', label: 'GPT-4' }],
+                'gpt-4',
+                skills,
+                '/workspace'
+            );
+        }
+
+        test('should have skill chips container in prompt mode', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('id="skillChipsContainer"'), 'Should have skill chips container');
+            assert.ok(html.includes('skill-chips-container'), 'Should have skill-chips-container class');
+        });
+
+        test('should include slash-command hint in prompt placeholder', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('/skill-name'), 'Prompt placeholder should mention /skill-name');
+        });
+
+        test('should include slash-command hint in prompt hint text', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('Use /skill-name to attach skills'), 'Hint should describe slash-command usage');
+        });
+
+        test('should include findSlashSkills function in script', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('findSlashSkills'), 'Should have findSlashSkills function');
+        });
+
+        test('should include updateSkillChips function in script', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('updateSkillChips'), 'Should have updateSkillChips function');
+        });
+
+        test('should include renderSkillChips function in script', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('renderSkillChips'), 'Should have renderSkillChips function');
+        });
+
+        test('should include removeSlashSkill function in script', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('removeSlashSkill'), 'Should have removeSlashSkill function');
+        });
+
+        test('should include skill-chip CSS class', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('.skill-chip'), 'Should have .skill-chip CSS rule');
+            assert.ok(html.includes('.chip-remove'), 'Should have .chip-remove CSS rule');
+        });
+
+        test('should include detectedSkills tracking variable', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('detectedSkills'), 'Should have detectedSkills variable');
+        });
+
+        test('should include selectedSkills in prompt submit message', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('selectedSkills'), 'Submit should include selectedSkills field');
+        });
+
+        test('should use regex to detect /skill-name patterns', () => {
+            const html = generateHtml();
+            // The findSlashSkills function should use a regex pattern matching /word
+            assert.ok(html.includes('findSlashSkills'), 'Should have slash skill detection function');
+            assert.ok(html.includes('regex.exec'), 'Should use regex exec for matching');
+        });
+
+        test('should check skill names against known skills list', () => {
+            const html = generateHtml();
+            // findSlashSkills should reference the skills array
+            assert.ok(html.includes('skills.indexOf(name)'), 'Should validate against known skills');
+        });
+
+        test('should have chip remove button with × character', () => {
+            const html = generateHtml();
+            assert.ok(html.includes('chip-remove'), 'Should have chip remove button');
+            assert.ok(html.includes('×'), 'Remove button should use × character');
+        });
+    });
+
+    suite('QueueJobOptions - selectedSkills field', () => {
+        test('should allow selectedSkills in prompt mode options', () => {
+            const options: QueueJobOptions = {
+                mode: 'prompt',
+                prompt: '/impl Fix the bug',
+                selectedSkills: ['impl'],
+                model: DEFAULT_MODEL_ID,
+            };
+
+            assert.strictEqual(options.mode, 'prompt');
+            assert.deepStrictEqual(options.selectedSkills, ['impl']);
+            assert.ok(options.prompt!.includes('/impl'));
+        });
+
+        test('should allow multiple selectedSkills', () => {
+            const options: QueueJobOptions = {
+                mode: 'prompt',
+                prompt: '/impl /go-deep Fix the bug',
+                selectedSkills: ['impl', 'go-deep'],
+                model: DEFAULT_MODEL_ID,
+            };
+
+            assert.strictEqual(options.selectedSkills!.length, 2);
+            assert.ok(options.selectedSkills!.includes('impl'));
+            assert.ok(options.selectedSkills!.includes('go-deep'));
+        });
+
+        test('should allow empty selectedSkills', () => {
+            const options: QueueJobOptions = {
+                mode: 'prompt',
+                prompt: 'Fix the bug',
+                selectedSkills: [],
+                model: DEFAULT_MODEL_ID,
+            };
+
+            assert.strictEqual(options.selectedSkills!.length, 0);
+        });
+
+        test('should allow undefined selectedSkills', () => {
+            const options: QueueJobOptions = {
+                mode: 'prompt',
+                prompt: 'Fix the bug',
+                model: DEFAULT_MODEL_ID,
+            };
+
+            assert.strictEqual(options.selectedSkills, undefined);
+        });
+
+        test('should not have selectedSkills in skill mode', () => {
+            const options: QueueJobOptions = {
+                mode: 'skill',
+                skillName: 'impl',
+                model: DEFAULT_MODEL_ID,
+            };
+
+            assert.strictEqual(options.selectedSkills, undefined);
+            assert.strictEqual(options.skillName, 'impl');
+        });
+    });
 });

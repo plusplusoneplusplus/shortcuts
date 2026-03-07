@@ -41,6 +41,8 @@ export interface QueueJobOptions {
     model: string;
     /** Working directory for execution */
     workingDirectory?: string;
+    /** Skills selected via /slash-commands in prompt mode */
+    selectedSkills?: string[];
 }
 
 // ============================================================================
@@ -80,6 +82,41 @@ export function getQueueJobDialogHtml(
     <title>Queue AI Job</title>
     <style nonce="${nonce}">
         ${getSharedDialogCSS()}
+
+        .skill-chips-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .skill-chips-container:empty {
+            display: none;
+        }
+        .skill-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            background: var(--vscode-badge-background, #4d4d4d);
+            color: var(--vscode-badge-foreground, #ffffff);
+            cursor: default;
+            user-select: none;
+        }
+        .skill-chip .chip-icon {
+            font-size: 10px;
+        }
+        .skill-chip .chip-remove {
+            cursor: pointer;
+            opacity: 0.7;
+            font-size: 12px;
+            line-height: 1;
+            margin-left: 2px;
+        }
+        .skill-chip .chip-remove:hover {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -105,8 +142,9 @@ export function getQueueJobDialogHtml(
             <div class="mode-content active" id="promptContent">
                 <div class="form-group" id="promptGroup">
                     <label for="jobPrompt">Prompt <span class="required">*</span></label>
-                    <textarea id="jobPrompt" placeholder="Describe what you want the AI to do..." rows="5"></textarea>
-                    <div class="hint">The full prompt to send to the AI</div>
+                    <textarea id="jobPrompt" placeholder="Describe what you want the AI to do... (type /skill-name to attach a skill)" rows="5"></textarea>
+                    <div id="skillChipsContainer" class="skill-chips-container"></div>
+                    <div class="hint">The full prompt to send to the AI. Use /skill-name to attach skills.</div>
                     <div class="error" id="promptError"></div>
                 </div>
             </div>
@@ -188,6 +226,10 @@ export function getQueueJobDialogHtml(
             const jobPromptInput = document.getElementById('jobPrompt');
             const promptGroup = document.getElementById('promptGroup');
             const promptError = document.getElementById('promptError');
+            const skillChipsContainer = document.getElementById('skillChipsContainer');
+            
+            // Track skills detected via /slash-commands in prompt
+            var detectedSkills = [];
             
             // DOM elements - Skill mode
             const skillSelect = document.getElementById('skillSelect');
@@ -283,8 +325,58 @@ export function getQueueJobDialogHtml(
                 }
             }
             
+            // Skill chip detection from /slash-commands in prompt
+            function findSlashSkills(text) {
+                var found = [];
+                if (!hasSkills) return found;
+                var regex = /(?:^|\s)\/([\w-]+)/g;
+                var match;
+                while ((match = regex.exec(text)) !== null) {
+                    var name = match[1];
+                    if (skills.indexOf(name) !== -1 && found.indexOf(name) === -1) {
+                        found.push(name);
+                    }
+                }
+                return found;
+            }
+
+            function renderSkillChips() {
+                if (!skillChipsContainer) return;
+                skillChipsContainer.innerHTML = '';
+                detectedSkills.forEach(function(skill) {
+                    var chip = document.createElement('span');
+                    chip.className = 'skill-chip';
+                    chip.setAttribute('data-skill', skill);
+                    chip.innerHTML = '<span class="chip-icon">🛠️</span>' +
+                        '<span class="chip-name">' + skill + '</span>' +
+                        '<span class="chip-remove" title="Remove skill">×</span>';
+                    chip.querySelector('.chip-remove').addEventListener('click', function() {
+                        removeSlashSkill(skill);
+                    });
+                    skillChipsContainer.appendChild(chip);
+                });
+            }
+
+            function updateSkillChips() {
+                var text = jobPromptInput.value;
+                detectedSkills = findSlashSkills(text);
+                renderSkillChips();
+            }
+
+            function removeSlashSkill(skill) {
+                var text = jobPromptInput.value;
+                // Remove the /skill-name from the prompt text
+                var regex = new RegExp('(^|\\s)\\/' + skill.replace(/[-]/g, '\\-') + '(?=\\s|$)', 'g');
+                jobPromptInput.value = text.replace(regex, '$1').replace(/^\s+/, '');
+                updateSkillChips();
+                updateValidation();
+            }
+
             // Event listeners for validation
-            jobPromptInput.addEventListener('input', updateValidation);
+            jobPromptInput.addEventListener('input', function() {
+                updateSkillChips();
+                updateValidation();
+            });
             if (skillSelect) {
                 skillSelect.addEventListener('change', updateValidation);
             }
@@ -303,6 +395,7 @@ export function getQueueJobDialogHtml(
                         type: 'submit',
                         mode: 'prompt',
                         prompt: prompt,
+                        selectedSkills: detectedSkills.slice(),
                         model: aiModelSelect.value,
                         workingDirectory: workingDirInput.value.trim()
                     });
@@ -358,6 +451,7 @@ export function getQueueJobDialogHtml(
                             type: 'saveAsTemplate',
                             mode: 'prompt',
                             prompt: prompt,
+                            selectedSkills: detectedSkills.slice(),
                             model: aiModelSelect.value,
                             workingDirectory: workingDirInput.value.trim()
                         });
