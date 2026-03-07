@@ -222,8 +222,8 @@ describe('executeWorkflow', () => {
         };
 
         // Abort after the first tier executes
-        const originalOnProgress = vi.fn().mockImplementation((_nodeId: string, event: string) => {
-            if (event === 'complete') {
+        const originalOnProgress = vi.fn().mockImplementation((event: { phase: string }) => {
+            if (event.phase === 'completed') {
                 controller.abort();
             }
         });
@@ -233,15 +233,15 @@ describe('executeWorkflow', () => {
         ).rejects.toThrow(/cancelled/i);
     });
 
-    it('onProgress called with start and complete for every node', async () => {
+    it('onProgress called with running and completed for every node', async () => {
         const config = linearConfig();
         const onProgress = vi.fn();
         await executeWorkflow(config, makeOptions({ onProgress }));
 
         const nodeIds = Object.keys(config.nodes);
         for (const nodeId of nodeIds) {
-            expect(onProgress).toHaveBeenCalledWith(nodeId, 'start');
-            expect(onProgress).toHaveBeenCalledWith(nodeId, 'complete');
+            expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ nodeId, phase: 'running' }));
+            expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ nodeId, phase: 'completed' }));
         }
     });
 

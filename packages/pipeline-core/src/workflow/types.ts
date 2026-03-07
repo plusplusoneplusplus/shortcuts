@@ -463,6 +463,37 @@ export interface DAGGraph {
 export type ExecutionTier = string[];
 
 // =============================================================================
+// Progress Events
+// =============================================================================
+
+/** Phase of a node during workflow execution. */
+export type WorkflowNodePhase = 'pending' | 'running' | 'completed' | 'failed' | 'warned';
+
+/** Structured progress event emitted during workflow execution. */
+export interface WorkflowProgressEvent {
+    /** Node ID from the workflow config. */
+    nodeId: string;
+    /** Phase transition. */
+    phase: WorkflowNodePhase;
+    /** ISO 8601 timestamp. */
+    timestamp: string;
+    /** Duration in ms (present on 'completed' | 'failed' | 'warned'). */
+    durationMs?: number;
+    /** Number of input items entering this node. */
+    inputItemCount?: number;
+    /** Number of output items produced (present on 'completed'). */
+    outputItemCount?: number;
+    /** Error message (present on 'failed' | 'warned'). */
+    error?: string;
+    /** For map nodes: per-item progress. */
+    itemProgress?: {
+        completed: number;
+        failed: number;
+        total: number;
+    };
+}
+
+// =============================================================================
 // Execution Options
 // =============================================================================
 
@@ -506,11 +537,10 @@ export interface WorkflowExecutionOptions {
     signal?: AbortSignal;
     /** Runtime parameter overrides. Merged on top of config.parameters (runtime wins). */
     parameters?: Record<string, string>;
-    /**
-     * Progress callback invoked when a node starts, completes, or warns.
-     * Useful for UI integration and logging.
-     */
-    onProgress?: (nodeId: string, event: 'start' | 'complete' | 'warn') => void;
+    /** Structured progress callback for node-level events. */
+    onProgress?: (event: WorkflowProgressEvent) => void;
+    /** Current node ID (set internally by the executor for sub-node callbacks). @internal */
+    currentNodeId?: string;
 }
 
 // =============================================================================

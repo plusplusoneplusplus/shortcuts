@@ -73,27 +73,36 @@ async function executeNode(
     const parentIds = nodeConfig.from ?? [];
     const inputs = gatherInputs(parentIds, ctx.results);
 
-    ctx.options.onProgress?.(nodeId, 'start');
+    // Emit 'running' event
+    ctx.options.onProgress?.({
+        nodeId,
+        phase: 'running',
+        timestamp: new Date().toISOString(),
+        inputItemCount: inputs.length,
+    });
     getLogger().debug(LogCategory.PIPELINE, `[Workflow] Node start: ${nodeId} (type=${nodeConfig.type})`);
+
+    // Set currentNodeId so sub-node executors (map) can emit per-item progress
+    const nodeOptions = { ...ctx.options, currentNodeId: nodeId };
 
     try {
         let output: Items;
 
         switch (nodeConfig.type) {
             case 'load':
-                output = await executeLoad(nodeConfig, ctx.options);
+                output = await executeLoad(nodeConfig, nodeOptions);
                 break;
             case 'script':
-                output = await executeScript(nodeConfig, inputs, ctx.options);
+                output = await executeScript(nodeConfig, inputs, nodeOptions);
                 break;
             case 'filter':
-                output = await executeFilter(nodeConfig, inputs, ctx.options);
+                output = await executeFilter(nodeConfig, inputs, nodeOptions);
                 break;
             case 'map':
-                output = await executeMap(nodeConfig, inputs, ctx.options);
+                output = await executeMap(nodeConfig, inputs, nodeOptions);
                 break;
             case 'reduce':
-                output = await executeReduce(nodeConfig, inputs, ctx.options);
+                output = await executeReduce(nodeConfig, inputs, nodeOptions);
                 break;
             case 'merge':
                 output = executeMerge(nodeConfig, gatherInputsPerParent(parentIds, ctx.results));
@@ -102,29 +111,39 @@ async function executeNode(
                 output = executeTransform(nodeConfig, inputs);
                 break;
             case 'ai':
-                output = await executeAI(nodeConfig, inputs, ctx.options);
+                output = await executeAI(nodeConfig, inputs, nodeOptions);
                 break;
             default:
                 throw new Error(`Unknown node type: ${(nodeConfig as any).type}`);
         }
 
+        const durationMs = Date.now() - nodeStartTime;
         ctx.results.set(nodeId, {
             nodeId,
             success: true,
             items: output,
             stats: {
-                durationMs: Date.now() - nodeStartTime,
+                durationMs,
                 inputCount: inputs.length,
                 outputCount: output.length,
             },
         });
 
-        ctx.options.onProgress?.(nodeId, 'complete');
+        // Emit 'completed' event
+        ctx.options.onProgress?.({
+            nodeId,
+            phase: 'completed',
+            timestamp: new Date().toISOString(),
+            durationMs,
+            inputItemCount: inputs.length,
+            outputItemCount: output.length,
+        });
         getLogger().debug(
             LogCategory.PIPELINE,
-            `[Workflow] Node complete: ${nodeId} (out=${output.length}, ms=${Date.now() - nodeStartTime})`,
+            `[Workflow] Node complete: ${nodeId} (out=${output.length}, ms=${durationMs})`,
         );
     } catch (err) {
+        const durationMs = Date.now() - nodeStartTime;
         if (nodeConfig.onError === 'warn') {
             const msg = err instanceof Error ? err.message : String(err);
             getLogger().warn(LogCategory.PIPELINE, `[Workflow] Node warn: ${nodeId} — ${msg}`);
@@ -133,19 +152,36 @@ async function executeNode(
                 success: false,
                 items: [],
                 stats: {
-                    durationMs: Date.now() - nodeStartTime,
+                    durationMs,
                     inputCount: inputs.length,
                     outputCount: 0,
                 },
                 error: msg,
             });
-            ctx.options.onProgress?.(nodeId, 'warn');
+            // Emit 'warned' event
+            ctx.options.onProgress?.({
+                nodeId,
+                phase: 'warned',
+                timestamp: new Date().toISOString(),
+                durationMs,
+                inputItemCount: inputs.length,
+                error: msg,
+            });
         } else {
             getLogger().error(
                 LogCategory.PIPELINE,
                 `[Workflow] Node error: ${nodeId}`,
                 err instanceof Error ? err : new Error(String(err)),
             );
+            // Emit 'failed' event
+            ctx.options.onProgress?.({
+                nodeId,
+                phase: 'failed',
+                timestamp: new Date().toISOString(),
+                durationMs,
+                inputItemCount: inputs.length,
+                error: err instanceof Error ? err.message : String(err),
+            });
             throw err;
         }
     }

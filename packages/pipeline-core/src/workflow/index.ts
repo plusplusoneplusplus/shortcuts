@@ -54,6 +54,10 @@ export {
     // Execution options
     type WorkflowExecutionOptions,
 
+    // Progress events
+    type WorkflowNodePhase,
+    type WorkflowProgressEvent,
+
     // Type guards
     isLoadNode,
     isScriptNode,
