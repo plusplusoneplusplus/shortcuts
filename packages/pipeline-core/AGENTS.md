@@ -11,12 +11,11 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep 
 | **config** | `src/config/defaults.ts` | Default constants (`DEFAULT_AI_TIMEOUT_MS`, `DEFAULT_PARALLEL_LIMIT`, etc.) |
 | **runtime** | `src/runtime/` | `runWithPolicy` (timeout + retry + cancellation), `withTimeout`, `withRetry`, backoff strategies |
 | **queue** | `src/queue/` | `TaskQueueManager` (priority queue) + `QueueExecutor` (concurrency control, events) |
-| **ai** | `src/ai/` | AI types, CLI shell escaping, prompt builder, program utils, timeout defaults |
+| **ai** | `src/ai/` | AI types (`AIInvoker`, `ProcessTracker`, `PromptItem`, `JobProgress`), CLI shell escaping, prompt builder, program utils, timeout defaults |
 | **copilot-sdk** | `src/copilot-sdk-wrapper/` | `CopilotSDKService` (per-session client isolation, follow-up retry on disposed connection), `ModelRegistry`, MCP config loader, trusted folders |
 | **process-store** | `src/process-store.ts`, `src/file-process-store.ts` | Abstract `ProcessStore` + `FileProcessStore` (JSON, atomic writes, 500-process cap) |
-| **map-reduce** | `src/map-reduce/` | `MapReduceExecutor`, concurrency limiter, splitters, reducers, pre-built job factories |
-| **pipeline** | `src/pipeline/` | YAML pipeline executor, CSV reader, template engine, filter executor, skill/prompt resolvers |
-| **workflow** | `src/workflow/` | DAG-based workflow engine: `executeWorkflow`, graph builder, scheduler, validator, compiler (`compileToWorkflow` — pipeline→workflow format conversion), node executors (load/map/ai/reduce/filter/script/merge/transform). Supports `WorkflowSettings` (model/concurrency/timeout/workingDirectory/toolCallCache), `parameters` (template substitution), `skill` (per-node skill resolution), structured `WorkflowProgressEvent`, per-item `WorkflowItemProcessEvent` |
+| **pipeline** | `src/pipeline/` | YAML pipeline types (`PipelineConfig`), CSV reader, template engine, filter executor, skill/prompt resolvers, input generator. The executor has been removed — use `compileToWorkflow` + `executeWorkflow` instead. |
+| **workflow** | `src/workflow/` | DAG-based workflow engine: `executeWorkflow`, graph builder, scheduler, validator, compiler (`compileToWorkflow` — pipeline→workflow format conversion), node executors (load/map/ai/reduce/filter/script/merge/transform), `ConcurrencyLimiter`, result adapter (`flattenWorkflowResult`). Supports `WorkflowSettings` (model/concurrency/timeout/workingDirectory/toolCallCache), `parameters` (template substitution), `skill` (per-node skill resolution), structured `WorkflowProgressEvent`, per-item `WorkflowItemProcessEvent` |
 | **memory** | `src/memory/` | Persistent AI memory system (see [Memory System](#memory-system) below) |
 | **tasks** | `src/tasks/` | Task scanner, parser, CRUD ops, prompt builders for task discovery |
 | **discovery** | `src/discovery/` | Prompt file and skill file resolution |
