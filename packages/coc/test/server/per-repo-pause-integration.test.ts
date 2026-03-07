@@ -62,9 +62,9 @@ function request(
 
 function makeTaskBody(workingDirectory: string, displayName?: string): string {
     return JSON.stringify({
-        type: 'custom',
+        type: 'chat',
         priority: 'normal',
-        payload: { workingDirectory },
+        payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', workingDirectory },
         config: {},
         displayName: displayName || `Task: ${workingDirectory}`,
     });
@@ -511,9 +511,9 @@ describe('Per-Repo Pause Integration', () => {
             await request(`${baseUrl}/api/queue`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    type: 'custom',
+                    type: 'chat',
                     priority: 'normal',
-                    payload: {},  // No workingDirectory
+                    payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' },  // No workingDirectory
                     config: {},
                 }),
             });

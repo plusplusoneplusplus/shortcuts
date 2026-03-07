@@ -68,10 +68,10 @@ function postJSON(url: string, data: unknown) {
 /** Create a minimal task spec for bulk requests. */
 function makeTaskSpec(overrides: Record<string, any> = {}) {
     return {
-        type: 'custom',
+        type: 'chat',
         priority: 'normal',
         displayName: 'Test task',
-        payload: { data: { prompt: 'test' } },
+        payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' },
         config: {},
         ...overrides,
     };
@@ -154,18 +154,18 @@ describe('POST /api/queue/bulk', () => {
 
             const res = await postJSON(`${srv.url}/api/queue/bulk`, {
                 tasks: [
-                    makeTaskSpec({ type: 'ai-clarification', payload: { prompt: 'Explain' } }),
-                    makeTaskSpec({ type: 'follow-prompt', payload: { promptFilePath: '/path/to/prompt.md' } }),
-                    makeTaskSpec({ type: 'custom', payload: { data: {} } }),
+                    makeTaskSpec({ type: 'chat', payload: { kind: 'chat', mode: 'ask', prompt: 'Explain' } }),
+                    makeTaskSpec({ type: 'run-workflow', payload: { workflowPath: '/path/to/workflow.yaml' } }),
+                    makeTaskSpec({ type: 'run-script', payload: { script: 'echo hello' } }),
                 ],
             });
 
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
             expect(body.summary.succeeded).toBe(3);
-            expect(body.success[0].task.type).toBe('ai-clarification');
-            expect(body.success[1].task.type).toBe('follow-prompt');
-            expect(body.success[2].task.type).toBe('custom');
+            expect(body.success[0].task.type).toBe('chat');
+            expect(body.success[1].task.type).toBe('run-workflow');
+            expect(body.success[2].task.type).toBe('run-script');
         });
 
         it('should enqueue tasks with different priorities', async () => {
@@ -197,7 +197,7 @@ describe('POST /api/queue/bulk', () => {
             const body = JSON.parse(res.body);
             const task = body.success[0].task;
             expect(task.id).toBeDefined();
-            expect(task.type).toBe('custom');
+            expect(task.type).toBe('chat');
             expect(task.status).toBe('queued');
             expect(task.displayName).toBe('Serialized Task');
         });
@@ -241,8 +241,8 @@ describe('POST /api/queue/bulk', () => {
 
             const res = await postJSON(`${srv.url}/api/queue/bulk`, {
                 tasks: [{
-                    type: 'ai-clarification',
-                    payload: { prompt: 'What is this code doing?' },
+                    type: 'chat',
+                    payload: { kind: 'chat', mode: 'ask', prompt: 'What is this code doing?' },
                 }],
             });
 

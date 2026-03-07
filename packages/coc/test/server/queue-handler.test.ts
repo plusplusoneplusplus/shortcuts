@@ -68,10 +68,10 @@ function postJSON(url: string, data: unknown) {
 /** Create a minimal task body for POST /api/queue. */
 function makeTask(overrides: Record<string, any> = {}) {
     return {
-        type: 'custom',
+        type: 'chat',
         priority: 'normal',
         displayName: 'Test task',
-        payload: { data: { prompt: 'test' } },
+        payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' },
         config: {},
         ...overrides,
     };
@@ -116,7 +116,7 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.task).toBeDefined();
             expect(body.task.id).toBeDefined();
-            expect(body.task.type).toBe('custom');
+            expect(body.task.type).toBe('chat');
             expect(body.task.priority).toBe('normal');
             expect(body.task.status).toBe('queued');
             expect(body.task.displayName).toBe('Test task');
@@ -176,40 +176,43 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(400);
         });
 
-        it('should enqueue ai-clarification type', async () => {
+        it('should enqueue chat type with ask mode', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'ai-clarification',
-                payload: { prompt: 'Explain this code' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'Explain this code' },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.type).toBe('ai-clarification');
+            expect(body.task.type).toBe('chat');
+            expect(body.task.payload.mode).toBe('ask');
         });
 
-        it('should enqueue follow-prompt type', async () => {
+        it('should enqueue chat type with autopilot mode', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'follow-prompt',
-                payload: { promptFilePath: '/path/to/prompt.md' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'Follow this prompt' },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.type).toBe('follow-prompt');
+            expect(body.task.type).toBe('chat');
+            expect(body.task.payload.mode).toBe('autopilot');
         });
 
-        it('should enqueue code-review type', async () => {
+        it('should enqueue chat type with plan mode', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'code-review',
-                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'plan', prompt: 'Code review' },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.type).toBe('code-review');
+            expect(body.task.type).toBe('chat');
+            expect(body.task.payload.mode).toBe('plan');
         });
 
         it('should enqueue chat type', async () => {
@@ -402,11 +405,11 @@ describe('Queue Handler', () => {
             expect(body.task.payload.workspaceId).toBe('payload-id');
         });
 
-        it('should promote top-level prompt for ai-clarification type', async () => {
+        it('should promote top-level prompt for chat type with ask mode', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'ai-clarification',
+                type: 'chat',
                 prompt: 'Explain this function',
             });
             expect(res.status).toBe(201);
@@ -414,16 +417,16 @@ describe('Queue Handler', () => {
             expect(body.task.payload.prompt).toBe('Explain this function');
         });
 
-        it('should enqueue resolve-comments type', async () => {
+        it('should enqueue chat type with resolve-comments tool', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'resolve-comments',
-                payload: { documentUri: 'file:///test.md', commentIds: ['c1'], promptTemplate: '' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'Resolve comments', tools: ['resolve-comments'], context: { resolveComments: { documentUri: 'file:///test.md', commentIds: ['c1'] } } },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.type).toBe('resolve-comments');
+            expect(body.task.type).toBe('chat');
         });
     });
 
@@ -493,12 +496,12 @@ describe('Queue Handler', () => {
     // ========================================================================
 
     describe('Auto-generated display name', () => {
-        it('should auto-generate name from ai-clarification prompt', async () => {
+        it('should auto-generate name from chat prompt', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'ai-clarification',
-                payload: { prompt: 'Explain how authentication works' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'Explain how authentication works' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -510,8 +513,8 @@ describe('Queue Handler', () => {
 
             const longPrompt = 'A'.repeat(100);
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'ai-clarification',
-                payload: { prompt: longPrompt },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: longPrompt },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -519,48 +522,36 @@ describe('Queue Handler', () => {
             expect(body.task.displayName).toContain('...');
         });
 
-        it('should auto-generate name from follow-prompt file path', async () => {
+        it('should auto-generate name from run-workflow path', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'follow-prompt',
-                payload: { promptFilePath: '/home/user/prompts/review-code.md' },
+                type: 'run-workflow',
+                payload: { workflowPath: '/home/user/workflows/review-code.yaml' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.displayName).toBe('Follow Prompt: review-code.md');
+            expect(body.task.displayName).toBe('Run Workflow: review-code.yaml');
         });
 
-        it('should auto-generate name from code-review diff type', async () => {
+        it('should auto-generate name from chat context files', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'code-review',
-                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'plan', context: { files: ['/path/to/auth.ts'] } },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.displayName).toBe('Code Review: staged');
+            expect(body.task.displayName).toBe('Chat: auth.ts');
         });
 
-        it('should auto-generate name from code-review with commit SHA', async () => {
+        it('should auto-generate name from chat prompt in payload', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'code-review',
-                payload: { diffType: 'commit', commitSha: 'abc1234567890', rulesFolder: '.github/cr-rules' },
-            });
-            expect(res.status).toBe(201);
-            const body = JSON.parse(res.body);
-            expect(body.task.displayName).toBe('Code Review: commit (abc1234)');
-        });
-
-        it('should auto-generate name from custom task data.prompt', async () => {
-            const srv = await startServer();
-
-            const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'custom',
-                payload: { data: { prompt: 'Analyze performance metrics' } },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'Analyze performance metrics' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -571,21 +562,21 @@ describe('Queue Handler', () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'custom',
-                payload: { data: {} },
+                type: 'run-workflow',
+                payload: {},
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.task.displayName).toMatch(/^Task @ \d{2}:\d{2}$/);
+            expect(body.task.displayName).toMatch(/^Run Workflow @ \d{2}:\d{2}$/);
         });
 
         it('should use explicit displayName when provided', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'custom',
+                type: 'chat',
                 displayName: 'My custom name',
-                payload: { data: { prompt: 'This should be ignored for name' } },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'This should be ignored for name' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -596,9 +587,9 @@ describe('Queue Handler', () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'ai-clarification',
+                type: 'chat',
                 displayName: '',
-                payload: { prompt: 'What does this function do?' },
+                payload: { kind: 'chat', mode: 'ask', prompt: 'What does this function do?' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -609,9 +600,9 @@ describe('Queue Handler', () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, {
-                type: 'ai-clarification',
+                type: 'chat',
                 displayName: '   ',
-                payload: { prompt: 'Summarize this module' },
+                payload: { kind: 'chat', mode: 'ask', prompt: 'Summarize this module' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -1354,9 +1345,9 @@ describe('Queue Handler', () => {
         it('should return only chat-type tasks when type=chat', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 1', payload: { prompt: 'hello' } }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'custom', displayName: 'Custom 1' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 2', payload: { prompt: 'world' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 1', payload: { kind: 'chat', mode: 'autopilot', prompt: 'hello' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'run-workflow', displayName: 'Workflow 1', payload: { workflowPath: '/a.yaml' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 2', payload: { kind: 'chat', mode: 'autopilot', prompt: 'world' } }));
 
             // Cancel all to move to history
             const listRes = await request(`${srv.url}/api/queue`);
@@ -1372,29 +1363,29 @@ describe('Queue Handler', () => {
             body.history.forEach((t: any) => expect(t.type).toBe('chat'));
         });
 
-        it('should return only follow-prompt tasks when type=follow-prompt', async () => {
+        it('should return only run-workflow tasks when type=run-workflow', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'follow-prompt', displayName: 'FP 1', payload: { promptFilePath: '/a.md' } }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 1', payload: { prompt: 'hi' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'run-workflow', displayName: 'WF 1', payload: { workflowPath: '/a.yaml' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 1', payload: { kind: 'chat', mode: 'autopilot', prompt: 'hi' } }));
 
             const listRes = await request(`${srv.url}/api/queue`);
             for (const t of JSON.parse(listRes.body).queued) {
                 await request(`${srv.url}/api/queue/${t.id}`, { method: 'DELETE' });
             }
 
-            const res = await request(`${srv.url}/api/queue/history?type=follow-prompt`);
+            const res = await request(`${srv.url}/api/queue/history?type=run-workflow`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.history).toHaveLength(1);
-            expect(body.history[0].type).toBe('follow-prompt');
+            expect(body.history[0].type).toBe('run-workflow');
         });
 
         it('should return all types when no type param is provided (backward compat)', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat', payload: { prompt: 'hi' } }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'custom', displayName: 'Custom' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat', payload: { kind: 'chat', mode: 'autopilot', prompt: 'hi' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'run-workflow', displayName: 'Workflow', payload: { workflowPath: '/a.yaml' } }));
 
             const listRes = await request(`${srv.url}/api/queue`);
             for (const t of JSON.parse(listRes.body).queued) {
@@ -1420,9 +1411,9 @@ describe('Queue Handler', () => {
         it('should filter queued array by type while keeping stats unfiltered', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat', payload: { prompt: 'hi' } }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'custom', displayName: 'Custom' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 2', payload: { prompt: 'hello' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat', payload: { kind: 'chat', mode: 'autopilot', prompt: 'hi' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'run-workflow', displayName: 'Workflow', payload: { workflowPath: '/a.yaml' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat 2', payload: { kind: 'chat', mode: 'autopilot', prompt: 'hello' } }));
 
             const res = await request(`${srv.url}/api/queue?type=chat`);
             expect(res.status).toBe(200);
@@ -1608,8 +1599,8 @@ describe('Queue Handler', () => {
         it('should NOT include queued non-chat tasks in chat history', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'custom', displayName: 'Custom task' }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat task', payload: { prompt: 'hi' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'run-workflow', displayName: 'Workflow task', payload: { workflowPath: '/a.yaml' } }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'chat', displayName: 'Chat task', payload: { kind: 'chat', mode: 'autopilot', prompt: 'hi' } }));
 
             const res = await request(`${srv.url}/api/queue/history?type=chat`);
             const body = JSON.parse(res.body);
@@ -1620,9 +1611,9 @@ describe('Queue Handler', () => {
         it('should NOT include active tasks when type filter is not chat', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
-            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'custom', displayName: 'Queued custom' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ type: 'run-workflow', displayName: 'Queued workflow', payload: { workflowPath: '/a.yaml' } }));
 
-            const res = await request(`${srv.url}/api/queue/history?type=custom`);
+            const res = await request(`${srv.url}/api/queue/history?type=run-workflow`);
             const body = JSON.parse(res.body);
             // Only history (completed/failed/cancelled) should be returned for non-chat types
             expect(body.history).toHaveLength(0);
@@ -1714,20 +1705,20 @@ describe('Queue Handler', () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
 
-            // A custom task with parentTaskId (not chat) — cancel it so it appears in history
+            // A run-workflow task with parentTaskId (not chat) — cancel it so it appears in history
             const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'custom', displayName: 'Custom child',
-                payload: { data: { prompt: 'test' }, parentTaskId: 'parent-x' },
+                type: 'run-workflow', displayName: 'Workflow child',
+                payload: { workflowPath: '/a.yaml', parentTaskId: 'parent-x' },
             }));
             const id1 = JSON.parse(r1.body).task.id;
             await request(`${srv.url}/api/queue/${id1}`, { method: 'DELETE' });
 
-            const res = await request(`${srv.url}/api/queue/history?type=custom`);
+            const res = await request(`${srv.url}/api/queue/history?type=run-workflow`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             // Non-chat types should not be filtered by parentTaskId
             expect(body.history).toHaveLength(1);
-            expect(body.history[0].displayName).toBe('Custom child');
+            expect(body.history[0].displayName).toBe('Workflow child');
         });
     });
 
@@ -2200,8 +2191,8 @@ describe('Queue Handler', () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'ai-clarification',
-                payload: { prompt: 'test' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'test' },
                 config: { model: 'claude-sonnet-4-5' },
             }));
             expect(res.status).toBe(201);
@@ -2209,24 +2200,24 @@ describe('Queue Handler', () => {
             expect(body.task.config.model).toBe('claude-sonnet-4-5');
         });
 
-        it('should preserve workingDirectory in ai-clarification payload', async () => {
+        it('should preserve workingDirectory in chat ask payload', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'ai-clarification',
-                payload: { prompt: 'test', workingDirectory: '/my/project' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'test', workingDirectory: '/my/project' },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
             expect(body.task.payload.workingDirectory).toBe('/my/project');
         });
 
-        it('should preserve workingDirectory in follow-prompt payload', async () => {
+        it('should preserve workingDirectory in chat autopilot payload', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'follow-prompt',
-                payload: { promptFilePath: '/path/to/prompt.md', workingDirectory: '/workspace/root' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'Follow this prompt', workingDirectory: '/workspace/root' },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -2237,8 +2228,8 @@ describe('Queue Handler', () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'ai-clarification',
-                payload: { prompt: 'analyze code', workingDirectory: '/my/repo' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'analyze code', workingDirectory: '/my/repo' },
                 config: { model: 'gpt-4' },
             }));
             expect(res.status).toBe(201);
@@ -2262,8 +2253,8 @@ describe('Queue Handler', () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'ai-clarification',
-                payload: { prompt: 'test' },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'test' },
             }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
