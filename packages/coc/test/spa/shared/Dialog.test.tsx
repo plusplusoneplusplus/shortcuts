@@ -103,7 +103,7 @@ describe('Dialog', () => {
         const btn = document.querySelector('[data-testid="dialog-minimize-btn"]');
         expect(btn).not.toBeNull();
         expect(btn!.getAttribute('aria-label')).toBe('Minimize');
-        expect(btn!.getAttribute('title')).toBe('Minimize (Esc)');
+        expect(btn!.getAttribute('title')).toBe('Minimize');
         expect(btn!.textContent).toBe('−');
     });
 
@@ -132,7 +132,7 @@ describe('Dialog', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
-    it('Escape calls onMinimize instead of onClose when onMinimize is provided', () => {
+    it('Escape calls onClose even when onMinimize is provided', () => {
         const onClose = vi.fn();
         const onMinimize = vi.fn();
         render(
@@ -141,8 +141,8 @@ describe('Dialog', () => {
             </Dialog>
         );
         fireEvent.keyDown(document, { key: 'Escape' });
-        expect(onMinimize).toHaveBeenCalledOnce();
-        expect(onClose).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(onMinimize).not.toHaveBeenCalled();
     });
 
     // ── close button in header ──────────────────────────────────────────────

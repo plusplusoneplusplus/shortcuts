@@ -120,7 +120,7 @@ describe('FloatingDialog', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it('pressing Escape calls onMinimize when provided', () => {
+    it('pressing Escape calls onClose even when onMinimize is provided', () => {
         const onClose = vi.fn();
         const onMinimize = vi.fn();
         render(
@@ -129,8 +129,8 @@ describe('FloatingDialog', () => {
             </FloatingDialog>,
         );
         fireEvent.keyDown(document, { key: 'Escape' });
-        expect(onMinimize).toHaveBeenCalledOnce();
-        expect(onClose).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(onMinimize).not.toHaveBeenCalled();
     });
 
     it('renders minimize button when onMinimize is provided', () => {

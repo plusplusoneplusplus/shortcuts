@@ -256,7 +256,7 @@ describe('MarkdownReviewDialog', () => {
         expect(onMinimize).not.toHaveBeenCalled();
     });
 
-    it('Escape key minimizes instead of closing when onMinimize is provided', () => {
+    it('Escape key closes instead of minimizing when onMinimize is provided', () => {
         const onClose = vi.fn();
         const onMinimize = vi.fn();
         render(
@@ -271,8 +271,8 @@ describe('MarkdownReviewDialog', () => {
             />
         );
         fireEvent.keyDown(document, { key: 'Escape' });
-        expect(onMinimize).toHaveBeenCalledOnce();
-        expect(onClose).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(onMinimize).not.toHaveBeenCalled();
     });
 
     it('Escape key calls onClose when onMinimize is not provided', () => {

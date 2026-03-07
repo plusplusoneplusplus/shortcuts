@@ -1562,14 +1562,14 @@ describe('GenerateTaskDialog', () => {
         expect(onMinimize).not.toHaveBeenCalled();
     });
 
-    it('Escape key calls onMinimize when dialog has onMinimize prop', async () => {
+    it('Escape key calls onClose even when onMinimize prop is provided', async () => {
         const onClose = vi.fn();
         const onMinimize = vi.fn();
         await act(async () => { renderDialog({ onClose, onMinimize }); });
 
         fireEvent.keyDown(document, { key: 'Escape' });
-        expect(onMinimize).toHaveBeenCalledOnce();
-        expect(onClose).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(onMinimize).not.toHaveBeenCalled();
     });
 
     it('GenerateTaskDialogProps includes minimized, onMinimize, onRestore', async () => {

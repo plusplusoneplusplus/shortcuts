@@ -24,14 +24,11 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                if (onMinimize) onMinimize();
-                else onClose();
-            }
+            if (e.key === 'Escape') onClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [open, onClose, onMinimize]);
+    }, [open, onClose]);
 
     if (!open) return null;
 
@@ -74,7 +71,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
                                 className="ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none px-1"
                                 onClick={onMinimize}
                                 aria-label="Minimize"
-                                title="Minimize (Esc)"
+                                title="Minimize"
                             >
                                 −
                             </button>

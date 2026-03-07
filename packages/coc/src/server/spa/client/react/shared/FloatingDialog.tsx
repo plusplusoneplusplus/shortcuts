@@ -96,14 +96,11 @@ export function FloatingDialog({
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                if (onMinimize) onMinimize();
-                else onClose();
-            }
+            if (e.key === 'Escape') onClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [open, onClose, onMinimize]);
+    }, [open, onClose]);
 
     // Reset position and size when dialog opens
     useEffect(() => {
@@ -260,7 +257,7 @@ export function FloatingDialog({
                             onClick={onMinimize}
                             onMouseDown={e => e.stopPropagation()}
                             aria-label="Minimize"
-                            title="Minimize (Esc)"
+                            title="Minimize"
                         >
                             −
                         </button>
