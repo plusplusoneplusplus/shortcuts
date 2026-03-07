@@ -19,7 +19,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 
 **Tree Data Provider Base Classes** - Eliminated code duplication across tree data providers:
 - Created 5 new shared modules: `base-tree-data-provider`, `filterable-tree-data-provider`, `tree-filter-utils`, `tree-icon-utils`, `tree-error-handler`
-- Migrated 4 providers to extend base classes: GlobalNotesTreeDataProvider, TasksTreeDataProvider, PipelinesTreeDataProvider, LogicalTreeDataProvider
+- Migrated 4 providers to extend base classes: GlobalNotesTreeDataProvider, TasksTreeDataProvider, WorkflowsTreeDataProvider, LogicalTreeDataProvider
 - Result: Eliminated ~210 lines of duplication, all 6900 tests passing, 100% backward compatible
 
 ## Module Overview
@@ -39,7 +39,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 | **sync** | Cloud synchronization via VSCode Settings Sync |
 | **tasks-viewer** | Markdown task list management |
 | **skills** | Skill installation from GitHub repos, local dirs, or bundled sources |
-| **yaml-pipeline** | VS Code UI layer (core in `pipeline-core`) |
+| **yaml-pipeline** | Workflows UI layer (core in `pipeline-core`) |
 
 ## Module Dependencies
 
@@ -93,7 +93,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 
 ### AI Processing Stack
 - **ai-service** → VS Code integration layer, uses pipeline-core for SDK/CLI
-- **yaml-pipeline** → VS Code UI layer, uses pipeline-core for execution
+- **yaml-pipeline** → VS Code UI layer, uses pipeline-core for execution (Workflows view)
 - **code-review** → Uses pipeline-core map-reduce for parallel rule checking
 
 ### Commenting Features

@@ -1,6 +1,6 @@
 # CoC (Copilot of Copilot)
 
-Standalone Node.js CLI for executing YAML-based AI pipelines outside VS Code. Consumes `@plusplusoneplusplus/pipeline-core`.
+Standalone Node.js CLI for executing YAML-based AI workflows outside VS Code. Consumes `@plusplusoneplusplus/pipeline-core`.
 
 ## Build & Test
 
@@ -25,9 +25,9 @@ coc <command>
 ## Commands
 
 ```bash
-coc run <path>              # Execute a pipeline
+coc run <path>              # Execute a workflow
 coc validate <path>         # Validate YAML without executing
-coc list [dir]              # List pipeline packages in a directory
+coc list [dir]              # List workflow packages in a directory
 coc serve                   # Start AI Execution Dashboard web server
 coc wipe-data               # Clear all stored data
 ```
@@ -41,7 +41,7 @@ coc wipe-data               # Clear all stored data
 | `-o, --output <fmt>` | Output format: `table`, `json`, `csv`, `markdown` |
 | `-f, --output-file <path>` | Write results to file |
 | `-w, --workspace-root <path>` | Workspace root for skill resolution |
-| `--param key=value` | Pipeline parameters (repeatable) |
+| `--param key=value` | Workflow parameters (repeatable) |
 | `--dry-run` | Validate only, skip execution |
 | `--approve-permissions` | Auto-approve AI permission requests |
 | `-v, --verbose` | Per-item progress output |
@@ -79,9 +79,9 @@ src/
 ├── index.ts              # Entry point (bin) - Parses CLI args and routes to commands
 ├── cli.ts                # Commander program setup - Defines commands, flags, and option parsing
 ├── commands/
-│   ├── run.ts            # Execute pipeline - Handles execution, progress, and result formatting
+│   ├── run.ts            # Execute workflow - Handles execution, progress, and result formatting
 │   ├── validate.ts       # Validate YAML - Checks structure, input sources, and filter config
-│   ├── list.ts           # List packages - Discovers and displays pipeline packages in a directory
+│   ├── list.ts           # List packages - Discovers and displays workflow packages in a directory
 │   ├── serve.ts          # Start server - Launches AI Execution Dashboard with browser auto-open
 │   ├── wipe-data.ts      # Wipe data - Clears stored processes, queues, and schedules
 │   └── options-resolver.ts  # Shared option resolution logic for commands
@@ -95,7 +95,7 @@ src/
 │   ├── queue-handler.ts          # Queue management API endpoints
 │   ├── queue-executor-bridge.ts  # Bridges queue system to pipeline executor
 │   ├── queue-persistence.ts      # Persistent queue state storage
-│   ├── multi-repo-executor-bridge.ts  # Multi-repo pipeline execution
+│   ├── multi-repo-executor-bridge.ts  # Multi-repo workflow execution
 │   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence
 │   ├── workflows-handler.ts      # Workflow CRUD and listing API
 │   ├── workflow-watcher.ts       # File watcher for workflow changes

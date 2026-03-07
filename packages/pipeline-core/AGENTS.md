@@ -91,4 +91,4 @@ Paths use `path.join()`/`path.resolve()`. Shell escaping handles platform differ
 - `docs/designs/coc-memory.md` — Memory system design doc
 - `docs/designs/pipeline-core-extraction.md` — Package extraction design
 - `src/shortcuts/ai-service/AGENTS.md` — VS Code AI service wrapper
-- `src/shortcuts/yaml-pipeline/AGENTS.md` — VS Code pipeline UI
+- `src/shortcuts/yaml-pipeline/AGENTS.md` — VS Code workflow UI

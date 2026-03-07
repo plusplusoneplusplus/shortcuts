@@ -8,8 +8,8 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 
 | Product | Location | Runtime | Description |
 |---------|----------|---------|-------------|
-| **VS Code Extension** | `src/` | VS Code | Markdown review, git diff review, code review, shortcut groups, global notes, tasks viewer, YAML pipelines |
-| **CoC CLI** | `packages/coc/` | Node.js | CLI for executing YAML-based AI pipelines (`coc run\|validate\|list\|serve\|wipe-data`) |
+| **VS Code Extension** | `src/` | VS Code | Markdown review, git diff review, code review, shortcut groups, global notes, tasks viewer, YAML workflows |
+| **CoC CLI** | `packages/coc/` | Node.js | CLI for executing YAML-based AI workflows (`coc run\|validate\|list\|serve\|wipe-data`) |
 | **Deep Wiki** | `packages/deep-wiki/` | Node.js | CLI that auto-generates comprehensive wikis for codebases (`deep-wiki seeds\|discover\|generate\|theme\|init`) |
 
 | Shared Package | Location | Description |
@@ -35,7 +35,7 @@ Entry point: `src/extension.ts`. Feature modules under `src/shortcuts/`:
 - **markdown-comments** — Custom Editor API for inline markdown review. Comments in `.vscode/comments/<hash>.json`.
 - **git-diff-comments** — Git diff review with comment categories and resolve/reopen workflow.
 - **code-review** — Review commits against rules in `.github/cr-rules/*.md`.
-- **yaml-pipeline** — Pipeline management UI. Pipelines are directories with `pipeline.yaml` under `.vscode/workflows/`.
+- **yaml-pipeline** — Workflows management UI. Workflows are directories with `pipeline.yaml` under `.vscode/workflows/`.
 - **tasks-viewer** — Hierarchical task management in `.vscode/tasks/`. Recursive scanning, document grouping by suffix (plan/spec/test/notes/todo/design/impl/review/checklist/requirements/analysis).
 - **ai-service** — VS Code AI wrapper: `AIProcessManager` (Memento persistence), `AIQueueService`, `CopilotCLIInvoker`. Working dir defaults to `{workspace}/src` if exists.
 - **git** — VS Code git layer wrapping `pipeline-core/src/git/`.
@@ -48,9 +48,9 @@ Entry point: `src/extension.ts`. Feature modules under `src/shortcuts/`:
 
 ## CoC CLI (`packages/coc/`)
 
-Standalone CLI for YAML AI pipelines. Consumes `pipeline-core` and `coc-server`.
+Standalone CLI for YAML AI workflows. Consumes `pipeline-core` and `coc-server`.
 
-**Commands:** `coc run <path>` (execute pipeline), `coc validate <path>`, `coc list [dir]`, `coc serve` (AI dashboard + wiki serving), `coc wipe-data`.
+**Commands:** `coc run <path>` (execute workflow), `coc validate <path>`, `coc list [dir]`, `coc serve` (AI dashboard + wiki serving), `coc wipe-data`.
 
 **Key `run` flags:** `-m` model, `-p` parallel, `-o` output format (table/json/csv/markdown), `-f` output file, `--param key=value`, `--dry-run`, `--approve-permissions`, `--timeout`, `-v` verbose.
 
