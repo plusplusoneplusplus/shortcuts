@@ -204,7 +204,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     return (
         <div className="flex flex-col lg:flex-row h-full overflow-hidden" data-testid="explorer-panel">
             {/* Left aside — file tree */}
-            <aside className="w-full lg:w-80 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col">
+            <aside className="w-full flex-1 min-h-0 lg:flex-none lg:w-80 border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Files</span>
                     <button
@@ -242,7 +242,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             </aside>
 
             {/* Right main — preview pane */}
-            <main className="flex-1 flex items-center justify-center bg-white dark:bg-[#1e1e1e] overflow-hidden" data-testid="explorer-preview-pane">
+            <main className="flex-1 min-h-0 flex items-center justify-center bg-white dark:bg-[#1e1e1e] overflow-hidden" data-testid="explorer-preview-pane">
                 {previewFile
                     ? <PreviewPane
                         repoId={workspaceId}

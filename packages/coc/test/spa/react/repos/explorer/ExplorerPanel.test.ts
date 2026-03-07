@@ -94,6 +94,16 @@ describe('ExplorerPanel', () => {
             expect(source).toContain('lg:w-80');
         });
 
+        it('aside uses mobile-friendly flex sizing for scrollability', () => {
+            // flex-1 min-h-0 lets the aside shrink inside flex-col on mobile,
+            // enabling overflow-y-auto in FileTree to activate
+            expect(source).toContain('flex-1 min-h-0 lg:flex-none lg:w-80');
+        });
+
+        it('main preview pane has min-h-0 for mobile scroll support', () => {
+            expect(source).toContain('flex-1 min-h-0 flex items-center justify-center');
+        });
+
         it('has right main for preview pane', () => {
             expect(source).toContain('<main');
             expect(source).toContain('data-testid="explorer-preview-pane"');
