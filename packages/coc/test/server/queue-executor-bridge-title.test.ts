@@ -75,7 +75,7 @@ function makeChatTask(id: string, prompt: string): QueuedTask {
         priority: 'normal',
         status: 'running',
         createdAt: Date.now(),
-        payload: { prompt },
+        payload: { kind: 'chat' as const, mode: 'autopilot' as const, prompt },
         config: {},
         displayName: 'Chat task',
     };
@@ -84,13 +84,13 @@ function makeChatTask(id: string, prompt: string): QueuedTask {
 function makeReadonlyChatTask(id: string, prompt: string): QueuedTask {
     return {
         id,
-        type: 'readonly-chat',
+        type: 'chat',
         priority: 'normal',
         status: 'running',
         createdAt: Date.now(),
-        payload: { prompt },
+        payload: { kind: 'chat' as const, mode: 'ask' as const, prompt },
         config: {},
-        displayName: 'Readonly chat task',
+        displayName: 'Ask chat task',
     };
 }
 

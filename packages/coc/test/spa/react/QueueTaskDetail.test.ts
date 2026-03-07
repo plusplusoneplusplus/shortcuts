@@ -304,18 +304,18 @@ describe('QueueTaskDetail', () => {
             expect(infoSource).toContain('<FilePathValue label="Working Directory" value={workingDir}');
         });
 
-        it('uses FilePathValue for Prompt File', () => {
-            expect(payloadSource).toContain('<FilePathValue label="Prompt File" value={payload.promptFilePath}');
+        it('shows Prompt File Content in resolved prompt section', () => {
+            expect(infoSource).toContain('Prompt File Content');
         });
 
-        it('uses FilePathValue for Plan File', () => {
-            expect(payloadSource).toContain('<FilePathValue label="Plan File" value={payload.planFilePath}');
+        it('shows Plan File Content in resolved prompt section', () => {
+            expect(infoSource).toContain('Plan File Content');
         });
 
         it('uses FilePathValue for metadata file path fields', () => {
-            expect(payloadSource).toContain('<FilePathValue label="File" value={payload.filePath}');
-            expect(payloadSource).toContain('<FilePathValue label="Target Folder" value={payload.targetFolder}');
-            expect(payloadSource).toContain('<FilePathValue label="Rules Folder" value={payload.rulesFolder}');
+            expect(payloadSource).toContain("label={i === 0 ? 'File' : 'Context'} value={f}");
+            expect(payloadSource).toContain('<FilePathValue label="Target Folder" value={tg.targetFolder}');
+            expect(payloadSource).toContain('<FilePathValue label="Document" value={rc.filePath}');
         });
 
         it('does not use MetaRow for file-path fields', () => {

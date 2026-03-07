@@ -284,10 +284,10 @@ describe('SPA Enhanced Detail Rendering', () => {
         return fs.readFileSync(bundlePath, 'utf8');
     }
 
-    it('includes skill name field in follow-prompt rendering', () => {
+    it('includes skills field in chat rendering', () => {
         const bundle = getClientBundle();
-        expect(bundle).toContain('Skill Name');
-        expect(bundle).toContain('skillName');
+        expect(bundle).toContain('Skills');
+        expect(bundle).toContain('ctx.skills');
     });
 
     it('includes plan file path field in follow-prompt rendering', () => {
@@ -296,34 +296,34 @@ describe('SPA Enhanced Detail Rendering', () => {
         expect(bundle).toContain('planFilePath');
     });
 
-    it('includes additional context collapsible in follow-prompt rendering', () => {
+    it('includes context blocks collapsible in chat rendering', () => {
         const bundle = getClientBundle();
-        expect(bundle).toContain('Additional Context');
-        expect(bundle).toContain('additionalContext');
+        expect(bundle).toContain('Context');
+        expect(bundle).toContain('context.blocks');
     });
 
-    it('includes instruction type field in ai-clarification rendering', () => {
+    it('includes mode field in chat rendering', () => {
         const bundle = getClientBundle();
-        expect(bundle).toContain('Instruction Type');
-        expect(bundle).toContain('instructionType');
+        expect(bundle).toContain('Mode');
+        expect(bundle).toContain('processId');
     });
 
-    it('includes custom instruction collapsible in ai-clarification rendering', () => {
+    it('includes resolve-comments dedicated rendering', () => {
         const bundle = getClientBundle();
-        expect(bundle).toContain('Custom Instruction');
-        expect(bundle).toContain('customInstruction');
+        expect(bundle).toContain('Resolve Comments Details');
+        expect(bundle).toContain('resolveComments');
     });
 
-    it('includes nearest heading field in ai-clarification rendering', () => {
+    it('includes follow-up message rendering', () => {
         const bundle = getClientBundle();
-        expect(bundle).toContain('Nearest Heading');
-        expect(bundle).toContain('nearestHeading');
+        expect(bundle).toContain('Follow-up Message');
+        expect(bundle).toContain('processId');
     });
 
     it('includes task-generation dedicated rendering', () => {
         const bundle = getClientBundle();
         expect(bundle).toContain('Task Generation Details');
-        expect(bundle).toContain('task-generation');
+        expect(bundle).toContain('taskGeneration');
     });
 
     it('includes task generation metadata fields', () => {

@@ -35,16 +35,11 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
 });
 
 import {
-    isTaskGenerationPayload,
-    isFollowPromptPayload,
-    isAIClarificationPayload,
-    isCustomTaskPayload,
+    isChatPayload,
+    hasTaskGenerationContext,
 } from '@plusplusoneplusplus/coc-server';
 import type {
-    TaskGenerationPayload,
-    FollowPromptPayload,
-    AIClarificationPayload,
-    CustomTaskPayload,
+    ChatPayload,
 } from '@plusplusoneplusplus/coc-server';
 import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
 import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
@@ -114,52 +109,73 @@ function removeDirSafe(dir: string): void {
 // Type Guard Tests
 // ============================================================================
 
-describe('isTaskGenerationPayload', () => {
-    it('should return true for a valid TaskGenerationPayload', () => {
-        const payload: TaskGenerationPayload = {
-            kind: 'task-generation',
-            workingDirectory: '/tmp/workspace',
+describe('isChatPayload / hasTaskGenerationContext', () => {
+    it('should return true for a valid ChatPayload with task generation context', () => {
+        const payload: ChatPayload = {
+            kind: 'chat',
+            mode: 'autopilot',
             prompt: 'Create a login feature',
+            workingDirectory: '/tmp/workspace',
+            context: {
+                taskGeneration: {
+                    targetFolder: undefined,
+                    name: undefined,
+                },
+            },
         };
-        expect(isTaskGenerationPayload(payload)).toBe(true);
+        expect(isChatPayload(payload as any)).toBe(true);
+        expect(hasTaskGenerationContext(payload as any)).toBe(true);
     });
 
-    it('should return true for TaskGenerationPayload with all optional fields', () => {
-        const payload: TaskGenerationPayload = {
-            kind: 'task-generation',
-            workingDirectory: '/tmp/workspace',
+    it('should return true for ChatPayload with all optional task generation fields', () => {
+        const payload: ChatPayload = {
+            kind: 'chat',
+            mode: 'autopilot',
             prompt: 'Create a login feature',
-            targetFolder: 'auth',
-            name: 'login-feature',
-            model: 'gpt-4',
-            depth: 'deep',
-            mode: 'from-feature',
+            workingDirectory: '/tmp/workspace',
             workspaceId: 'ws-1',
+            model: 'gpt-4',
+            context: {
+                taskGeneration: {
+                    targetFolder: 'auth',
+                    name: 'login-feature',
+                    depth: 'deep',
+                    mode: 'from-feature',
+                },
+            },
         };
-        expect(isTaskGenerationPayload(payload)).toBe(true);
+        expect(isChatPayload(payload as any)).toBe(true);
+        expect(hasTaskGenerationContext(payload as any)).toBe(true);
     });
 
-    it('should return false for FollowPromptPayload', () => {
-        const payload: FollowPromptPayload = {
-            promptFilePath: '/tmp/prompt.md',
-            promptContent: 'Follow this prompt',
+    it('should return false for hasTaskGenerationContext on a plain chat payload', () => {
+        const payload: ChatPayload = {
+            kind: 'chat',
+            mode: 'autopilot',
+            prompt: 'Follow this prompt',
         };
-        expect(isTaskGenerationPayload(payload)).toBe(false);
+        expect(isChatPayload(payload as any)).toBe(true);
+        expect(hasTaskGenerationContext(payload as any)).toBe(false);
     });
 
-    it('should return false for AIClarificationPayload', () => {
-        const payload: AIClarificationPayload = {
+    it('should return false for hasTaskGenerationContext on an ask chat payload', () => {
+        const payload: ChatPayload = {
+            kind: 'chat',
+            mode: 'ask',
             prompt: 'Explain this code',
             workingDirectory: '/tmp',
         };
-        expect(isTaskGenerationPayload(payload)).toBe(false);
+        expect(isChatPayload(payload as any)).toBe(true);
+        expect(hasTaskGenerationContext(payload as any)).toBe(false);
     });
 
-    it('should return false for CustomTaskPayload', () => {
-        const payload: CustomTaskPayload = {
-            data: { prompt: 'custom task' },
+    it('should return false for isChatPayload on non-chat payload', () => {
+        const payload = {
+            kind: 'run-workflow',
+            workflowPath: '/tmp/workflow.yaml',
         };
-        expect(isTaskGenerationPayload(payload)).toBe(false);
+        expect(isChatPayload(payload as any)).toBe(false);
+        expect(hasTaskGenerationContext(payload as any)).toBe(false);
     });
 });
 
@@ -175,20 +191,30 @@ describe('CLITaskExecutor — task-generation', () => {
         sdkMocks.resetAll();
     });
 
-    function makeTaskGenerationTask(overrides: Partial<TaskGenerationPayload> = {}): QueuedTask {
+    function makeTaskGenerationTask(overrides: Record<string, any> = {}): QueuedTask {
         const workDir = overrides.workingDirectory || os.tmpdir();
         return {
             id: 'tg-1',
-            type: 'task-generation',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
             payload: {
-                kind: 'task-generation',
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: overrides.prompt || 'Build a user auth module',
                 workingDirectory: workDir,
-                prompt: 'Build a user auth module',
-                ...overrides,
-            } as TaskGenerationPayload,
+                context: {
+                    taskGeneration: {
+                        targetFolder: overrides.targetFolder,
+                        name: overrides.name,
+                        depth: overrides.depth,
+                        mode: overrides.mode,
+                    },
+                },
+                ...(overrides.workspaceId && { workspaceId: overrides.workspaceId }),
+                ...(overrides.model && { model: overrides.model }),
+            } as unknown as Record<string, unknown>,
             config: { timeoutMs: 30000 },
             displayName: 'Generate auth task',
         };
@@ -358,10 +384,10 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task).toBeDefined();
-        expect(task.type).toBe('task-generation');
-        expect(task.payload.kind).toBe('task-generation');
+        expect(task.type).toBe('chat');
+        expect(task.payload.kind).toBe('chat');
         expect(task.payload.prompt).toBe('Create a caching layer');
-        expect(task.payload.name).toBe('cache-feature');
+        expect(task.payload.context.taskGeneration.name).toBe('cache-feature');
     });
 
     it('should return 400 for missing prompt', async () => {
@@ -436,9 +462,8 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task).toBeDefined();
-        expect(task.payload.images).toBeUndefined();
-        expect(task.payload.imagesCount).toBe(images.length);
-        expect(task.payload.hasImages).toBe(true);
+        // Images are stored in context.taskGeneration, not at payload level
+        expect(task.payload.context.taskGeneration.images).toHaveLength(images.length);
     });
 
     it('should filter non-string images and cap at 10', async () => {
@@ -460,9 +485,8 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
         expect(task).toBeDefined();
-        expect(task.payload.images).toBeUndefined();
-        expect(task.payload.imagesCount).toBe(10);
-        expect(task.payload.hasImages).toBe(true);
+        // Images are stored in context.taskGeneration; non-strings filtered, capped at 10
+        expect(task.payload.context.taskGeneration.images).toHaveLength(10);
     });
 
     it('should not include images field when images array is empty', async () => {
@@ -481,7 +505,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
-        expect(task.payload.images).toBeUndefined();
+        expect(task.payload.context.taskGeneration.images).toBeUndefined();
     });
 
     it('should not include images field when images is not provided', async () => {
@@ -499,6 +523,6 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
-        expect(task.payload.images).toBeUndefined();
+        expect(task.payload.context.taskGeneration.images).toBeUndefined();
     });
 });

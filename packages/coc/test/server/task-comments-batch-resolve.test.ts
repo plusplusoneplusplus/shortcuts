@@ -269,9 +269,10 @@ describe('batch-resolve endpoints', () => {
             const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
             const taskBody = JSON.parse(taskRes.body);
             expect(taskBody.task).toBeDefined();
-            expect(taskBody.task.type).toBe('resolve-comments');
-            expect(taskBody.task.payload.commentIds).toContain(commentId);
-            expect(taskBody.task.payload.documentContent).toBe(DOC_CONTENT);
+            expect(taskBody.task.type).toBe('chat');
+            expect(taskBody.task.payload.kind).toBe('chat');
+            expect(taskBody.task.payload.context.resolveComments.commentIds).toContain(commentId);
+            expect(taskBody.task.payload.context.resolveComments.documentContent).toBe(DOC_CONTENT);
         });
     });
 
@@ -301,12 +302,13 @@ describe('batch-resolve endpoints', () => {
             // Verify the task in the queue has correct payload
             const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
             const taskBody = JSON.parse(taskRes.body);
-            expect(taskBody.task.type).toBe('resolve-comments');
-            expect(taskBody.task.payload.commentIds).toContain(id1);
-            expect(taskBody.task.payload.commentIds).toContain(id2);
-            expect(taskBody.task.payload.commentIds).toHaveLength(2);
-            expect(taskBody.task.payload.documentContent).toBe(DOC_CONTENT);
-            expect(taskBody.task.payload.filePath).toBe(TASK_PATH);
+            expect(taskBody.task.type).toBe('chat');
+            expect(taskBody.task.payload.kind).toBe('chat');
+            expect(taskBody.task.payload.context.resolveComments.commentIds).toContain(id1);
+            expect(taskBody.task.payload.context.resolveComments.commentIds).toContain(id2);
+            expect(taskBody.task.payload.context.resolveComments.commentIds).toHaveLength(2);
+            expect(taskBody.task.payload.context.resolveComments.documentContent).toBe(DOC_CONTENT);
+            expect(taskBody.task.payload.context.resolveComments.filePath).toBe(TASK_PATH);
         });
 
         it('returns 400 when there are no open comments', async () => {
@@ -346,7 +348,7 @@ describe('batch-resolve endpoints', () => {
 
             const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
             const taskBody = JSON.parse(taskRes.body);
-            expect(taskBody.task.payload.commentIds).toEqual([openId]);
+            expect(taskBody.task.payload.context.resolveComments.commentIds).toEqual([openId]);
         });
 
         it('includes the batch resolve prompt in the task payload', async () => {
@@ -358,9 +360,9 @@ describe('batch-resolve endpoints', () => {
 
             const taskRes = await request(`${baseUrl}/api/queue/${body.taskId}`);
             const taskBody = JSON.parse(taskRes.body);
-            expect(taskBody.task.payload.promptTemplate).toContain('# Document Revision Request');
-            expect(taskBody.task.payload.promptTemplate).toContain(DOC_CONTENT);
-            expect(taskBody.task.payload.promptTemplate).toContain('my selected text');
+            expect(taskBody.task.payload.prompt).toContain('# Document Revision Request');
+            expect(taskBody.task.payload.prompt).toContain(DOC_CONTENT);
+            expect(taskBody.task.payload.prompt).toContain('my selected text');
         });
     });
 

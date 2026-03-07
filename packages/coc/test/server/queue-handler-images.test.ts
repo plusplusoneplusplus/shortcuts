@@ -67,10 +67,10 @@ function postJSON(url: string, data: unknown) {
 
 function makeTask(overrides: Record<string, any> = {}) {
     return {
-        type: 'custom',
+        type: 'chat',
         priority: 'normal',
         displayName: 'Test task',
-        payload: { data: { prompt: 'test' } },
+        payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' },
         config: {},
         ...overrides,
     };
@@ -198,7 +198,7 @@ describe('Queue Handler — image promotion', () => {
 
         const res = await postJSON(`${srv.url}/api/queue`, makeTask({
             images: [PNG_DATA_URL],
-            payload: { data: { prompt: 'test' }, images: ['existing'] },
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', images: ['existing'] },
         }));
 
         expect(res.status).toBe(201);
@@ -249,11 +249,11 @@ describe('GET /api/queue/:id/images', () => {
         // Pre-seed persistence with a task that has imagesFilePath
         seedPersistence(dataDir, {
             id: 'seeded-task',
-            type: 'custom',
+            type: 'chat',
             priority: 'normal',
             status: 'queued',
             createdAt: Date.now(),
-            payload: { data: { prompt: 'test' }, imagesFilePath: blobPath, imagesCount: 2 },
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', imagesFilePath: blobPath, imagesCount: 2 },
             config: {},
             displayName: 'Test task with images',
         });
@@ -292,11 +292,11 @@ describe('GET /api/queue/:id/images', () => {
         // Pre-seed with imagesFilePath pointing to a non-existent file
         seedPersistence(dataDir, {
             id: 'missing-blob-task',
-            type: 'custom',
+            type: 'chat',
             priority: 'normal',
             status: 'queued',
             createdAt: Date.now(),
-            payload: { data: { prompt: 'test' }, imagesFilePath: path.join(dataDir, 'blobs', 'nonexistent.images.json'), imagesCount: 1 },
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', imagesFilePath: path.join(dataDir, 'blobs', 'nonexistent.images.json'), imagesCount: 1 },
             config: {},
             displayName: 'Test task missing blob',
         });
@@ -422,11 +422,11 @@ describe('serializeTask — image stripping', () => {
         // Pre-seed with imagesFilePath set on the task
         seedPersistence(dataDir, {
             id: 'leak-check',
-            type: 'custom',
+            type: 'chat',
             priority: 'normal',
             status: 'queued',
             createdAt: Date.now(),
-            payload: { data: { prompt: 'test' }, imagesFilePath: '/absolute/server/path.json', imagesCount: 3 },
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', imagesFilePath: '/absolute/server/path.json', imagesCount: 3 },
             config: {},
             displayName: 'Leak check task',
         });

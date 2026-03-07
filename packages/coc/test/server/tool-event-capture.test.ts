@@ -64,8 +64,8 @@ function makeToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
 function makeTask(id: string, prompt: string) {
     return {
         id,
-        type: 'ai-clarification' as const,
-        payload: { type: 'ai-clarification' as const, prompt },
+        type: 'chat' as const,
+        payload: { kind: 'chat' as const, mode: 'ask' as const, prompt },
         priority: 1,
         config: { model: 'test-model', timeoutMs: 30000 },
         status: 'queued' as const,
