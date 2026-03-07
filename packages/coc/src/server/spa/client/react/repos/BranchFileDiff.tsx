@@ -10,7 +10,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button, TruncatedPath } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
-import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+import { DiffMiniMap } from './DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -35,6 +36,8 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
 
     const diffContext = { repositoryId: workspaceId, filePath, oldRef: 'branch-base', newRef: 'branch-head' };
 
@@ -102,7 +105,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
 
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
-                <div className="flex-1 overflow-auto px-1 py-1" data-testid="branch-file-diff-section">
+                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="branch-file-diff-section">
                     {loading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="branch-file-diff-loading">
                             <Spinner size="sm" /> Loading diff...
@@ -120,7 +123,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                             enableComments
                             showLineNumbers
                             comments={comments}
-                            onLinesReady={runRelocation}
+                            onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                             onAddComment={handleAddComment}
                             onCommentClick={handleCommentClick}
                             data-testid="branch-file-diff-content"
@@ -129,6 +132,9 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                         <div className="text-xs text-[#848484]" data-testid="branch-file-diff-empty">(empty diff)</div>
                     )}
                 </div>
+                {diff && !loading && !error && (
+                    <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
+                )}
 
                 {sidebarOpen && (
                     <CommentSidebar

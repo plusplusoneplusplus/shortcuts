@@ -10,7 +10,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
-import type { UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
+import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+import { DiffMiniMap } from './DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -42,6 +43,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
 
     const diffContext = stage !== 'untracked'
         ? { repositoryId: workspaceId, filePath, oldRef: stage === 'staged' ? 'HEAD' : 'INDEX', newRef: 'working-tree' as const }
@@ -115,7 +118,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
 
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
-                <div className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
+                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
                     {stage === 'untracked' ? (
                         <div className="text-xs text-[#848484] italic" data-testid="working-tree-file-diff-untracked">
                             Untracked file – no diff available
@@ -137,7 +140,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                             enableComments
                             showLineNumbers
                             comments={comments}
-                            onLinesReady={runRelocation}
+                            onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                             onAddComment={handleAddComment}
                             onCommentClick={handleCommentClick}
                             data-testid="working-tree-file-diff-content"
@@ -146,6 +149,9 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                         <div className="text-xs text-[#848484]" data-testid="working-tree-file-diff-empty">(no changes)</div>
                     )}
                 </div>
+                {diff && !loading && !error && stage !== 'untracked' && (
+                    <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
+                )}
 
                 {sidebarOpen && stage !== 'untracked' && (
                     <CommentSidebar

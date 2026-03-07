@@ -1672,3 +1672,58 @@
 .minimap-highlight-pulse {
     animation: minimap-highlight-flash 1.2s ease-out;
 }
+
+/* ── Diff Mini Map ──────────────────────────────────────────────────── */
+
+:root {
+    --diff-minimap-added: #2ea04370;
+    --diff-minimap-removed: #f8514970;
+}
+
+.dark {
+    --diff-minimap-added: #3fb95060;
+    --diff-minimap-removed: #f8514960;
+}
+
+.diff-minimap {
+    flex-shrink: 0;
+    align-self: stretch;
+    border-left: 1px solid #e0e0e0;
+    background: #f5f5f5;
+    position: relative;
+}
+
+.dark .diff-minimap {
+    border-left-color: #3c3c3c;
+    background: #2d2d2d;
+}
+
+.diff-minimap-strip-area {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    cursor: pointer;
+}
+
+.diff-minimap-segment {
+    flex-shrink: 0;
+}
+
+.diff-minimap-viewport {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: rgba(0, 120, 212, 0.18);
+    border: 1px solid rgba(0, 120, 212, 0.4);
+    border-radius: 1px;
+    cursor: ns-resize;
+    z-index: 2;
+    pointer-events: auto;
+    transition: top 0.08s ease;
+}
+
+.dark .diff-minimap-viewport {
+    background: rgba(55, 148, 255, 0.15);
+    border-color: rgba(55, 148, 255, 0.35);
+}
