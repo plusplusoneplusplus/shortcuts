@@ -89,3 +89,7 @@ export { executeFilter, evaluateRule, evaluateFieldRule } from './nodes/filter';
 export { executeMap } from './nodes/map';
 export { executeReduce } from './nodes/reduce';
 export { executeAI } from './nodes/ai';
+
+// Compiler
+export { compileToWorkflow, compileToWorkflowFromObject, detectFormat, CompilerError } from './compiler';
+export type { DetectedFormat } from './compiler';

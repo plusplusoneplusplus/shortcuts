@@ -1171,4 +1171,11 @@ export {
 
     // Executor
     executeWorkflow,
+
+    // Compiler
+    compileToWorkflow,
+    compileToWorkflowFromObject,
+    detectFormat,
+    CompilerError,
+    type DetectedFormat,
 } from './workflow';
