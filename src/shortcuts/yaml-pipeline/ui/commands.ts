@@ -222,7 +222,7 @@ export class PipelineCommands {
 
             if (executionResult.success && executionResult.result) {
                 // Show success message with options
-                const stats = executionResult.result.executionStats;
+                const stats = executionResult.result.stats;
                 const successMsg = `Pipeline "${item.pipeline.name}" completed: ${stats.successfulMaps}/${stats.totalItems} items processed`;
 
                 const action = await vscode.window.showInformationMessage(
@@ -301,7 +301,7 @@ export class PipelineCommands {
 
             if (executionResult.success && executionResult.result) {
                 // Show success message with options
-                const stats = executionResult.result.executionStats;
+                const stats = executionResult.result.stats;
                 const successMsg = `Pipeline "${item.pipeline.name}" completed: ${stats.successfulMaps}/${stats.totalItems} items processed`;
 
                 const action = await vscode.window.showInformationMessage(

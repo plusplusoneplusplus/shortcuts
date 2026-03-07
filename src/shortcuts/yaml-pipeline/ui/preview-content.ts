@@ -11,14 +11,15 @@
  */
 
 import * as vscode from 'vscode';
-import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, GenerateState, GeneratedItem } from '@plusplusoneplusplus/pipeline-core';
+import { CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, GenerateState, GeneratedItem } from '@plusplusoneplusplus/pipeline-core';
 import { PipelineInfo, ResourceFileInfo, ValidationResult } from './types';
 import {
     generatePipelineMermaid,
     extractTemplateVariables,
     validateTemplateVariables,
     formatFileSize,
-    PipelineNodeType
+    PipelineNodeType,
+    RawPipelineYAML
 } from './preview-mermaid';
 import { WebviewSetupHelper } from '../../shared/webview/extension-webview-utils';
 
@@ -89,7 +90,7 @@ export interface PreviewMessage {
  */
 export interface PipelinePreviewData {
     /** Pipeline configuration from YAML */
-    config: PipelineConfig;
+    config: RawPipelineYAML;
     /** Pipeline metadata */
     info: PipelineInfo;
     /** Validation result */
@@ -349,7 +350,7 @@ ${mermaidDiagram}
  * Generate details panel that updates on node click
  */
 function getDetailsPanel(
-    config: PipelineConfig,
+    config: RawPipelineYAML,
     csvInfo?: CSVParseResult,
     csvPreview?: PromptItem[],
     info?: PipelineInfo,
@@ -412,7 +413,7 @@ function getDetailsPanel(
 /**
  * Generate details for a generate config (initial state)
  */
-function getGenerateConfigDetails(config: PipelineConfig): string {
+function getGenerateConfigDetails(config: RawPipelineYAML): string {
     const generateConfig = config.input?.generate;
     if (!generateConfig) return '';
 
@@ -485,7 +486,7 @@ function getGenerateErrorContent(message: string): string {
 /**
  * Generate the review table content with editable items
  */
-function getReviewTableContent(config: PipelineConfig, items: GeneratedItem[]): string {
+function getReviewTableContent(config: RawPipelineYAML, items: GeneratedItem[]): string {
     const generateConfig = config.input?.generate;
     if (!generateConfig) return '';
 
@@ -513,7 +514,7 @@ function getReviewTableContent(config: PipelineConfig, items: GeneratedItem[]): 
                             <th class="checkbox-col">
                                 <input type="checkbox" id="selectAllCheckbox" ${allSelected ? 'checked' : ''}>
                             </th>
-                            ${schema.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
+                            ${schema.map((h: string) => `<th>${escapeHtml(h)}</th>`).join('')}
                         </tr>
                     </thead>
                     <tbody>
@@ -522,7 +523,7 @@ function getReviewTableContent(config: PipelineConfig, items: GeneratedItem[]): 
                                 <td class="checkbox-col">
                                     <input type="checkbox" class="row-checkbox" data-index="${idx}" ${item.selected ? 'checked' : ''}>
                                 </td>
-                                ${schema.map(field => `
+                                ${schema.map((field: string) => `
                                     <td>
                                         <input type="text" class="cell-input" 
                                             data-index="${idx}" 
@@ -558,7 +559,7 @@ function getReviewTableContent(config: PipelineConfig, items: GeneratedItem[]): 
  * Generate INPUT node details
  */
 export function getInputDetails(
-    config: PipelineConfig,
+    config: RawPipelineYAML,
     csvInfo?: CSVParseResult,
     csvPreview?: PromptItem[],
     initial: boolean = false,
@@ -690,7 +691,7 @@ function getCSVPreviewTable(
 /**
  * Generate JOB node details for job-mode pipelines
  */
-export function getJobDetails(config: PipelineConfig): string {
+export function getJobDetails(config: RawPipelineYAML): string {
     if (!config.job) return '';
     const job = config.job;
     const promptContent = job.prompt || (job.promptFile ? `[From file: ${job.promptFile}]` : '');
@@ -727,7 +728,7 @@ export function getJobDetails(config: PipelineConfig): string {
                 <div class="detail-item">
                     <span class="detail-label">Output Fields:</span>
                     <span class="detail-value output-fields">
-                        ${job.output.map(f => `<span class="field-tag">${escapeHtml(f)}</span>`).join('')}
+                        ${job.output.map((f: string) => `<span class="field-tag">${escapeHtml(f)}</span>`).join('')}
                     </span>
                 </div>` : ''}
             </div>
@@ -740,7 +741,7 @@ export function getJobDetails(config: PipelineConfig): string {
             <div class="variables-section">
                 <h5 class="variables-title">⚙️ Parameters</h5>
                 <ul class="variables-list">
-                    ${config.parameters.map(p => `<li class="variable-found"><code>{{${escapeHtml(p.name)}}}</code><span class="variable-source">← ${escapeHtml(p.value)}</span></li>`).join('')}
+                    ${config.parameters.map((p: { name: string; value: string }) => `<li class="variable-found"><code>{{${escapeHtml(p.name)}}}</code><span class="variable-source">← ${escapeHtml(p.value)}</span></li>`).join('')}
                 </ul>
             </div>` : ''}
         </div>
@@ -750,7 +751,7 @@ export function getJobDetails(config: PipelineConfig): string {
 /**
  * Generate MAP node details
  */
-export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): string {
+export function getMapDetails(config: RawPipelineYAML, csvHeaders?: string[]): string {
     if (!config.map) return '';
     const parallel = config.map.parallel || 5;
     const promptContent = config.map.prompt || (config.map.promptFile ? `[From file: ${config.map.promptFile}]` : '');
@@ -776,7 +777,7 @@ export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): st
                 <div class="detail-item">
                     <span class="detail-label">Output Fields:</span>
                     <span class="detail-value output-fields">${(config.map.output || []).length > 0
-                        ? (config.map.output || []).map(o => `<span class="field-tag">${escapeHtml(o)}</span>`).join('')
+                        ? (config.map.output || []).map((o: string) => `<span class="field-tag">${escapeHtml(o)}</span>`).join('')
                         : '<span class="field-tag text-mode">text (raw)</span>'}</span>
                 </div>
             </div>
@@ -808,7 +809,7 @@ export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): st
 /**
  * Generate REDUCE node details
  */
-export function getReduceDetails(config: PipelineConfig, rowCount?: number): string {
+export function getReduceDetails(config: RawPipelineYAML, rowCount?: number): string {
     if (!config.reduce) return '';
     const reduceDescriptions: Record<string, string> = {
         'json': 'Outputs all results as a JSON array',
@@ -850,7 +851,7 @@ export function getReduceDetails(config: PipelineConfig, rowCount?: number): str
                 ${isAIReduce && config.reduce.output && config.reduce.output.length > 0 ? `
                 <div class="detail-item">
                     <span class="detail-label">Output Fields:</span>
-                    <span class="detail-value output-fields">${config.reduce.output.map(o => `<span class="field-tag">${escapeHtml(o)}</span>`).join('')}</span>
+                    <span class="detail-value output-fields">${config.reduce.output.map((o: string) => `<span class="field-tag">${escapeHtml(o)}</span>`).join('')}</span>
                 </div>
                 ` : ''}
             </div>
@@ -883,7 +884,7 @@ export function getReduceDetails(config: PipelineConfig, rowCount?: number): str
 /**
  * Generate output schema preview
  */
-function getOutputSchemaPreview(config: PipelineConfig): string {
+function getOutputSchemaPreview(config: RawPipelineYAML): string {
     if (!config.map) return '"raw text output"';
     const outputFields = config.map.output || [];
     if (outputFields.length === 0) {

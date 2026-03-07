@@ -21,17 +21,13 @@ import {
     PipelineItemResultNode,
     ResultViewerMessage,
     ResultViewerExtensionMessage,
-    RetryState,
-    mapResultToNode
+    RetryState
 } from './result-viewer-types';
 import { getResultViewerContent } from './result-viewer-content';
 import {
-    PipelineExecutionResult,
-    MapResult,
+    FlatWorkflowResult,
+    WorkflowExecutionStats,
     AIInvoker,
-    ExecutionStats,
-    PromptMapResult,
-    PromptMapOutput,
     PromptItem,
     PipelineConfig,
     ConcurrencyLimiter
@@ -76,7 +72,7 @@ export class PipelineResultViewerProvider {
     /**
      * Show pipeline results in a webview panel
      *
-     * @param result Pipeline execution result
+     * @param result Flattened workflow execution result
      * @param pipelineName Name of the pipeline
      * @param packageName Package name of the pipeline
      * @param viewColumn View column to show the panel in
@@ -84,7 +80,7 @@ export class PipelineResultViewerProvider {
      * @param pipelineDirectory Optional pipeline directory for retry support
      */
     public async showResults(
-        result: PipelineExecutionResult,
+        result: FlatWorkflowResult,
         pipelineName: string,
         packageName: string,
         viewColumn: vscode.ViewColumn = vscode.ViewColumn.Beside,
@@ -211,39 +207,29 @@ export class PipelineResultViewerProvider {
     }
 
     /**
-     * Convert pipeline execution result to view data
+     * Convert flattened workflow result to view data
      */
     private convertToViewData(
-        result: PipelineExecutionResult,
+        result: FlatWorkflowResult,
         pipelineName: string,
         packageName: string,
         pipelineConfig?: PipelineConfig,
         pipelineDirectory?: string
     ): PipelineResultViewData {
-        // Convert map results to item result nodes
+        // Convert items to item result nodes
         const itemResults: PipelineItemResultNode[] = [];
 
-        if (result.mapResults) {
-            result.mapResults.forEach((mapResult: MapResult<PromptMapResult>, index: number) => {
-                if (mapResult.output) {
-                    itemResults.push(
-                        mapResultToNode(mapResult.output, index, mapResult.executionTimeMs)
-                    );
-                } else {
-                    // Handle case where output is missing (e.g., executor timeout)
-                    // Note: rawResponse is not available in this case because the AI call
-                    // never completed (timeout occurred before mapper returned)
-                    itemResults.push({
-                        id: mapResult.workItemId || `item-${index}`,
-                        index,
-                        input: {},
-                        output: {},
-                        success: false,
-                        error: mapResult.error || 'Unknown error',
-                        executionTimeMs: mapResult.executionTimeMs,
-                        rawResponse: undefined
-                    });
-                }
+        if (result.items) {
+            result.items.forEach((item, index) => {
+                itemResults.push({
+                    id: `item-${index}`,
+                    index: item.index,
+                    input: item.input as Record<string, string>,
+                    output: item.output,
+                    success: item.success,
+                    error: item.error,
+                    executionTimeMs: item.executionTimeMs
+                });
             });
         }
 
@@ -251,10 +237,10 @@ export class PipelineResultViewerProvider {
             pipelineName,
             packageName,
             success: result.success,
-            totalTimeMs: result.totalTimeMs,
-            executionStats: result.executionStats,
-            reduceStats: result.reduceStats,
-            output: result.output as PromptMapOutput | undefined,
+            totalTimeMs: result.stats.totalDurationMs,
+            executionStats: result.stats,
+            formattedOutput: result.formattedOutput,
+            leafOutput: result.leafOutput,
             itemResults,
             error: result.error,
             completedAt: new Date(),
@@ -935,7 +921,7 @@ export function registerPipelineResultViewer(
         vscode.commands.registerCommand(
             'pipelinesViewer.showResults',
             async (
-                result: PipelineExecutionResult,
+                result: FlatWorkflowResult,
                 pipelineName: string,
                 packageName: string
             ) => {

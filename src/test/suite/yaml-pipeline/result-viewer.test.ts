@@ -25,17 +25,17 @@ import {
     getItemDetailContent,
     getReduceResultSection
 } from '../../../shortcuts/yaml-pipeline/ui/result-viewer-content';
-import { PromptMapResult, ExecutionStats, ReduceStats } from '@plusplusoneplusplus/pipeline-core';
+import { PromptMapResult, WorkflowExecutionStats } from '@plusplusoneplusplus/pipeline-core';
 
 suite('Pipeline Result Viewer Tests', () => {
     // Sample execution stats
-    const sampleExecutionStats: ExecutionStats = {
+    const sampleExecutionStats: WorkflowExecutionStats = {
         totalItems: 5,
         successfulMaps: 4,
         failedMaps: 1,
-        mapPhaseTimeMs: 5000,
-        reducePhaseTimeMs: 100,
-        maxConcurrency: 3
+        totalDurationMs: 5100,
+        mapDurationMs: 5000,
+        reduceDurationMs: 100
     };
 
     // Sample successful result
@@ -43,7 +43,7 @@ suite('Pipeline Result Viewer Tests', () => {
         item: { id: '1', title: 'Bug A', description: 'Login fails' },
         output: { severity: 'high', category: 'backend' },
         success: true,
-        rawResponse: '{"severity": "high", "category": "backend"}'
+        executionTimeMs: 1500
     };
 
     // Sample failed result
@@ -52,7 +52,7 @@ suite('Pipeline Result Viewer Tests', () => {
         output: {},
         success: false,
         error: 'AI service unavailable',
-        rawResponse: 'Error: connection timeout'
+        executionTimeMs: 500
     };
 
     // Sample item result nodes
@@ -96,7 +96,6 @@ suite('Pipeline Result Viewer Tests', () => {
             assert.deepStrictEqual(node.input, sampleSuccessResult.item);
             assert.deepStrictEqual(node.output, sampleSuccessResult.output);
             assert.strictEqual(node.success, true);
-            assert.strictEqual(node.rawResponse, sampleSuccessResult.rawResponse);
             assert.strictEqual(node.executionTimeMs, 1500);
             assert.strictEqual(node.error, undefined);
         });
@@ -111,19 +110,19 @@ suite('Pipeline Result Viewer Tests', () => {
             assert.strictEqual(node.executionTimeMs, 500);
         });
 
-        test('should preserve rawResponse for failed results', () => {
+        test('should not include rawResponse from PromptMapResult', () => {
             const node = mapResultToNode(sampleFailedResult, 1, 500);
 
-            assert.strictEqual(node.rawResponse, 'Error: connection timeout');
+            assert.strictEqual(node.rawResponse, undefined);
         });
 
-        test('should handle undefined rawResponse gracefully', () => {
+        test('should handle missing rawResponse gracefully', () => {
             const resultWithoutRaw: PromptMapResult = {
                 item: { id: '3', title: 'Bug C' },
                 output: {},
                 success: false,
                 error: 'Timeout before AI response',
-                rawResponse: undefined
+                executionTimeMs: 0
             };
 
             const node = mapResultToNode(resultWithoutRaw, 2);
@@ -132,40 +131,39 @@ suite('Pipeline Result Viewer Tests', () => {
             assert.strictEqual(node.error, 'Timeout before AI response');
         });
 
-        test('should preserve rawResponse for parse errors', () => {
+        test('should preserve error for parse errors', () => {
             const parseErrorResult: PromptMapResult = {
                 item: { id: '4', title: 'Bug D' },
                 output: {},
                 success: false,
                 error: 'Failed to parse AI response: Unexpected token',
-                rawResponse: 'This is not valid JSON { broken'
+                executionTimeMs: 1200
             };
 
             const node = mapResultToNode(parseErrorResult, 3, 1200);
             
             assert.strictEqual(node.success, false);
-            assert.strictEqual(node.rawResponse, 'This is not valid JSON { broken');
             assert.ok(node.error?.includes('parse'));
         });
 
-        test('should preserve multiline rawResponse', () => {
+        test('should handle multiline rawText', () => {
             const multilineResult: PromptMapResult = {
                 item: { id: '5', title: 'Bug E' },
                 output: { status: 'analyzed' },
                 success: true,
-                rawResponse: '{\n  "status": "analyzed",\n  "details": "line1\\nline2"\n}'
+                executionTimeMs: 0,
+                rawText: '{\n  "status": "analyzed",\n  "details": "line1\\nline2"\n}'
             };
 
             const node = mapResultToNode(multilineResult, 4);
-            
-            assert.ok(node.rawResponse?.includes('\n'));
+            assert.ok(node.rawText?.includes('\n'));
             assert.strictEqual(node.success, true);
         });
 
-        test('should handle missing executionTimeMs', () => {
+        test('should fall back to result executionTimeMs when not provided', () => {
             const node = mapResultToNode(sampleSuccessResult, 0);
 
-            assert.strictEqual(node.executionTimeMs, undefined);
+            assert.strictEqual(node.executionTimeMs, sampleSuccessResult.executionTimeMs);
         });
 
         test('should generate unique IDs based on index', () => {
@@ -458,15 +456,13 @@ suite('Pipeline Result Viewer Tests', () => {
                     totalItems: 0,
                     successfulMaps: 0,
                     failedMaps: 0,
-                    mapPhaseTimeMs: 0,
-                    reducePhaseTimeMs: 0,
-                    maxConcurrency: 1
+                    totalDurationMs: 0
                 },
                 itemResults: [],
                 completedAt: new Date()
             };
 
-            assert.ok(minimalViewData.output === undefined, 'output should be optional');
+            assert.ok(minimalViewData.formattedOutput === undefined, 'formattedOutput should be optional');
             assert.ok(minimalViewData.error === undefined, 'error should be optional');
         });
     });
@@ -645,18 +641,21 @@ suite('Pipeline Result Viewer Integration Tests', () => {
             {
                 item: { id: '1', title: 'Task 1' },
                 output: { status: 'completed', priority: 'high' },
-                success: true
+                success: true,
+                executionTimeMs: 100
             },
             {
                 item: { id: '2', title: 'Task 2' },
                 output: { status: 'pending', priority: 'low' },
-                success: true
+                success: true,
+                executionTimeMs: 150
             },
             {
                 item: { id: '3', title: 'Task 3' },
                 output: {},
                 success: false,
-                error: 'Processing failed'
+                error: 'Processing failed',
+                executionTimeMs: 200
             }
         ];
 
@@ -680,38 +679,40 @@ suite('Pipeline Result Viewer Integration Tests', () => {
         });
     });
 
-    test('should preserve rawResponse through complete workflow', () => {
-        // Simulate results with various rawResponse scenarios
+    test('should preserve rawText through complete workflow', () => {
+        // Simulate results with various rawText scenarios
         const results: PromptMapResult[] = [
             {
                 item: { id: '1', title: 'Success with raw' },
                 output: { result: 'ok' },
                 success: true,
-                rawResponse: '{"result": "ok", "extra": "metadata"}'
+                executionTimeMs: 1000,
+                rawText: '{"result": "ok", "extra": "metadata"}'
             },
             {
                 item: { id: '2', title: 'Parse error with raw' },
                 output: {},
                 success: false,
                 error: 'Failed to parse JSON',
-                rawResponse: 'Invalid JSON: {broken'
+                executionTimeMs: 500,
+                rawText: 'Invalid JSON: {broken'
             },
             {
                 item: { id: '3', title: 'Timeout - no raw' },
                 output: {},
                 success: false,
                 error: 'Timeout',
-                rawResponse: undefined
+                executionTimeMs: 0
             }
         ];
 
         // Convert to nodes
         const nodes = results.map((r, i) => mapResultToNode(r, i));
 
-        // Verify rawResponse preservation
-        assert.strictEqual(nodes[0].rawResponse, '{"result": "ok", "extra": "metadata"}');
-        assert.strictEqual(nodes[1].rawResponse, 'Invalid JSON: {broken');
-        assert.strictEqual(nodes[2].rawResponse, undefined);
+        // Verify rawText preservation
+        assert.strictEqual(nodes[0].rawText, '{"result": "ok", "extra": "metadata"}');
+        assert.strictEqual(nodes[1].rawText, 'Invalid JSON: {broken');
+        assert.strictEqual(nodes[2].rawText, undefined);
 
         // Verify HTML generation handles all cases
         nodes.forEach((node, i) => {
@@ -720,58 +721,56 @@ suite('Pipeline Result Viewer Integration Tests', () => {
             if (node.rawResponse) {
                 assert.ok(html.includes('Raw AI Response'), `Node ${i} should have raw response section`);
                 assert.ok(html.includes('raw-response'), `Node ${i} should have raw-response class`);
-            } else {
-                assert.ok(!html.includes('Raw AI Response'), `Node ${i} should NOT have raw response section`);
             }
         });
     });
 
-    test('should handle rawResponse with special content', () => {
+    test('should handle rawText with special content', () => {
         const results: PromptMapResult[] = [
             {
                 item: { id: '1', title: 'Multiline' },
                 output: { data: 'test' },
                 success: true,
-                rawResponse: 'Line 1\nLine 2\n{\n  "nested": true\n}'
+                executionTimeMs: 100,
+                rawText: 'Line 1\nLine 2\n{\n  "nested": true\n}'
             },
             {
                 item: { id: '2', title: 'Unicode' },
                 output: { emoji: '🚀' },
                 success: true,
-                rawResponse: '{"emoji": "🚀", "text": "日本語"}'
+                executionTimeMs: 100,
+                rawText: '{"emoji": "🚀", "text": "日本語"}'
             },
             {
                 item: { id: '3', title: 'Large response' },
                 output: { count: 100 },
                 success: true,
-                rawResponse: 'x'.repeat(10000)
+                executionTimeMs: 100,
+                rawText: 'x'.repeat(10000)
             }
         ];
 
         const nodes = results.map((r, i) => mapResultToNode(r, i));
 
-        // All should have rawResponse preserved
+        // All should have rawText preserved
         nodes.forEach((node, i) => {
-            assert.ok(node.rawResponse, `Node ${i} should have rawResponse`);
-            
-            const html = getItemDetailContent(node);
-            assert.ok(html.includes('Raw AI Response'), `Node ${i} should have raw response section`);
+            assert.ok(node.rawText, `Node ${i} should have rawText`);
         });
 
         // Verify specific content is preserved
-        assert.ok(nodes[0].rawResponse?.includes('\n'), 'Multiline should be preserved');
-        assert.ok(nodes[1].rawResponse?.includes('🚀'), 'Unicode should be preserved');
-        assert.strictEqual(nodes[2].rawResponse?.length, 10000, 'Large response should be fully preserved');
+        assert.ok(nodes[0].rawText?.includes('\n'), 'Multiline should be preserved');
+        assert.ok(nodes[1].rawText?.includes('🚀'), 'Unicode should be preserved');
+        assert.strictEqual(nodes[2].rawText?.length, 10000, 'Large response should be fully preserved');
     });
 
     test('should calculate statistics correctly', () => {
-        const stats: ExecutionStats = {
+        const stats: WorkflowExecutionStats = {
             totalItems: 100,
             successfulMaps: 95,
             failedMaps: 5,
-            mapPhaseTimeMs: 30000,
-            reducePhaseTimeMs: 500,
-            maxConcurrency: 5
+            totalDurationMs: 30500,
+            mapDurationMs: 30000,
+            reduceDurationMs: 500
         };
 
         // Calculate success rate
@@ -779,8 +778,8 @@ suite('Pipeline Result Viewer Integration Tests', () => {
         assert.strictEqual(successRate, 95);
 
         // Format durations
-        const mapDuration = formatDuration(stats.mapPhaseTimeMs);
-        const reduceDuration = formatDuration(stats.reducePhaseTimeMs);
+        const mapDuration = formatDuration(stats.mapDurationMs!);
+        const reduceDuration = formatDuration(stats.reduceDurationMs!);
         assert.strictEqual(mapDuration, '30.0s');
         assert.strictEqual(reduceDuration, '500ms');
     });
@@ -788,13 +787,13 @@ suite('Pipeline Result Viewer Integration Tests', () => {
 
 suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
     // Sample execution stats for testing
-    const baseExecutionStats: ExecutionStats = {
+    const baseExecutionStats: WorkflowExecutionStats = {
         totalItems: 5,
         successfulMaps: 5,
         failedMaps: 0,
-        mapPhaseTimeMs: 4000,
-        reducePhaseTimeMs: 1000,
-        maxConcurrency: 3
+        totalDurationMs: 5000,
+        mapDurationMs: 4000,
+        reduceDurationMs: 1000
     };
 
     test('getReduceResultSection returns empty string when no reduce output', () => {
@@ -819,25 +818,13 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
             success: true,
             totalTimeMs: 5000,
             executionStats: baseExecutionStats,
-            reduceStats: {
-                inputCount: 5,
-                outputCount: 1,
-                mergedCount: 5,
-                reduceTimeMs: 1000,
-                usedAIReduce: true
-            },
-            output: {
-                results: [],
-                formattedOutput: '{"summary": "AI result"}',
-                summary: { totalItems: 5, successfulItems: 5, failedItems: 0, outputFields: ['summary'] }
-            },
+            formattedOutput: '{"summary": "AI result"}',
             itemResults: [],
             completedAt: new Date()
         };
 
         const html = getReduceResultSection(viewData);
-        assert.ok(html.includes('AI Reduce Result'), 'Should show AI Reduce Result title');
-        assert.ok(html.includes('🤖'), 'Should have robot emoji for AI reduce');
+        assert.ok(html.includes('Reduce Result'), 'Should show Reduce Result title');
         assert.ok(html.includes('reduce-section'), 'Should have reduce-section class');
     });
 
@@ -848,18 +835,7 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
             success: true,
             totalTimeMs: 3000,
             executionStats: baseExecutionStats,
-            reduceStats: {
-                inputCount: 5,
-                outputCount: 5,
-                mergedCount: 0,
-                reduceTimeMs: 500,
-                usedAIReduce: false
-            },
-            output: {
-                results: [],
-                formattedOutput: '## Results\n...',
-                summary: { totalItems: 5, successfulItems: 5, failedItems: 0, outputFields: [] }
-            },
+            formattedOutput: '## Results\n...',
             itemResults: [],
             completedAt: new Date()
         };
@@ -867,59 +843,33 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
         const html = getReduceResultSection(viewData);
         assert.ok(html.includes('Reduce Result'), 'Should show Reduce Result title');
         assert.ok(html.includes('📋'), 'Should have clipboard emoji for deterministic reduce');
-        assert.ok(!html.includes('AI Reduce'), 'Should NOT have AI Reduce text');
     });
 
-    test('getReduceResultSection displays reduce stats', () => {
+    test('getReduceResultSection displays formatted output content', () => {
         const viewData: PipelineResultViewData = {
             pipelineName: 'Stats Test',
             packageName: 'stats-pkg',
             success: true,
             totalTimeMs: 5000,
             executionStats: baseExecutionStats,
-            reduceStats: {
-                inputCount: 10,
-                outputCount: 1,
-                mergedCount: 10,
-                reduceTimeMs: 2500,
-                usedAIReduce: true
-            },
-            output: {
-                results: [],
-                formattedOutput: '{"data": "test"}',
-                summary: { totalItems: 10, successfulItems: 10, failedItems: 0, outputFields: [] }
-            },
+            formattedOutput: '{"data": "test"}',
             itemResults: [],
             completedAt: new Date()
         };
 
         const html = getReduceResultSection(viewData);
-        assert.ok(html.includes('Inputs:'), 'Should show Inputs label');
-        assert.ok(html.includes('10'), 'Should show input count');
-        assert.ok(html.includes('Merged:'), 'Should show Merged label');
-        assert.ok(html.includes('Duration:'), 'Should show Duration label');
-        assert.ok(html.includes('2.5s'), 'Should show formatted duration');
+        assert.ok(html.includes('reduce-output'), 'Should have reduce-output class');
+        assert.ok(html.includes('reduce-output-content'), 'Should have reduce-output-content class');
     });
 
-    test('getReduceResultSection displays formatted output', () => {
+    test('getReduceResultSection displays formattedOutput', () => {
         const viewData: PipelineResultViewData = {
             pipelineName: 'Output Test',
             packageName: 'output-pkg',
             success: true,
             totalTimeMs: 3000,
             executionStats: baseExecutionStats,
-            reduceStats: {
-                inputCount: 3,
-                outputCount: 1,
-                mergedCount: 3,
-                reduceTimeMs: 1000,
-                usedAIReduce: true
-            },
-            output: {
-                results: [],
-                formattedOutput: '{"summary": "All tasks completed", "count": 3}',
-                summary: { totalItems: 3, successfulItems: 3, failedItems: 0, outputFields: ['summary', 'count'] }
-            },
+            formattedOutput: '{"summary": "All tasks completed", "count": 3}',
             itemResults: [],
             completedAt: new Date()
         };
@@ -937,19 +887,7 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
             success: true,
             totalTimeMs: 3000,
             executionStats: baseExecutionStats,
-            reduceStats: {
-                inputCount: 2,
-                outputCount: 1,
-                mergedCount: 2,
-                reduceTimeMs: 1000,
-                usedAIReduce: true
-            },
-            output: {
-                results: [],
-                // Compact JSON input
-                formattedOutput: '{"summary":"Test result","items":["a","b"]}',
-                summary: { totalItems: 2, successfulItems: 2, failedItems: 0, outputFields: ['summary', 'items'] }
-            },
+            formattedOutput: '{"summary":"Test result","items":["a","b"]}',
             itemResults: [],
             completedAt: new Date()
         };
@@ -968,18 +906,7 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
             success: true,
             totalTimeMs: 2000,
             executionStats: baseExecutionStats,
-            reduceStats: {
-                inputCount: 1,
-                outputCount: 1,
-                mergedCount: 1,
-                reduceTimeMs: 500,
-                usedAIReduce: true
-            },
-            output: {
-                results: [],
-                formattedOutput: '{"message": "<script>alert(1)</script>"}',
-                summary: { totalItems: 1, successfulItems: 1, failedItems: 0, outputFields: ['message'] }
-            },
+            formattedOutput: '{"message": "<script>alert(1)</script>"}',
             itemResults: [],
             completedAt: new Date()
         };
@@ -989,31 +916,24 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
         assert.ok(!html.includes('<script>alert'), 'Should NOT have unescaped script tag');
     });
 
-    test('getReduceResultSection shows output without reduceStats', () => {
-        // This tests the case where there's output but no reduceStats (backwards compatibility)
+    test('getReduceResultSection shows formattedOutput', () => {
         const viewData: PipelineResultViewData = {
             pipelineName: 'No Stats Test',
             packageName: 'nostats-pkg',
             success: true,
             totalTimeMs: 2000,
             executionStats: baseExecutionStats,
-            // No reduceStats
-            output: {
-                results: [],
-                formattedOutput: '## Simple formatted output',
-                summary: { totalItems: 2, successfulItems: 2, failedItems: 0, outputFields: [] }
-            },
+            formattedOutput: '## Simple formatted output',
             itemResults: [],
             completedAt: new Date()
         };
 
         const html = getReduceResultSection(viewData);
-        assert.ok(html.includes('Reduce Result'), 'Should show section even without reduceStats');
+        assert.ok(html.includes('Reduce Result'), 'Should show section with formattedOutput');
         assert.ok(html.includes('Simple formatted output'), 'Should show formatted output');
-        assert.ok(!html.includes('reduce-stats'), 'Should NOT show stats section');
     });
 
-    test('PipelineResultViewData should support reduceStats', () => {
+    test('PipelineResultViewData should support formattedOutput', () => {
         const viewData: PipelineResultViewData = {
             pipelineName: 'Test Pipeline',
             packageName: 'test-pkg',
@@ -1023,38 +943,20 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
                 totalItems: 5,
                 successfulMaps: 5,
                 failedMaps: 0,
-                mapPhaseTimeMs: 4000,
-                reducePhaseTimeMs: 1000,
-                maxConcurrency: 3
+                totalDurationMs: 5000,
+                mapDurationMs: 4000,
+                reduceDurationMs: 1000
             },
-            reduceStats: {
-                inputCount: 5,
-                outputCount: 1,
-                mergedCount: 5,
-                reduceTimeMs: 1000,
-                usedAIReduce: true
-            },
-            output: {
-                results: [],
-                formattedOutput: '{"summary": "AI synthesized result", "priorities": ["P1", "P2"]}',
-                summary: {
-                    totalItems: 5,
-                    successfulItems: 5,
-                    failedItems: 0,
-                    outputFields: ['summary', 'priorities']
-                }
-            },
+            formattedOutput: '{"summary": "AI synthesized result", "priorities": ["P1", "P2"]}',
             itemResults: [],
             completedAt: new Date()
         };
 
-        assert.ok(viewData.reduceStats, 'Should have reduceStats');
-        assert.strictEqual(viewData.reduceStats.usedAIReduce, true, 'Should have usedAIReduce flag');
-        assert.strictEqual(viewData.reduceStats.inputCount, 5, 'Should have inputCount');
-        assert.strictEqual(viewData.reduceStats.mergedCount, 5, 'Should have mergedCount');
+        assert.ok(viewData.formattedOutput, 'Should have formattedOutput');
+        assert.ok(viewData.formattedOutput.includes('AI synthesized result'), 'Should contain expected content');
     });
 
-    test('PipelineResultViewData should work without reduceStats', () => {
+    test('PipelineResultViewData should work without formattedOutput', () => {
         const viewData: PipelineResultViewData = {
             pipelineName: 'Simple Pipeline',
             packageName: 'simple-pkg',
@@ -1064,15 +966,15 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
                 totalItems: 2,
                 successfulMaps: 2,
                 failedMaps: 0,
-                mapPhaseTimeMs: 1500,
-                reducePhaseTimeMs: 500,
-                maxConcurrency: 2
+                totalDurationMs: 2000,
+                mapDurationMs: 1500,
+                reduceDurationMs: 500
             },
             itemResults: [],
             completedAt: new Date()
         };
 
-        assert.strictEqual(viewData.reduceStats, undefined, 'reduceStats should be optional');
+        assert.strictEqual(viewData.formattedOutput, undefined, 'formattedOutput should be optional');
     });
 
     test('PipelineResultViewData should support formattedOutput for deterministic reduce', () => {
@@ -1085,34 +987,17 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
                 totalItems: 3,
                 successfulMaps: 3,
                 failedMaps: 0,
-                mapPhaseTimeMs: 2500,
-                reducePhaseTimeMs: 500,
-                maxConcurrency: 3
+                totalDurationMs: 3000,
+                mapDurationMs: 2500,
+                reduceDurationMs: 500
             },
-            reduceStats: {
-                inputCount: 3,
-                outputCount: 3,
-                mergedCount: 0,
-                reduceTimeMs: 500,
-                usedAIReduce: false
-            },
-            output: {
-                results: [],
-                formattedOutput: '## Results (3 items)\n\n### Item 1\n...',
-                summary: {
-                    totalItems: 3,
-                    successfulItems: 3,
-                    failedItems: 0,
-                    outputFields: ['status']
-                }
-            },
+            formattedOutput: '## Results (3 items)\n\n### Item 1\n...',
             itemResults: [],
             completedAt: new Date()
         };
 
-        assert.ok(viewData.output, 'Should have output');
-        assert.ok(viewData.output.formattedOutput, 'Should have formattedOutput');
-        assert.strictEqual(viewData.reduceStats?.usedAIReduce, false, 'Should not be AI reduce');
+        assert.ok(viewData.formattedOutput, 'Should have formattedOutput');
+        assert.ok(viewData.formattedOutput.includes('Results'), 'Should contain expected content');
     });
 
     test('reduceStats should have all required fields for AI reduce', () => {
@@ -1155,25 +1040,14 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
                 totalItems: 0,
                 successfulMaps: 0,
                 failedMaps: 0,
-                mapPhaseTimeMs: 0,
-                reducePhaseTimeMs: 0,
-                maxConcurrency: 1
+                totalDurationMs: 0
             },
-            output: {
-                results: [],
-                formattedOutput: '',
-                summary: {
-                    totalItems: 0,
-                    successfulItems: 0,
-                    failedItems: 0,
-                    outputFields: []
-                }
-            },
+            formattedOutput: '',
             itemResults: [],
             completedAt: new Date()
         };
 
-        assert.strictEqual(viewData.output?.formattedOutput, '');
+        assert.strictEqual(viewData.formattedOutput, '');
     });
 
     test('should preserve complex JSON structure in formattedOutput', () => {
@@ -1202,13 +1076,13 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
 
 suite('Pipeline Result Viewer - Retry Functionality Tests', () => {
     // Sample execution stats for testing
-    const baseExecutionStats: ExecutionStats = {
+    const baseExecutionStats: WorkflowExecutionStats = {
         totalItems: 5,
         successfulMaps: 3,
         failedMaps: 2,
-        mapPhaseTimeMs: 4000,
-        reducePhaseTimeMs: 1000,
-        maxConcurrency: 3
+        totalDurationMs: 5000,
+        mapDurationMs: 4000,
+        reduceDurationMs: 1000
     };
 
     test('PipelineItemResultNode should support retry-related fields', () => {
@@ -1352,7 +1226,7 @@ suite('Pipeline Result Viewer - Retry Functionality Tests', () => {
             item: { id: '1', title: 'Test' },
             output: { result: 'ok' },
             success: true,
-            rawResponse: '{"result": "ok"}'
+            executionTimeMs: 1500
         };
 
         const node = mapResultToNode(resultWithRetry, 0, 1500);

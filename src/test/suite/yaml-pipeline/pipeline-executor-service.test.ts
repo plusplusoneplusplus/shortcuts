@@ -10,7 +10,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { MockAIProcessManager } from '../../../shortcuts/ai-service/mock-ai-process-manager';
-import { ProcessTracker, ExecutionStats, SessionMetadata } from '@plusplusoneplusplus/pipeline-core';
+// Local interfaces matching the shapes needed for test helpers
+// (ProcessTracker, ExecutionStats, SessionMetadata are no longer exported from pipeline-core)
+interface ProcessTracker {
+    registerProcess(description: string, parentId?: string): string;
+    updateProcess(processId: string, status: 'running' | 'completed' | 'failed', response?: string, error?: string, structuredResult?: string): void;
+    attachSessionMetadata?(processId: string, metadata: SessionMetadata): void;
+    registerGroup(description: string): string;
+    completeGroup(groupId: string, summary: string, stats: any): void;
+}
+interface SessionMetadata {
+    sessionId?: string;
+    backend?: any;
+    workingDirectory?: string;
+}
 import { AIProcess } from '../../../shortcuts/ai-service/types';
 
 // Import the module under test
@@ -85,7 +98,7 @@ function createTestProcessTracker(
         completeGroup(
             groupId: string,
             _summary: string,
-            _stats: ExecutionStats
+            _stats: any
         ): void {
             // If the groupId is the parentGroupId, don't complete it here
             // because it will be completed by the main executor after the full pipeline finishes.
@@ -102,9 +115,7 @@ function createTestProcessTracker(
                     totalItems: _stats.totalItems,
                     successfulMaps: _stats.successfulMaps,
                     failedMaps: _stats.failedMaps,
-                    mapPhaseTimeMs: 0,
-                    reducePhaseTimeMs: 0,
-                    maxConcurrency: 5
+                    totalDurationMs: 0
                 }
             });
         }
@@ -229,14 +240,14 @@ reduce:
                 totalItems: 10,
                 successfulMaps: 8,
                 failedMaps: 2,
-                mapPhaseTimeMs: 5000,
-                reducePhaseTimeMs: 100,
-                maxConcurrency: 5
+                totalDurationMs: 5100,
+                mapDurationMs: 5000,
+                reduceDurationMs: 100
             };
 
             // Verify stats are valid
             assert.strictEqual(mockStats.totalItems, mockStats.successfulMaps + mockStats.failedMaps);
-            assert.ok(mockStats.mapPhaseTimeMs > 0);
+            assert.ok(mockStats.mapDurationMs > 0);
         });
 
         test('calculates progress percentage correctly', () => {
@@ -617,13 +628,13 @@ input:
                 const groupId = tracker.registerGroup('Batch');
 
                 // Simulate executor completing the "internal" group
-                const stats: ExecutionStats = {
+                const stats = {
                     totalItems: 3,
                     successfulMaps: 3,
                     failedMaps: 0,
-                    mapPhaseTimeMs: 1000,
-                    reducePhaseTimeMs: 100,
-                    maxConcurrency: 5
+                    totalDurationMs: 1100,
+                    mapDurationMs: 1000,
+                    reduceDurationMs: 100
                 };
                 tracker.completeGroup(groupId, 'Completed 3 items', stats);
 
@@ -655,9 +666,9 @@ input:
                     totalItems: 2,
                     successfulMaps: 2,
                     failedMaps: 0,
-                    mapPhaseTimeMs: 500,
-                    reducePhaseTimeMs: 50,
-                    maxConcurrency: 5
+                    totalDurationMs: 550,
+                    mapDurationMs: 500,
+                    reduceDurationMs: 50
                 });
 
                 // Parent still running
@@ -671,9 +682,9 @@ input:
                         totalItems: 2,
                         successfulMaps: 2,
                         failedMaps: 0,
-                        mapPhaseTimeMs: 500,
-                        reducePhaseTimeMs: 50,
-                        maxConcurrency: 5
+                        totalDurationMs: 550,
+                        mapDurationMs: 500,
+                        reduceDurationMs: 50
                     }
                 });
 
@@ -879,9 +890,9 @@ input:
                     totalItems: 5,
                     successfulMaps: 4,
                     failedMaps: 1,
-                    mapPhaseTimeMs: 2000,
-                    reducePhaseTimeMs: 100,
-                    maxConcurrency: 5
+                    totalDurationMs: 2100,
+                    mapDurationMs: 2000,
+                    reduceDurationMs: 100
                 });
 
                 // 8. Parent still running
@@ -904,9 +915,9 @@ input:
                         totalItems: 5,
                         successfulMaps: 4,
                         failedMaps: 1,
-                        mapPhaseTimeMs: 2000,
-                        reducePhaseTimeMs: 100,
-                        maxConcurrency: 5
+                        totalDurationMs: 2100,
+                        mapDurationMs: 2000,
+                        reduceDurationMs: 100
                     }
                 });
 
@@ -983,9 +994,9 @@ input:
                     totalItems: 3,
                     successfulMaps: 0,
                     failedMaps: 3,
-                    mapPhaseTimeMs: 500,
-                    reducePhaseTimeMs: 0,
-                    maxConcurrency: 5
+                    totalDurationMs: 500,
+                    mapDurationMs: 500,
+                    reduceDurationMs: 0
                 });
 
                 // Verify
@@ -1017,9 +1028,9 @@ input:
                     totalItems: 0,
                     successfulMaps: 0,
                     failedMaps: 0,
-                    mapPhaseTimeMs: 0,
-                    reducePhaseTimeMs: 0,
-                    maxConcurrency: 5
+                    totalDurationMs: 0,
+                    mapDurationMs: 0,
+                    reduceDurationMs: 0
                 });
 
                 // Verify no children
@@ -1343,9 +1354,9 @@ input:
                     totalItems: 1,
                     successfulMaps: 1,
                     failedMaps: 0,
-                    mapPhaseTimeMs: 100,
-                    reducePhaseTimeMs: 10,
-                    maxConcurrency: 5
+                    totalDurationMs: 110,
+                    mapDurationMs: 100,
+                    reduceDurationMs: 10
                 });
 
                 const completeCalls = processManager.getCallsForMethod('completeProcessGroup');

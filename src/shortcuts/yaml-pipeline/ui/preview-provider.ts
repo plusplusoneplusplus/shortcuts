@@ -17,7 +17,6 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
 import {
-    PipelineConfig,
     CSVParseResult,
     PromptItem,
     isCSVSource,
@@ -40,6 +39,7 @@ import {
     PipelinePreviewData,
     ExtensionMessage
 } from './preview-content';
+import { RawPipelineYAML } from './preview-mermaid';
 import { createAIInvoker } from '../../ai-service';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
@@ -291,7 +291,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         try {
             // Parse the pipeline YAML
             const content = document.getText();
-            const config = yaml.load(content) as PipelineConfig;
+            const config = yaml.load(content) as RawPipelineYAML;
 
             if (!config || !config.name) {
                 // Invalid config, show error state
@@ -384,7 +384,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
     private async buildPipelineInfo(
         document: vscode.TextDocument,
         packagePath: string,
-        config: PipelineConfig
+        config: RawPipelineYAML
     ): Promise<PipelineInfo> {
         const workspaceRoot = getWorkspaceRoot() || '';
         const stat = fs.statSync(document.uri.fsPath);
@@ -457,7 +457,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         try {
             // Parse config to get generate settings
             const content = document.getText();
-            const config = yaml.load(content) as PipelineConfig;
+            const config = yaml.load(content) as RawPipelineYAML;
 
             if (!config.input?.generate || !isGenerateConfig(config.input.generate)) {
                 vscode.window.showErrorMessage('Pipeline does not have a valid generate configuration');
@@ -522,7 +522,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
 
         // Get schema from config
         const content = document.getText();
-        const config = yaml.load(content) as PipelineConfig;
+        const config = yaml.load(content) as RawPipelineYAML;
         const schema = config.input?.generate?.schema || [];
 
         // Add empty item

@@ -8,12 +8,8 @@
  */
 
 import {
-    ExecutionStats,
-    ReduceStats,
-    AIInvoker,
+    WorkflowExecutionStats,
     PromptMapResult,
-    PromptMapOutput,
-    PromptMapSummary,
     PromptItem,
     PipelineConfig
 } from '@plusplusoneplusplus/pipeline-core';
@@ -47,11 +43,11 @@ export interface PipelineResultViewData {
     /** Total execution time in milliseconds */
     totalTimeMs: number;
     /** Execution statistics */
-    executionStats: ExecutionStats;
-    /** Reduce phase statistics */
-    reduceStats?: ReduceStats;
-    /** Output from reduce phase */
-    output?: PromptMapOutput;
+    executionStats: WorkflowExecutionStats;
+    /** Formatted output from reduce/leaf nodes */
+    formattedOutput?: string;
+    /** Leaf output records */
+    leafOutput?: Record<string, unknown>[];
     /** Individual item results for node display */
     itemResults: PipelineItemResultNode[];
     /** Error message if execution failed */
@@ -153,7 +149,7 @@ export interface ResultViewerExtensionMessage {
         /** Updated result for the item */
         result?: PipelineItemResultNode;
         /** Updated execution stats */
-        stats?: ExecutionStats;
+        stats?: WorkflowExecutionStats;
         /** Error message */
         error?: string;
         /** IDs of items being retried */
@@ -194,8 +190,7 @@ export function mapResultToNode(
         rawText: result.rawText,
         success: result.success,
         error: result.error,
-        rawResponse: result.rawResponse,
-        executionTimeMs
+        executionTimeMs: executionTimeMs ?? result.executionTimeMs
     };
 }
 

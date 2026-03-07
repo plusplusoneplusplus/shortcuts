@@ -9,6 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import {
     IAIProcessManager,
@@ -16,14 +17,14 @@ import {
     createAIInvoker
 } from '../../ai-service';
 import {
-    executePipeline,
-    executePipelineWithItems as coreExecutePipelineWithItems,
-    parsePipelineYAML,
-    PipelineExecutionResult,
+    compileToWorkflow,
+    executeWorkflow,
+    flattenWorkflowResult,
+    WorkflowConfig,
+    FlatWorkflowResult,
+    WorkflowProgressEvent,
     PipelineConfig,
     AIInvoker,
-    AIInvokerResult,
-    JobProgress,
     ProcessTracker,
     PromptItem,
     SessionMetadata
@@ -66,7 +67,7 @@ export interface PipelineExecutionOptions {
     /** AI Process manager for tracking */
     processManager?: IAIProcessManager;
     /** Optional progress callback */
-    onProgress?: (progress: JobProgress) => void;
+    onProgress?: (event: WorkflowProgressEvent) => void;
 }
 
 /**
@@ -75,8 +76,8 @@ export interface PipelineExecutionOptions {
 export interface VSCodePipelineResult {
     /** Whether execution was successful */
     success: boolean;
-    /** The execution result if successful */
-    result?: PipelineExecutionResult;
+    /** The flattened execution result if successful */
+    result?: FlatWorkflowResult;
     /** Error message if failed */
     error?: string;
     /** Process ID in the AI process manager */
@@ -98,11 +99,13 @@ export async function executeVSCodePipeline(
 ): Promise<VSCodePipelineResult> {
     const { pipeline, workspaceRoot, processManager, onProgress } = options;
 
-    // Read and parse the pipeline YAML
-    let config: PipelineConfig;
+    // Read and compile the pipeline YAML
+    let workflowConfig: WorkflowConfig;
+    let rawConfig: PipelineConfig;
     try {
         const yamlContent = fs.readFileSync(pipeline.filePath, 'utf8');
-        config = await parsePipelineYAML(yamlContent);
+        workflowConfig = compileToWorkflow(yamlContent);
+        rawConfig = yaml.load(yamlContent) as PipelineConfig;
     } catch (error) {
         const errorMsg = `Failed to parse pipeline: ${error instanceof Error ? error.message : String(error)}`;
         return { success: false, error: errorMsg };
@@ -112,12 +115,12 @@ export async function executeVSCodePipeline(
     let groupProcessId: string | undefined;
     if (processManager) {
         groupProcessId = processManager.registerProcessGroup(
-            `Pipeline: ${config.name}`,
+            `Pipeline: ${workflowConfig.name}`,
             {
                 type: 'pipeline-execution',
                 idPrefix: 'pipeline',
                 metadata: {
-                    pipelineName: config.name,
+                    pipelineName: workflowConfig.name,
                     pipelinePath: pipeline.relativePath,
                     packageName: pipeline.packageName
                 }
@@ -126,10 +129,9 @@ export async function executeVSCodePipeline(
     }
 
     // Resolve working directory: config.workingDirectory takes precedence over workspaceRoot
-    const effectiveWorkingDirectory = resolveWorkingDirectory(config, pipeline.packagePath, workspaceRoot);
+    const effectiveWorkingDirectory = resolveWorkingDirectory(rawConfig, pipeline.packagePath, workspaceRoot);
 
     // Create AI invoker using the unified factory
-    // The invoker receives per-item model from options (resolved from template like {{model}})
     const defaultModel = getAIModelSetting();
 
     const aiInvoker: AIInvoker = createAIInvoker({
@@ -147,41 +149,40 @@ export async function executeVSCodePipeline(
     // Execute with progress reporting
     return await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Executing pipeline: ${config.name}`,
+        title: `Executing pipeline: ${workflowConfig.name}`,
         cancellable: true
     }, async (progress, token) => {
-        // Track cancellation
-        let cancelled = false;
+        const controller = new AbortController();
         token.onCancellationRequested(() => {
-            cancelled = true;
+            controller.abort();
             if (processManager && groupProcessId) {
                 processManager.cancelProcess(groupProcessId);
             }
         });
 
         try {
-            const result = await executePipeline(config, {
+            const workflowResult = await executeWorkflow(workflowConfig, {
                 aiInvoker,
-                pipelineDirectory: pipeline.packagePath,
+                workflowDirectory: pipeline.packagePath,
+                workspaceRoot,
+                workingDirectory: effectiveWorkingDirectory,
+                model: defaultModel,
                 processTracker: tracker,
-                isCancelled: () => cancelled,
-                onProgress: (jobProgress) => {
+                signal: controller.signal,
+                onProgress: (event: WorkflowProgressEvent) => {
                     // Update VSCode progress
-                    const message = getProgressMessage(jobProgress);
+                    const message = getProgressMessage(event);
                     progress.report({
                         message,
-                        increment: calculateIncrement(jobProgress)
+                        increment: calculateIncrement(event)
                     });
 
                     // Call optional callback
-                    onProgress?.(jobProgress);
-
-                    // Check for cancellation (also throw for immediate feedback)
-                    if (cancelled) {
-                        throw new Error('Pipeline execution cancelled');
-                    }
+                    onProgress?.(event);
                 }
             });
+
+            const result = flattenWorkflowResult(workflowResult, workflowConfig);
 
             // Complete the process group
             if (processManager && groupProcessId) {
@@ -189,14 +190,14 @@ export async function executeVSCodePipeline(
                 // Store the full result for the enhanced viewer
                 processManager.completeProcessGroup(groupProcessId, {
                     result: summary,
-                    structuredResult: JSON.stringify(result), // Store full result, not just output
+                    structuredResult: JSON.stringify(result),
                     executionStats: {
-                        totalItems: result.executionStats.totalItems,
-                        successfulMaps: result.executionStats.successfulMaps,
-                        failedMaps: result.executionStats.failedMaps,
-                        mapPhaseTimeMs: result.executionStats.mapPhaseTimeMs,
-                        reducePhaseTimeMs: result.executionStats.reducePhaseTimeMs,
-                        maxConcurrency: result.executionStats.maxConcurrency
+                        totalItems: result.stats.totalItems,
+                        successfulMaps: result.stats.successfulMaps,
+                        failedMaps: result.stats.failedMaps,
+                        mapPhaseTimeMs: result.stats.mapDurationMs ?? 0,
+                        reducePhaseTimeMs: result.stats.reduceDurationMs ?? 0,
+                        maxConcurrency: workflowConfig.settings?.concurrency ?? 5
                     }
                 });
             }
@@ -205,7 +206,7 @@ export async function executeVSCodePipeline(
                 success: result.success,
                 result,
                 processId: groupProcessId,
-                pipelineConfig: config,
+                pipelineConfig: rawConfig,
                 pipelineDirectory: pipeline.packagePath
             };
         } catch (error) {
@@ -220,7 +221,7 @@ export async function executeVSCodePipeline(
                 success: false,
                 error: errorMsg,
                 processId: groupProcessId,
-                pipelineConfig: config,
+                pipelineConfig: rawConfig,
                 pipelineDirectory: pipeline.packagePath
             };
         }
@@ -247,15 +248,15 @@ export async function executeVSCodePipelineWithItems(
 ): Promise<VSCodePipelineResult> {
     const { pipeline, workspaceRoot, processManager, onProgress, items } = options;
 
-    // Read and parse the pipeline YAML
-    let config: PipelineConfig;
+    // Read and compile the pipeline YAML
+    let workflowConfig: WorkflowConfig;
+    let rawConfig: PipelineConfig;
     try {
         const yamlContent = fs.readFileSync(pipeline.filePath, 'utf8');
-        // Parse but don't validate (since generate config will fail validation)
-        const yaml = await import('js-yaml');
-        config = yaml.load(yamlContent) as PipelineConfig;
-        
-        if (!config || !config.name) {
+        workflowConfig = compileToWorkflow(yamlContent);
+        rawConfig = yaml.load(yamlContent) as PipelineConfig;
+
+        if (!workflowConfig.name) {
             return { success: false, error: 'Invalid pipeline configuration: missing name' };
         }
     } catch (error) {
@@ -263,16 +264,19 @@ export async function executeVSCodePipelineWithItems(
         return { success: false, error: errorMsg };
     }
 
+    // Inject the pre-approved items into the workflow config's load node
+    workflowConfig = injectInlineItems(workflowConfig, items);
+
     // Register a process group for tracking
     let groupProcessId: string | undefined;
     if (processManager) {
         groupProcessId = processManager.registerProcessGroup(
-            `Pipeline: ${config.name}`,
+            `Pipeline: ${workflowConfig.name}`,
             {
                 type: 'pipeline-execution',
                 idPrefix: 'pipeline',
                 metadata: {
-                    pipelineName: config.name,
+                    pipelineName: workflowConfig.name,
                     pipelinePath: pipeline.relativePath,
                     packageName: pipeline.packageName,
                     itemCount: items.length
@@ -282,7 +286,7 @@ export async function executeVSCodePipelineWithItems(
     }
 
     // Resolve working directory: config.workingDirectory takes precedence over workspaceRoot
-    const effectiveWorkingDirectory = resolveWorkingDirectory(config, pipeline.packagePath, workspaceRoot);
+    const effectiveWorkingDirectory = resolveWorkingDirectory(rawConfig, pipeline.packagePath, workspaceRoot);
 
     // Create AI invoker using the unified factory
     const defaultModel = getAIModelSetting();
@@ -302,41 +306,40 @@ export async function executeVSCodePipelineWithItems(
     // Execute with progress reporting
     return await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Executing pipeline: ${config.name}`,
+        title: `Executing pipeline: ${workflowConfig.name}`,
         cancellable: true
     }, async (progress, token) => {
-        // Track cancellation
-        let cancelled = false;
+        const controller = new AbortController();
         token.onCancellationRequested(() => {
-            cancelled = true;
+            controller.abort();
             if (processManager && groupProcessId) {
                 processManager.cancelProcess(groupProcessId);
             }
         });
 
         try {
-            const result = await coreExecutePipelineWithItems(config, items, {
+            const workflowResult = await executeWorkflow(workflowConfig, {
                 aiInvoker,
-                pipelineDirectory: pipeline.packagePath,
+                workflowDirectory: pipeline.packagePath,
+                workspaceRoot,
+                workingDirectory: effectiveWorkingDirectory,
+                model: defaultModel,
                 processTracker: tracker,
-                isCancelled: () => cancelled,
-                onProgress: (jobProgress) => {
+                signal: controller.signal,
+                onProgress: (event: WorkflowProgressEvent) => {
                     // Update VSCode progress
-                    const message = getProgressMessage(jobProgress);
+                    const message = getProgressMessage(event);
                     progress.report({
                         message,
-                        increment: calculateIncrement(jobProgress)
+                        increment: calculateIncrement(event)
                     });
 
                     // Call optional callback
-                    onProgress?.(jobProgress);
-
-                    // Check for cancellation (also throw for immediate feedback)
-                    if (cancelled) {
-                        throw new Error('Pipeline execution cancelled');
-                    }
+                    onProgress?.(event);
                 }
             });
+
+            const result = flattenWorkflowResult(workflowResult, workflowConfig);
 
             // Complete the process group
             if (processManager && groupProcessId) {
@@ -345,12 +348,12 @@ export async function executeVSCodePipelineWithItems(
                     result: summary,
                     structuredResult: JSON.stringify(result),
                     executionStats: {
-                        totalItems: result.executionStats.totalItems,
-                        successfulMaps: result.executionStats.successfulMaps,
-                        failedMaps: result.executionStats.failedMaps,
-                        mapPhaseTimeMs: result.executionStats.mapPhaseTimeMs,
-                        reducePhaseTimeMs: result.executionStats.reducePhaseTimeMs,
-                        maxConcurrency: result.executionStats.maxConcurrency
+                        totalItems: result.stats.totalItems,
+                        successfulMaps: result.stats.successfulMaps,
+                        failedMaps: result.stats.failedMaps,
+                        mapPhaseTimeMs: result.stats.mapDurationMs ?? 0,
+                        reducePhaseTimeMs: result.stats.reduceDurationMs ?? 0,
+                        maxConcurrency: workflowConfig.settings?.concurrency ?? 5
                     }
                 });
             }
@@ -359,7 +362,7 @@ export async function executeVSCodePipelineWithItems(
                 success: result.success,
                 result,
                 processId: groupProcessId,
-                pipelineConfig: config,
+                pipelineConfig: rawConfig,
                 pipelineDirectory: pipeline.packagePath
             };
         } catch (error) {
@@ -374,11 +377,25 @@ export async function executeVSCodePipelineWithItems(
                 success: false,
                 error: errorMsg,
                 processId: groupProcessId,
-                pipelineConfig: config,
+                pipelineConfig: rawConfig,
                 pipelineDirectory: pipeline.packagePath
             };
         }
     });
+}
+
+/**
+ * Clone a WorkflowConfig and replace the first load node's source with inline items.
+ */
+function injectInlineItems(config: WorkflowConfig, items: PromptItem[]): WorkflowConfig {
+    const cloned: WorkflowConfig = JSON.parse(JSON.stringify(config));
+    for (const node of Object.values(cloned.nodes)) {
+        if (node.type === 'load') {
+            (node as any).source = { type: 'inline', items };
+            break;
+        }
+    }
+    return cloned;
 }
 
 /**
@@ -477,43 +494,39 @@ function createProcessTracker(
 /**
  * Get a user-friendly progress message
  */
-function getProgressMessage(progress: JobProgress): string {
-    switch (progress.phase) {
-        case 'splitting':
-            return 'Preparing items...';
-        case 'mapping':
-            return `Processing ${progress.completedItems}/${progress.totalItems} items (${progress.percentage}%)`;
-        case 'reducing':
-            return 'Aggregating results...';
-        case 'complete':
+function getProgressMessage(event: WorkflowProgressEvent): string {
+    if (event.itemProgress) {
+        const { completed, total } = event.itemProgress;
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        return `Processing ${completed}/${total} items (${pct}%)`;
+    }
+    switch (event.phase) {
+        case 'running':
+            return `Processing node: ${event.nodeId}...`;
+        case 'completed':
             return 'Complete!';
+        case 'failed':
+            return `Failed: ${event.error || 'Unknown error'}`;
         default:
-            return progress.message || 'Processing...';
+            return 'Processing...';
     }
 }
 
 /**
  * Calculate progress increment for VSCode progress bar
  */
-function calculateIncrement(progress: JobProgress): number | undefined {
-    if (progress.totalItems === 0) {
-        return undefined;
+function calculateIncrement(event: WorkflowProgressEvent): number | undefined {
+    if (event.itemProgress && event.itemProgress.total > 0) {
+        return (100 / event.itemProgress.total);
     }
-
-    // Only report increments during mapping phase
-    if (progress.phase === 'mapping' && progress.completedItems > 0) {
-        // Return increment per item (as percentage of 100)
-        return (100 / progress.totalItems);
-    }
-
     return undefined;
 }
 
 /**
  * Format execution result summary for display
  */
-function formatExecutionSummary(result: PipelineExecutionResult): string {
-    const stats = result.executionStats;
+function formatExecutionSummary(result: FlatWorkflowResult): string {
+    const stats = result.stats;
     const lines: string[] = [];
 
     lines.push('# Pipeline Execution Results\n');
@@ -523,27 +536,26 @@ function formatExecutionSummary(result: PipelineExecutionResult): string {
     lines.push(`- **Total Items**: ${stats.totalItems}`);
     lines.push(`- **Successful**: ${stats.successfulMaps}`);
     lines.push(`- **Failed**: ${stats.failedMaps}`);
-    lines.push(`- **Total Time**: ${formatDuration(result.totalTimeMs)}`);
+    lines.push(`- **Total Time**: ${formatDuration(stats.totalDurationMs)}`);
     lines.push('');
 
     // Output section
-    if (result.output) {
+    if (result.formattedOutput) {
         lines.push('## Output\n');
-        if (result.output.formattedOutput) {
-            lines.push(result.output.formattedOutput);
-        } else {
-            lines.push('```json');
-            lines.push(JSON.stringify(result.output, null, 2));
-            lines.push('```');
-        }
+        lines.push(result.formattedOutput);
+    } else if (result.leafOutput.length > 0) {
+        lines.push('## Output\n');
+        lines.push('```json');
+        lines.push(JSON.stringify(result.leafOutput, null, 2));
+        lines.push('```');
     }
 
     // Errors section
-    if (stats.failedMaps > 0 && result.mapResults) {
+    if (stats.failedMaps > 0 && result.items) {
         lines.push('\n## Errors\n');
-        const failedResults = result.mapResults.filter(r => !r.success);
+        const failedResults = result.items.filter(r => !r.success);
         for (const failed of failedResults.slice(0, 10)) {
-            lines.push(`- **${failed.workItemId}**: ${failed.error || 'Unknown error'}`);
+            lines.push(`- **Item ${failed.index}**: ${failed.error || 'Unknown error'}`);
         }
         if (failedResults.length > 10) {
             lines.push(`\n... and ${failedResults.length - 10} more errors`);
@@ -658,7 +670,7 @@ export function registerPipelineResultsProvider(
  * Show pipeline results in a readonly text editor
  */
 export async function showPipelineResults(
-    result: PipelineExecutionResult,
+    result: FlatWorkflowResult,
     pipelineName: string
 ): Promise<void> {
     const content = formatExecutionSummary(result);
@@ -680,7 +692,7 @@ export async function showPipelineResults(
  * Copy pipeline results to clipboard
  */
 export async function copyPipelineResults(
-    result: PipelineExecutionResult
+    result: FlatWorkflowResult
 ): Promise<void> {
     const content = formatExecutionSummary(result);
     await vscode.env.clipboard.writeText(content);

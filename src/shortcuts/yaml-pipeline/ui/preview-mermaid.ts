@@ -7,11 +7,19 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { PipelineConfig, CSVParseResult, isCSVSource, PromptItem } from '@plusplusoneplusplus/pipeline-core';
+import { CSVParseResult, isCSVSource, PromptItem } from '@plusplusoneplusplus/pipeline-core';
 import { ResourceFileInfo } from './types';
 
-/** Job configuration type extracted from PipelineConfig */
-type JobConfig = NonNullable<PipelineConfig['job']>;
+/**
+ * Raw pipeline YAML shape — read directly from user's YAML file,
+ * not the compiled workflow config. Kept as a loose type because
+ * the preview shows what the user wrote.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type RawPipelineYAML = Record<string, any>;
+
+/** Job configuration type extracted from RawPipelineYAML */
+type JobConfig = NonNullable<RawPipelineYAML['job']>;
 
 /**
  * Node types in the pipeline diagram
@@ -23,7 +31,7 @@ export type PipelineNodeType = 'input' | 'map' | 'reduce' | 'resource' | 'job';
  */
 export interface PipelineNodeData {
     type: PipelineNodeType;
-    config: PipelineConfig;
+    config: RawPipelineYAML;
     csvInfo?: CSVParseResult;
     resource?: ResourceFileInfo;
 }
@@ -90,7 +98,7 @@ export function formatFileSize(bytes: number): string {
  * @returns Mermaid diagram string
  */
 export function generatePipelineMermaid(
-    config: PipelineConfig,
+    config: RawPipelineYAML,
     csvInfo?: CSVParseResult,
     resources?: ResourceFileInfo[],
     options?: MermaidGenerationOptions
@@ -208,7 +216,7 @@ export function generatePipelineMermaid(
  * Generate Mermaid flowchart for a job-mode pipeline
  */
 function generateJobMermaid(
-    config: PipelineConfig,
+    config: RawPipelineYAML,
     options?: MermaidGenerationOptions
 ): string {
     const job = config.job!;
@@ -332,7 +340,7 @@ function buildParametersNodeLabel(params: { name: string; value: string }[]): st
 /**
  * Build the label for the GENERATE node
  */
-function buildGenerateNodeLabel(config: PipelineConfig): string {
+function buildGenerateNodeLabel(config: RawPipelineYAML): string {
     const parts: string[] = ['🤖 GENERATE'];
     parts.push('AI Input');
 
@@ -368,7 +376,7 @@ function buildCSVFileNodeLabel(
  * Build the label for the INPUT node
  */
 function buildInputNodeLabel(
-    config: PipelineConfig,
+    config: RawPipelineYAML,
     csvInfo?: CSVParseResult,
     opts?: MermaidGenerationOptions
 ): string {
@@ -426,7 +434,7 @@ function buildInputNodeLabel(
  * Build the label for the MAP node
  */
 function buildMapNodeLabel(
-    config: PipelineConfig,
+    config: RawPipelineYAML,
     opts?: MermaidGenerationOptions
 ): string {
     if (!config.map) return escapeMermaidLabel('🔄 MAP<br/>Unknown');
@@ -444,7 +452,7 @@ function buildMapNodeLabel(
 /**
  * Build the label for the REDUCE node
  */
-function buildReduceNodeLabel(config: PipelineConfig): string {
+function buildReduceNodeLabel(config: RawPipelineYAML): string {
     if (!config.reduce) return escapeMermaidLabel('📤 REDUCE<br/>Unknown');
     const parts: string[] = ['📤 REDUCE'];
     parts.push(`Type: ${config.reduce.type}`);
@@ -526,7 +534,7 @@ export function estimateExecutionTime(
  * Used as fallback or for accessibility
  */
 export function generatePipelineTextDiagram(
-    config: PipelineConfig,
+    config: RawPipelineYAML,
     csvInfo?: CSVParseResult
 ): string {
     // Job mode pipeline
@@ -609,7 +617,7 @@ export function generatePipelineTextDiagram(
 /**
  * Generate a text representation of a job-mode pipeline
  */
-function generateJobTextDiagram(config: PipelineConfig): string {
+function generateJobTextDiagram(config: RawPipelineYAML): string {
     const job = config.job!;
     const lines: string[] = [];
 

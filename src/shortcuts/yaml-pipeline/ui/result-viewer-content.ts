@@ -193,12 +193,12 @@ function getSummarySection(data: PipelineResultViewData): string {
                     <div class="stat-label">Success Rate</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${formatDuration(stats.mapPhaseTimeMs)}</div>
+                    <div class="stat-value">${formatDuration(stats.mapDurationMs ?? 0)}</div>
                     <div class="stat-label">Map Phase</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${stats.maxConcurrency}</div>
-                    <div class="stat-label">Concurrency</div>
+                    <div class="stat-value">${formatDuration(stats.totalDurationMs)}</div>
+                    <div class="stat-label">Total Duration</div>
                 </div>
             </div>
         </div>
@@ -223,16 +223,8 @@ function formatOutputForDisplay(output: string): string {
  * Generate reduce result section (shown when AI reduce was used)
  */
 export function getReduceResultSection(data: PipelineResultViewData): string {
-    // Only show if reduce was used and there's output
-    if (!data.reduceStats?.usedAIReduce && !data.output?.formattedOutput) {
-        return '';
-    }
-
-    const reduceStats = data.reduceStats;
-    const hasAIReduce = reduceStats?.usedAIReduce ?? false;
-    const formattedOutput = data.output?.formattedOutput || '';
-
-    // If no formatted output, don't show section
+    // Only show if there's formatted output
+    const formattedOutput = data.formattedOutput || '';
     if (!formattedOutput) {
         return '';
     }
@@ -243,24 +235,8 @@ export function getReduceResultSection(data: PipelineResultViewData): string {
     return `
         <div class="reduce-section">
             <h3 class="section-title">
-                ${hasAIReduce ? '🤖 AI Reduce Result' : '📋 Reduce Result'}
+                📋 Reduce Result
             </h3>
-            ${reduceStats ? `
-                <div class="reduce-stats">
-                    <span class="reduce-stat">
-                        <span class="reduce-stat-label">Inputs:</span>
-                        <span class="reduce-stat-value">${reduceStats.inputCount}</span>
-                    </span>
-                    <span class="reduce-stat">
-                        <span class="reduce-stat-label">Merged:</span>
-                        <span class="reduce-stat-value">${reduceStats.mergedCount}</span>
-                    </span>
-                    <span class="reduce-stat">
-                        <span class="reduce-stat-label">Duration:</span>
-                        <span class="reduce-stat-value">${formatDuration(reduceStats.reduceTimeMs)}</span>
-                    </span>
-                </div>
-            ` : ''}
             <div class="reduce-output">
                 <pre class="reduce-output-content">${escapeHtml(displayOutput)}</pre>
             </div>
@@ -334,7 +310,7 @@ function getDetailsPanel(data: PipelineResultViewData): string {
                 totalTimeMs: data.totalTimeMs,
                 executionStats: data.executionStats,
                 itemResults: data.itemResults,
-                formattedOutput: data.output?.formattedOutput || ''
+                formattedOutput: data.formattedOutput || ''
             })}
         </script>
     `;
@@ -438,9 +414,9 @@ function getSummaryDetailContent(data: PipelineResultViewData): string {
         <div class="detail-section">
             <h4 class="detail-title">📊 Results Summary</h4>
             
-            ${data.output?.formattedOutput ? `
+            ${data.formattedOutput ? `
                 <div class="formatted-output">
-                    <pre>${escapeHtml(data.output.formattedOutput)}</pre>
+                    <pre>${escapeHtml(data.formattedOutput)}</pre>
                 </div>
             ` : '<p class="no-output">No formatted output available</p>'}
         </div>
