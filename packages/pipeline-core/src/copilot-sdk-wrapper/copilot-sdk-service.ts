@@ -40,6 +40,7 @@ import {
     approveAllPermissions,
     denyAllPermissions,
     ToolEvent,
+    AgentMode,
 } from './types';
 
 // Re-export types that were previously exported from this file
@@ -110,6 +111,11 @@ export interface SendFollowUpOptions {
     attachments?: Attachment[];
     /** Custom tools to register on the resumed session */
     tools?: any[];
+    /**
+     * Agent mode to set on the session before sending the follow-up.
+     * Controls how the AI interacts: 'interactive' (ask), 'plan', or 'autopilot'.
+     */
+    mode?: AgentMode;
 }
 
 /**
@@ -178,6 +184,13 @@ interface ICopilotSession {
     on?(handler: (event: ISessionEvent) => void): (() => void);
     /** Send a message without waiting (for streaming) */
     send?(options: { prompt: string; attachments?: Attachment[] }): Promise<void>;
+    /** RPC API for session control (mode, etc.) */
+    rpc?: {
+        mode: {
+            get(): Promise<{ mode: string }>;
+            set(options: { mode: string }): Promise<void>;
+        };
+    };
 }
 
 /**
@@ -193,6 +206,7 @@ interface ICopilotSession {
  * - "assistant.message" - Final assistant message (data: { messageId, content, toolRequests? })
  * - "assistant.message_delta" - Streaming chunk (data: { messageId, deltaContent })
  * - "assistant.intent" - AI's declared intent (data: { intent })
+ * - "session.agent_mode_change" - Agent mode changed (data: { previous_mode, new_mode })
  * - "assistant.turn_start" - Turn started (data: { turnId })
  * - "assistant.turn_end" - Turn ended (data: { turnId })
  * - "assistant.usage" - Per-turn token usage (data: { inputTokens, outputTokens, ... })
@@ -241,6 +255,9 @@ interface ISessionEvent {
         infoType?: string;
         // Assistant intent (from assistant.intent)
         intent?: string;
+        // Agent mode change (from session.agent_mode_change)
+        previous_mode?: string;
+        new_mode?: string;
         // Assistant message tool requests
         toolRequests?: Array<{ toolCallId: string; name: string; arguments?: unknown }>;
         // Abort reason
@@ -622,6 +639,12 @@ export class CopilotSDKService {
             logger.debug(LogCategory.AI, `CopilotSDKService: Session created: ${session.sessionId}`);
             options.onSessionCreated?.(session.sessionId);
 
+            // Set agent mode if specified
+            if (options.mode && session.rpc?.mode) {
+                await session.rpc.mode.set({ mode: options.mode });
+                logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Mode set to '${options.mode}'`);
+            }
+
             // Track the session for potential cancellation
             this.trackSession(session);
 
@@ -841,6 +864,12 @@ export class CopilotSDKService {
         const { session } = entry;
         const startTime = Date.now();
 
+        // Set agent mode if specified
+        if (options?.mode && session.rpc?.mode) {
+            await session.rpc.mode.set({ mode: options.mode });
+            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Mode set to '${options.mode}'`);
+        }
+
         // Track for cancellation during the call
         this.trackSession(session);
 
@@ -924,6 +953,45 @@ export class CopilotSDKService {
      */
     public hasKeptAliveSession(sessionId: string): boolean {
         return this.keptAliveSessions.has(sessionId);
+    }
+
+    /**
+     * Get the current agent mode of a kept-alive session.
+     *
+     * @param sessionId - The session ID of a kept-alive session
+     * @returns The current mode, or undefined if the session doesn't support rpc.mode
+     * @throws If the session is not found
+     */
+    public async getMode(sessionId: string): Promise<AgentMode | undefined> {
+        const entry = this.keptAliveSessions.get(sessionId);
+        if (!entry) {
+            throw new Error(`Session ${sessionId} not found or has expired`);
+        }
+        if (!entry.session.rpc?.mode) {
+            return undefined;
+        }
+        const result = await entry.session.rpc.mode.get();
+        return result.mode as AgentMode;
+    }
+
+    /**
+     * Set the agent mode on a kept-alive session.
+     *
+     * @param sessionId - The session ID of a kept-alive session
+     * @param mode - The mode to set: 'interactive', 'plan', or 'autopilot'
+     * @throws If the session is not found or doesn't support rpc.mode
+     */
+    public async setMode(sessionId: string, mode: AgentMode): Promise<void> {
+        const logger = getLogger();
+        const entry = this.keptAliveSessions.get(sessionId);
+        if (!entry) {
+            throw new Error(`Session ${sessionId} not found or has expired`);
+        }
+        if (!entry.session.rpc?.mode) {
+            throw new Error(`Session ${sessionId} does not support rpc.mode`);
+        }
+        await entry.session.rpc.mode.set({ mode });
+        logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Mode set to '${mode}'`);
     }
 
     /**

@@ -20,6 +20,8 @@ export {
     TokenUsage,
     SDKInvocationResult,
     SDKAvailabilityResult,
+    // Agent mode types
+    AgentMode,
     // Permission types
     PermissionRequest,
     PermissionRequestResult,

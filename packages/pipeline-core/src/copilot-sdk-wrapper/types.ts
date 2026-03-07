@@ -338,6 +338,13 @@ export interface SendMessageOptions {
      * @default false
      */
     keepAlive?: boolean;
+
+    /**
+     * Agent mode to set on the session after creation.
+     * Controls how the AI interacts: 'interactive' (ask), 'plan', or 'autopilot'.
+     * When not specified, the SDK default mode is used.
+     */
+    mode?: AgentMode;
 }
 
 /**
@@ -359,6 +366,18 @@ export interface ToolEvent {
     /** Error message (for 'tool-failed' events). */
     error?: string;
 }
+
+// ============================================================================
+// Agent Mode Types
+// ============================================================================
+
+/**
+ * Agent mode controlling how the AI interacts with the user.
+ * - `interactive` (ask): AI asks for confirmation before actions
+ * - `plan`: AI creates a plan but doesn't execute
+ * - `autopilot`: AI executes autonomously
+ */
+export type AgentMode = 'interactive' | 'plan' | 'autopilot';
 
 // ============================================================================
 // SDK Result Types
