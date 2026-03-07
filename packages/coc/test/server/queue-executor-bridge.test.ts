@@ -2,7 +2,7 @@
  * Queue Executor Bridge Tests
  *
  * Tests for CLITaskExecutor and createQueueExecutorBridge:
- * - Task execution by type (ai-clarification, chat, custom, follow-prompt)
+ * - Task execution by type (chat with ask/plan/autopilot modes, run-workflow, run-script)
  * - Process tracking in ProcessStore
  * - Cancellation handling
  * - Error handling and failure paths
@@ -135,20 +135,20 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
-    // AI Clarification Tasks
+    // Ask-Mode Chat Tasks
     // ========================================================================
 
-    describe('ai-clarification tasks', () => {
-        it('should execute an ai-clarification task successfully', async () => {
+    describe('ask-mode chat tasks', () => {
+        it('should execute an ask-mode chat task successfully', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Explain this code' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Explain this code' },
                 config: { timeoutMs: 30000 },
                 displayName: 'Explain code',
             };
@@ -166,9 +166,10 @@ describe('CLITaskExecutor', () => {
             expect(store.addProcess).toHaveBeenCalledOnce();
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
             expect(addedProcess.id).toBe('queue_task-1');
-            expect(addedProcess.type).toBe('queue-ai-clarification');
+            expect(addedProcess.type).toBe('queue-chat');
             expect(addedProcess.status).toBe('running');
-            expect(addedProcess.fullPrompt).toBe('Explain this code');
+            expect(addedProcess.fullPrompt).toContain('Explain this code');
+            expect(addedProcess.fullPrompt).toContain(READONLY_PROMPT_PREFIX);
 
             // Verify process was marked completed
             expect(store.updateProcess).toHaveBeenCalledWith('queue_task-1', expect.objectContaining({
@@ -181,25 +182,25 @@ describe('CLITaskExecutor', () => {
             );
         });
 
-        it('should use displayName as prompt fallback for ai-clarification', async () => {
+        it('should use displayName as prompt fallback for ask-mode chat', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-2',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: '' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: '' },
                 config: {},
                 displayName: 'My clarification task',
             };
 
             await executor.execute(task);
 
-            // Prompt should fall back to displayName
+            // Prompt should fall back to displayName (with READONLY prefix for ask mode)
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'My clarification task',
+                prompt: expect.stringContaining('My clarification task'),
             }));
         });
 
@@ -208,11 +209,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-3',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test', workingDirectory: '/my/dir' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test', workingDirectory: '/my/dir' },
                 config: { model: 'gpt-4', timeoutMs: 60000 },
             };
 
@@ -240,7 +241,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'What does this repo do?' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'What does this repo do?' },
                 config: { timeoutMs: 30000 },
                 displayName: 'Chat message',
             };
@@ -260,7 +261,7 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.id).toBe('queue_chat-1');
             expect(addedProcess.type).toBe('queue-chat');
             expect(addedProcess.status).toBe('running');
-            expect(addedProcess.fullPrompt).toBe('What does this repo do?');
+            expect(addedProcess.fullPrompt).toContain('What does this repo do?');
 
             // Verify process was marked completed
             expect(store.updateProcess).toHaveBeenCalledWith('queue_chat-1', expect.objectContaining({
@@ -277,7 +278,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: '' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: '' },
                 config: {},
                 displayName: 'My chat message',
             };
@@ -299,7 +300,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: '' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: '' },
                 config: {},
             };
 
@@ -319,7 +320,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'Hello', workingDirectory: '/project/root' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Hello', workingDirectory: '/project/root' },
                 config: {},
             };
 
@@ -339,7 +340,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'Hello', folderPath: '/folder/path' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Hello', folderPath: '/folder/path' },
                 config: {},
             };
 
@@ -359,7 +360,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'Hello' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Hello' },
                 config: {},
             };
 
@@ -385,7 +386,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'Explain the architecture', readonly: true } as any,
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Explain the architecture' },
                 config: {},
                 displayName: 'Read-Only Chat',
             };
@@ -409,7 +410,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'Explain the architecture' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Explain the architecture' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -430,7 +431,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { kind: 'chat' as const, prompt: 'What is this?', readonly: true } as any,
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'What is this?' },
                 config: {},
                 displayName: 'Read-Only Chat',
             };
@@ -628,20 +629,20 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
-    // Custom Tasks
+    // Autopilot Chat Tasks
     // ========================================================================
 
-    describe('custom tasks', () => {
-        it('should execute a custom task with data.prompt', async () => {
+    describe('autopilot chat tasks', () => {
+        it('should execute an autopilot chat task with prompt', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-4',
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { data: { prompt: 'Analyze performance' } },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Analyze performance' },
                 config: {},
             };
 
@@ -649,24 +650,23 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Analyze performance',
+                prompt: expect.stringContaining('Analyze performance'),
             }));
         });
 
-        it('should append planFilePath to prompt for custom task when planFilePath is present', async () => {
+        it('should include planFilePath in prompt for autopilot chat task', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-4b',
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    data: {
-                        prompt: 'Update the document',
-                        planFilePath: '/project/.vscode/tasks/coc/add-retry-logic.plan.md',
-                    },
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Update the document\n\nFile: /project/.vscode/tasks/coc/add-retry-logic.plan.md',
                 },
                 config: {},
             };
@@ -675,7 +675,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Update the document\n\nFile: /project/.vscode/tasks/coc/add-retry-logic.plan.md',
+                prompt: expect.stringContaining('Update the document\n\nFile: /project/.vscode/tasks/coc/add-retry-logic.plan.md'),
             }));
         });
 
@@ -684,11 +684,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-4c',
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { data: { prompt: 'Analyze performance', planFilePath: '' } },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Analyze performance' },
                 config: {},
             };
 
@@ -696,20 +696,20 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Analyze performance',
+                prompt: expect.stringContaining('Analyze performance'),
             }));
         });
 
-        it('should use displayName for custom task without data.prompt', async () => {
+        it('should use displayName for autopilot chat task without prompt', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-5',
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { data: {} },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: '' },
                 config: {},
                 displayName: 'Custom task name',
             };
@@ -717,7 +717,7 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Custom task name',
+                prompt: expect.stringContaining('Custom task name'),
             }));
         });
     });
@@ -736,7 +736,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'What does this repo do?' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'What does this repo do?' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -749,7 +749,7 @@ describe('CLITaskExecutor', () => {
             }));
 
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
-            expect(addedProcess.fullPrompt).toBe('What does this repo do?');
+            expect(addedProcess.fullPrompt).toContain('What does this repo do?');
         });
 
         it('should use promoted prompt with workingDirectory for chat tasks', async () => {
@@ -761,7 +761,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Explain the architecture', workingDirectory: '/my/repo' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Explain the architecture', workingDirectory: '/my/repo' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -783,7 +783,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'How do I build this project?' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'How do I build this project?' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -793,7 +793,7 @@ describe('CLITaskExecutor', () => {
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
             expect(addedProcess.conversationTurns).toHaveLength(1);
             expect(addedProcess.conversationTurns[0].role).toBe('user');
-            expect(addedProcess.conversationTurns[0].content).toBe('How do I build this project?');
+            expect(addedProcess.conversationTurns[0].content).toContain('How do I build this project?');
         });
 
         it('should fall back to displayName when chat payload has no prompt', async () => {
@@ -805,7 +805,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: {},
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: '' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -814,7 +814,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
-            expect(addedProcess.fullPrompt).toBe('Chat');
+            expect(addedProcess.fullPrompt).toContain('Chat');
         });
 
         it('should persist images in the initial user conversation turn', async () => {
@@ -827,7 +827,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'What is in this image?', images },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'What is in this image?', images },
                 config: {},
                 displayName: 'Chat',
             };
@@ -849,7 +849,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Hello' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Hello' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -869,7 +869,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Check these', images: ['data:image/png;base64,ok', 42, null, 'data:image/jpeg;base64,fine'] },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Check these', images: ['data:image/png;base64,ok', 42, null, 'data:image/jpeg;base64,fine'] },
                 config: {},
                 displayName: 'Chat',
             };
@@ -900,7 +900,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Describe the image', images: [], imagesFilePath: '/blobs/chat-rehydrate-1.images.json' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Describe the image', images: [], imagesFilePath: '/blobs/chat-rehydrate-1.images.json' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -924,7 +924,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Check image', imagesFilePath: '/blobs/chat-rehydrate-2.images.json' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Check image', imagesFilePath: '/blobs/chat-rehydrate-2.images.json' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -946,7 +946,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Already has images', images: existingImages, imagesFilePath: '/blobs/chat-rehydrate-3.images.json' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Already has images', images: existingImages, imagesFilePath: '/blobs/chat-rehydrate-3.images.json' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -967,7 +967,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'No images at all' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'No images at all' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -989,7 +989,7 @@ describe('CLITaskExecutor', () => {
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Blob file missing', images: [], imagesFilePath: '/blobs/chat-rehydrate-5.images.json' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Blob file missing', images: [], imagesFilePath: '/blobs/chat-rehydrate-5.images.json' },
                 config: {},
                 displayName: 'Chat',
             };
@@ -1004,21 +1004,24 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
-    // Follow-Prompt Tasks
+    // Autopilot Chat Tasks with Context Files
     // ========================================================================
 
-    describe('follow-prompt tasks', () => {
-        it('should execute a follow-prompt task with file path', async () => {
+    describe('autopilot chat tasks with context files', () => {
+        it('should execute an autopilot chat task with context file path', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-6',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptFilePath: '/nonexistent/prompt.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: '',
+                    context: { files: ['/nonexistent/prompt.md'] },
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1034,17 +1037,19 @@ describe('CLITaskExecutor', () => {
             }));
         });
 
-        it('should execute a follow-prompt task with promptContent directly', async () => {
+        it('should execute an autopilot chat task with prompt directly', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-6b',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Analyze codebase for vulnerabilities.',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Analyze codebase for vulnerabilities.',
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1054,7 +1059,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Analyze codebase for vulnerabilities.',
+                prompt: expect.stringContaining('Analyze codebase for vulnerabilities.'),
                 workingDirectory: '/my/workspace',
             }));
         });
@@ -1064,14 +1069,14 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-6c',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Direct prompt text.',
-                    promptFilePath: '/some/file.md',
-                    planFilePath: '/some/plan.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Direct prompt text.',
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1094,14 +1099,15 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-6d',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Refactor the auth module.',
-                    planFilePath: '/workspace/plan.md',
-                    additionalContext: 'Focus on tests.',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Refactor the auth module.',
+                    context: { files: ['', '/workspace/plan.md'], blocks: [{ label: 'context', content: 'Focus on tests.' }] },
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1112,7 +1118,7 @@ describe('CLITaskExecutor', () => {
             expect(result.success).toBe(true);
             // /workspace/plan.md doesn't exist so only additionalContext is included
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Context document:\n\nFocus on tests.\n\n---\n\nRefactor the auth module.',
+                prompt: expect.stringContaining('Context document:\n\nFocus on tests.\n\n---\n\nRefactor the auth module.'),
             }));
         });
 
@@ -1120,19 +1126,21 @@ describe('CLITaskExecutor', () => {
         // Follow-prompt context support
         // ====================================================================
 
-        describe('follow-prompt context support', () => {
+        describe('chat context files support', () => {
             it('should prepend additionalContext as structured context block', async () => {
                 const executor = new CLITaskExecutor(store);
 
                 const task: QueuedTask = {
                     id: 'task-ctx-1',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptContent: 'Implement the feature described above.',
-                        additionalContext: '# Task: Add login page\n\nCreate a login page with email and password fields.',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: 'Implement the feature described above.',
+                        context: { files: [''], blocks: [{ label: 'context', content: '# Task: Add login page\n\nCreate a login page with email and password fields.' }] },
                     },
                     config: {},
                 };
@@ -1141,7 +1149,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Context document:\n\n# Task: Add login page\n\nCreate a login page with email and password fields.\n\n---\n\nImplement the feature described above.',
+                    prompt: expect.stringContaining('Context document:\n\n# Task: Add login page\n\nCreate a login page with email and password fields.\n\n---\n\nImplement the feature described above.'),
                 }));
             });
 
@@ -1150,13 +1158,14 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-ctx-2',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptContent: 'Execute this plan.',
-                        planFilePath: '/workspace/plan.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: 'Execute this plan. /workspace/plan.md',
                     },
                     config: {},
                 };
@@ -1166,7 +1175,7 @@ describe('CLITaskExecutor', () => {
                 expect(result.success).toBe(true);
                 // New style: promptContent + planFilePath reference (no context block)
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Execute this plan. /workspace/plan.md',
+                    prompt: expect.stringContaining('Execute this plan. /workspace/plan.md'),
                 }));
             });
 
@@ -1187,14 +1196,15 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-ctx-3',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptContent: 'Execute plan with focus.',
-                        planFilePath: '/workspace/plan.md',
-                        additionalContext: 'Focus on error handling.',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: 'Execute plan with focus.',
+                        context: { files: ['', '/workspace/plan.md'], blocks: [{ label: 'context', content: 'Focus on error handling.' }] },
                     },
                     config: {},
                 };
@@ -1203,7 +1213,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Context document:\n\n# Plan\n\nDo things.\n\nFocus on error handling.\n\n---\n\nExecute plan with focus.',
+                    prompt: expect.stringContaining('Context document:\n\n# Plan\n\nDo things.\n\nFocus on error handling.\n\n---\n\nExecute plan with focus.'),
                 }));
 
                 existsSyncMock.mockReset();
@@ -1215,12 +1225,14 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-ctx-4',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptContent: 'Analyze codebase for vulnerabilities.',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: 'Analyze codebase for vulnerabilities.',
                     },
                     config: {},
                 };
@@ -1229,7 +1241,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Analyze codebase for vulnerabilities.',
+                    prompt: expect.stringContaining('Analyze codebase for vulnerabilities.'),
                 }));
             });
 
@@ -1238,13 +1250,14 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-ctx-5',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptContent: 'Do something.',
-                        planFilePath: '/nonexistent/plan.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: 'Do something. /nonexistent/plan.md',
                     },
                     config: {},
                 };
@@ -1254,7 +1267,7 @@ describe('CLITaskExecutor', () => {
                 expect(result.success).toBe(true);
                 // New style: planFilePath is appended as path reference regardless of existence
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Do something. /nonexistent/plan.md',
+                    prompt: expect.stringContaining('Do something. /nonexistent/plan.md'),
                 }));
             });
 
@@ -1263,13 +1276,15 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-ctx-6',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/nonexistent/prompt.md',
-                        additionalContext: 'Task context here.',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/nonexistent/prompt.md'], blocks: [{ label: 'context', content: 'Task context here.' }] },
                     },
                     config: {},
                 };
@@ -1278,7 +1293,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Context document:\n\nTask context here.\n\n---\n\nFollow prompt: /nonexistent/prompt.md',
+                    prompt: expect.stringContaining('Context document:\n\nTask context here.\n\n---\n\nFollow prompt: /nonexistent/prompt.md'),
                 }));
             });
 
@@ -1294,13 +1309,15 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-new-style-1',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.github/skills/impl/SKILL.md',
-                        planFilePath: '/workspace/.vscode/tasks/my-task.plan.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/workspace/.github/skills/impl/SKILL.md', '/workspace/.vscode/tasks/my-task.plan.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1310,7 +1327,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Follow the instruction /workspace/.github/skills/impl/SKILL.md. /workspace/.vscode/tasks/my-task.plan.md',
+                    prompt: expect.stringContaining('Follow the instruction /workspace/.github/skills/impl/SKILL.md. /workspace/.vscode/tasks/my-task.plan.md'),
                     workingDirectory: '/workspace',
                 }));
 
@@ -1322,13 +1339,14 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-new-style-2',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptContent: 'Use the impl skill.',
-                        planFilePath: '/workspace/.vscode/tasks/my-task.plan.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: 'Use the impl skill. /workspace/.vscode/tasks/my-task.plan.md',
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1338,7 +1356,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Use the impl skill. /workspace/.vscode/tasks/my-task.plan.md',
+                    prompt: expect.stringContaining('Use the impl skill. /workspace/.vscode/tasks/my-task.plan.md'),
                     workingDirectory: '/workspace',
                 }));
             });
@@ -1357,13 +1375,15 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-spa-prompt',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.github/prompts/impl.prompt.md',
-                        planFilePath: '/workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/workspace/.github/prompts/impl.prompt.md', '/workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1374,7 +1394,7 @@ describe('CLITaskExecutor', () => {
                 expect(result.success).toBe(true);
                 // Should use the new-style format: "Follow the instruction {promptFilePath}. {planFilePath}"
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: 'Follow the instruction /workspace/.github/prompts/impl.prompt.md. /workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md',
+                    prompt: expect.stringContaining('Follow the instruction /workspace/.github/prompts/impl.prompt.md. /workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md'),
                     workingDirectory: '/workspace',
                 }));
 
@@ -1396,13 +1416,15 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-wrong-path',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.vscode/workflows/.github/prompts/impl.prompt.md',
-                        planFilePath: '/workspace/.vscode/tasks/my-task.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/workspace/.vscode/workflows/.github/prompts/impl.prompt.md', '/workspace/.vscode/tasks/my-task.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1441,14 +1463,15 @@ describe('CLITaskExecutor', () => {
 
                 const task: QueuedTask = {
                     id: 'task-new-style-3',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.github/skills/impl/SKILL.md',
-                        planFilePath: '/workspace/plan.md',
-                        additionalContext: 'Legacy context from old client.',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/workspace/.github/skills/impl/SKILL.md', '/workspace/plan.md'], blocks: [{ label: 'context', content: 'Legacy context from old client.' }] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1487,13 +1510,15 @@ describe('CLITaskExecutor', () => {
                 const executor = new CLITaskExecutor(store);
                 const task: QueuedTask = {
                     id: 'task-ctx-md-1',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.github/prompts/impl.prompt.md',
-                        planFilePath: '/workspace/.vscode/tasks/feature/plan.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/workspace/.github/prompts/impl.prompt.md', '/workspace/.vscode/tasks/feature/plan.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1517,13 +1542,15 @@ describe('CLITaskExecutor', () => {
                 const executor = new CLITaskExecutor(store);
                 const task: QueuedTask = {
                     id: 'task-ctx-md-2',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptContent: 'Use the impl skill.',
-                        planFilePath: '/workspace/.vscode/tasks/coc/task.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: 'Use the impl skill.',
+                        context: { files: ['', '/workspace/.vscode/tasks/coc/task.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1548,13 +1575,15 @@ describe('CLITaskExecutor', () => {
                 const executor = new CLITaskExecutor(store);
                 const task: QueuedTask = {
                     id: 'task-ctx-md-3',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.github/prompts/review.prompt.md',
-                        planFilePath: '/workspace/.vscode/tasks/feature/plan.md',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/workspace/.github/prompts/review.prompt.md', '/workspace/.vscode/tasks/feature/plan.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1585,14 +1614,15 @@ describe('CLITaskExecutor', () => {
                 const executor = new CLITaskExecutor(store);
                 const task: QueuedTask = {
                     id: 'task-ctx-md-4',
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     status: 'running',
                     createdAt: Date.now(),
                     payload: {
-                        promptFilePath: '/workspace/.github/skills/impl/SKILL.md',
-                        planFilePath: '/workspace/plan.md',
-                        additionalContext: 'Already provided context.',
+                        kind: 'chat' as const,
+                        mode: 'autopilot',
+                        prompt: '',
+                        context: { files: ['/workspace/.github/skills/impl/SKILL.md', '/workspace/plan.md'], blocks: [{ label: 'context', content: 'Already provided context.' }] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1614,18 +1644,20 @@ describe('CLITaskExecutor', () => {
     // ========================================================================
 
     describe('skill content injection', () => {
-        it('should emit skill reference for follow-prompt with skillName', async () => {
+        it('should emit skill reference for autopilot chat with skills context', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-skill-1',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Use the impl skill.',
-                    skillName: 'impl',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Use the impl skill.',
+                    context: { skills: ['impl'] },
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1640,18 +1672,20 @@ describe('CLITaskExecutor', () => {
             expect(sentPrompt).toContain('[Task]\nUse the impl skill.');
         });
 
-        it('should emit skill reference for ai-clarification with skillName', async () => {
+        it('should emit skill reference for ask-mode chat with skills context', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-skill-2',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
+                    kind: 'chat' as const,
+                    mode: 'ask',
                     prompt: 'Clarify this code',
-                    skillName: 'review',
+                    context: { skills: ['review'] },
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1663,7 +1697,8 @@ describe('CLITaskExecutor', () => {
             expect(mockResolveSkillSync).not.toHaveBeenCalled();
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
             expect(sentPrompt).toContain('Use review skill when available');
-            expect(sentPrompt).toContain('[Task]\nClarify this code');
+            expect(sentPrompt).toContain('[Task]');
+            expect(sentPrompt).toContain('Clarify this code');
         });
 
         it('should not apply skill wrapping when skillName is not set', async () => {
@@ -1671,12 +1706,14 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-skill-4',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Normal prompt without skill.',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Normal prompt without skill.',
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1687,7 +1724,7 @@ describe('CLITaskExecutor', () => {
 
             expect(mockResolveSkillSync).not.toHaveBeenCalled();
             const sentPrompt = mockSendMessage.mock.calls[0][0].prompt;
-            expect(sentPrompt).toBe('Normal prompt without skill.');
+            expect(sentPrompt).toContain('Normal prompt without skill.');
         });
 
         it('should store skill reference as fullPrompt in process', async () => {
@@ -1695,13 +1732,15 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-skill-5',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Do the thing.',
-                    skillName: 'impl',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Do the thing.',
+                    context: { skills: ['impl'] },
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1725,9 +1764,10 @@ describe('CLITaskExecutor', () => {
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'chat',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
                     prompt: 'analyze the auth module',
-                    skillNames: ['go-deep', 'impl'],
+                    context: { skills: ['go-deep', 'impl'] },
                 },
                 config: {},
                 displayName: 'Chat',
@@ -1746,14 +1786,15 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-skill-precedence',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Do something.',
-                    skillName: 'old-skill',
-                    skillNames: ['new-skill-a', 'new-skill-b'],
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Do something.',
+                    context: { skills: ['new-skill-a', 'new-skill-b'] },
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1773,14 +1814,15 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-skill-fallback',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    promptContent: 'Do something.',
-                    skillName: 'fallback-skill',
-                    skillNames: [],
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Do something.',
+                    context: { skills: ['fallback-skill'] },
                     workingDirectory: '/my/workspace',
                 },
                 config: {},
@@ -1817,16 +1859,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-gen-deep',
-                type: 'task-generation',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'task-generation' as const,
-                    workingDirectory: '/workspace',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
                     prompt: 'Add retry logic',
-                    mode: 'from-feature',
-                    depth: 'deep',
+                    workingDirectory: '/workspace',
+                    context: { taskGeneration: { mode: 'from-feature', depth: 'deep' } },
                 },
                 config: { timeoutMs: 30000 },
                 displayName: 'Generate task',
@@ -1851,16 +1893,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-gen-normal',
-                type: 'task-generation',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'task-generation' as const,
-                    workingDirectory: '/workspace',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
                     prompt: 'Add retry logic',
-                    mode: 'from-feature',
-                    depth: 'normal',
+                    workingDirectory: '/workspace',
+                    context: { taskGeneration: { mode: 'from-feature', depth: 'normal' } },
                 },
                 config: { timeoutMs: 30000 },
                 displayName: 'Generate task',
@@ -1884,14 +1926,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-gen-simple',
-                type: 'task-generation',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'task-generation' as const,
-                    workingDirectory: '/workspace',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
                     prompt: 'Create a new test file',
+                    workingDirectory: '/workspace',
+                    context: { taskGeneration: {} },
                 },
                 config: { timeoutMs: 30000 },
                 displayName: 'Generate task',
@@ -1914,16 +1958,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-gen-create-deep',
-                type: 'task-generation',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'task-generation' as const,
-                    workingDirectory: '/workspace',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
                     prompt: 'Add retry logic to API calls',
-                    name: 'retry-logic',
-                    depth: 'deep',
+                    workingDirectory: '/workspace',
+                    context: { taskGeneration: { name: 'retry-logic', depth: 'deep' } },
                 },
                 config: { timeoutMs: 30000 },
                 displayName: 'Generate task',
@@ -1946,15 +1990,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-gen-create-normal',
-                type: 'task-generation',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'task-generation' as const,
-                    workingDirectory: '/workspace',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
                     prompt: 'Add retry logic to API calls',
-                    name: 'retry-logic',
+                    workingDirectory: '/workspace',
+                    context: { taskGeneration: { name: 'retry-logic' } },
                 },
                 config: { timeoutMs: 30000 },
                 displayName: 'Generate task',
@@ -1975,16 +2020,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-gen-from-feature-deep-no-dupe',
-                type: 'task-generation',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    kind: 'task-generation' as const,
-                    workingDirectory: '/workspace',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
                     prompt: 'Add retry logic',
-                    mode: 'from-feature',
-                    depth: 'deep',
+                    workingDirectory: '/workspace',
+                    context: { taskGeneration: { mode: 'from-feature', depth: 'deep' } },
                 },
                 config: { timeoutMs: 30000 },
                 displayName: 'Generate task',
@@ -2001,31 +2046,27 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
-    // Code Review / Resolve Comments (no-op)
+    // No-op / Plan-Mode Chat Tasks
     // ========================================================================
 
     describe('no-op task types', () => {
-        it('should complete code-review tasks as no-op', async () => {
+        it('should execute plan-mode code-review chat task via AI', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-7',
-                type: 'code-review',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+                payload: { kind: 'chat' as const, mode: 'plan', prompt: 'Code review' },
                 config: {},
             };
 
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            expect(mockSendMessage).not.toHaveBeenCalled();
-            expect(result.result).toEqual(expect.objectContaining({
-                status: 'completed',
-                message: expect.stringContaining('no-op'),
-            }));
+            expect(mockSendMessage).toHaveBeenCalled();
         });
 
         it('should execute resolve-comments tasks via AI (no longer no-op)', async () => {
@@ -2033,16 +2074,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-8',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'file:///test.md',
-                    commentIds: ['c1'],
-                    promptTemplate: 'resolve prompt',
-                    documentContent: 'doc content',
-                    filePath: 'test.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'resolve prompt',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'file:///test.md', commentIds: ['c1'], documentContent: 'doc content', filePath: 'test.md' } },
                 },
                 config: {},
             };
@@ -2069,11 +2110,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-err-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2104,11 +2145,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-err-2',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2125,11 +2166,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-err-3',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2151,11 +2192,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-cancel-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2174,7 +2215,7 @@ describe('CLITaskExecutor', () => {
             // Seed the store with a process that has an sdkSessionId
             store.getProcess.mockResolvedValue({
                 id: 'queue_task-cp-1',
-                type: 'queue-ai-clarification',
+                type: 'queue-chat',
                 status: 'running',
                 sdkSessionId: 'sdk-session-abc',
                 startTime: new Date(),
@@ -2195,7 +2236,7 @@ describe('CLITaskExecutor', () => {
 
             store.getProcess.mockResolvedValue({
                 id: 'queue_task-cp-2',
-                type: 'queue-ai-clarification',
+                type: 'queue-chat',
                 status: 'running',
                 startTime: new Date(),
                 promptPreview: 'test',
@@ -2214,7 +2255,7 @@ describe('CLITaskExecutor', () => {
                 callCount++;
                 return {
                     id: 'queue_task-guard-1',
-                    type: 'queue-ai-clarification',
+                    type: 'queue-chat',
                     status: 'cancelled',
                     startTime: new Date(),
                     promptPreview: 'test',
@@ -2225,11 +2266,11 @@ describe('CLITaskExecutor', () => {
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-guard-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2253,11 +2294,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-meta-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'high',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Analyze this' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Analyze this' },
                 config: {},
             };
 
@@ -2265,7 +2306,7 @@ describe('CLITaskExecutor', () => {
 
             const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
             expect(addedProcess.metadata).toEqual({
-                type: 'queue-ai-clarification',
+                type: 'queue-chat',
                 queueTaskId: 'task-meta-1',
                 priority: 'high',
                 model: undefined,
@@ -2277,11 +2318,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-meta-model',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: { model: 'claude-sonnet-4-5' },
             };
 
@@ -2291,16 +2332,16 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.metadata?.model).toBe('claude-sonnet-4-5');
         });
 
-        it('should store workingDirectory on process from ai-clarification payload', async () => {
+        it('should store workingDirectory on process from ask-mode chat payload', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-meta-cwd',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test', workingDirectory: '/my/project' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test', workingDirectory: '/my/project' },
                 config: {},
             };
 
@@ -2310,16 +2351,16 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.workingDirectory).toBe('/my/project');
         });
 
-        it('should store workingDirectory on process from follow-prompt payload', async () => {
+        it('should store workingDirectory on process from autopilot chat with context files payload', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
                 id: 'task-meta-cwd-fp',
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { promptFilePath: '/path/to/prompt.md', workingDirectory: '/workspace/root' },
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: '', context: { files: ['/path/to/prompt.md'] }, workingDirectory: '/workspace/root' },
                 config: {},
             };
 
@@ -2334,11 +2375,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-meta-cwd-default',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2353,11 +2394,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-meta-both',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test', workingDirectory: '/project' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test', workingDirectory: '/project' },
                 config: { model: 'gpt-4' },
             };
 
@@ -2374,11 +2415,11 @@ describe('CLITaskExecutor', () => {
             const longPrompt = 'A'.repeat(200);
             const task: QueuedTask = {
                 id: 'task-meta-2',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: longPrompt },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: longPrompt },
                 config: {},
             };
 
@@ -2387,7 +2428,7 @@ describe('CLITaskExecutor', () => {
             const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
             expect(addedProcess.promptPreview.length).toBeLessThanOrEqual(80);
             expect(addedProcess.promptPreview).toContain('...');
-            expect(addedProcess.fullPrompt).toBe(longPrompt);
+            expect(addedProcess.fullPrompt).toContain(longPrompt);
         });
 
         it('should link processId to task', async () => {
@@ -2395,11 +2436,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-meta-3',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2419,11 +2460,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-perm-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2439,11 +2480,11 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'task-perm-2',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -2456,10 +2497,10 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
-    // Resolve Comments Tasks
+    // Resolve Comments Chat Tasks
     // ========================================================================
 
-    describe('resolve-comments tasks', () => {
+    describe('resolve-comments chat tasks', () => {
         it('should execute a resolve-comments task and return revisedContent with commentIds', async () => {
             mockSendMessage.mockResolvedValue({
                 success: true,
@@ -2471,17 +2512,17 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'resolve-1',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'feature/task.md',
-                    commentIds: ['comment-a', 'comment-b'],
-                    promptTemplate: '# Document Revision Request\n\nRevise this document.',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: '# Document Revision Request\n\nRevise this document.',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'feature/task.md', commentIds: ['comment-a', 'comment-b'], documentContent: '# Original Document\n\nOld content.', filePath: 'feature/task.md' } },
                     workingDirectory: '/workspace',
-                    documentContent: '# Original Document\n\nOld content.',
-                    filePath: 'feature/task.md',
                 },
                 config: { timeoutMs: 60000 },
                 displayName: 'Resolve comments: feature/task.md',
@@ -2501,16 +2542,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'resolve-2',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'task.md',
-                    commentIds: ['c1'],
-                    promptTemplate: 'Custom resolve prompt for testing',
-                    documentContent: 'doc content',
-                    filePath: 'task.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'Custom resolve prompt for testing',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'task.md', commentIds: ['c1'], documentContent: 'doc content', filePath: 'task.md' } },
                 },
                 config: {},
             };
@@ -2527,17 +2568,17 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'resolve-3',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'task.md',
-                    commentIds: ['c1'],
-                    promptTemplate: 'test prompt',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'test prompt',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'task.md', commentIds: ['c1'], documentContent: 'doc', filePath: 'task.md' } },
                     workingDirectory: '/my/workspace',
-                    documentContent: 'doc',
-                    filePath: 'task.md',
                 },
                 config: {},
             };
@@ -2556,16 +2597,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'resolve-4',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'task.md',
-                    commentIds: ['c1'],
-                    promptTemplate: 'test prompt',
-                    documentContent: 'doc',
-                    filePath: 'task.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'test prompt',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'task.md', commentIds: ['c1'], documentContent: 'doc', filePath: 'task.md' } },
                 },
                 config: {},
             };
@@ -2582,16 +2623,16 @@ describe('CLITaskExecutor', () => {
             const longPrompt = 'A'.repeat(100);
             const task: QueuedTask = {
                 id: 'resolve-5',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'task.md',
-                    commentIds: ['c1'],
-                    promptTemplate: longPrompt,
-                    documentContent: 'doc',
-                    filePath: 'task.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: longPrompt,
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'task.md', commentIds: ['c1'], documentContent: 'doc', filePath: 'task.md' } },
                 },
                 config: {},
             };
@@ -2613,16 +2654,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'resolve-tool-1',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'task.md',
-                    commentIds: ['c1', 'c2'],
-                    promptTemplate: 'resolve prompt',
-                    documentContent: 'doc',
-                    filePath: 'task.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'resolve prompt',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'task.md', commentIds: ['c1', 'c2'], documentContent: 'doc', filePath: 'task.md' } },
                 },
                 config: {},
             };
@@ -2658,16 +2699,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'resolve-tool-2',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'task.md',
-                    commentIds: ['c1', 'c2'],
-                    promptTemplate: 'resolve prompt',
-                    documentContent: 'doc',
-                    filePath: 'task.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'resolve prompt',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'task.md', commentIds: ['c1', 'c2'], documentContent: 'doc', filePath: 'task.md' } },
                 },
                 config: {},
             };
@@ -2691,16 +2732,16 @@ describe('CLITaskExecutor', () => {
 
             const task: QueuedTask = {
                 id: 'resolve-tool-3',
-                type: 'resolve-comments',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
                 payload: {
-                    documentUri: 'task.md',
-                    commentIds: ['c1', 'c2', 'c3'],
-                    promptTemplate: 'resolve prompt',
-                    documentContent: 'doc',
-                    filePath: 'task.md',
+                    kind: 'chat' as const,
+                    mode: 'autopilot',
+                    prompt: 'resolve prompt',
+                    tools: ['resolve-comments'],
+                    context: { resolveComments: { documentUri: 'task.md', commentIds: ['c1', 'c2', 'c3'], documentContent: 'doc', filePath: 'task.md' } },
                 },
                 config: {},
             };
@@ -3161,11 +3202,11 @@ describe('session tracking and conversation turns', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-session-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test prompt' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test prompt' },
             config: { timeoutMs: 30000 },
         };
         await executor.execute(task);
@@ -3179,11 +3220,11 @@ describe('session tracking and conversation turns', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-session-2',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'What is X?' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'What is X?' },
             config: { timeoutMs: 30000 },
         };
         await executor.execute(task);
@@ -3194,7 +3235,7 @@ describe('session tracking and conversation turns', () => {
 
         const [userTurn, assistantTurn] = process!.conversationTurns!;
         expect(userTurn.role).toBe('user');
-        expect(userTurn.content).toBe('What is X?');
+        expect(userTurn.content).toContain('What is X?');
         expect(userTurn.turnIndex).toBe(0);
 
         expect(assistantTurn.role).toBe('assistant');
@@ -3206,11 +3247,11 @@ describe('session tracking and conversation turns', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-session-3',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: { timeoutMs: 30000 },
         };
         await executor.execute(task);
@@ -3341,11 +3382,11 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-persist-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Explain this code' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Explain this code' },
             config: {},
         };
 
@@ -3356,7 +3397,7 @@ describe('conversation history persistence during streaming', () => {
         expect(addedProcess.conversationTurns).toBeDefined();
         expect(addedProcess.conversationTurns).toHaveLength(1);
         expect(addedProcess.conversationTurns![0].role).toBe('user');
-        expect(addedProcess.conversationTurns![0].content).toBe('Explain this code');
+        expect(addedProcess.conversationTurns![0].content).toContain('Explain this code');
         expect(addedProcess.conversationTurns![0].turnIndex).toBe(0);
     });
 
@@ -3375,11 +3416,11 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-during-stream',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'What is X?' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'What is X?' },
             config: {},
         };
 
@@ -3390,7 +3431,7 @@ describe('conversation history persistence during streaming', () => {
         expect(storedDuringStreaming!.conversationTurns).toBeDefined();
         expect(storedDuringStreaming!.conversationTurns).toHaveLength(1);
         expect(storedDuringStreaming!.conversationTurns![0].role).toBe('user');
-        expect(storedDuringStreaming!.conversationTurns![0].content).toBe('What is X?');
+        expect(storedDuringStreaming!.conversationTurns![0].content).toContain('What is X?');
     });
 
     it('should have both user and assistant turns after completion', async () => {
@@ -3403,11 +3444,11 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-complete-turns',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'What is X?' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'What is X?' },
             config: {},
         };
 
@@ -3417,7 +3458,7 @@ describe('conversation history persistence during streaming', () => {
         expect(process).toBeDefined();
         expect(process!.conversationTurns).toHaveLength(2);
         expect(process!.conversationTurns![0].role).toBe('user');
-        expect(process!.conversationTurns![0].content).toBe('What is X?');
+        expect(process!.conversationTurns![0].content).toContain('What is X?');
         expect(process!.conversationTurns![1].role).toBe('assistant');
         expect(process!.conversationTurns![1].content).toBe('The answer is Y');
     });
@@ -3428,11 +3469,11 @@ describe('conversation history persistence during streaming', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-fail-turns',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Analyze this' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Analyze this' },
             config: {},
         };
 
@@ -3445,7 +3486,7 @@ describe('conversation history persistence during streaming', () => {
         expect(process!.conversationTurns).toBeDefined();
         expect(process!.conversationTurns!.length).toBeGreaterThanOrEqual(1);
         expect(process!.conversationTurns![0].role).toBe('user');
-        expect(process!.conversationTurns![0].content).toBe('Analyze this');
+        expect(process!.conversationTurns![0].content).toContain('Analyze this');
     });
 
     it('should create assistant turn with streaming=true on first chunk', async () => {
@@ -3739,9 +3780,9 @@ describe('createQueueExecutorBridge', () => {
         });
 
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'Hello AI' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Hello AI' },
             config: { timeoutMs: 30000 },
             displayName: 'Test task',
         });
@@ -3776,9 +3817,9 @@ describe('createQueueExecutorBridge', () => {
         });
 
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         });
 
@@ -3804,17 +3845,17 @@ describe('createQueueExecutorBridge', () => {
         });
 
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'Task A' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Task A' },
             config: {},
             displayName: 'A',
         });
 
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'Task B' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Task B' },
             config: {},
             displayName: 'B',
         });
@@ -3845,16 +3886,16 @@ describe('createQueueExecutorBridge', () => {
 
         // Enqueue low priority first, then high
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'low',
-            payload: { prompt: 'low-task' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'low-task' },
             config: {},
         });
 
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'high',
-            payload: { prompt: 'high-task' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'high-task' },
             config: {},
         });
 
@@ -3863,8 +3904,8 @@ describe('createQueueExecutorBridge', () => {
         await delay(500);
 
         // High priority should execute first
-        expect(executionOrder[0]).toBe('high-task');
-        expect(executionOrder[1]).toBe('low-task');
+        expect(executionOrder[0]).toContain('high-task');
+        expect(executionOrder[1]).toContain('low-task');
 
         executor.dispose();
     });
@@ -3885,9 +3926,9 @@ describe('createQueueExecutorBridge', () => {
         queueManager.pause();
 
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         });
 
@@ -3920,9 +3961,9 @@ describe('createQueueExecutorBridge', () => {
         const { executor } = createQueueExecutorBridge(queueManager, store);
 
         const taskId = queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'long task' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'long task' },
             config: {},
         });
 
@@ -3978,11 +4019,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-store-err',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -3999,11 +4040,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-store-err-2',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4021,11 +4062,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-store-err-3',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4038,11 +4079,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-stream-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Stream me' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Stream me' },
             config: {},
         };
 
@@ -4069,11 +4110,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-stream-2',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Stream test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Stream test' },
             config: {},
         };
 
@@ -4103,11 +4144,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-stream-err',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4116,32 +4157,32 @@ describe('Queue execution via HTTP API', () => {
         expect(result.success).toBe(true);
     });
 
-    it('should emit streaming chunks for custom tasks', async () => {
+    it('should emit streaming chunks for autopilot chat tasks', async () => {
         mockSendMessage.mockImplementation(async (opts: any) => {
             if (opts.onStreamingChunk) {
-                opts.onStreamingChunk('custom chunk');
+                opts.onStreamingChunk('autopilot chunk');
             }
-            return { success: true, response: 'custom response' };
+            return { success: true, response: 'autopilot response' };
         });
 
         const executor = new CLITaskExecutor(store);
 
         const task: QueuedTask = {
             id: 'task-stream-custom',
-            type: 'custom',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { data: { prompt: 'Custom task' } },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Custom task' },
             config: {},
         };
 
         await executor.execute(task);
 
-        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-stream-custom', 'custom chunk');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue_task-stream-custom', 'autopilot chunk');
     });
 
-    it('should emit streaming chunks for follow-prompt tasks', async () => {
+    it('should emit streaming chunks for autopilot chat tasks with context files', async () => {
         mockSendMessage.mockImplementation(async (opts: any) => {
             if (opts.onStreamingChunk) {
                 opts.onStreamingChunk('follow chunk');
@@ -4153,11 +4194,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-stream-follow',
-            type: 'follow-prompt',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { promptFilePath: '/nonexistent/file.md' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: '', context: { files: ['/nonexistent/file.md'] } },
             config: {},
         };
 
@@ -4171,11 +4212,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-wd',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4191,11 +4232,11 @@ describe('Queue execution via HTTP API', () => {
 
         const task: QueuedTask = {
             id: 'task-wd-2',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test', workingDirectory: '/task/dir' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test', workingDirectory: '/task/dir' },
             config: {},
         };
 
@@ -4237,11 +4278,11 @@ describe('Queue execution via HTTP API', () => {
 
             const task: QueuedTask = {
                 id: 'task-output-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test output' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test output' },
                 config: {},
             };
 
@@ -4266,11 +4307,11 @@ describe('Queue execution via HTTP API', () => {
 
             const task: QueuedTask = {
                 id: 'task-output-path',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -4295,11 +4336,11 @@ describe('Queue execution via HTTP API', () => {
 
             const task: QueuedTask = {
                 id: 'task-output-fail',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -4325,11 +4366,11 @@ describe('Queue execution via HTTP API', () => {
 
             const task: QueuedTask = {
                 id: 'task-output-sse',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -4358,11 +4399,11 @@ describe('Queue execution via HTTP API', () => {
 
             const task: QueuedTask = {
                 id: 'task-no-datadir',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
                 config: {},
             };
 
@@ -4380,11 +4421,11 @@ describe('Queue execution via HTTP API', () => {
 
             const task: QueuedTask = {
                 id: 'task-noop',
-                type: 'code-review',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: {},
+                payload: { kind: 'chat' as const, mode: 'plan', prompt: 'Code review' },
                 config: {},
             };
 
@@ -4426,11 +4467,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tool-event',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4456,11 +4497,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tool-start',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4492,11 +4533,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tool-complete',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4542,11 +4583,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-parent-tool',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4580,11 +4621,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tool-failed',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4620,11 +4661,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(failingStore);
         const task: QueuedTask = {
             id: 'task-tool-err',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4686,11 +4727,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-multi-tool',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4716,11 +4757,11 @@ describe('tool event emission via onToolEvent', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tool-only-flush',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'refactor this file' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'refactor this file' },
             config: {},
         };
 
@@ -4890,11 +4931,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-init',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test prompt' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test prompt' },
             config: {},
         };
 
@@ -4920,11 +4961,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-content',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4952,11 +4993,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-merge',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -4983,11 +5024,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-bnd',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5017,11 +5058,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-tstamp',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5052,11 +5093,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-cx',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5097,11 +5138,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-tool',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5148,11 +5189,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-parent',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5190,11 +5231,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-fail',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5226,11 +5267,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-ts',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5272,11 +5313,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-tl-persist',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
             config: {},
         };
 
@@ -5357,11 +5398,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-interleave',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'analyze code' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'analyze code' },
             config: {},
         };
 
@@ -5396,11 +5437,11 @@ describe('timeline population during execution', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-merge-flush',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'test merge' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test merge' },
             config: {},
         };
 
@@ -5454,11 +5495,11 @@ describe('AI service injection', () => {
 
         const task: QueuedTask = {
             id: 'task-injection-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Test injection' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Test injection' },
             config: { timeoutMs: 30000 },
             displayName: 'Test injection',
         };
@@ -5470,7 +5511,7 @@ describe('AI service injection', () => {
         expect(injectedMock.mockSendMessage).toHaveBeenCalledTimes(1);
         expect(injectedMock.mockSendMessage).toHaveBeenCalledWith(
             expect.objectContaining({
-                prompt: 'Test injection',
+                prompt: expect.stringContaining('Test injection'),
             })
         );
 
@@ -5496,11 +5537,11 @@ describe('AI service injection', () => {
 
         const task: QueuedTask = {
             id: 'task-fallback-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Test fallback' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Test fallback' },
             config: { timeoutMs: 30000 },
             displayName: 'Test fallback',
         };
@@ -5512,7 +5553,7 @@ describe('AI service injection', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         expect(mockSendMessage).toHaveBeenCalledWith(
             expect.objectContaining({
-                prompt: 'Test fallback',
+                prompt: expect.stringContaining('Test fallback'),
             })
         );
 
@@ -5544,9 +5585,9 @@ describe('createQueueExecutorBridge', () => {
             });
 
             queueManager.enqueue({
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
-                payload: { prompt: 'Bridge integration test' },
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Bridge integration test' },
                 config: {},
                 displayName: 'Bridge test',
             });
@@ -5559,7 +5600,7 @@ describe('createQueueExecutorBridge', () => {
             expect(bridgeMock.mockSendMessage).toHaveBeenCalledTimes(1);
             expect(bridgeMock.mockSendMessage).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    prompt: 'Bridge integration test',
+                    prompt: expect.stringContaining('Bridge integration test'),
                 })
             );
 
@@ -6238,30 +6279,28 @@ job:
 
 describe('defaultIsExclusive', () => {
     it.each([
-        { type: 'follow-prompt', expected: true },
-        { type: 'resolve-comments', expected: false },
-        { type: 'run-workflow', expected: true },
-        { type: 'custom', expected: true },
-        { type: 'task-generation', expected: false },
-        { type: 'ai-clarification', expected: false },
-        { type: 'code-review', expected: false },
-    ])('should classify "$type" as exclusive=$expected', ({ type, expected }) => {
-        const task = { type } as QueuedTask;
+        { type: 'run-workflow', payload: { kind: 'run-workflow', workflowPath: 'test.yaml', workingDirectory: '/' }, expected: true },
+        { type: 'run-script', payload: { kind: 'run-script', script: 'echo test' }, expected: true },
+        { type: 'chat', payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' }, expected: true },
+        { type: 'chat', payload: { kind: 'chat', mode: 'ask', prompt: 'test' }, expected: false },
+        { type: 'chat', payload: { kind: 'chat', mode: 'plan', prompt: 'test' }, expected: false },
+    ])('should classify $type (mode=$payload.mode) as exclusive=$expected', ({ type, payload, expected }) => {
+        const task = { type, payload } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(expected);
     });
 
-    it('should classify chat as exclusive when not readonly', () => {
-        const task = { type: 'chat', payload: { kind: 'chat', prompt: 'test' } } as QueuedTask;
+    it('should classify chat as exclusive when mode is autopilot', () => {
+        const task = { type: 'chat', payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' } } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(true);
     });
 
-    it('should classify chat as non-exclusive when readonly=true', () => {
-        const task = { type: 'chat', payload: { kind: 'chat', prompt: 'test', readonly: true } } as any as QueuedTask;
+    it('should classify chat as non-exclusive when mode is ask', () => {
+        const task = { type: 'chat', payload: { kind: 'chat', mode: 'ask', prompt: 'test' } } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(false);
     });
 
     it('should classify unknown task types as exclusive', () => {
-        const task = { type: 'unknown-future-type' } as QueuedTask;
+        const task = { type: 'unknown-future-type', payload: {} } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(true);
     });
 });
@@ -6309,9 +6348,9 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         });
 
         queueManager.enqueue({
-            type: 'follow-prompt',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'test' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'test' },
             config: {},
             displayName: 'Custom test',
         });
@@ -6346,9 +6385,9 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
 
         // Enqueue exclusive task first
         queueManager.enqueue({
-            type: 'follow-prompt',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'exclusive task' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'exclusive task' },
             config: {},
             displayName: 'Exclusive',
         });
@@ -6359,13 +6398,13 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         // Enqueue shared task
         const sharedCompleted = new Promise<void>(resolve => {
             executor.on('taskCompleted', (task: QueuedTask) => {
-                if (task.type === 'ai-clarification') { resolve(); }
+                if (task.payload?.mode === 'ask') { resolve(); }
             });
         });
         queueManager.enqueue({
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'shared task' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'shared task' },
             config: {},
             displayName: 'Shared',
         });
@@ -6374,7 +6413,7 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         await sharedCompleted;
 
         // Exclusive is still running
-        expect(queueManager.getRunning().some(t => t.type === 'follow-prompt')).toBe(true);
+        expect(queueManager.getRunning().some(t => t.type === 'chat' && t.payload?.mode === 'autopilot')).toBe(true);
 
         // Now let the exclusive task finish
         exclusiveResolve!();
@@ -6383,7 +6422,7 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         executor.dispose();
     });
 
-    it('should allow a resolve-comments task to start while an exclusive task is running', async () => {
+    it('should allow an ask-mode chat task to start while an exclusive autopilot task is running', async () => {
         const queueManager = new TaskQueueManager();
 
         // Block the first sendMessage (exclusive task) while allowing shared task to proceed
@@ -6404,9 +6443,9 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         });
 
         queueManager.enqueue({
-            type: 'follow-prompt',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'exclusive task' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'exclusive task' },
             config: {},
             displayName: 'Exclusive',
         });
@@ -6415,26 +6454,20 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
 
         const sharedCompleted = new Promise<void>(resolve => {
             executor.on('taskCompleted', (task: QueuedTask) => {
-                if (task.type === 'resolve-comments') { resolve(); }
+                if ((task.payload as any)?.mode === 'ask') { resolve(); }
             });
         });
         queueManager.enqueue({
-            type: 'resolve-comments',
+            type: 'chat',
             priority: 'normal',
-            payload: {
-                documentUri: 'task.md',
-                commentIds: ['c1'],
-                promptTemplate: 'resolve prompt',
-                documentContent: 'doc',
-                filePath: 'task.md',
-            },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'ask-mode shared task' },
             config: {},
-            displayName: 'Resolve',
+            displayName: 'Shared Ask',
         });
 
         await sharedCompleted;
 
-        expect(queueManager.getRunning().some(t => t.type === 'follow-prompt')).toBe(true);
+        expect(queueManager.getRunning().some(t => t.type === 'chat' && (t.payload as any)?.mode === 'autopilot')).toBe(true);
 
         exclusiveResolve!();
         await delay(200);
@@ -6468,16 +6501,16 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         });
 
         queueManager.enqueue({
-            type: 'follow-prompt',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'exclusive 1' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'exclusive 1' },
             config: {},
             displayName: 'Exclusive 1',
         });
         queueManager.enqueue({
-            type: 'follow-prompt',
+            type: 'chat',
             priority: 'normal',
-            payload: { prompt: 'exclusive 2' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'exclusive 2' },
             config: {},
             displayName: 'Exclusive 2',
         });
@@ -6522,7 +6555,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Explain this repo' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Explain this repo' },
             config: { timeoutMs: 30000 },
             displayName: 'Chat message',
         };
@@ -6535,16 +6568,16 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.tools).toHaveLength(1);
     });
 
-    it('should NOT include suggest_follow_ups tool for ai-clarification tasks', async () => {
+    it('should include suggest_follow_ups tool for ask-mode chat tasks', async () => {
         const executor = new CLITaskExecutor(store);
 
         const task: QueuedTask = {
             id: 'suggest-ai-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Explain this code' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Explain this code' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6552,19 +6585,20 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
-        expect(callOpts.tools).toBeUndefined();
+        expect(callOpts.tools).toBeDefined();
+        expect(callOpts.tools).toHaveLength(1);
     });
 
-    it('should NOT include suggest_follow_ups tool for follow-prompt tasks', async () => {
+    it('should include suggest_follow_ups tool for autopilot chat tasks', async () => {
         const executor = new CLITaskExecutor(store);
 
         const task: QueuedTask = {
             id: 'suggest-fp-1',
-            type: 'follow-prompt',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { promptContent: 'prompt content', workingDirectory: '/tmp' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'prompt content', workingDirectory: '/tmp' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6572,19 +6606,20 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
-        expect(callOpts.tools).toBeUndefined();
+        expect(callOpts.tools).toBeDefined();
+        expect(callOpts.tools).toHaveLength(1);
     });
 
-    it('should NOT include suggest_follow_ups tool for custom tasks', async () => {
+    it('should include suggest_follow_ups tool for autopilot chat tasks (formerly custom)', async () => {
         const executor = new CLITaskExecutor(store);
 
         const task: QueuedTask = {
             id: 'suggest-custom-1',
-            type: 'custom',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { data: { prompt: 'Do something' } },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Do something' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6592,7 +6627,8 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
-        expect(callOpts.tools).toBeUndefined();
+        expect(callOpts.tools).toBeDefined();
+        expect(callOpts.tools).toHaveLength(1);
     });
 
     it('should NOT include suggest_follow_ups tool for follow-up messages (only first turn gets it)', async () => {
@@ -6674,7 +6710,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Test' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Test' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6718,7 +6754,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Test persist' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Test persist' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6775,7 +6811,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Test malformed' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Test malformed' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6811,7 +6847,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Test empty' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Test empty' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6851,7 +6887,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Test start event' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Test start event' },
             config: { timeoutMs: 30000 },
         };
 
@@ -6873,7 +6909,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Hello' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Hello' },
             config: { timeoutMs: 30000 },
             displayName: 'Chat',
         };
@@ -6894,7 +6930,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Tell me about this' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Tell me about this' },
             config: { timeoutMs: 30000 },
             displayName: 'Chat',
         };
@@ -6914,7 +6950,7 @@ describe('suggest_follow_ups tool wiring', () => {
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { kind: 'chat' as const, prompt: 'Hello' },
+            payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Hello' },
             config: { timeoutMs: 30000 },
             displayName: 'Chat',
         };
@@ -6970,11 +7006,11 @@ describe('CLITaskExecutor - sdkSessionId stored via onSessionCreated', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-early-session',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Test early session' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Test early session' },
             config: { timeoutMs: 30000 },
             displayName: 'Test early session',
         };
@@ -6994,11 +7030,11 @@ describe('CLITaskExecutor - sdkSessionId stored via onSessionCreated', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-cb-check',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'callback check' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'callback check' },
             config: { timeoutMs: 30000 },
         };
 
@@ -7126,11 +7162,11 @@ describe('CLITaskExecutor — run-script tasks', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'ai-task-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Do something' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Do something' },
             config: { timeoutMs: 30000 },
         };
 
@@ -7173,11 +7209,11 @@ describe('ToolCallCapture integration', () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-cap-1',
-            type: 'ai-clarification',
+            type: 'chat',
             priority: 'normal',
             status: 'running',
             createdAt: Date.now(),
-            payload: { prompt: 'Explain this code' },
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Explain this code' },
             config: { timeoutMs: 5000 },
             displayName: 'Capture test',
         };
@@ -7204,9 +7240,9 @@ describe('ToolCallCapture integration', () => {
 
         const executor = new CLITaskExecutor(store);
         await executor.execute({
-            id: 'task-noc-1', type: 'ai-clarification', priority: 'normal',
+            id: 'task-noc-1', type: 'chat', priority: 'normal',
             status: 'running', createdAt: Date.now(),
-            payload: { prompt: 'test' }, config: {}, displayName: 'no capture',
+            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' }, config: {}, displayName: 'no capture',
         });
 
         expect(mockWriteRaw).not.toHaveBeenCalled();
