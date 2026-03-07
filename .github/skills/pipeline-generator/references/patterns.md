@@ -9,6 +9,7 @@ This document provides detailed examples of proven pipeline patterns.
 ### Example: Bug Triage Pipeline
 
 ```yaml
+# Format: Linear (compiles to load → map → reduce workflow)
 name: "Bug Classification Pipeline"
 
 input:
@@ -73,6 +74,7 @@ reduce:
 ### Example: Technology Evaluation Pipeline
 
 ```yaml
+# Format: Linear (compiles to load → map → reduce workflow)
 name: "Tech Stack Research"
 
 input:
@@ -146,6 +148,7 @@ reduce:
 ### Example: Code Review Checklist Generator
 
 ```yaml
+# Format: Linear (compiles to load → map → reduce workflow)
 name: "Code Review Checklist"
 
 input:
@@ -215,6 +218,7 @@ reduce:
 ### Example: Multi-Model Code Analysis
 
 ```yaml
+# Format: Linear (compiles to load → map → reduce workflow)
 name: "Multi-Model Consensus Analysis"
 
 input:
@@ -284,6 +288,7 @@ reduce:
 ### Example: Smart Document Processing
 
 ```yaml
+# Format: Linear (compiles to load → filter → map → reduce workflow)
 name: "Filtered Document Analysis"
 
 input:
@@ -378,6 +383,7 @@ reduce:
 ### Example 1: PR Summarizer
 
 ```yaml
+# Format: Linear — Single Job (compiles to single ai node)
 name: "Summarize PR"
 description: "Generate a summary for a pull request"
 
@@ -398,6 +404,7 @@ parameters:
 ### Example 2: Q&A / Code Generation (text mode)
 
 ```yaml
+# Format: Linear — Single Job (compiles to single ai node)
 name: "Generate Release Notes"
 description: "Generate release notes from a list of commits"
 
@@ -426,6 +433,7 @@ parameters:
 ### Example 3: With Skill and PromptFile
 
 ```yaml
+# Format: Linear — Single Job (compiles to single ai node)
 name: "Deep Code Review"
 description: "Review a code snippet using the go-deep skill"
 
@@ -465,20 +473,20 @@ parameters:
 
 ## Pattern Selection Guide
 
-| User Need | Pattern |
-|-----------|---------|
-| "Classify/categorize items" | Map-Reduce Classification |
-| "Research/investigate topic" | AI Decomposition |
-| "Generate docs/checklists" | Template-Based |
-| "Compare AI models" | Multi-Model Fanout |
-| "Process large dataset efficiently" | Hybrid Filtering + Classification |
-| "Batch analysis with custom rules" | Map-Reduce + Rule Filter |
-| "One-shot prompt, no input data" | Single AI Job |
-| "Summarize a document/diff/snippet" | Single AI Job |
-| "Process data through parallel branches" | DAG Fan-Out Classification |
-| "Mix scripts with AI processing" | ETL with Script Nodes |
-| "Combine data from multiple sources" | Multi-Source Merge and Compare |
-| "Review recent git commits in parallel" | Git-Driven Parallel Review |
+| User Need | Pattern | Format |
+|-----------|---------|--------|
+| "Classify/categorize items" | Map-Reduce Classification | Linear |
+| "Research/investigate topic" | AI Decomposition | Linear |
+| "Generate docs/checklists" | Template-Based | Linear |
+| "Compare AI models" | Multi-Model Fanout | Linear |
+| "Process large dataset efficiently" | Hybrid Filtering + Classification | Linear |
+| "Batch analysis with custom rules" | Map-Reduce + Rule Filter | Linear |
+| "One-shot prompt, no input data" | Single AI Job | Linear |
+| "Summarize a document/diff/snippet" | Single AI Job | Linear |
+| "Process data through parallel branches" | DAG Fan-Out Classification | DAG |
+| "Mix scripts with AI processing" | ETL with Script Nodes | DAG |
+| "Combine data from multiple sources" | Multi-Source Merge and Compare | DAG |
+| "Review recent git commits in parallel" | Git-Driven Parallel Review | DAG |
 
 ---
 
@@ -487,6 +495,7 @@ parameters:
 **Use Case:** Split a single data source into parallel branches for different analysis, then merge results.
 
 ```yaml
+# Format: DAG Workflow (native nodes format)
 name: "Multi-Category Bug Analysis"
 
 settings:
@@ -578,6 +587,7 @@ nodes:
 **Use Case:** Data transformation pipeline that mixes external scripts with AI processing.
 
 ```yaml
+# Format: DAG Workflow (native nodes format)
 name: "Data ETL Pipeline"
 
 settings:
@@ -649,6 +659,7 @@ nodes:
 **Use Case:** Load data from multiple sources, merge, and perform comparative analysis.
 
 ```yaml
+# Format: DAG Workflow (native nodes format)
 name: "Cross-Source Data Comparison"
 
 settings:
@@ -721,6 +732,7 @@ nodes:
 ### Windows / PowerShell Variant
 
 ```yaml
+# Format: DAG Workflow (native nodes format)
 # Git-Driven Parallel Code Review (Windows / PowerShell)
 name: "Git Commit Review"
 description: "Find recent commits matching a keyword and review each in parallel"
@@ -757,6 +769,7 @@ nodes:
 ### Unix Variant
 
 ```yaml
+# Format: DAG Workflow (native nodes format)
 # Unix variant (same workflow, no shell field needed)
 nodes:
   get-commits:
@@ -789,3 +802,4 @@ nodes:
 4. **Model Mix:** Cheaper models for map, best for reduce
 5. **Batch Size:** Consider `batchSize: 10-50` for simple classification (reduces AI calls)
 6. **Testing:** Always add `limit: 10-100` for initial testing
+7. **Format Choice:** Both formats produce identical runtime behavior. Choose linear for simplicity, DAG for complex topologies (fan-out, merge, scripts, multiple data sources).
