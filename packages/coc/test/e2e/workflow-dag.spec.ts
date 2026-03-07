@@ -61,8 +61,8 @@ async function navigateToPipeline(
 
     await page.locator('.repo-item').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
-    await page.click('.repo-sub-tab[data-subtab="pipelines"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="pipelines"]')).toHaveClass(/active/);
+    await page.click('button[data-subtab="workflows"]');
+    await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
 
     const pipelineItems = page.locator('.repo-pipeline-item');
     await expect(pipelineItems).toHaveCount(1, { timeout: 10_000 });

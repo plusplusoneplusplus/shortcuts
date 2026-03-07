@@ -86,8 +86,54 @@ test.describe('Mobile Repos', () => {
     test('mobile: empty state renders correctly', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
 
-        // With no workspaces, on mobile the repos grid shows empty state
         const empty = page.locator('#repos-empty, [data-testid="repos-empty"], #repo-detail-empty, [data-testid="repo-detail-empty"]');
         await expect(empty.first()).toBeVisible({ timeout: 10000 });
+    });
+
+    test('mobile: MobileTabBar includes Activity tab', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-mob-activity', 'mob-activity-repo');
+        await page.goto(`${serverUrl}/#repos`);
+
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+
+        const mobileTabBar = page.locator('[data-testid="mobile-tab-bar"]');
+        await expect(mobileTabBar).toBeVisible({ timeout: 10000 });
+
+        const activityTab = mobileTabBar.locator('[data-tab="activity"]');
+        await expect(activityTab).toBeVisible();
+    });
+
+    test('mobile: Activity tab does not show Chat or Queue tabs', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-mob-no-chat', 'mob-no-chat-repo');
+        await page.goto(`${serverUrl}/#repos`);
+
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+
+        const mobileTabBar = page.locator('[data-testid="mobile-tab-bar"]');
+        await expect(mobileTabBar).toBeVisible({ timeout: 10000 });
+
+        await expect(mobileTabBar.locator('[data-tab="chat"]')).toHaveCount(0);
+        await expect(mobileTabBar.locator('[data-tab="queue"]')).toHaveCount(0);
+    });
+
+    test('mobile: tapping Activity tab navigates to Activity view', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-mob-act-nav', 'mob-act-nav-repo');
+        await page.goto(`${serverUrl}/#repos`);
+
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('.repo-item').first().tap();
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+
+        const mobileTabBar = page.locator('[data-testid="mobile-tab-bar"]');
+        await expect(mobileTabBar).toBeVisible({ timeout: 10000 });
+
+        const activityTab = mobileTabBar.locator('[data-tab="activity"]');
+        await activityTab.tap();
+
+        await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
     });
 });

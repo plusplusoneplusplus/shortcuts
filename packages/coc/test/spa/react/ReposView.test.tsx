@@ -682,14 +682,13 @@ describe('RepoDetail', () => {
         expect(taskBadge).not.toBeUndefined();
     });
 
-    it('shows no queue badge when queue is empty', () => {
+    it('shows no activity badge when queue is empty', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
-        const queueBtn = document.querySelector('button[data-subtab="queue"]');
-        // Only the label text, no badge span inside
-        const badges = queueBtn?.querySelectorAll('span.rounded-full') || [];
+        const activityBtn = document.querySelector('button[data-subtab="activity"]');
+        const badges = activityBtn?.querySelectorAll('span.rounded-full') || [];
         expect(badges.length).toBe(0);
     });
 
