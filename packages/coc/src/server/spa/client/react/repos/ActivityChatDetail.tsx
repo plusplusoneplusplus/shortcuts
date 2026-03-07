@@ -19,6 +19,7 @@ import { ImagePreviews } from '../shared/ImagePreviews';
 import { cn } from '../shared/cn';
 import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { Badge } from '../shared';
+import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
 import type { ClientConversationTurn } from '../types/dashboard';
 
 export interface ActivityChatDetailProps {
@@ -440,8 +441,26 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                             <Spinner size="sm" /> Loading conversation...
                         </div>
                     ) : isPending ? (
-                        <div className="flex items-center gap-2 text-sm text-[#848484] py-4">
-                            <Spinner /> Waiting to start…
+                        <div className="space-y-4" data-testid="queued-task-meta">
+                            {/* Metadata grid */}
+                            <div className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
+                                {task.id && <MetaRow label="Task ID" value={task.id} />}
+                                {task.config?.model && <MetaRow label="Model" value={task.config.model} />}
+                                {task.priority && task.priority !== 'normal' && (
+                                    <MetaRow label="Priority" value={`${task.priority === 'high' ? '🔥' : '🔽'} ${task.priority}`} />
+                                )}
+                                {task.createdAt && <MetaRow label="Created" value={new Date(task.createdAt).toLocaleString()} />}
+                                {task.payload?.workingDirectory && <FilePathValue label="Working Dir" value={task.payload.workingDirectory} />}
+                                {task.payload?.mode && task.payload.mode !== 'autopilot' && <MetaRow label="Mode" value={String(task.payload.mode)} />}
+                            </div>
+                            {/* User prompt */}
+                            {turns.length > 0 && turns.map((turn, i) => (
+                                <ConversationTurnBubble key={i} turn={turn} taskId={taskId} />
+                            ))}
+                            {/* Waiting indicator */}
+                            <div className="flex items-center gap-2 text-sm text-[#848484] py-2">
+                                <Spinner /> Waiting to start…
+                            </div>
                         </div>
                     ) : turns.length === 0 ? (
                         <div className="text-[#848484] text-sm">No conversation data available.</div>

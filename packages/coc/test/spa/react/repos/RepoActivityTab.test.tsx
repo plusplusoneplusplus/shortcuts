@@ -247,6 +247,22 @@ describe('ActivityChatDetail: inline chat detail', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Waiting to start');
     });
 
+    it('shows metadata grid for queued tasks', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="queued-task-meta"');
+    });
+
+    it('displays task ID in queued metadata', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("label=\"Task ID\"");
+    });
+
+    it('displays model in queued metadata', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("label=\"Model\"");
+    });
+
+    it('imports MetaRow and FilePathValue from PendingTaskPayload', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload'");
+    });
+
     it('shows no-data message', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('No conversation data available');
     });
