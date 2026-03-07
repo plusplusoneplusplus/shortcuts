@@ -1037,4 +1037,10 @@ export {
 
     // Concurrency limiter (relocated from map-reduce)
     ConcurrencyLimiter,
+
+    // Result adapter
+    flattenWorkflowResult,
+    type ExecutionStats as WorkflowExecutionStats,
+    type ItemResult as WorkflowItemResult,
+    type FlatWorkflowResult,
 } from './workflow';

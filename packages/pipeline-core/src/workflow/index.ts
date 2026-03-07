@@ -96,3 +96,7 @@ export { ConcurrencyLimiter, CancellationError, DEFAULT_MAX_CONCURRENCY } from '
 // Compiler
 export { compileToWorkflow, compileToWorkflowFromObject, detectFormat, CompilerError } from './compiler';
 export type { DetectedFormat } from './compiler';
+
+// Result adapter
+export { flattenWorkflowResult } from './result-adapter';
+export type { ExecutionStats, ItemResult, FlatWorkflowResult } from './result-adapter';
