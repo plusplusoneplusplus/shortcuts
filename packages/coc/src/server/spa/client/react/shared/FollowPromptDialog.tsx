@@ -56,6 +56,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [additionalInfo, setAdditionalInfo] = useState('');
+    const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
     useEffect(() => {
         let cancelled = false;
@@ -79,18 +80,25 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         return () => { cancelled = true; };
     }, [selectedWsId]);
 
-    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string, description?: string) => {
+    const toggleSkill = useCallback((name: string) => {
+        setSelectedSkills(prev =>
+            prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
+        );
+    }, []);
+
+    const handleSubmitSkills = useCallback(async (skillNames: string[], description?: string) => {
+        if (skillNames.length === 0) return;
         setSubmitting(true);
         try {
-            trackUsage(type, name, path, description);
-
-            // Record skill usage for ordering
-            if (type === 'skill' && selectedWsId) {
-                fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/preferences/skill-usage`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ skillName: name }),
-                }).catch(() => { /* ignore */ });
+            for (const name of skillNames) {
+                trackUsage('skill', name, undefined, description);
+                if (selectedWsId) {
+                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/preferences/skill-usage`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ skillName: name }),
+                    }).catch(() => { /* ignore */ });
+                }
             }
 
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
@@ -100,32 +108,83 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                 ? toNativePath(workingDirectory + '/' + tasksFolder + '/' + taskPath)
                 : taskPath;
 
-            let chatPayload: Record<string, any>;
-            if (type === 'prompt') {
-                const promptFilePath = workingDirectory
-                    ? toNativePath(workingDirectory + '/' + (path || ''))
-                    : path || '';
-                chatPayload = {
-                    kind: 'chat',
-                    mode: 'autopilot',
-                    prompt: `Follow the instruction ${promptFilePath}.`,
-                    workingDirectory,
-                    context: {
-                        files: [promptFilePath, planFilePath],
-                    },
-                };
-            } else {
-                chatPayload = {
-                    kind: 'chat',
-                    mode: 'autopilot',
-                    prompt: `Use the ${name} skill.`,
-                    workingDirectory,
-                    context: {
-                        files: [planFilePath],
-                        skills: [name],
-                    },
-                };
+            const displayLabel = skillNames.length === 1 ? skillNames[0] : skillNames.join(', ');
+            const chatPayload: Record<string, any> = {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: `Use the ${displayLabel} skill${skillNames.length > 1 ? 's' : ''}.`,
+                workingDirectory,
+                context: {
+                    files: [planFilePath],
+                    skills: skillNames,
+                },
+            };
+
+            const trimmed = additionalInfo.trim();
+            if (trimmed) {
+                if (!chatPayload.context.blocks) chatPayload.context.blocks = [];
+                chatPayload.context.blocks.push({ label: 'Additional Info', content: trimmed });
             }
+
+            const displayName = skillNames.length === 1
+                ? `Follow: ${skillNames[0]} on ${taskName}`
+                : `Follow: ${skillNames.join(', ')} on ${taskName}`;
+            const body: any = {
+                type: 'chat',
+                priority: 'normal',
+                displayName,
+                payload: chatPayload,
+            };
+            if (model) body.config = { model };
+
+            const res = await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+            setSelectedSkills([]);
+            addToast('Queued successfully', 'success');
+            onClose();
+        } catch (err: any) {
+            addToast(err.message || 'Failed to queue', 'error');
+        } finally {
+            setSubmitting(false);
+        }
+    }, [selectedWsId, taskPath, taskName, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage]);
+
+    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string, description?: string) => {
+        // For single-skill submit (from prompt buttons or recent items), delegate to multi-skill path
+        if (type === 'skill') {
+            return handleSubmitSkills([name], description);
+        }
+        setSubmitting(true);
+        try {
+            trackUsage(type, name, path, description);
+
+            const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
+            const workingDirectory = ws?.rootPath || '';
+            const tasksFolder = await getTasksFolderPath(selectedWsId);
+            const planFilePath = workingDirectory
+                ? toNativePath(workingDirectory + '/' + tasksFolder + '/' + taskPath)
+                : taskPath;
+
+            let chatPayload: Record<string, any>;
+            const promptFilePath = workingDirectory
+                ? toNativePath(workingDirectory + '/' + (path || ''))
+                : path || '';
+            chatPayload = {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: `Follow the instruction ${promptFilePath}.`,
+                workingDirectory,
+                context: {
+                    files: [promptFilePath, planFilePath],
+                },
+            };
 
             const trimmed = additionalInfo.trim();
             if (trimmed) {
@@ -158,7 +217,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         } finally {
             setSubmitting(false);
         }
-    }, [selectedWsId, taskPath, taskName, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage]);
+    }, [selectedWsId, taskPath, taskName, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage, handleSubmitSkills]);
 
     return (
         <>
@@ -274,21 +333,41 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                             {skills.length > 0 && (
                                 <div>
                                     <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>
-                                    {skills.map(s => (
+                                    <div className="flex flex-wrap gap-1.5 mb-2" data-testid="fp-skill-chips">
+                                        {skills.map(s => {
+                                            const isActive = selectedSkills.includes(s.name);
+                                            return (
+                                                <button
+                                                    key={s.name}
+                                                    type="button"
+                                                    className={`fp-item inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border transition-colors ${
+                                                        isActive
+                                                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
+                                                            : 'bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4]'
+                                                    }`}
+                                                    data-name={s.name}
+                                                    disabled={submitting}
+                                                    onClick={() => toggleSkill(s.name)}
+                                                    title={s.description || s.name}
+                                                >
+                                                    <span>⚡</span>
+                                                    <span className="font-medium">{s.name}</span>
+                                                    {isActive && <span className="ml-0.5">✕</span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {selectedSkills.length > 0 && (
                                         <button
-                                            key={s.name}
-                                            className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
-                                            data-name={s.name}
+                                            type="button"
+                                            className="w-full px-3 py-1.5 text-xs font-medium text-white bg-[#0078d4] rounded hover:bg-[#006cc1] disabled:opacity-50"
                                             disabled={submitting}
-                                            onClick={() => handleSubmit('skill', s.name, undefined, s.description)}
+                                            onClick={() => handleSubmitSkills(selectedSkills)}
+                                            data-testid="fp-submit-skills"
                                         >
-                                            <span>⚡</span>
-                                            <span className="flex-shrink-0 font-medium">{s.name}</span>
-                                            {s.description && (
-                                                <span className="text-xs text-[#848484] truncate">{s.description}</span>
-                                            )}
+                                            {submitting ? 'Submitting…' : `Submit with ${selectedSkills.length} skill${selectedSkills.length > 1 ? 's' : ''}`}
                                         </button>
-                                    ))}
+                                    )}
                                 </div>
                             )}
                         </div>

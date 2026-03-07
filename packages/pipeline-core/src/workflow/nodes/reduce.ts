@@ -66,7 +66,7 @@ async function executeAIReduce(
     inputs: Items,
     options: WorkflowExecutionOptions
 ): Promise<Items> {
-    const resolvedPrompt = await resolvePrompt(config.prompt, config.promptFile, options, options.parameters, config.skill);
+    const resolvedPrompt = await resolvePrompt(config.prompt, config.promptFile, options, options.parameters, config.skill, config.skills);
 
     const prompt = resolvedPrompt
         .replace(/\{\{RESULTS\}\}/g, JSON.stringify(inputs, null, 2))

@@ -157,4 +157,113 @@ describe('Skill resolution in workflow nodes', () => {
         expect(calls[0].prompt).toContain('[Skill: expert]');
         expect(calls[0].prompt).toContain('Analyze 1 in TypeScript');
     });
+
+    // ---- Multi-skill tests ----
+
+    it('map node with skills[] prepends multiple skill contents in order', async () => {
+        const { fn, calls } = captureInvoker();
+        const config: MapNodeConfig = {
+            type: 'map',
+            prompt: 'Classify: {{title}}',
+            skills: ['classifier', 'reviewer'],
+            output: ['result'],
+        };
+        await executeMap(config, [{ title: 'Bug report' }], opts({ aiInvoker: fn }));
+
+        expect(mockedResolveSkill).toHaveBeenCalledTimes(2);
+        expect(mockedResolveSkill).toHaveBeenCalledWith('classifier', '/workspace');
+        expect(mockedResolveSkill).toHaveBeenCalledWith('reviewer', '/workspace');
+        expect(calls[0].prompt).toContain('[Skill: classifier] You are an expert.');
+        expect(calls[0].prompt).toContain('[Skill: reviewer] You are an expert.');
+        // Both skills before the prompt
+        const classifierIdx = calls[0].prompt.indexOf('[Skill: classifier]');
+        const reviewerIdx = calls[0].prompt.indexOf('[Skill: reviewer]');
+        const promptIdx = calls[0].prompt.indexOf('Classify:');
+        expect(classifierIdx).toBeLessThan(promptIdx);
+        expect(reviewerIdx).toBeLessThan(promptIdx);
+        // Order preserved
+        expect(classifierIdx).toBeLessThan(reviewerIdx);
+    });
+
+    it('ai node with skills[] prepends multiple skill contents', async () => {
+        const { fn, calls } = captureInvoker();
+        const config: AINodeConfig = {
+            type: 'ai',
+            prompt: 'Summarize: {{ITEMS}}',
+            skills: ['summarizer', 'formatter'],
+            output: ['result'],
+        };
+        await executeAI(config, [{ text: 'hello' }], opts({ aiInvoker: fn }));
+
+        expect(mockedResolveSkill).toHaveBeenCalledTimes(2);
+        expect(calls[0].prompt).toContain('[Skill: summarizer]');
+        expect(calls[0].prompt).toContain('[Skill: formatter]');
+    });
+
+    it('reduce node (ai strategy) with skills[] prepends multiple skill contents', async () => {
+        const { fn, calls } = captureInvoker();
+        const config: ReduceNodeConfig = {
+            type: 'reduce',
+            strategy: 'ai',
+            prompt: 'Aggregate: {{RESULTS}}',
+            skills: ['aggregator', 'validator'],
+            output: ['result'],
+        };
+        await executeReduce(config, [{ text: 'item1' }], opts({ aiInvoker: fn }));
+
+        expect(mockedResolveSkill).toHaveBeenCalledTimes(2);
+        expect(calls[0].prompt).toContain('[Skill: aggregator]');
+        expect(calls[0].prompt).toContain('[Skill: validator]');
+    });
+
+    it('skills[] takes precedence over singular skill', async () => {
+        const { fn, calls } = captureInvoker();
+        const config: MapNodeConfig = {
+            type: 'map',
+            prompt: 'Process: {{id}}',
+            skill: 'ignored-skill',
+            skills: ['alpha', 'beta'],
+            output: ['result'],
+        };
+        await executeMap(config, [{ id: '1' }], opts({ aiInvoker: fn }));
+
+        expect(mockedResolveSkill).toHaveBeenCalledTimes(2);
+        expect(mockedResolveSkill).toHaveBeenCalledWith('alpha', '/workspace');
+        expect(mockedResolveSkill).toHaveBeenCalledWith('beta', '/workspace');
+        // singular skill is NOT resolved
+        expect(mockedResolveSkill).not.toHaveBeenCalledWith('ignored-skill', '/workspace');
+    });
+
+    it('backward compat: singular skill still works when skills[] absent', async () => {
+        const { fn, calls } = captureInvoker();
+        const config: MapNodeConfig = {
+            type: 'map',
+            prompt: 'Process: {{id}}',
+            skill: 'my-skill',
+            output: ['result'],
+        };
+        await executeMap(config, [{ id: '1' }], opts({ aiInvoker: fn }));
+
+        expect(mockedResolveSkill).toHaveBeenCalledTimes(1);
+        expect(mockedResolveSkill).toHaveBeenCalledWith('my-skill', '/workspace');
+        expect(calls[0].prompt).toContain('[Skill: my-skill]');
+    });
+
+    it('partial skill resolution failure still includes successful skills', async () => {
+        mockedResolveSkill
+            .mockResolvedValueOnce('[Skill: good] Content')
+            .mockRejectedValueOnce(new Error('Not found'));
+
+        const { fn, calls } = captureInvoker();
+        const config: MapNodeConfig = {
+            type: 'map',
+            prompt: 'Process: {{id}}',
+            skills: ['good', 'bad'],
+            output: ['result'],
+        };
+        await executeMap(config, [{ id: '1' }], opts({ aiInvoker: fn }));
+
+        expect(calls[0].prompt).toContain('[Skill: good] Content');
+        expect(calls[0].prompt).toContain('Process: 1');
+    });
 });

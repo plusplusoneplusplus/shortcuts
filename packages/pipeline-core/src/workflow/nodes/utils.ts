@@ -78,7 +78,10 @@ export function mergeOutput(item: Item, response: string, outputFields?: string[
 
 /**
  * Resolve a prompt template from either an inline string or a file path.
- * Optionally resolves a skill (prepended) and substitutes top-level parameters.
+ * Optionally resolves one or more skills (prepended) and substitutes top-level parameters.
+ *
+ * @param skillNames - Array of skill names to resolve. Takes precedence over `skillName`.
+ * @param skillName  - Single skill name (backward compat). Ignored if `skillNames` is provided.
  */
 export async function resolvePrompt(
     prompt: string | undefined,
@@ -86,6 +89,7 @@ export async function resolvePrompt(
     options: WorkflowExecutionOptions,
     parameters?: Record<string, string>,
     skillName?: string,
+    skillNames?: string[],
 ): Promise<string> {
     let resolved: string;
     if (prompt) {
@@ -98,16 +102,25 @@ export async function resolvePrompt(
         throw new Error('Node config requires either `prompt` or `promptFile`');
     }
 
+    // Normalize to array: skillNames takes precedence over singular skillName
+    const effectiveSkills = skillNames ?? (skillName ? [skillName] : []);
+
     // Prepend skill content if specified
-    if (skillName && options.workspaceRoot) {
-        try {
-            const skillContent = await resolveSkill(skillName, options.workspaceRoot);
-            resolved = skillContent + '\n\n' + resolved;
-        } catch (err) {
-            getLogger().warn(
-                LogCategory.PIPELINE,
-                `[Workflow] Failed to resolve skill "${skillName}": ${err instanceof Error ? err.message : String(err)}`,
-            );
+    if (effectiveSkills.length > 0 && options.workspaceRoot) {
+        const skillContents: string[] = [];
+        for (const name of effectiveSkills) {
+            try {
+                const skillContent = await resolveSkill(name, options.workspaceRoot);
+                skillContents.push(skillContent);
+            } catch (err) {
+                getLogger().warn(
+                    LogCategory.PIPELINE,
+                    `[Workflow] Failed to resolve skill "${name}": ${err instanceof Error ? err.message : String(err)}`,
+                );
+            }
+        }
+        if (skillContents.length > 0) {
+            resolved = skillContents.join('\n\n') + '\n\n' + resolved;
         }
     }
 

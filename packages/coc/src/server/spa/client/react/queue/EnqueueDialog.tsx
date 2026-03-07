@@ -47,7 +47,7 @@ export function EnqueueDialog() {
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
     const [skills, setSkills] = useState<SkillOption[]>([]);
-    const [selectedSkill, setSelectedSkill] = useState<string>('');
+    const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [minimized, setMinimized] = useState(false);
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
@@ -90,7 +90,7 @@ export function EnqueueDialog() {
     // Fetch skills when workspaceId changes
     useEffect(() => {
         setSkills([]);
-        setSelectedSkill('');
+        setSelectedSkills([]);
         if (!workspaceId) return;
         fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills')
             .then((data: any) => {
@@ -101,12 +101,20 @@ export function EnqueueDialog() {
             .catch(() => { /* ignore */ });
     }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Restore saved Queue Task skill when both preferences and skills are loaded
+    // Restore saved Queue Task skills when both preferences and skills are loaded
     useEffect(() => {
-        if (savedQueueTaskSkill && skills.length > 0 && !selectedSkill) {
+        if (savedQueueTaskSkill && skills.length > 0 && selectedSkills.length === 0) {
+            try {
+                const parsed = JSON.parse(savedQueueTaskSkill);
+                if (Array.isArray(parsed)) {
+                    const valid = parsed.filter((s: string) => skills.some(sk => sk.name === s));
+                    if (valid.length > 0) setSelectedSkills(valid);
+                    return;
+                }
+            } catch { /* not JSON, treat as single skill name */ }
             const match = skills.find(s => s.name === savedQueueTaskSkill);
             if (match) {
-                setSelectedSkill(savedQueueTaskSkill);
+                setSelectedSkills([savedQueueTaskSkill]);
             }
         }
     }, [savedQueueTaskSkill, skills]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -116,17 +124,19 @@ export function EnqueueDialog() {
         persistModel(value);
     }, [persistModel]);
 
-    const handleSkillChange = useCallback((value: string) => {
-        setSelectedSkill(value);
+    const handleSkillChange = useCallback((name: string) => {
+        setSelectedSkills(prev =>
+            prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
+        );
     }, []);
 
     const handleSubmit = useCallback(async () => {
         // Parse /skill tokens from prompt text
         const { skills: slashSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(prompt);
-        const effectiveSkill = selectedSkill || slashSkills[0] || '';
-        const effectivePrompt = effectiveSkill ? cleanedPrompt : prompt.trim();
+        const effectiveSkills = [...new Set([...selectedSkills, ...slashSkills])];
+        const effectivePrompt = effectiveSkills.length > 0 ? cleanedPrompt : prompt.trim();
 
-        if (!effectiveSkill && !effectivePrompt) return;
+        if (effectiveSkills.length === 0 && !effectivePrompt) return;
         setSubmitting(true);
         try {
             if (isAskMode) {
@@ -138,10 +148,10 @@ export function EnqueueDialog() {
                     payload: {
                         kind: 'chat',
                         mode: 'ask',
-                        prompt: effectivePrompt || `Ask: ${effectiveSkill}`,
+                        prompt: effectivePrompt || `Ask: ${effectiveSkills.join(', ')}`,
                         workspaceId: workspaceId || undefined,
                         workingDirectory: ws?.rootPath || undefined,
-                        ...(effectiveSkill ? { context: { skills: [effectiveSkill] } } : {}),
+                        ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
                     },
                     images: images.length > 0 ? images : undefined,
                 };
@@ -151,21 +161,24 @@ export function EnqueueDialog() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
                 });
-            } else if (effectiveSkill) {
+            } else if (effectiveSkills.length > 0) {
                 // Skill-based task
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
                 const workingDirectory = ws?.rootPath || '';
+                const displayName = effectiveSkills.length === 1
+                    ? `Skill: ${effectiveSkills[0]}`
+                    : `Skills: ${effectiveSkills.join(', ')}`;
                 const body: any = {
                     type: 'chat',
                     priority: 'normal',
-                    displayName: `Skill: ${effectiveSkill}`,
+                    displayName,
                     payload: {
                         kind: 'chat',
                         mode: 'autopilot',
-                        prompt: effectivePrompt || `Use the ${effectiveSkill} skill.`,
+                        prompt: effectivePrompt || `Use the ${effectiveSkills.join(', ')} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
                         workingDirectory,
                         context: {
-                            skills: [effectiveSkill],
+                            skills: effectiveSkills,
                         },
                     },
                     images: images.length > 0 ? images : undefined,
@@ -198,25 +211,27 @@ export function EnqueueDialog() {
                 });
             }
             setPrompt('');
-            setSelectedSkill('');
-            persistQueueTaskSkill(effectiveSkill);
+            setSelectedSkills([]);
+            persistQueueTaskSkill(JSON.stringify(effectiveSkills));
             // Record skill usage for ordering
-            if (effectiveSkill && workspaceId) {
-                fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ skillName: effectiveSkill }),
-                }).catch(() => { /* ignore */ });
+            for (const sk of effectiveSkills) {
+                if (sk && workspaceId) {
+                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ skillName: sk }),
+                    }).catch(() => { /* ignore */ });
+                }
             }
             clearImages();
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill, slashCommands, isAskMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill, slashCommands, isAskMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt);
-        setSelectedSkill(name);
+        setSelectedSkills(prev => prev.includes(name) ? prev : [...prev, name]);
     }, [slashCommands, prompt]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -279,7 +294,7 @@ export function EnqueueDialog() {
                         }}
                         onPaste={submitting ? undefined : addFromPaste}
                         onKeyDown={handleKeyDown}
-                        placeholder={selectedSkill ? `Additional context for ${selectedSkill} skill (optional)` : 'Enter your prompt… Type / for skills'}
+                        placeholder={selectedSkills.length > 0 ? `Additional context for ${selectedSkills.join(', ')} (optional)` : 'Enter your prompt… Type / for skills'}
                         rows={4}
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
                     />
@@ -296,20 +311,30 @@ export function EnqueueDialog() {
             </div>
             {workspaceId && skills.length > 0 && (
                 <div>
-                    <label className="block text-xs font-medium text-[#848484] mb-1">Skill (optional)</label>
-                    <select
-                        value={selectedSkill}
-                        onChange={e => handleSkillChange(e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                        data-testid="skill-select"
-                    >
-                        <option value="">None</option>
-                        {skills.map(s => (
-                            <option key={s.name} value={s.name}>
-                                ⚡ {s.name}{s.description ? ` — ${s.description}` : ''}
-                            </option>
-                        ))}
-                    </select>
+                    <label className="block text-xs font-medium text-[#848484] mb-1">Skills (optional)</label>
+                    <div className="flex flex-wrap gap-1.5" data-testid="skill-chips">
+                        {skills.map(s => {
+                            const isActive = selectedSkills.includes(s.name);
+                            return (
+                                <button
+                                    key={s.name}
+                                    type="button"
+                                    onClick={() => handleSkillChange(s.name)}
+                                    className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border transition-colors ${
+                                        isActive
+                                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
+                                            : 'bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4]'
+                                    }`}
+                                    title={s.description || s.name}
+                                    data-testid={`skill-chip-${s.name}`}
+                                >
+                                    <span>⚡</span>
+                                    <span>{s.name}</span>
+                                    {isActive && <span className="ml-0.5">✕</span>}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
             <div>
@@ -370,7 +395,7 @@ export function EnqueueDialog() {
                 variant="primary"
                 onClick={handleSubmit}
                 loading={submitting}
-                disabled={!selectedSkill && !prompt.trim()}
+                disabled={selectedSkills.length === 0 && !prompt.trim()}
                 title="Ctrl+Enter"
             >
                 {submitLabel}

@@ -87,7 +87,7 @@ describe('FollowPromptDialog', () => {
         });
     });
 
-    it('submits to /api/queue/tasks on skill click', async () => {
+    it('submits to /api/queue/tasks on skill click and submit', async () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
@@ -117,8 +117,17 @@ describe('FollowPromptDialog', () => {
             expect(screen.getByText('impl')).toBeDefined();
         });
 
+        // Toggle skill chip
         await act(async () => {
             fireEvent.click(screen.getByText('impl'));
+        });
+
+        // Click the submit button
+        await waitFor(() => {
+            expect(screen.getByTestId('fp-submit-skills')).toBeDefined();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('fp-submit-skills'));
         });
 
         await waitFor(() => {
@@ -160,20 +169,17 @@ describe('FollowPromptDialog', () => {
             expect(screen.getByText('impl')).toBeDefined();
         });
 
-        const draftBtn = screen.getByText('draft').closest('button')!;
-        const implBtn = screen.getByText('impl').closest('button')!;
-
-        // Skill name spans should not have truncate class
+        // Skill name spans should have font-medium class (chip UI)
         const draftNameSpan = screen.getByText('draft');
         const implNameSpan = screen.getByText('impl');
-        expect(draftNameSpan.className).toContain('flex-shrink-0');
-        expect(draftNameSpan.className).not.toContain('truncate');
-        expect(implNameSpan.className).toContain('flex-shrink-0');
-        expect(implNameSpan.className).not.toContain('truncate');
+        expect(draftNameSpan.className).toContain('font-medium');
+        expect(implNameSpan.className).toContain('font-medium');
 
-        // Description should be present
-        expect(draftBtn.textContent).toContain('Draft a user experience specification');
-        expect(implBtn.textContent).toContain('Implement the requested code change');
+        // Skill buttons should have title with description
+        const draftBtn = draftNameSpan.closest('button')!;
+        const implBtn = implNameSpan.closest('button')!;
+        expect(draftBtn.title).toContain('Draft a user experience specification');
+        expect(implBtn.title).toContain('Implement the requested code change');
     });
 
     it('renders skill without description correctly', async () => {
@@ -201,7 +207,10 @@ describe('FollowPromptDialog', () => {
         });
 
         const btn = screen.getByText('my-skill').closest('button')!;
-        expect(btn.querySelectorAll('span').length).toBe(2); // icon + name only
+        // Chip has icon + name spans (no ✕ when not selected)
+        expect(btn.querySelectorAll('span').length).toBe(2);
+        // Title falls back to skill name when no description
+        expect(btn.title).toBe('my-skill');
     });
 
     it('sends model inside config object, not at top level', async () => {
@@ -259,9 +268,15 @@ describe('FollowPromptDialog', () => {
             expect(screen.getByText('review')).toBeDefined();
         });
 
-        // Click skill to submit
+        // Toggle skill chip, then submit
         await act(async () => {
             fireEvent.click(screen.getByText('review'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('fp-submit-skills')).toBeDefined();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('fp-submit-skills'));
         });
 
         await waitFor(() => {
@@ -508,8 +523,15 @@ describe('FollowPromptDialog', () => {
             fireEvent.change(textarea, { target: { value: '  focus on auth module  ' } });
         });
 
+        // Toggle skill chip, then submit
         await act(async () => {
             fireEvent.click(screen.getByText('impl'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('fp-submit-skills')).toBeDefined();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('fp-submit-skills'));
         });
 
         await waitFor(() => {
@@ -552,8 +574,15 @@ describe('FollowPromptDialog', () => {
             expect(screen.getByText('impl')).toBeDefined();
         });
 
+        // Toggle skill chip, then submit
         await act(async () => {
             fireEvent.click(screen.getByText('impl'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('fp-submit-skills')).toBeDefined();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('fp-submit-skills'));
         });
 
         await waitFor(() => {
@@ -601,9 +630,17 @@ describe('FollowPromptDialog', () => {
         const textarea = document.getElementById('fp-additional-info') as HTMLTextAreaElement;
         expect(textarea.disabled).toBe(false);
 
-        // Click to start submission (don't await completion)
-        act(() => {
+        // Toggle skill chip
+        await act(async () => {
             fireEvent.click(screen.getByText('impl'));
+        });
+
+        // Click submit to start submission (don't await completion)
+        await waitFor(() => {
+            expect(screen.getByTestId('fp-submit-skills')).toBeDefined();
+        });
+        act(() => {
+            fireEvent.click(screen.getByTestId('fp-submit-skills'));
         });
 
         // Textarea should be disabled while submitting

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
@@ -377,22 +377,19 @@ describe('EnqueueDialog', () => {
         });
 
         // Skill selector should not appear without workspace
-        expect(screen.queryByTestId('skill-select')).toBeNull();
+        expect(screen.queryByTestId('skill-chips')).toBeNull();
 
         // Select workspace
         const wsSelect = screen.getAllByRole('combobox')[1];
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
-        // Wait for skill selector to appear
+        // Wait for skill chips to appear
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
-        const options = Array.from(skillSelect.options).map(o => o.value);
-        expect(options).toContain('');  // None option
-        expect(options).toContain('impl');
-        expect(options).toContain('go-deep');
+        expect(screen.getByTestId('skill-chip-impl')).toBeTruthy();
+        expect(screen.getByTestId('skill-chip-go-deep')).toBeTruthy();
     });
 
     it('submits skill-based task to /queue/tasks when skill is selected', async () => {
@@ -440,13 +437,13 @@ describe('EnqueueDialog', () => {
         const wsSelect = screen.getAllByRole('combobox')[1];
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
-        // Wait for skill selector
+        // Wait for skill chips
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
         // Select skill
-        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+        fireEvent.click(screen.getByTestId('skill-chip-impl'));
 
         // Submit without explicit prompt (should use default)
         fireEvent.click(screen.getByText('Enqueue'));
@@ -505,11 +502,11 @@ describe('EnqueueDialog', () => {
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
         // Select skill and enter custom prompt
-        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+        fireEvent.click(screen.getByTestId('skill-chip-impl'));
         const textarea = screen.getByRole('textbox');
         fireEvent.change(textarea, { target: { value: 'Fix the login bug' } });
 
@@ -554,9 +551,9 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Skill selector should appear because workspace was pre-selected
+        // Skill chips should appear because workspace was pre-selected
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
     });
 
@@ -597,13 +594,13 @@ describe('EnqueueDialog', () => {
         // Initially Enqueue should be disabled (no prompt, no skill)
         expect((screen.getByText('Enqueue') as HTMLButtonElement).disabled).toBe(true);
 
-        // Wait for skill selector
+        // Wait for skill chips
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
         // Select a skill
-        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+        fireEvent.click(screen.getByTestId('skill-chip-impl'));
 
         // Enqueue should now be enabled even without prompt
         expect((screen.getByText('Enqueue') as HTMLButtonElement).disabled).toBe(false);
@@ -720,10 +717,10 @@ describe('EnqueueDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+        fireEvent.click(screen.getByTestId('skill-chip-impl'));
 
         // Submit — no images pasted so images field should be omitted
         fireEvent.click(screen.getByText('Enqueue'));
@@ -773,15 +770,15 @@ describe('EnqueueDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        // Select model (skill-select=index 0, model=index 1, workspace=index 2)
-        const modelSelect = screen.getAllByRole('combobox')[1];
+        // Select model (no skill select dropdown, so model=index 0, workspace=index 1)
+        const modelSelect = screen.getAllByRole('combobox')[0];
         fireEvent.change(modelSelect, { target: { value: 'claude-sonnet' } });
 
         // Select skill
-        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+        fireEvent.click(screen.getByTestId('skill-chip-impl'));
 
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => {
@@ -962,13 +959,13 @@ describe('EnqueueDialog', () => {
         const wsSelect = screen.getAllByRole('combobox')[1];
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
-        // Wait for skill selector
+        // Wait for skill chips
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
         // Select skill
-        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'impl' } });
+        fireEvent.click(screen.getByTestId('skill-chip-impl'));
 
         // Selecting skill alone should NOT trigger a PATCH (save on submit only)
         await new Promise(r => setTimeout(r, 50));
@@ -981,7 +978,7 @@ describe('EnqueueDialog', () => {
         // Submit the task
         fireEvent.click(screen.getByText('Enqueue'));
 
-        // Verify PATCH was called with lastQueueTaskSkill on submit
+        // Verify PATCH was called with lastQueueTaskSkill as JSON array on submit
         await waitFor(() => {
             const patchCalls = fetchSpy.mock.calls.filter(
                 ([u, opts]: [string, any]) =>
@@ -990,7 +987,7 @@ describe('EnqueueDialog', () => {
             expect(patchCalls.length).toBeGreaterThanOrEqual(1);
             const lastPatch = patchCalls[patchCalls.length - 1];
             const body = JSON.parse(lastPatch[1].body);
-            expect(body.lastQueueTaskSkill).toBe('impl');
+            expect(body.lastQueueTaskSkill).toBe('["impl"]');
         });
     });
 
@@ -1037,10 +1034,9 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Wait for skill selector to appear with pre-selected value
+        // Wait for skill chips to appear with pre-selected value
         await waitFor(() => {
-            const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
-            expect(skillSelect.value).toBe('go-deep');
+            expect(screen.getByTestId('skill-chip-go-deep').className).toContain('bg-[#0078d4]');
         });
     });
 
@@ -1084,14 +1080,13 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Wait for skill selector
+        // Wait for skill chips
         await waitFor(() => {
-            expect(screen.getByTestId('skill-select')).toBeTruthy();
+            expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        // Should remain on "None" since the saved skill doesn't exist
-        const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
-        expect(skillSelect.value).toBe('');
+        // Should have no active chips since the saved skill doesn't exist
+        expect(screen.getByTestId('skill-chip-impl').className).not.toContain('bg-[#0078d4]');
     });
 
     // ── floating vs modal dialog layout ────────────────────────────────────
@@ -1484,7 +1479,7 @@ describe('EnqueueDialog slash commands', () => {
             </Wrap>
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
         const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
         // Simulate typing '/'
@@ -1495,8 +1490,9 @@ describe('EnqueueDialog slash commands', () => {
         });
 
         // Both skills should appear in the menu
-        expect(screen.getByText('impl')).toBeTruthy();
-        expect(screen.getByText('draft')).toBeTruthy();
+        const menu = screen.getByTestId('slash-command-menu');
+        expect(within(menu).getByText('impl')).toBeTruthy();
+        expect(within(menu).getByText('draft')).toBeTruthy();
     });
 
     it('filters slash-command menu as user types after /', async () => {
@@ -1512,7 +1508,7 @@ describe('EnqueueDialog slash commands', () => {
             </Wrap>
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
         const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
         // Type '/im' to filter
@@ -1523,11 +1519,12 @@ describe('EnqueueDialog slash commands', () => {
         });
 
         // Only 'impl' should match the filter
-        expect(screen.getByText('impl')).toBeTruthy();
-        expect(screen.queryByText('draft')).toBeNull();
+        const menu = screen.getByTestId('slash-command-menu');
+        expect(within(menu).getByText('impl')).toBeTruthy();
+        expect(within(menu).queryByText('draft')).toBeNull();
     });
 
-    it('sets selectedSkill dropdown when slash-command skill is selected via click', async () => {
+    it('adds skill to selectedSkills when slash-command skill is selected via click', async () => {
         setupFetchWithSkills([
             { name: 'impl', description: 'Implementation' },
             { name: 'draft', description: 'Draft spec' },
@@ -1540,7 +1537,7 @@ describe('EnqueueDialog slash commands', () => {
             </Wrap>
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
         const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: '/', selectionStart: 1 } });
@@ -1550,13 +1547,13 @@ describe('EnqueueDialog slash commands', () => {
         });
 
         // Click on 'impl' in the menu (uses mousedown to prevent blur)
-        const implItem = screen.getByText('impl');
+        const menu = screen.getByTestId('slash-command-menu');
+        const implItem = within(menu).getByText('impl');
         fireEvent.mouseDown(implItem);
 
-        // Skill dropdown should now show 'impl' selected
+        // Skill chip should now show 'impl' as active
         await waitFor(() => {
-            const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
-            expect(skillSelect.value).toBe('impl');
+            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
         });
     });
 
@@ -1574,7 +1571,7 @@ describe('EnqueueDialog slash commands', () => {
             </Wrap>
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
         const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
         // Type '/impl fix the bug' without using the autocomplete menu
@@ -1617,7 +1614,7 @@ describe('EnqueueDialog slash commands', () => {
             </Wrap>
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
         const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: '/', selectionStart: 1 } });
@@ -1634,7 +1631,7 @@ describe('EnqueueDialog slash commands', () => {
         });
     });
 
-    it('dropdown skill takes priority over slash-command skill on submit', async () => {
+    it('chip and slash-command skills are merged and deduplicated on submit', async () => {
         const posts: Array<{ body: any; url: string }> = [];
         setupFetchWithSkills(
             [
@@ -1651,21 +1648,22 @@ describe('EnqueueDialog slash commands', () => {
             </Wrap>
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
-        // Select 'draft' in dropdown
-        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'draft' } });
+        // Select 'draft' chip
+        fireEvent.click(screen.getByTestId('skill-chip-draft'));
 
         // Type '/impl do stuff' in prompt
-        const textarea = screen.getByPlaceholderText(/context for draft skill/) as HTMLTextAreaElement;
+        const textarea = screen.getByPlaceholderText(/context for draft/) as HTMLTextAreaElement;
         fireEvent.change(textarea, { target: { value: '/impl do stuff', selectionStart: 14 } });
 
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => expect(posts.length).toBeGreaterThan(0));
 
         const body = posts[0].body;
-        // Dropdown selection ('draft') takes priority over /impl in prompt
-        expect(body.payload.context.skills).toEqual(['draft']);
+        // Both chip selection ('draft') and slash-command ('impl') are merged and deduplicated
+        expect(body.payload.context.skills).toEqual(expect.arrayContaining(['draft', 'impl']));
+        expect(body.payload.context.skills).toHaveLength(2);
     });
 });
 
