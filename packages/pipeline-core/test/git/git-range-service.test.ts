@@ -359,7 +359,7 @@ describe('GitRangeService', () => {
             mockExecGit.mockReturnValue('diff content');
             service.getFileDiff('/repo', 'origin/main', 'HEAD', 'src\\test.ts');
             expect(mockExecGit).toHaveBeenCalledWith(
-                ['diff', 'origin/main...HEAD', '--', 'src/test.ts'], '/repo'
+                ['diff', '-U99999', 'origin/main...HEAD', '--', 'src/test.ts'], '/repo'
             );
         });
 

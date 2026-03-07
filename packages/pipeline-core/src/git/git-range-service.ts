@@ -342,7 +342,7 @@ export class GitRangeService {
         try {
             const gitPath = filePath.replace(/\\/g, '/');
             return this.execGitCommand(
-                ['diff', `${baseRef}...${headRef}`, '--', gitPath],
+                ['diff', '-U99999', `${baseRef}...${headRef}`, '--', gitPath],
                 repoRoot
             );
         } catch (error) {

@@ -223,7 +223,7 @@ export class WorkingTreeService {
         try {
             const flag = staged ? '--staged ' : '';
             return await execGitAsync(
-                `git -C "${repoRoot}" diff ${flag}-- "${filePath}"`,
+                `git -C "${repoRoot}" diff -U99999 ${flag}-- "${filePath}"`,
                 { cwd: repoRoot }
             );
         } catch (error) {

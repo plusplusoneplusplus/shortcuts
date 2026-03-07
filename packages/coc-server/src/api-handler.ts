@@ -538,7 +538,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             try {
-                const diff = execGitSync(`show --format="" --patch ${hash} -- ${filePath}`, ws.rootPath);
+                const diff = execGitSync(`show --format="" --patch -U99999 ${hash} -- ${filePath}`, ws.rootPath);
                 const result = { diff };
                 gitCache.set(cacheKey, result);
                 sendJSON(res, 200, result);
