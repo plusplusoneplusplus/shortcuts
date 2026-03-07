@@ -69,7 +69,7 @@ export function RepoWikiTab({ workspaceId, workspacePath, initialWikiId, initial
         if (!workspacePath) return;
         const repoName = workspacePath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? 'wiki';
         const id = slugify(repoName);
-        const res = await fetchApi('/api/wikis', {
+        const res = await fetchApi('/wikis', {
             method: 'POST',
             body: JSON.stringify({ id, name: repoName, repoPath: workspacePath }),
         });

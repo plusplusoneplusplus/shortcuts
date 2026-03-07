@@ -206,7 +206,7 @@ describe('PreviewPane', () => {
 
         await waitFor(() => expect(mockFetchApi).toHaveBeenCalled());
         expect(mockFetchApi).toHaveBeenCalledWith(
-            '/api/repos/r1/blob?path=src%2Fmain.ts',
+            '/repos/r1/blob?path=src%2Fmain.ts',
             expect.objectContaining({ signal: expect.any(AbortSignal) }),
         );
     });

@@ -150,7 +150,7 @@ describe('TreeNode', () => {
 
     describe('lazy loading', () => {
         it('fetches from the tree API endpoint', () => {
-            expect(source).toContain('/api/repos/');
+            expect(source).toContain('/repos/');
             expect(source).toContain('/tree?path=');
         });
 

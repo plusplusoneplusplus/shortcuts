@@ -59,7 +59,7 @@ export function TreeNode({
         if (!isDir || !isExpanded || children !== undefined) return;
         let cancelled = false;
         setLoading(true);
-        fetchApi(`/api/repos/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(entry.path)}`)
+        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(entry.path)}`)
             .then((data: { entries: TreeEntry[] }) => {
                 if (!cancelled) onChildrenLoaded(entry.path, data.entries);
             })

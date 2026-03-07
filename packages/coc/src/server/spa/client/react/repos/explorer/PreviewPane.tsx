@@ -92,7 +92,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
         setBlob(null);
 
         fetchApi(
-            `/api/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
+            `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
             { signal: controller.signal },
         )
             .then((data: BlobResponse) => {
@@ -118,7 +118,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
         setError(null);
         setBlob(null);
         fetchApi(
-            `/api/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
+            `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
             { signal: controller.signal },
         )
             .then((data: BlobResponse) => {

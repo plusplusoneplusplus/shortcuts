@@ -71,8 +71,8 @@ describe('RepoWikiTab', () => {
     });
 
     describe('generate wiki action', () => {
-        it('should POST to /api/wikis endpoint', () => {
-            expect(content).toContain('/api/wikis');
+        it('should POST to /wikis endpoint via fetchApi', () => {
+            expect(content).toContain('/wikis');
         });
 
         it('should send repoPath in the request body', () => {

@@ -37,7 +37,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        fetchApi(`/api/repos/${encodeURIComponent(workspaceId)}/tree?path=/`)
+        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=/`)
             .then((data: { entries: TreeEntry[] }) => {
                 if (!cancelled) setRootEntries(data.entries);
             })
@@ -89,7 +89,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         setExpandedPaths(new Set());
         setLoading(true);
         setError(null);
-        fetchApi(`/api/repos/${encodeURIComponent(workspaceId)}/tree?path=/`)
+        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=/`)
             .then((data: { entries: TreeEntry[] }) => {
                 setRootEntries(data.entries);
             })

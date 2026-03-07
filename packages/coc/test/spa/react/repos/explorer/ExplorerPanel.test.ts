@@ -71,7 +71,7 @@ describe('ExplorerPanel', () => {
 
     describe('API integration', () => {
         it('fetches root entries from the tree API', () => {
-            expect(source).toContain('/api/repos/');
+            expect(source).toContain('/repos/');
             expect(source).toContain('/tree?path=/');
         });
 
