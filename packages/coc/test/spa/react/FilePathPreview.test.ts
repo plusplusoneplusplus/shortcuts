@@ -224,6 +224,60 @@ describe('file-path-preview delegation', () => {
         expect(tooltip.textContent).toContain('250 total');
     });
 
+    it('does not show tooltip for file-path-link with data-no-preview-hover', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/src/app.ts';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}" data-no-preview-hover>shortcuts/src/app.ts</span>
+            </div>
+        `;
+
+        const fetchMock = vi.fn();
+        mockWorkspaceAndPreview(fetchMock);
+        vi.stubGlobal('fetch', fetchMock as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+        await hoverAndWait(link);
+
+        const tooltip = document.querySelector('.file-preview-tooltip') as HTMLElement | null;
+        // Tooltip element may exist but should not be visible
+        if (tooltip) {
+            expect(tooltip.style.display).toBe('none');
+        }
+        // No fetch calls should have been made for the preview
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('click still works on file-path-link with data-no-preview-hover', async () => {
+        const fullPath = '/Users/test/Documents/Projects/shortcuts/.vscode/tasks/sample.md';
+        document.body.innerHTML = `
+            <div>
+                <span class="file-path-link" data-full-path="${fullPath}" data-no-preview-hover>sample.md</span>
+            </div>
+        `;
+
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ workspaces: [] }),
+        }) as any);
+
+        await import('../../../src/server/spa/client/react/file-path-preview');
+
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+        const link = document.querySelector('.file-path-link') as HTMLElement;
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'coc-open-markdown-review',
+                detail: { filePath: fullPath },
+            })
+        );
+    });
+
     it('dispatches markdown review open event on click', async () => {
         const fullPath = '/Users/test/Documents/Projects/shortcuts/.vscode/tasks/sample.md';
         document.body.innerHTML = `

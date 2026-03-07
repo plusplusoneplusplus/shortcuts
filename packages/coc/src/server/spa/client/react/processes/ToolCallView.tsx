@@ -453,7 +453,7 @@ export function ToolCallView({
                     <span
                         className={cn('text-[#848484] truncate min-w-0', summaryIsPath && 'file-path-link')}
                         title={summary}
-                        {...(summaryIsPath ? { 'data-full-path': argsObj.path || argsObj.filePath } : {})}
+                        {...(summaryIsPath ? { 'data-full-path': argsObj.path || argsObj.filePath, 'data-no-preview-hover': '' } : {})}
                     >
                         {summary}
                     </span>

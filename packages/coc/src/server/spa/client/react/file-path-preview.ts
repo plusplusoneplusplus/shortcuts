@@ -450,6 +450,7 @@ function initFilePathPreviewDelegation(): void {
         document.body.addEventListener('mouseover', (event) => {
             const target = findPathLink(event.target);
             if (!target) return;
+            if (target.hasAttribute('data-no-preview-hover')) return;
 
             if (hideTimer) {
                 clearTimeout(hideTimer);
