@@ -1,6 +1,18 @@
 # Pipeline Configuration Schema Reference
 
-Complete specification for pipeline YAML configuration.
+Complete specification for linear pipeline YAML configuration. For the DAG workflow format (`nodes:`), see [workflow-schema.md](workflow-schema.md).
+
+## Format Overview
+
+Two YAML formats are supported. Both compile to the same workflow engine
+via `compileToWorkflow()`. Use whichever is simpler for your use case.
+
+| Format | Best for | Key |
+|--------|----------|-----|
+| Linear (`input/map/reduce`) | Simple pipelines: classify, extract, summarize | `input:`, `map:`, `reduce:` at top level |
+| DAG (`nodes:`) | Multi-stage, fan-out/fan-in, scripts, merges | `nodes:` with `from:` edges |
+
+---
 
 ## Root Configuration
 

@@ -2,6 +2,8 @@
 
 Complete specification for DAG workflow YAML configuration. For the linear pipeline format (`input`/`map`/`reduce` or `job:`), see [schema.md](schema.md).
 
+> **Note:** Linear pipeline YAML is automatically compiled to this format by the engine via `compileToWorkflow()`.
+
 ## Root Configuration
 
 ```yaml
@@ -392,3 +394,17 @@ Makes a single AI call with all input items. Use for comparison, deduplication, 
 ## Node Naming Convention
 
 Use **kebab-case** for node IDs (e.g., `load-bugs`, `filter-critical`, `map-analyze`). This is consistent with pipeline package naming and produces readable log/error messages. This is a recommendation, not a hard requirement.
+
+---
+
+## Linear → Workflow Compilation
+
+When a linear pipeline YAML is passed to `compileToWorkflow()`, each section maps to a workflow node:
+
+| Linear key | Workflow node | Node type |
+|------------|---------------|-----------|
+| `input:` | `load` | `load` (source: csv/inline/ai) |
+| `filter:` | `filter` | `filter` (rule mapping) |
+| `map:` | `map` | `map` (parallel→concurrency) |
+| `reduce:` | `reduce` | `reduce` (type→strategy) |
+| `job:` | `job` | `ai` (root node) |
