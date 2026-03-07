@@ -90,6 +90,9 @@ export { executeMap } from './nodes/map';
 export { executeReduce } from './nodes/reduce';
 export { executeAI } from './nodes/ai';
 
+// Concurrency limiter (relocated from map-reduce)
+export { ConcurrencyLimiter, CancellationError, DEFAULT_MAX_CONCURRENCY } from './concurrency-limiter';
+
 // Compiler
 export { compileToWorkflow, compileToWorkflowFromObject, detectFormat, CompilerError } from './compiler';
 export type { DetectedFormat } from './compiler';

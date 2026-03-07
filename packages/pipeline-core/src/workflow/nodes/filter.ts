@@ -12,7 +12,7 @@ import type {
     Items,
     WorkflowExecutionOptions
 } from '../types';
-import { ConcurrencyLimiter } from '../../map-reduce';
+import { ConcurrencyLimiter } from '../concurrency-limiter';
 
 // ---------------------------------------------------------------------------
 // Module-level concurrency limiter cache

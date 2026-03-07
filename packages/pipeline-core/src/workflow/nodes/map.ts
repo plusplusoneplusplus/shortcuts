@@ -9,7 +9,7 @@
  */
 
 import type { MapNodeConfig, Items, WorkflowExecutionOptions, Item } from '../types';
-import { ConcurrencyLimiter } from '../../map-reduce';
+import { ConcurrencyLimiter } from '../concurrency-limiter';
 import {
     resolvePrompt,
     buildItemPrompt,
