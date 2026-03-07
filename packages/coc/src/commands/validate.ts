@@ -65,7 +65,7 @@ export function executeValidate(pipelinePath: string): number {
     const resolvedPath = resolvePipelinePath(pipelinePath);
 
     if (!resolvedPath) {
-        printError(`Pipeline file not found: ${pipelinePath}`);
+        printError(`Workflow file not found: ${pipelinePath}`);
         return 2;
     }
 
@@ -124,14 +124,14 @@ export function validatePipeline(yamlPath: string): ValidationResult {
 
         if (!config.name) {
             checks.push({
-                label: 'Pipeline name',
+                label: 'Workflow name',
                 status: 'fail',
-                detail: 'Pipeline config missing "name"',
+                detail: 'Workflow config missing "name"',
             });
             return { valid: false, pipelineName, checks };
         } else {
             checks.push({
-                label: `Pipeline "${config.name}" is valid YAML`,
+                label: `Workflow "${config.name}" is valid YAML`,
                 status: 'pass',
             });
         }
@@ -142,9 +142,9 @@ export function validatePipeline(yamlPath: string): ValidationResult {
         // Mutual exclusion check
         if (config.job && config.map) {
             checks.push({
-                label: 'Pipeline mode',
+                label: 'Workflow mode',
                 status: 'fail',
-                detail: 'Cannot use "job" and "map" in the same pipeline',
+                detail: 'Cannot use "job" and "map" in the same workflow',
             });
             return { valid: false, pipelineName, checks };
         }
@@ -155,7 +155,7 @@ export function validatePipeline(yamlPath: string): ValidationResult {
                 checks.push({
                     label: 'Map configuration',
                     status: 'fail',
-                    detail: 'Pipeline config missing "map"',
+                    detail: 'Workflow config missing "map"',
                 });
             }
 
@@ -163,7 +163,7 @@ export function validatePipeline(yamlPath: string): ValidationResult {
                 checks.push({
                     label: 'Reduce configuration',
                     status: 'fail',
-                    detail: 'Pipeline config missing "reduce"',
+                    detail: 'Workflow config missing "reduce"',
                 });
             }
 
@@ -171,7 +171,7 @@ export function validatePipeline(yamlPath: string): ValidationResult {
                 checks.push({
                     label: 'Input configuration',
                     status: 'fail',
-                    detail: 'Pipeline config missing "input"',
+                    detail: 'Workflow config missing "input"',
                 });
             }
 
@@ -551,7 +551,7 @@ function extractTemplateVars(template: string): string[] {
 // ============================================================================
 
 function printValidationResult(result: ValidationResult): void {
-    printHeader(`Pipeline Validation: ${result.pipelineName}`);
+    printHeader(`Workflow Validation: ${result.pipelineName}`);
 
     for (const check of result.checks) {
         const symbol = check.status === 'pass'
@@ -569,8 +569,8 @@ function printValidationResult(result: ValidationResult): void {
     process.stderr.write('\n');
 
     if (result.valid) {
-        printSuccess('Pipeline is valid');
+        printSuccess('Workflow is valid');
     } else {
-        printError('Pipeline has validation errors');
+        printError('Workflow has validation errors');
     }
 }

@@ -97,7 +97,7 @@ export async function executeRun(
     // 1. Resolve pipeline path
     const yamlPath = resolvePipelinePath(pipelinePath);
     if (!yamlPath) {
-        printError(`Pipeline file not found: ${pipelinePath}`);
+        printError(`Workflow file not found: ${pipelinePath}`);
         return 2;
     }
 
@@ -109,12 +109,12 @@ export async function executeRun(
         const content = fs.readFileSync(yamlPath, 'utf-8');
         config = compileToWorkflow(content);
     } catch (error) {
-        printError(`Failed to parse pipeline: ${error instanceof Error ? error.message : String(error)}`);
+        printError(`Failed to parse workflow: ${error instanceof Error ? error.message : String(error)}`);
         return 2;
     }
 
     // 3. Print pipeline info
-    printHeader(`Pipeline: ${config.name}`);
+    printHeader(`Workflow: ${config.name}`);
     printKeyValue('File', yamlPath);
     if (options.model) {
         printKeyValue('Model', options.model);
@@ -171,7 +171,7 @@ export async function executeRun(
     const startTime = Date.now();
 
     try {
-        spinner.start('Starting pipeline execution...');
+        spinner.start('Starting workflow execution...');
 
         const workflowResult = await executeWorkflow(config, {
             aiInvoker,
@@ -209,7 +209,7 @@ export async function executeRun(
 
         return exitCode;
     } catch (error) {
-        spinner.fail('Pipeline execution failed');
+        spinner.fail('Workflow execution failed');
         const message = error instanceof Error ? error.message : String(error);
         printError(message);
 
@@ -261,7 +261,7 @@ function handleResults(
     process.stderr.write(`\n  ${green(bold('Done'))} in ${formatDuration(elapsed)}\n`);
 
     if (cancelled) {
-        printInfo('Pipeline was cancelled');
+        printInfo('Workflow was cancelled');
     }
 
     // Format and write results

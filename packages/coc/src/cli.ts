@@ -42,7 +42,7 @@ export function createProgram(): Command {
 
     program
         .name('coc')
-        .description('CoC (Copilot of Copilot) - Execute YAML-based AI pipelines from the command line')
+        .description('CoC (Copilot of Copilot) - Execute YAML-based AI workflows from the command line')
         .version('1.0.0');
 
     // ========================================================================
@@ -51,14 +51,14 @@ export function createProgram(): Command {
 
     program
         .command('run')
-        .description('Execute a pipeline from a YAML file')
-        .argument('<path>', 'Path to pipeline.yaml or pipeline package directory')
+        .description('Execute a workflow from a YAML file')
+        .argument('<path>', 'Path to pipeline.yaml or workflow package directory')
         .option('-m, --model <model>', 'Override AI model')
         .option('-p, --parallel <number>', 'Override parallelism limit', parseInt)
         .option('-o, --output <format>', 'Output format: table, json, csv, markdown', 'table')
         .option('-f, --output-file <path>', 'Write results to file instead of stdout')
         .option('-w, --workspace-root <path>', 'Workspace root for skill resolution')
-        .option('--param <key=value...>', 'Pipeline parameters (repeatable)', collectParams, {})
+        .option('--param <key=value...>', 'Workflow parameters (repeatable)', collectParams, {})
         .option('-v, --verbose', 'Verbose logging with per-item progress', false)
         .option('--dry-run', 'Parse and validate without executing', false)
         .option('--timeout <seconds>', 'Overall execution timeout in seconds', parseInt)
@@ -80,8 +80,8 @@ export function createProgram(): Command {
 
     program
         .command('validate')
-        .description('Validate a pipeline YAML file without executing')
-        .argument('<path>', 'Path to pipeline.yaml or pipeline package directory')
+        .description('Validate a workflow YAML file without executing')
+        .argument('<path>', 'Path to pipeline.yaml or workflow package directory')
         .option('--no-color', 'Disable colored output')
         .action((pipelinePath: string, opts: Record<string, unknown>) => {
             const config = resolveConfig();
@@ -97,8 +97,8 @@ export function createProgram(): Command {
 
     program
         .command('list')
-        .description('List pipeline packages in a directory')
-        .argument('[dir]', 'Directory to scan for pipeline packages', '.')
+        .description('List workflow packages in a directory')
+        .argument('[dir]', 'Directory to scan for workflow packages', '.')
         .option('-o, --output <format>', 'Output format: table, json, csv, markdown', 'table')
         .option('--no-color', 'Disable colored output')
         .action((dirPath: string, opts: Record<string, unknown>) => {

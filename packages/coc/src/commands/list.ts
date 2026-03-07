@@ -72,7 +72,7 @@ export function executeList(dirPath: string, format: OutputFormat = 'table'): nu
     const packages = discoverPipelines(resolved);
 
     if (packages.length === 0) {
-        printWarning(`No pipeline packages found in ${dirPath}`);
+        printWarning(`No workflow packages found in ${dirPath}`);
         return 0;
     }
 
