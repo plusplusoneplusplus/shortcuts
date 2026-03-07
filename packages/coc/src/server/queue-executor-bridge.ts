@@ -32,7 +32,7 @@ import {
     isTaskGenerationPayload,
     saveImagesToTempFiles,
 } from '@plusplusoneplusplus/coc-server';
-import type { AIProcess, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
     approveAllPermissions,
     applyDeepModePrefix,
@@ -45,7 +45,9 @@ import {
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
     TASK_FILTER,
-    executePipeline,
+    compileToWorkflow,
+    executeWorkflow,
+    flattenWorkflowResult,
     FileToolCallCacheStore,
     gatherFeatureContext,
     getCopilotSDKService,
@@ -53,7 +55,6 @@ import {
     getRemoteUrl,
     LogCategory,
     mergeConsecutiveContentItems,
-    parsePipelineYAMLSync,
     QueuedTask,
     QueueExecutor,
     TaskExecutionResult,
@@ -1279,37 +1280,11 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Read and parse pipeline YAML
         const yamlContent = fs.readFileSync(yamlPath, 'utf-8');
-        const config = parsePipelineYAMLSync(yamlContent);
-
-        // Apply model override from payload
-        if (payload.model) {
-            if (config.map) { config.map.model = payload.model; }
-            if (config.job) { config.job.model = payload.model; }
-        }
-
-        // Apply parameter overrides
-        if (payload.params && Object.keys(payload.params).length > 0) {
-            const isJob = !!config.job;
-            if (isJob) {
-                if (!config.parameters) { config.parameters = []; }
-                for (const [key, value] of Object.entries(payload.params)) {
-                    const existing = config.parameters.find(p => p.name === key);
-                    if (existing) { existing.value = value; }
-                    else { config.parameters.push({ name: key, value }); }
-                }
-            } else if (config.input) {
-                if (!config.input.parameters) { config.input.parameters = []; }
-                for (const [key, value] of Object.entries(payload.params)) {
-                    const existing = config.input.parameters!.find(p => p.name === key);
-                    if (existing) { existing.value = value; }
-                    else { config.input.parameters!.push({ name: key, value }); }
-                }
-            }
-        }
+        const config = compileToWorkflow(yamlContent);
 
         // Create AIInvoker using the same factory as `coc run`
         const aiInvoker = createCLIAIInvoker({
-            model: payload.model || config.job?.model || config.map?.model,
+            model: payload.model,
             approvePermissions: this.approvePermissions,
             workingDirectory: payload.workingDirectory,
             mcpServers: payload.mcpServers,          // forward per-workspace MCP filter
@@ -1317,77 +1292,75 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Execute
         const processId = `queue_${task.id}`;
-        const result = await executePipeline(config, {
+        const childProcessIds: string[] = [];
+        const result = await executeWorkflow(config, {
             aiInvoker,
-            pipelineDirectory: payload.workflowPath,
+            workflowDirectory: payload.workflowPath,
             workspaceRoot: payload.workingDirectory,
-            onPhaseChange: (event) => {
+            model: payload.model,
+            parameters: payload.params,
+            onProgress: (event) => {
+                // Map WorkflowNodePhase to PipelinePhaseStatus for backward compat with SPA
+                const statusMap: Record<string, PipelinePhaseStatus> = {
+                    pending: 'started', running: 'started', completed: 'completed', failed: 'failed', warned: 'completed',
+                };
+                // Emit pipeline-phase SSE event for backward compat with SPA
                 try {
                     this.store.emitProcessEvent(processId, {
                         type: 'pipeline-phase',
-                        pipelinePhase: event,
+                        pipelinePhase: {
+                            phase: event.nodeId as PipelinePhase,
+                            status: statusMap[event.phase] ?? 'started',
+                            timestamp: event.timestamp,
+                            durationMs: event.durationMs,
+                            error: event.error,
+                            itemCount: event.inputItemCount,
+                        },
                     });
                 } catch {
                     // Non-fatal: store may be a stub
                 }
-            },
-            onProgress: (progress) => {
-                try {
-                    this.store.emitProcessEvent(processId, {
-                        type: 'pipeline-progress',
-                        pipelineProgress: {
-                            phase: progress.phase === 'splitting' ? 'filter'
-                                : progress.phase === 'mapping' ? 'map'
-                                    : progress.phase === 'reducing' ? 'reduce'
-                                        : 'map',
-                            totalItems: progress.totalItems,
-                            completedItems: progress.completedItems,
-                            failedItems: progress.failedItems,
-                            percentage: progress.percentage,
-                            message: progress.message,
-                        },
-                    });
-                } catch {
-                    // Non-fatal
+                // Emit pipeline-progress SSE event when item progress is available
+                if (event.itemProgress) {
+                    try {
+                        const total = event.itemProgress.total;
+                        const completed = event.itemProgress.completed;
+                        this.store.emitProcessEvent(processId, {
+                            type: 'pipeline-progress',
+                            pipelineProgress: {
+                                phase: event.nodeId as PipelinePhase,
+                                totalItems: total,
+                                completedItems: completed,
+                                failedItems: event.itemProgress.failed,
+                                percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+                                message: `Node ${event.nodeId}: ${completed}/${total}`,
+                            },
+                        });
+                    } catch {
+                        // Non-fatal
+                    }
                 }
             },
-            onItemProcessCreated: (event) => {
-                const itemStr = typeof event.item === 'string' ? event.item : JSON.stringify(event.item);
-                const now = new Date();
-                const conversationTurns: import('@plusplusoneplusplus/pipeline-core').ConversationTurn[] = [
-                    { role: 'user', content: itemStr, timestamp: now, turnIndex: 0, timeline: [] },
-                ];
-                if (event.rawResponse) {
-                    conversationTurns.push({
-                        role: 'assistant',
-                        content: event.rawResponse,
-                        timestamp: now,
-                        turnIndex: 1,
-                        timeline: [],
-                    });
-                }
+            onItemProcess: (event) => {
+                childProcessIds.push(event.processId);
+                const label = event.itemLabel ?? `Item ${event.itemIndex}`;
                 const childProcess: AIProcess = {
                     id: event.processId,
                     type: 'pipeline-item',
                     parentProcessId: processId,
-                    promptPreview: itemStr.length > 80 ? itemStr.substring(0, 77) + '...' : itemStr,
-                    fullPrompt: itemStr,
-                    result: event.rawResponse,
-                    conversationTurns,
-                    status: event.success ? 'completed' : (event.error ? 'failed' : 'running'),
+                    promptPreview: label.length > 80 ? label.substring(0, 77) + '...' : label,
+                    fullPrompt: label,
+                    status: event.status === 'completed' ? 'completed' : (event.status === 'failed' ? 'failed' : 'running'),
                     startTime: new Date(),
                     metadata: {
                         type: 'pipeline-item',
                         itemIndex: event.itemIndex,
-                        phase: event.phase,
+                        nodeId: event.nodeId,
                         parentPipelineId: processId,
                     },
                 };
                 if (event.error) {
                     childProcess.error = event.error;
-                }
-                if (event.sessionId) {
-                    childProcess.sdkSessionId = event.sessionId;
                 }
                 this.store.addProcess(childProcess).catch(() => {
                     // Non-fatal: don't fail the pipeline if store write fails
@@ -1410,12 +1383,14 @@ export class CLITaskExecutor implements TaskExecutor {
             },
         });
 
+        const flatResult = flattenWorkflowResult(result, config);
+
         // Update parent process with child process IDs
-        if (result.itemProcessIds?.length) {
+        if (childProcessIds.length) {
             this.store.updateProcess(processId, {
                 groupMetadata: {
                     type: 'pipeline-execution',
-                    childProcessIds: result.itemProcessIds,
+                    childProcessIds,
                 },
             }).catch(() => {
                 // Non-fatal
@@ -1428,7 +1403,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 metadata: {
                     type: current?.metadata?.type ?? `queue-${task.type}`,
                     ...(current?.metadata ?? {}),
-                    executionStats: result.executionStats,
+                    executionStats: flatResult.stats,
                     pipelineConfig: config,
                 },
             });
@@ -1437,9 +1412,9 @@ export class CLITaskExecutor implements TaskExecutor {
         });
 
         return {
-            response: result.output?.formattedOutput ?? JSON.stringify(result.executionStats),
+            response: flatResult.formattedOutput ?? JSON.stringify(flatResult.stats),
             pipelineName: config.name,
-            stats: result.executionStats,
+            stats: flatResult.stats,
         };
     }
 
