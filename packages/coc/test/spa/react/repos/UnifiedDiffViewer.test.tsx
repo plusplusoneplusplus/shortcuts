@@ -544,3 +544,38 @@ describe('UnifiedDiffViewer — line number column alignment', () => {
         expect(addedGutters.length).toBe(contextGutters.length);
     });
 });
+
+// ============================================================================
+// UnifiedDiffViewer — no +/- prefix symbols
+// ============================================================================
+
+describe('UnifiedDiffViewer — diff prefix symbols hidden', () => {
+    it('added line does not render a + prefix', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
+        );
+        const addedLine = container.querySelector<HTMLElement>('[data-line-type="added"]')!;
+        expect(addedLine).toBeTruthy();
+        expect(addedLine.textContent).not.toContain('+');
+        expect(addedLine.textContent).toContain('new line');
+    });
+
+    it('removed line does not render a - prefix', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
+        );
+        const removedLine = container.querySelector<HTMLElement>('[data-line-type="removed"]')!;
+        expect(removedLine).toBeTruthy();
+        expect(removedLine.textContent).not.toContain('-');
+        expect(removedLine.textContent).toContain('old line');
+    });
+
+    it('context line renders content without leading space prefix', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
+        );
+        const contextLine = container.querySelector<HTMLElement>('[data-line-type="context"]')!;
+        expect(contextLine).toBeTruthy();
+        expect(contextLine.textContent).toContain('context line');
+    });
+});

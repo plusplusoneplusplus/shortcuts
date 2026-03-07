@@ -173,8 +173,7 @@ describe('UnifiedDiffViewer', () => {
             expect(source).toContain('dangerouslySetInnerHTML');
         });
 
-        it('separates prefix character from code content', () => {
-            expect(source).toContain('line[0]');
+        it('strips prefix character from code content for highlighting', () => {
             expect(source).toContain('line.slice(1)');
         });
     });

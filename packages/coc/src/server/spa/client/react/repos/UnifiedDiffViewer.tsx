@@ -335,7 +335,6 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             {lines.map((line, i) => {
                 const { type, oldLine, newLine } = diffLines[i];
                 if ((type === 'added' || type === 'removed' || type === 'context') && line.length > 0) {
-                    const prefix = line[0];
                     const content = line.slice(1);
                     const html = highlightLine(content, languages[i]);
                     return (
@@ -376,7 +375,6 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                                 </span>
                             )}
                             <span className="px-1 flex-1 min-w-0">
-                                <span>{prefix}</span>
                                 <span dangerouslySetInnerHTML={{ __html: html }} />
                             </span>
                         </div>
