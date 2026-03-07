@@ -369,7 +369,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     return (
                         <div
                             key={i}
-                            className={`whitespace-pre flex ${LINE_CLASSES[type]} ${getLineHighlightClass(lineCommentMap.get(i))}`}
+                            className={`whitespace-pre-wrap break-words flex ${LINE_CLASSES[type]} ${getLineHighlightClass(lineCommentMap.get(i))}`}
                             data-diff-line-index={enableComments ? i : undefined}
                             data-old-line={enableComments ? (oldLine ?? '') : undefined}
                             data-new-line={enableComments ? (newLine ?? '') : undefined}
@@ -413,7 +413,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                 return (
                     <div
                         key={i}
-                        className={`whitespace-pre flex ${LINE_CLASSES[type]} ${getLineHighlightClass(lineCommentMap.get(i))}`}
+                        className={`whitespace-pre-wrap break-words flex ${LINE_CLASSES[type]} ${getLineHighlightClass(lineCommentMap.get(i))}`}
                         data-diff-line-index={enableComments ? i : undefined}
                         data-old-line={enableComments ? (oldLine ?? '') : undefined}
                         data-new-line={enableComments ? (newLine ?? '') : undefined}

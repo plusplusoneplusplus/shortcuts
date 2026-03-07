@@ -501,7 +501,7 @@ describe('UnifiedDiffViewer — line number column alignment', () => {
             <UnifiedDiffViewer diff={SIMPLE_DIFF} showLineNumbers data-testid="diff" />
         );
         // Collect all line-number gutter spans (w-8 columns) from content lines
-        const allLines = container.querySelectorAll<HTMLElement>('.whitespace-pre');
+        const allLines = container.querySelectorAll<HTMLElement>('.whitespace-pre-wrap');
         const gutterSpans: HTMLElement[] = [];
         allLines.forEach(line => {
             line.querySelectorAll<HTMLElement>('span').forEach(span => {
@@ -577,5 +577,25 @@ describe('UnifiedDiffViewer — diff prefix symbols hidden', () => {
         const contextLine = container.querySelector<HTMLElement>('[data-line-type="context"]')!;
         expect(contextLine).toBeTruthy();
         expect(contextLine.textContent).toContain('context line');
+    });
+});
+
+// ============================================================================
+// UnifiedDiffViewer — word wrap default
+// ============================================================================
+
+describe('UnifiedDiffViewer — word wrap', () => {
+    it('diff lines use whitespace-pre-wrap and break-words by default', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} data-testid="diff" />
+        );
+        const contentLines = container.querySelectorAll<HTMLElement>('.whitespace-pre-wrap');
+        expect(contentLines.length).toBeGreaterThan(0);
+        for (const line of Array.from(contentLines)) {
+            expect(line.className).toContain('break-words');
+        }
+        // No lines should use whitespace-pre (non-wrapping)
+        const nonWrappedLines = container.querySelectorAll<HTMLElement>('.whitespace-pre:not(.whitespace-pre-wrap)');
+        expect(nonWrappedLines.length).toBe(0);
     });
 });
