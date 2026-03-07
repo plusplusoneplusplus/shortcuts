@@ -213,7 +213,7 @@ export function ConversationMetadataPopover({ process, turnsCount }: { process: 
             {open && !isMobile && ReactDOM.createPortal(
                 <div
                     ref={popoverRef}
-                    className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
+                    className="fixed z-50 w-[480px] max-w-[calc(100vw-16px)] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
                     style={{ top: menuPos.top, left: menuPos.left }}
                 >
                     {popoverContent}
