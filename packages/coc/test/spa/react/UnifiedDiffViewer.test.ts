@@ -135,6 +135,10 @@ describe('UnifiedDiffViewer', () => {
             expect(source).toContain('bg-[#f5f5f5] dark:bg-[#2d2d2d]');
             expect(source).toContain('border border-[#e0e0e0] dark:border-[#3c3c3c] rounded');
         });
+
+        it('line number columns use shrink-0 to prevent flex collapse', () => {
+            expect(source).toContain('w-8 shrink-0 inline-block');
+        });
     });
 
     describe('imports', () => {

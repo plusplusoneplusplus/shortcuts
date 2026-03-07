@@ -283,10 +283,10 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                         >
                             {showLineNumbers && (
                                 <>
-                                    <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
+                                    <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
                                         {oldLine ?? ''}
                                     </span>
-                                    <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
+                                    <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
                                         {newLine ?? ''}
                                     </span>
                                 </>
@@ -327,10 +327,10 @@ export function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enabl
                     >
                         {showLineNumbers && (
                             <>
-                                <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
+                                <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
                                     {oldLine ?? ''}
                                 </span>
-                                <span className="select-none text-right w-8 inline-block text-[#6e7681] pr-1">
+                                <span className="select-none text-right w-8 shrink-0 inline-block text-[#6e7681] pr-1">
                                     {newLine ?? ''}
                                 </span>
                             </>

@@ -486,3 +486,61 @@ describe('UnifiedDiffViewer — comment badges and highlights', () => {
         expect(badge.textContent).toBe('1');
     });
 });
+
+// ============================================================================
+// UnifiedDiffViewer — line number alignment
+// ============================================================================
+
+describe('UnifiedDiffViewer — line number column alignment', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('line number spans have shrink-0 to prevent flex collapse', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} showLineNumbers data-testid="diff" />
+        );
+        // Collect all line-number gutter spans (w-8 columns) from content lines
+        const allLines = container.querySelectorAll<HTMLElement>('.whitespace-pre');
+        const gutterSpans: HTMLElement[] = [];
+        allLines.forEach(line => {
+            line.querySelectorAll<HTMLElement>('span').forEach(span => {
+                if (span.className.includes('w-8')) {
+                    gutterSpans.push(span);
+                }
+            });
+        });
+        expect(gutterSpans.length).toBeGreaterThan(0);
+        for (const span of gutterSpans) {
+            expect(span.className).toContain('shrink-0');
+        }
+    });
+
+    it('removed line has same number of gutter spans as context line', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} showLineNumbers enableComments data-testid="diff" />
+        );
+        const removedLine = container.querySelector<HTMLElement>('[data-line-type="removed"]')!;
+        const contextLine = container.querySelector<HTMLElement>('[data-line-type="context"]')!;
+        expect(removedLine).toBeTruthy();
+        expect(contextLine).toBeTruthy();
+
+        const removedGutters = removedLine.querySelectorAll('span.select-none');
+        const contextGutters = contextLine.querySelectorAll('span.select-none');
+        expect(removedGutters.length).toBe(contextGutters.length);
+    });
+
+    it('added line has same number of gutter spans as context line', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} showLineNumbers enableComments data-testid="diff" />
+        );
+        const addedLine = container.querySelector<HTMLElement>('[data-line-type="added"]')!;
+        const contextLine = container.querySelector<HTMLElement>('[data-line-type="context"]')!;
+        expect(addedLine).toBeTruthy();
+        expect(contextLine).toBeTruthy();
+
+        const addedGutters = addedLine.querySelectorAll('span.select-none');
+        const contextGutters = contextLine.querySelectorAll('span.select-none');
+        expect(addedGutters.length).toBe(contextGutters.length);
+    });
+});
