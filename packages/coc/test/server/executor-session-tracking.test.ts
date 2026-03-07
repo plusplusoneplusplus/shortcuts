@@ -67,11 +67,11 @@ describe('executor session tracking', () => {
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-init-1',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'Explain this' },
+                payload: { kind: 'chat', mode: 'ask', prompt: 'Explain this' },
                 config: { timeoutMs: 30000 },
             };
 
@@ -85,11 +85,11 @@ describe('executor session tracking', () => {
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-init-2',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'What is X?' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'What is X?' },
                 config: { timeoutMs: 30000 },
             };
 
@@ -113,11 +113,11 @@ describe('executor session tracking', () => {
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
                 id: 'task-init-3',
-                type: 'ai-clarification',
+                type: 'chat',
                 priority: 'normal',
                 status: 'running',
                 createdAt: Date.now(),
-                payload: { prompt: 'test' },
+                payload: { kind: 'chat', mode: 'ask', prompt: 'test' },
                 config: { timeoutMs: 30000 },
             };
 

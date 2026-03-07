@@ -3,7 +3,7 @@
  *
  * Tests for:
  * - GET /api/queue/:id/resolved-prompt endpoint
- * - Enhanced SPA rendering for follow-prompt, ai-clarification, and task-generation tasks
+ * - Enhanced SPA rendering for chat tasks with various modes and contexts
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -104,7 +104,7 @@ describe('Queue Resolved Prompt Endpoint', () => {
         expect(res.status).toBe(404);
     });
 
-    it('should return resolved prompt for follow-prompt task with plan file', async () => {
+    it('should return resolved prompt for chat task with plan file', async () => {
         const srv = await startServer();
 
         // Create a plan file
@@ -112,11 +112,16 @@ describe('Queue Resolved Prompt Endpoint', () => {
         fs.writeFileSync(planFile, '# Test Plan\n\nThis is a test plan.');
 
         const task = await enqueueTask(srv, {
-            type: 'follow-prompt',
+            type: 'chat',
             payload: {
-                promptContent: 'Use the impl skill.',
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Use the impl skill.',
                 planFilePath: planFile,
-                skillName: 'impl',
+                context: {
+                    skills: ['impl'],
+                    files: [planFile],
+                },
                 workingDirectory: tmpDir,
             },
         });
@@ -125,24 +130,27 @@ describe('Queue Resolved Prompt Endpoint', () => {
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.taskId).toBe(task.id);
-        expect(body.type).toBe('follow-prompt');
+        expect(body.type).toBe('chat');
         expect(body.planFilePath).toBe(planFile);
         expect(body.planFileContent).toBe('# Test Plan\n\nThis is a test plan.');
         expect(body.resolvedPrompt).toContain('Plan File');
         expect(body.resolvedPrompt).toContain('Use the impl skill.');
     });
 
-    it('should return resolved prompt for follow-prompt task with prompt file', async () => {
+    it('should return resolved prompt for chat task with prompt file', async () => {
         const srv = await startServer();
 
         const promptFile = path.join(tmpDir, 'prompt.md');
         fs.writeFileSync(promptFile, '# Prompt Instructions\n\nDo the thing.');
 
         const task = await enqueueTask(srv, {
-            type: 'follow-prompt',
+            type: 'chat',
             payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Follow instructions.',
                 promptFilePath: promptFile,
-                promptContent: 'Follow instructions.',
+                context: { files: [promptFile] },
                 workingDirectory: tmpDir,
             },
         });
@@ -159,9 +167,11 @@ describe('Queue Resolved Prompt Endpoint', () => {
         const srv = await startServer();
 
         const task = await enqueueTask(srv, {
-            type: 'follow-prompt',
+            type: 'chat',
             payload: {
-                promptContent: 'Some prompt.',
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Some prompt.',
                 planFilePath: path.join(tmpDir, 'nonexistent.md'),
                 workingDirectory: tmpDir,
             },
@@ -179,9 +189,11 @@ describe('Queue Resolved Prompt Endpoint', () => {
         const srv = await startServer();
 
         const task = await enqueueTask(srv, {
-            type: 'follow-prompt',
+            type: 'chat',
             payload: {
-                promptContent: 'Do something.',
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Do something.',
                 additionalContext: 'Extra context here.',
                 workingDirectory: tmpDir,
             },
@@ -194,14 +206,15 @@ describe('Queue Resolved Prompt Endpoint', () => {
         expect(body.resolvedPrompt).toContain('Extra context here.');
     });
 
-    it('should return resolved prompt for ai-clarification task', async () => {
+    it('should return resolved prompt for chat ask task', async () => {
         const srv = await startServer();
 
         const task = await enqueueTask(srv, {
-            type: 'ai-clarification',
+            type: 'chat',
             payload: {
+                kind: 'chat',
+                mode: 'ask',
                 prompt: 'Explain this code.',
-                filePath: '/some/file.ts',
                 workingDirectory: tmpDir,
             },
         });
@@ -212,35 +225,41 @@ describe('Queue Resolved Prompt Endpoint', () => {
         expect(body.resolvedPrompt).toContain('Explain this code.');
     });
 
-    it('should return task info for custom task without files', async () => {
+    it('should return task info for chat task without files', async () => {
         const srv = await startServer();
 
         const task = await enqueueTask(srv, {
-            type: 'custom',
-            payload: { data: { prompt: 'Custom task prompt' } },
+            type: 'chat',
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Custom task prompt' },
         });
 
         const res = await httpRequest(`${srv.url}/api/queue/${task.id}/resolved-prompt`);
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.taskId).toBe(task.id);
-        expect(body.type).toBe('custom');
+        expect(body.type).toBe('chat');
         // No file paths, so no resolved content
         expect(body.planFileContent).toBeUndefined();
         expect(body.promptFileContent).toBeUndefined();
     });
 
-    it('should return resolved prompt for resolve-comments task using promptTemplate', async () => {
+    it('should return resolved prompt for chat task with resolve-comments context', async () => {
         const srv = await startServer();
 
         const task = await enqueueTask(srv, {
-            type: 'resolve-comments',
+            type: 'chat',
             payload: {
-                documentUri: 'docs/readme.md',
-                commentIds: ['comment-1'],
-                promptTemplate: '# Document Revision Request\n\nUse full prompt content.',
-                documentContent: '# Old',
-                filePath: 'docs/readme.md',
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: '# Document Revision Request\n\nUse full prompt content.',
+                context: {
+                    resolveComments: {
+                        documentUri: 'docs/readme.md',
+                        commentIds: ['comment-1'],
+                        documentContent: '# Old',
+                        filePath: 'docs/readme.md',
+                    },
+                },
                 workingDirectory: tmpDir,
             },
         });
@@ -249,7 +268,7 @@ describe('Queue Resolved Prompt Endpoint', () => {
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.taskId).toBe(task.id);
-        expect(body.type).toBe('resolve-comments');
+        expect(body.type).toBe('chat');
         expect(body.resolvedPrompt).toContain('=== Prompt ===');
         expect(body.resolvedPrompt).toContain('Use full prompt content.');
     });

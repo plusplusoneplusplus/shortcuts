@@ -44,20 +44,20 @@ function makeOldState(tasks: Array<{ id: string; status: string; workingDirector
         savedAt: new Date().toISOString(),
         pending: tasks.filter(t => t.status === 'queued' || t.status === 'running').map(t => ({
             id: t.id,
-            type: 'custom',
+            type: 'chat',
             priority: 'normal',
             status: t.status,
             createdAt: Date.now(),
-            payload: { workingDirectory: t.workingDirectory },
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'migrated task', workingDirectory: t.workingDirectory },
             config: {},
         })),
         history: tasks.filter(t => t.status === 'completed' || t.status === 'failed').map(t => ({
             id: t.id,
-            type: 'custom',
+            type: 'chat',
             priority: 'normal',
             status: t.status,
             createdAt: Date.now(),
-            payload: { workingDirectory: t.workingDirectory },
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'migrated task', workingDirectory: t.workingDirectory },
             config: {},
         })),
     };
@@ -80,11 +80,13 @@ function makeRepoState(rootPath: string, pending: unknown[] = [], history: unkno
 function makeTask(id: string, status: string, workingDirectory?: string) {
     return {
         id,
-        type: 'custom' as const,
+        type: 'chat' as const,
         priority: 'normal' as const,
         status,
         createdAt: Date.now(),
-        payload: workingDirectory ? { workingDirectory } : {},
+        payload: workingDirectory
+            ? { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory }
+            : { kind: 'chat', mode: 'autopilot', prompt: 'test task' },
         config: {},
     };
 }
@@ -165,9 +167,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/path/to/repo1' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/path/to/repo1' },
                 config: {},
             });
 
@@ -188,9 +190,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: {},
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task' },
                 config: {},
             });
 
@@ -214,15 +216,15 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/repo/alpha' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/repo/alpha' },
                 config: {},
             });
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/repo/beta' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/repo/beta' },
                 config: {},
             });
 
@@ -244,16 +246,16 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/repo/shared' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/repo/shared' },
                 config: {},
                 displayName: 'task-1',
             });
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/repo/shared' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/repo/shared' },
                 config: {},
                 displayName: 'task-2',
             });
@@ -410,9 +412,9 @@ describe('QueuePersistence', () => {
 
             // Enqueue a task for a *different* repo so the save triggers cleanup
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/active/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/active/repo' },
                 config: {},
             });
 
@@ -531,9 +533,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/dispose/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/dispose/repo' },
                 config: {},
             });
 
@@ -557,9 +559,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'follow-prompt',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/roundtrip/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'Follow instructions.', workingDirectory: '/roundtrip/repo' },
                 config: {},
                 displayName: 'My Task',
             });
@@ -575,7 +577,7 @@ describe('QueuePersistence', () => {
 
             const queued = qm2.getQueued();
             expect(queued).toHaveLength(1);
-            expect(queued[0].type).toBe('follow-prompt');
+            expect(queued[0].type).toBe('chat');
             expect(queued[0].displayName).toBe('My Task');
 
             p2.dispose();
@@ -585,16 +587,16 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/round/repo1' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/round/repo1' },
                 config: {},
                 displayName: 'R1',
             });
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/round/repo2' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/round/repo2' },
                 config: {},
                 displayName: 'R2',
             });
@@ -625,9 +627,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/paused/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/paused/repo' },
                 config: {},
             });
 
@@ -645,9 +647,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/active/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/active/repo' },
                 config: {},
             });
 
@@ -663,15 +665,15 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/repo/alpha' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/repo/alpha' },
                 config: {},
             });
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/repo/beta' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/repo/beta' },
                 config: {},
             });
 
@@ -816,9 +818,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/roundtrip/paused' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/roundtrip/paused' },
                 config: {},
                 displayName: 'Paused Task',
             });
@@ -852,15 +854,15 @@ describe('QueuePersistence', () => {
 
             // Enqueue tasks for two different repos
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/pause/repo-A' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/pause/repo-A' },
                 config: {},
             });
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/pause/repo-B' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/pause/repo-B' },
                 config: {},
             });
 
@@ -929,21 +931,21 @@ describe('QueuePersistence', () => {
 
             // Enqueue tasks for three repos
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/mixed/repo-1' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/mixed/repo-1' },
                 config: {},
             });
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/mixed/repo-2' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/mixed/repo-2' },
                 config: {},
             });
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/mixed/repo-3' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/mixed/repo-3' },
                 config: {},
             });
 
@@ -1053,9 +1055,9 @@ describe('QueuePersistence', () => {
 
             // Enqueue then complete a task (so history is non-empty initially)
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/g1/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/g1/repo' },
                 config: {},
             });
 
@@ -1074,9 +1076,9 @@ describe('QueuePersistence', () => {
             persistence = new QueuePersistence(queueManager, dataDir);
 
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/g1/roundtrip' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/g1/roundtrip' },
                 config: {},
             });
 
@@ -1184,21 +1186,21 @@ describe('QueuePersistence', () => {
             // Fill history with 10 completed tasks
             const histTasks = Array.from({ length: 10 }, (_, i) => ({
                 id: `h${i}`,
-                type: 'custom' as const,
+                type: 'chat' as const,
                 priority: 'normal' as const,
                 status: 'completed',
                 createdAt: Date.now(),
                 completedAt: Date.now(),
-                payload: { workingDirectory: '/g6/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/g6/repo' },
                 config: {},
             }));
             queueManager.restoreHistory(histTasks as any);
 
             // Need at least one pending task to trigger save
             queueManager.enqueue({
-                type: 'custom',
+                type: 'chat',
                 priority: 'normal',
-                payload: { workingDirectory: '/g6/repo' },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/g6/repo' },
                 config: {},
             });
 

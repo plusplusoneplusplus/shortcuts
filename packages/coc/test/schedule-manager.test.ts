@@ -453,7 +453,7 @@ describe('ScheduleManager', () => {
     });
 
     describe('executeRun dispatch by targetType', () => {
-        it('enqueues follow-prompt task when targetType is undefined', async () => {
+        it('enqueues chat task with autopilot mode when targetType is undefined', async () => {
             const enqueued: any[] = [];
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_1'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
@@ -470,15 +470,17 @@ describe('ScheduleManager', () => {
             await mgr.triggerRun(REPO_ID, schedule.id);
 
             expect(enqueued).toHaveLength(1);
-            expect(enqueued[0].type).toBe('follow-prompt');
-            expect(enqueued[0].payload.promptFilePath).toBe('my-prompt.md');
-            expect(enqueued[0].payload.scheduleId).toBe(schedule.id);
+            expect(enqueued[0].type).toBe('chat');
+            expect(enqueued[0].payload.kind).toBe('chat');
+            expect(enqueued[0].payload.mode).toBe('autopilot');
+            expect(enqueued[0].payload.context.files).toContain('my-prompt.md');
+            expect(enqueued[0].payload.context.scheduleId).toBe(schedule.id);
             expect(enqueued[0].displayName).toBe('[Schedule] Prompt Schedule');
 
             mgr.dispose();
         });
 
-        it('enqueues follow-prompt task when targetType is prompt', async () => {
+        it('enqueues chat task with autopilot mode when targetType is prompt', async () => {
             const enqueued: any[] = [];
             const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_2'; } };
             const mgr = new ScheduleManager(persistence, mockQueue as any);
@@ -496,7 +498,9 @@ describe('ScheduleManager', () => {
             await mgr.triggerRun(REPO_ID, schedule.id);
 
             expect(enqueued).toHaveLength(1);
-            expect(enqueued[0].type).toBe('follow-prompt');
+            expect(enqueued[0].type).toBe('chat');
+            expect(enqueued[0].payload.kind).toBe('chat');
+            expect(enqueued[0].payload.mode).toBe('autopilot');
             expect(enqueued[0].displayName).toBe('[Schedule] Explicit Prompt');
 
             mgr.dispose();
