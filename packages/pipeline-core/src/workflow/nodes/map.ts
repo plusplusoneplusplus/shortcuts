@@ -64,7 +64,7 @@ export async function executeMap(
     inputs: Items,
     options: WorkflowExecutionOptions
 ): Promise<Items> {
-    const resolvedPrompt = await resolvePrompt(config.prompt, config.promptFile, options, options.parameters);
+    const resolvedPrompt = await resolvePrompt(config.prompt, config.promptFile, options, options.parameters, config.skill);
     const concurrency = config.concurrency ?? options.concurrency ?? 5;
     const limiter = new ConcurrencyLimiter(concurrency);
 

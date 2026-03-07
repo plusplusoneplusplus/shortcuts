@@ -8,6 +8,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { Item, Items, WorkflowExecutionOptions } from '../types';
 import { substituteVariables } from '../../utils/template-engine';
+import { resolveSkill } from '../../pipeline/skill-resolver';
+import { getLogger, LogCategory } from '../../logger';
 
 // ---------------------------------------------------------------------------
 // JSON extraction
@@ -76,13 +78,14 @@ export function mergeOutput(item: Item, response: string, outputFields?: string[
 
 /**
  * Resolve a prompt template from either an inline string or a file path.
- * Optionally substitutes top-level parameters (preserving special and item-level variables).
+ * Optionally resolves a skill (prepended) and substitutes top-level parameters.
  */
 export async function resolvePrompt(
     prompt: string | undefined,
     promptFile: string | undefined,
     options: WorkflowExecutionOptions,
     parameters?: Record<string, string>,
+    skillName?: string,
 ): Promise<string> {
     let resolved: string;
     if (prompt) {
@@ -93,6 +96,19 @@ export async function resolvePrompt(
         resolved = await fs.readFile(filePath, 'utf-8');
     } else {
         throw new Error('Node config requires either `prompt` or `promptFile`');
+    }
+
+    // Prepend skill content if specified
+    if (skillName && options.workspaceRoot) {
+        try {
+            const skillContent = await resolveSkill(skillName, options.workspaceRoot);
+            resolved = skillContent + '\n\n' + resolved;
+        } catch (err) {
+            getLogger().warn(
+                LogCategory.PIPELINE,
+                `[Workflow] Failed to resolve skill "${skillName}": ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
     }
 
     // Substitute top-level parameters (before item-level substitution)

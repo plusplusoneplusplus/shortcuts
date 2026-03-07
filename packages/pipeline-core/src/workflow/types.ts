@@ -213,6 +213,8 @@ export interface MapNodeConfig extends BaseNode {
     prompt?: string;
     /** Path to a prompt file (relative to workflowDirectory). */
     promptFile?: string;
+    /** Skill name to resolve and prepend to prompt. */
+    skill?: string;
     /** Field names to parse from the AI response. */
     output?: string[];
     /** Model override for this node. */
@@ -238,6 +240,8 @@ export interface ReduceNodeConfig extends BaseNode {
     prompt?: string;
     /** Path to a prompt file (alternative to `prompt` for the `'ai'` strategy). */
     promptFile?: string;
+    /** Skill name to resolve and prepend to prompt (only used when strategy is 'ai'). */
+    skill?: string;
     /** Field names to parse from the AI response (for `'ai'` strategy). */
     output?: string[];
     /** Model override for this node. */
@@ -286,6 +290,8 @@ export interface AINodeConfig extends BaseNode {
     prompt?: string;
     /** Path to a prompt file (relative to workflowDirectory). */
     promptFile?: string;
+    /** Skill name to resolve and prepend to prompt. */
+    skill?: string;
     /** Field names to parse from the AI response. */
     output?: string[];
     /** Model override for this node. */
