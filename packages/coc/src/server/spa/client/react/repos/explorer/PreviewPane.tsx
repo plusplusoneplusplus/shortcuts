@@ -228,7 +228,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
                         )}
                         <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]" data-testid="preview-code">
                             {lines.map((line, i) => (
-                                <div key={i} className="flex border-b last:border-b-0 border-[#f0f0f0] dark:border-[#2d2d2d]" data-testid="preview-code-line">
+                                <div key={i} className="flex" data-testid="preview-code-line">
                                     <span
                                         className="select-none text-right px-3 py-1 text-xs font-mono text-[#848484] border-r border-[#f0f0f0] dark:border-[#2d2d2d] bg-[#fafafa] dark:bg-[#252526]"
                                         style={{ minWidth: `${gutterWidth}ch` }}
