@@ -310,6 +310,46 @@ describe('RepoDetail Queue Task button in header', () => {
     });
 });
 
+describe('RepoDetail Ask button in header', () => {
+    it('renders Ask button with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-ask-btn"');
+    });
+
+    it('dispatches OPEN_DIALOG with mode ask on click', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })");
+    });
+
+    it('Ask button appears after Queue Task button', () => {
+        const queueBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        const askBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+        expect(queueBtnIdx).toBeGreaterThan(-1);
+        expect(askBtnIdx).toBeGreaterThan(-1);
+        expect(askBtnIdx).toBeGreaterThan(queueBtnIdx);
+    });
+
+    it('Ask button appears before Generate Plan button', () => {
+        const askBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+        const genBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
+        expect(askBtnIdx).toBeLessThan(genBtnIdx);
+    });
+
+    it('uses primary variant', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-ask-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="primary"');
+    });
+
+    it('mobile overflow menu includes Ask option', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-ask"');
+    });
+
+    it('mobile Ask option dispatches OPEN_DIALOG with mode ask', () => {
+        const askIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-ask');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, askIdx - 300), askIdx + 200);
+        expect(block).toContain("mode: 'ask'");
+    });
+});
+
 describe('RepoDetail Git tab wiring', () => {
     it('imports RepoGitTab', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { RepoGitTab } from './RepoGitTab'");

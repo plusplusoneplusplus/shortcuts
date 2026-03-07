@@ -16,6 +16,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         showDialog: false,
         dialogInitialFolderPath: null,
         dialogInitialWorkspaceId: null,
+        dialogMode: 'task' as const,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -432,6 +433,17 @@ describe('QueueContext reducer', () => {
             expect(result.showDialog).toBe(true);
             expect(result.dialogInitialFolderPath).toBeNull();
         });
+
+        it('sets dialogMode to ask when mode is ask', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1', mode: 'ask' });
+            expect(result.showDialog).toBe(true);
+            expect(result.dialogMode).toBe('ask');
+        });
+
+        it('defaults dialogMode to task when mode is omitted', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1' });
+            expect(result.dialogMode).toBe('task');
+        });
     });
 
     // ── Dialog and history toggles ─────────────────────────────────
@@ -448,6 +460,12 @@ describe('QueueContext reducer', () => {
             const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
             expect(result.showDialog).toBe(false);
             expect(result.dialogInitialFolderPath).toBeNull();
+        });
+
+        it('CLOSE_DIALOG resets dialogMode to task', () => {
+            const state = makeState({ showDialog: true, dialogMode: 'ask' });
+            const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
+            expect(result.dialogMode).toBe('task');
         });
 
         it('TOGGLE_HISTORY toggles showHistory', () => {

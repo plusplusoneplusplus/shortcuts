@@ -235,6 +235,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                         </button>
                                         <button
                                             className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                            data-testid="repo-more-ask"
+                                            onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }); }}
+                                        >
+                                            💬 Ask
+                                        </button>
+                                        <button
+                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                             data-testid="repo-more-generate"
                                             onClick={() => { setMoreMenuOpen(false); handleOpenGenerateDialog(); }}
                                         >
@@ -268,6 +275,15 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 data-testid="repo-queue-task-btn"
                             >
                                 + Queue Task
+                            </Button>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' })}
+                                title="Ask AI a question (read-only)"
+                                data-testid="repo-ask-btn"
+                            >
+                                💬 Ask
                             </Button>
                             <Button variant="primary" size="sm" id="repo-generate-btn" data-testid="repo-generate-btn" onClick={() => handleOpenGenerateDialog()} className="relative">
                                 ✨ Generate Plan

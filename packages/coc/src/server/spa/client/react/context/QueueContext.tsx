@@ -29,6 +29,8 @@ export interface QueueContextState {
     showDialog: boolean;
     dialogInitialFolderPath: string | null;
     dialogInitialWorkspaceId: string | null;
+    /** When 'ask', the dialog creates a read-only chat instead of a follow-prompt task. */
+    dialogMode: 'task' | 'ask';
     showHistory: boolean;
     isFollowUpStreaming: boolean;
     currentStreamingTurnIndex: number | null;
@@ -72,6 +74,7 @@ const initialState: QueueContextState = {
     showDialog: false,
     dialogInitialFolderPath: null,
     dialogInitialWorkspaceId: null,
+    dialogMode: 'task',
     showHistory: false,
     isFollowUpStreaming: false,
     currentStreamingTurnIndex: null,
@@ -96,7 +99,7 @@ export type QueueAction =
     | { type: 'DRAIN_COMPLETE' }
     | { type: 'DRAIN_TIMEOUT' }
     | { type: 'TOGGLE_DIALOG' }
-    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null }
+    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' }
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
@@ -176,9 +179,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         case 'TOGGLE_DIALOG':
             return { ...state, showDialog: !state.showDialog };
         case 'OPEN_DIALOG':
-            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null };
+            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null, dialogMode: action.mode ?? 'task' };
         case 'CLOSE_DIALOG':
-            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null };
+            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null, dialogMode: 'task' };
         case 'TOGGLE_HISTORY':
             return { ...state, showHistory: !state.showHistory };
         case 'SET_FOLLOW_UP_STREAMING':

@@ -38,6 +38,7 @@ export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { isMobile } = useBreakpoint();
+    const isAskMode = queueState.dialogMode === 'ask';
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
@@ -128,7 +129,28 @@ export function EnqueueDialog() {
         if (!effectiveSkill && !effectivePrompt) return;
         setSubmitting(true);
         try {
-            if (effectiveSkill) {
+            if (isAskMode) {
+                // Ask mode: create a read-only chat task
+                const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
+                const body: any = {
+                    type: 'chat',
+                    priority: 'normal',
+                    payload: {
+                        kind: 'chat',
+                        prompt: effectivePrompt || `Ask: ${effectiveSkill}`,
+                        readonly: true,
+                        workspaceId: workspaceId || undefined,
+                        workingDirectory: ws?.rootPath || undefined,
+                    },
+                    images: images.length > 0 ? images : undefined,
+                };
+                if (model) body.config = { model };
+                await fetch(getApiBase() + '/queue/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+            } else if (effectiveSkill) {
                 // Skill-based task: POST to /api/queue/tasks with follow-prompt type
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
                 const workingDirectory = ws?.rootPath || '';
@@ -183,7 +205,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill, slashCommands]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill, slashCommands, isAskMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt);
@@ -329,6 +351,9 @@ export function EnqueueDialog() {
         </div>
     );
 
+    const dialogTitle = isAskMode ? 'Ask AI (Read-only)' : 'Enqueue AI Task';
+    const submitLabel = isAskMode ? 'Ask' : 'Enqueue';
+
     const footer = (
         <>
             <Button variant="secondary" onClick={() => queueDispatch({ type: 'CLOSE_DIALOG' })}>
@@ -341,7 +366,7 @@ export function EnqueueDialog() {
                 disabled={!selectedSkill && !prompt.trim()}
                 title="Ctrl+Enter"
             >
-                Enqueue
+                {submitLabel}
             </Button>
         </>
     );
@@ -352,7 +377,7 @@ export function EnqueueDialog() {
                 open={queueState.showDialog}
                 onClose={() => queueDispatch({ type: 'CLOSE_DIALOG' })}
                 onMinimize={submitting ? undefined : handleMinimize}
-                title="Enqueue AI Task"
+                title={dialogTitle}
                 footer={footer}
                 resizable
             >
@@ -366,7 +391,7 @@ export function EnqueueDialog() {
             open={queueState.showDialog}
             onClose={() => queueDispatch({ type: 'CLOSE_DIALOG' })}
             onMinimize={submitting ? undefined : handleMinimize}
-            title="Enqueue AI Task"
+            title={dialogTitle}
             footer={footer}
         >
             {dialogContent}

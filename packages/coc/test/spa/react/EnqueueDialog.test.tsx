@@ -60,10 +60,10 @@ function WorkspaceSetter({ workspaces }: { workspaces: any[] }) {
 }
 
 // Helper to open dialog via dispatch
-function DialogOpener({ folderPath, workspaceId }: { folderPath?: string | null; workspaceId?: string | null }) {
+function DialogOpener({ folderPath, workspaceId, mode }: { folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' }) {
     const { dispatch } = useQueue();
     useEffect(() => {
-        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId });
+        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId, mode });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
 }
@@ -1666,5 +1666,102 @@ describe('EnqueueDialog slash commands', () => {
         const body = posts[0].body;
         // Dropdown selection ('draft') takes priority over /impl in prompt
         expect(body.payload.skillName).toBe('draft');
+    });
+});
+
+// ============================================================================
+// EnqueueDialog ask mode tests
+// ============================================================================
+
+describe('EnqueueDialog ask mode', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows "Ask AI (Read-only)" title when mode is ask', async () => {
+        render(
+            <Wrap>
+                <DialogOpener mode="ask" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy();
+        });
+    });
+
+    it('shows "Ask" submit button when mode is ask', async () => {
+        render(
+            <Wrap>
+                <DialogOpener mode="ask" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Ask')).toBeTruthy();
+        });
+    });
+
+    it('shows "Enqueue AI Task" title when mode is task (default)', async () => {
+        render(
+            <Wrap>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+    });
+
+    it('submits a chat task with readonly:true in ask mode', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener mode="ask" workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy();
+        });
+
+        const textarea = screen.getByRole('textbox');
+        fireEvent.change(textarea, { target: { value: 'What does this function do?' } });
+        fireEvent.click(screen.getByText('Ask'));
+
+        await waitFor(() => {
+            expect(postBody).not.toBeNull();
+        });
+
+        expect(postBody.type).toBe('chat');
+        expect(postBody.payload.kind).toBe('chat');
+        expect(postBody.payload.readonly).toBe(true);
+        expect(postBody.payload.prompt).toBe('What does this function do?');
     });
 });
