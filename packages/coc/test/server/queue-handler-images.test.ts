@@ -80,7 +80,7 @@ function removeDirSafe(dir: string): void {
     try {
         fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     } catch (error: any) {
-        if (error?.code !== 'ENOENT') {
+        if (error?.code !== 'ENOENT' && error?.code !== 'ENOTEMPTY') {
             throw error;
         }
     }
