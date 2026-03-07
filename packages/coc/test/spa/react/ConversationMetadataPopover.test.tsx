@@ -17,7 +17,7 @@ const BASE_PROCESS = {
     endTime: '2026-01-15T10:05:00Z',
     workingDirectory: '/home/user/project',
     workspaceName: 'my-workspace',
-    metadata: { queueTaskId: 'qt-456', model: 'gpt-4', backend: 'copilot-sdk' },
+    metadata: { queueTaskId: 'qt-456', model: 'gpt-4', backend: 'copilot-sdk', mode: 'autopilot' },
 };
 
 function renderPopover(process: any = BASE_PROCESS, turnsCount?: number) {
@@ -66,6 +66,8 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('completed')).toBeDefined();
         expect(screen.getByText('Model')).toBeDefined();
         expect(screen.getByText('gpt-4')).toBeDefined();
+        expect(screen.getByText('Mode')).toBeDefined();
+        expect(screen.getByText('autopilot')).toBeDefined();
         expect(screen.getByText('Backend')).toBeDefined();
         expect(screen.getByText('copilot-sdk')).toBeDefined();
         expect(screen.getByText('Working Directory')).toBeDefined();

@@ -63,7 +63,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
         return {
             ...task,
             id: processId ?? task.id,
-            metadata: { queueTaskId: task.id, model: task.config?.model, ...task.metadata },
+            metadata: { queueTaskId: task.id, model: task.config?.model, mode: (task as any)?.payload?.mode, ...task.metadata },
         };
     }, [task, processId]);
 

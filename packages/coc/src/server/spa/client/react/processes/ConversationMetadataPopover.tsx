@@ -76,6 +76,7 @@ function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Type', process.type);
     push('Status', process.status);
     push('Model', process?.metadata?.model || process?.config?.model || process?.model);
+    push('Mode', process?.metadata?.mode || process?.mode);
     push('Session ID', sessionId, { breakAll: true, mono: true });
     push('Backend', process?.metadata?.backend);
     push('Started', formatTimestamp(startedAt));
