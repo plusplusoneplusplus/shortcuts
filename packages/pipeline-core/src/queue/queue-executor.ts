@@ -8,7 +8,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { ConcurrencyLimiter, CancellationError } from '../map-reduce/concurrency-limiter';
+import { ConcurrencyLimiter, CancellationError } from '../workflow/concurrency-limiter';
 import { TaskQueueManager } from './task-queue-manager';
 import {
     QueuedTask,

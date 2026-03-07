@@ -18,7 +18,7 @@ import {
     TaskExecutionResult,
     TaskPriority,
 } from '../../src/queue';
-import { CancellationError } from '../../src/map-reduce/concurrency-limiter';
+import { CancellationError } from '../../src/workflow/concurrency-limiter';
 
 describe('QueueExecutor', () => {
     let queueManager: TaskQueueManager;

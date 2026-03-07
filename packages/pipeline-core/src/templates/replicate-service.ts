@@ -1,5 +1,5 @@
 import { GitLogService } from '../git';
-import { AIInvoker } from '../map-reduce';
+import { AIInvoker } from '../ai/types';
 import { PipelineCoreError, ErrorCode } from '../errors';
 import { ReplicateOptions, ReplicateResult } from './types';
 import { buildReplicatePrompt } from './prompt-builder';

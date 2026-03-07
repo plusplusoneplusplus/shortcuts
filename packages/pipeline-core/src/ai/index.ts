@@ -11,6 +11,14 @@ export {
     AIInvocationResult,
     DEFAULT_PROMPTS,
     InteractiveToolType,
+    // Shared AI execution types (relocated from map-reduce)
+    type PromptItem,
+    type AIInvoker,
+    type AIInvokerOptions,
+    type AIInvokerResult,
+    type SessionMetadata,
+    type ProcessTracker,
+    type JobProgress,
 } from './types';
 
 // Re-export everything from copilot-sdk-wrapper for backward compatibility

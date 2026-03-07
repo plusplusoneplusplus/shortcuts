@@ -1,5 +1,5 @@
 import { MemoryStore, MemoryLevel, RawObservation } from './types';
-import { AIInvoker } from '../map-reduce/types';
+import { AIInvoker } from '../ai/types';
 
 export interface AggregatorOptions {
     /** Minimum raw file count before automatic aggregation triggers. Default: 5 */

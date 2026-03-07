@@ -1,4 +1,4 @@
-import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../map-reduce/types';
+import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../ai/types';
 import type { MemoryStore, MemoryLevel } from './types';
 import { MemoryRetriever } from './memory-retriever';
 import { createWriteMemoryTool } from './write-memory-tool';

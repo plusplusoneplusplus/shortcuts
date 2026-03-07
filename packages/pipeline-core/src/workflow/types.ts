@@ -9,7 +9,7 @@
  * `Items → Items` (except `merge`, which receives `Items[]`).
  */
 
-import type { AIInvoker, ProcessTracker } from '../map-reduce/types';
+import type { AIInvoker, ProcessTracker } from '../ai/types';
 
 // =============================================================================
 // Item Types

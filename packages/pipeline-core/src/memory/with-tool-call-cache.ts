@@ -11,7 +11,7 @@
  * No VS Code dependencies — pure Node.js.
  */
 
-import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../map-reduce/types';
+import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../ai/types';
 import type { ToolEvent } from '../copilot-sdk-wrapper/types';
 import type { ToolCallCacheStore, ToolCallFilter, ToolCallCacheLevel } from './tool-call-cache-types';
 import { ToolCallCapture } from './tool-call-capture';

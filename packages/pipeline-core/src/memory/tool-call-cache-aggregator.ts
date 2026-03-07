@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'crypto';
 import { ToolCallCacheStore, ConsolidatedToolCallEntry, ToolCallQAEntry } from './tool-call-cache-types';
-import { AIInvoker } from '../map-reduce/types';
+import { AIInvoker } from '../ai/types';
 
 export interface ToolCallCacheAggregatorOptions {
     /** Minimum raw entry count before automatic aggregation triggers. Default: 5 */
