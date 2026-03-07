@@ -163,6 +163,30 @@ describe('GET /api/repos/:repoId/tree', () => {
         const body = await res.json() as any;
         expect(body.error).toMatch(/directory traversal/i);
     });
+
+    it('treats path=/ as repo root', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'README.md'), '# Hello');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/tree?path=/`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.entries).toBeDefined();
+        const names = body.entries.map((e: any) => e.name);
+        expect(names).toContain('README.md');
+    });
+
+    it('strips leading slash from subdirectory path', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export {}');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/tree?path=/src`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        const names = body.entries.map((e: any) => e.name);
+        expect(names).toContain('index.ts');
+    });
 });
 
 describe('GET /api/repos/:repoId/blob', () => {

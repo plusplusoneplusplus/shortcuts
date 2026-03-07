@@ -170,6 +170,25 @@ describe('RepoTreeService.listDirectory', () => {
         expect(result.entries[0].name).toBe('readme.md');
     });
 
+    it('treats "/" as repo root instead of filesystem root', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'readme.md'), 'hi');
+
+        const result = await service.listDirectory(REPO_ID, '/');
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0].name).toBe('readme.md');
+    });
+
+    it('strips leading slashes from relative paths', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), '');
+
+        const result = await service.listDirectory(REPO_ID, '/src');
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0].name).toBe('index.ts');
+    });
+
     it('throws for unknown repoId', async () => {
         seedDefaultRepo();
         await expect(service.listDirectory('nonexistent', '.')).rejects.toThrow(/repo not found/i);

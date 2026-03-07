@@ -96,6 +96,14 @@ function isBinary(buffer: Buffer): boolean {
 }
 
 /**
+ * Strips leading path separators so that absolute-looking relative paths
+ * (e.g. "/" or "/src") are treated as repo-relative instead of filesystem root.
+ */
+function stripLeadingSeparators(p: string): string {
+    return p.replace(/^[/\\]+/, '') || '.';
+}
+
+/**
  * Validates that resolvedPath is inside repoRoot (path traversal guard).
  * Throws if the path escapes the repo root.
  */
@@ -207,7 +215,7 @@ export class RepoTreeService {
         }
 
         const repoRoot = repo.localPath;
-        const normalizedRel = relativePath === '' || relativePath === '.' ? '.' : relativePath;
+        const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
         const absPath = path.resolve(repoRoot, normalizedRel);
         assertInsideRepo(repoRoot, absPath);
 
@@ -301,7 +309,7 @@ export class RepoTreeService {
         }
 
         const repoRoot = repo.localPath;
-        const absPath = path.resolve(repoRoot, relativePath);
+        const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
         assertInsideRepo(repoRoot, absPath);
 
         let stat: fs.Stats;
