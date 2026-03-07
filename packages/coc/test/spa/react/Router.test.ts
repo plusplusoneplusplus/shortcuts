@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseQueueDeepLink, parseChatDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -124,12 +124,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('explorer')).toBe(true);
     });
 
+    it('includes "activity"', () => {
+        expect(VALID_REPO_SUB_TABS.has('activity')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 11 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(12);
+    it('has exactly 13 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(13);
     });
 });
 
@@ -905,6 +909,159 @@ describe('handleHash chat dispatch simulation', () => {
         const dispatches = simulateChatHash('#repos/r1/chat/task-1');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_CHAT_SESSION', id: 'task-1' });
+    });
+});
+
+// ─── parseActivityDeepLink ───────────────────────────────────────
+
+describe('parseActivityDeepLink', () => {
+    it('parses #repos/my-repo/activity/task-1', () => {
+        expect(parseActivityDeepLink('#repos/my-repo/activity/task-1')).toBe('task-1');
+    });
+
+    it('URL-decodes the task ID', () => {
+        expect(parseActivityDeepLink('#repos/my-repo/activity/task%2F1')).toBe('task/1');
+    });
+
+    it('returns null when task ID is missing', () => {
+        expect(parseActivityDeepLink('#repos/my-repo/activity')).toBeNull();
+    });
+
+    it('returns null for non-activity sub-tab', () => {
+        expect(parseActivityDeepLink('#repos/my-repo/queue')).toBeNull();
+    });
+
+    it('returns null for non-repo hash', () => {
+        expect(parseActivityDeepLink('#wiki/something')).toBeNull();
+    });
+
+    it('returns null for empty hash', () => {
+        expect(parseActivityDeepLink('#')).toBeNull();
+    });
+
+    it('returns null for empty string', () => {
+        expect(parseActivityDeepLink('')).toBeNull();
+    });
+
+    it('handles URL-encoded repo ID', () => {
+        expect(parseActivityDeepLink('#repos/my%20repo/activity/task-1')).toBe('task-1');
+    });
+
+    it('returns null from bare #repos', () => {
+        expect(parseActivityDeepLink('#repos')).toBeNull();
+    });
+
+    it('returns null from #repos/ws-abc with no sub-tab', () => {
+        expect(parseActivityDeepLink('#repos/ws-abc')).toBeNull();
+    });
+
+    it('returns null from #processes/some-id', () => {
+        expect(parseActivityDeepLink('#processes/some-id')).toBeNull();
+    });
+
+    it('handles task IDs with special characters', () => {
+        expect(parseActivityDeepLink('#repos/r1/activity/task%20with%20spaces')).toBe('task with spaces');
+    });
+});
+
+// ─── activity deep-link integration ─────────────────────────────
+
+describe('activity deep-link integration', () => {
+    it('tabFromHash returns "repos" for #repos/ws-abc/activity/task-1', () => {
+        expect(tabFromHash('#repos/ws-abc/activity/task-1')).toBe('repos');
+    });
+
+    it('parseActivityDeepLink and tabFromHash compose correctly for an activity deep link', () => {
+        const hash = '#repos/ws-abc/activity/task-1';
+        expect(tabFromHash(hash)).toBe('repos');
+        expect(parseActivityDeepLink(hash)).toBe('task-1');
+    });
+});
+
+// ─── handleHash activity dispatch simulation ────────────────────
+
+describe('handleHash activity dispatch simulation', () => {
+    function simulateActivityHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+                if (parts[2] === 'activity' && parts[3]) {
+                    dispatches.push({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]) });
+                } else if (parts[2] === 'activity') {
+                    dispatches.push({ type: 'SELECT_QUEUE_TASK', id: null });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SELECT_QUEUE_TASK with task ID for #repos/r1/activity/task-1', () => {
+        const dispatches = simulateActivityHash('#repos/r1/activity/task-1');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'task-1' });
+    });
+
+    it('dispatches SELECT_QUEUE_TASK with null for #repos/r1/activity (no task)', () => {
+        const dispatches = simulateActivityHash('#repos/r1/activity');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+        expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: null });
+    });
+
+    it('does not dispatch SELECT_QUEUE_TASK for #repos/r1/workflows', () => {
+        const dispatches = simulateActivityHash('#repos/r1/workflows');
+        expect(dispatches.find(d => d.type === 'SELECT_QUEUE_TASK')).toBeUndefined();
+    });
+
+    it('does not dispatch SELECT_QUEUE_TASK for #repos/r1 (no sub-tab)', () => {
+        const dispatches = simulateActivityHash('#repos/r1');
+        expect(dispatches.find(d => d.type === 'SELECT_QUEUE_TASK')).toBeUndefined();
+    });
+
+    it('URL-decodes the task ID in dispatch', () => {
+        const dispatches = simulateActivityHash('#repos/r1/activity/task%2Fone');
+        expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'task/one' });
+    });
+
+    it('dispatches SET_SELECTED_REPO alongside activity task selection', () => {
+        const dispatches = simulateActivityHash('#repos/r1/activity/task-1');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
+        expect(dispatches).toContainEqual({ type: 'SELECT_QUEUE_TASK', id: 'task-1' });
+    });
+});
+
+// ─── repo sub-tab deep-link parsing — activity ──────────────────
+
+describe('repo sub-tab deep-link parsing — activity', () => {
+    function parseRepoDeepLink(rawHash: string): { repoId: string | null; subTab: string | null } {
+        const hash = rawHash.replace(/^#/, '');
+        const parts = hash.split('/');
+        if (parts[0] !== 'repos') return { repoId: null, subTab: null };
+        const repoId = parts.length >= 2 && parts[1] ? decodeURIComponent(parts[1]) : null;
+        const subTab = parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2]) ? parts[2] : null;
+        return { repoId, subTab };
+    }
+
+    it('parses #repos/my-repo/activity correctly', () => {
+        const result = parseRepoDeepLink('#repos/my-repo/activity');
+        expect(result.repoId).toBe('my-repo');
+        expect(result.subTab).toBe('activity');
+    });
+
+    it('tabFromHash returns "repos" for #repos/ws-abc/activity', () => {
+        expect(tabFromHash('#repos/ws-abc/activity')).toBe('repos');
+    });
+
+    it('handles URL-encoded repo IDs with activity sub-tab', () => {
+        const result = parseRepoDeepLink('#repos/my%20repo/activity');
+        expect(result.repoId).toBe('my repo');
+        expect(result.subTab).toBe('activity');
     });
 });
 

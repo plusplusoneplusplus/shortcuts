@@ -152,7 +152,16 @@ export function parseWorkflowDeepLink(hash: string): { repoId: string; processId
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'templates', 'chat', 'wiki', 'copilot', 'workflow', 'explorer']);
+export function parseActivityDeepLink(hash: string): string | null {
+    const cleaned = hash.replace(/^#/, '');
+    const parts = cleaned.split('/');
+    if (parts[0] === 'repos' && parts[1] && parts[2] === 'activity' && parts[3]) {
+        return decodeURIComponent(parts[3]);
+    }
+    return null;
+}
+
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'queue', 'schedules', 'templates', 'chat', 'wiki', 'copilot', 'workflow', 'explorer', 'activity']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -234,6 +243,12 @@ export function Router() {
                         dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: decodeURIComponent(parts[3]) });
                     } else if (parts[2] === 'chat') {
                         dispatch({ type: 'SET_SELECTED_CHAT_SESSION', id: null });
+                    }
+                    // Activity deep-link handling — select queue task when task ID present
+                    if (parts[2] === 'activity' && parts[3]) {
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]) });
+                    } else if (parts[2] === 'activity') {
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
                     }
                     // Git commit deep-link handling
                     if (parts[2] === 'git' && parts[3]) {

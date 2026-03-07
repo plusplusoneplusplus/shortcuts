@@ -478,10 +478,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'queue' || activeSubTab === 'schedules' || activeSubTab === 'templates' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'queue' || activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'templates' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab repo={repo} />}
-                        {activeSubTab === 'queue' && <RepoQueueTab workspaceId={ws.id} />}
+                        {(activeSubTab === 'queue' || activeSubTab === 'activity') && <RepoQueueTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
                         {activeSubTab === 'templates' && <RepoTemplatesTab workspaceId={ws.id} />}
                         {activeSubTab === 'chat' && <RepoChatTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialSessionId={state.selectedChatSessionId} newChatTrigger={newChatTrigger} newChatTriggerProcessedRef={newChatTriggerProcessedRef} onOpenNewChatDialog={(readOnly) => handleNewChatFromTopBar(readOnly)} />}

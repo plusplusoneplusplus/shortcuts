@@ -48,6 +48,26 @@ describe('RepoDetail SUB_TABS', () => {
     });
 });
 
+describe('RepoDetail Activity tab fallback', () => {
+    it('activity sub-tab renders RepoQueueTab as fallback', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
+        expect(REPO_DETAIL_SOURCE).toContain("(activeSubTab === 'queue' || activeSubTab === 'activity') && <RepoQueueTab");
+    });
+
+    it('activity is not in SUB_TABS (not yet visible in tab strip)', () => {
+        const activityTab = SUB_TABS.find(t => t.key === 'activity');
+        expect(activityTab).toBeUndefined();
+    });
+
+    it('activity sub-tab uses overflow-hidden layout like queue', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'activity'");
+        const overflowLine = REPO_DETAIL_SOURCE.split('\n').find(l =>
+            l.includes("activeSubTab === 'queue'") && l.includes("activeSubTab === 'activity'") && l.includes('overflow-hidden')
+        );
+        expect(overflowLine).toBeDefined();
+    });
+});
+
 describe('RepoDetail RepoChatTab wiring', () => {
     it('passes ws.rootPath (not ws.path) as workspacePath to RepoChatTab', () => {
         expect(REPO_DETAIL_SOURCE).toContain('workspacePath={ws.rootPath}');
