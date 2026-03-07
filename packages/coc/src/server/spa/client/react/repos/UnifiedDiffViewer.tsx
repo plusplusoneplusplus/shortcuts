@@ -230,17 +230,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const scrollParent = container.parentElement;
             if (!scrollParent) return;
             const parentTop = scrollParent.getBoundingClientRect().top;
+            const centerOffset = scrollParent.clientHeight / 3;
             for (const edit of edits) {
                 if (edit.getBoundingClientRect().top > parentTop + 20) {
                     scrollParent.scrollTo({
-                        top: scrollParent.scrollTop + edit.getBoundingClientRect().top - parentTop,
+                        top: scrollParent.scrollTop + edit.getBoundingClientRect().top - parentTop - centerOffset,
                         behavior: 'smooth',
                     });
                     return;
                 }
             }
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + edits[0].getBoundingClientRect().top - parentTop,
+                top: scrollParent.scrollTop + edits[0].getBoundingClientRect().top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
@@ -252,17 +253,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const scrollParent = container.parentElement;
             if (!scrollParent) return;
             const parentTop = scrollParent.getBoundingClientRect().top;
+            const centerOffset = scrollParent.clientHeight / 3;
             for (let i = edits.length - 1; i >= 0; i--) {
                 if (edits[i].getBoundingClientRect().top < parentTop - 5) {
                     scrollParent.scrollTo({
-                        top: scrollParent.scrollTop + edits[i].getBoundingClientRect().top - parentTop,
+                        top: scrollParent.scrollTop + edits[i].getBoundingClientRect().top - parentTop - centerOffset,
                         behavior: 'smooth',
                     });
                     return;
                 }
             }
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + edits[edits.length - 1].getBoundingClientRect().top - parentTop,
+                top: scrollParent.scrollTop + edits[edits.length - 1].getBoundingClientRect().top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },

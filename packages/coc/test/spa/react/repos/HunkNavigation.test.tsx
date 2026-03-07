@@ -237,6 +237,57 @@ describe('UnifiedDiffViewerHandle', () => {
         expect(scrollParent.scrollTo).toHaveBeenCalled();
     });
 
+    it('scrollToNextHunk offsets scroll by one-third of viewport height to center change', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const { container } = render(
+            <UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="diff" />
+        );
+        const viewer = container.querySelector('[data-testid="diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
+        Object.defineProperty(scrollParent, 'scrollTop', { value: 0, configurable: true });
+        vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 600, left: 0, right: 800, width: 800, height: 600, x: 0, y: 0, toJSON() {},
+        });
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        if (editStarts.length > 0) {
+            vi.spyOn(editStarts[0], 'getBoundingClientRect').mockReturnValue({
+                top: 100, bottom: 120, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+            });
+        }
+        scrollParent.scrollTo = vi.fn();
+        ref.current?.scrollToNextHunk();
+        expect(scrollParent.scrollTo).toHaveBeenCalledWith(
+            expect.objectContaining({ top: 100 - 200 }) // editTop(100) - parentTop(0) - clientHeight/3(200)
+        );
+    });
+
+    it('scrollToPrevHunk offsets scroll by one-third of viewport height to center change', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const { container } = render(
+            <UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="diff" />
+        );
+        const viewer = container.querySelector('[data-testid="diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
+        Object.defineProperty(scrollParent, 'scrollTop', { value: 1000, configurable: true });
+        vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 600, left: 0, right: 800, width: 800, height: 600, x: 0, y: 0, toJSON() {},
+        });
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        const lastEdit = editStarts[editStarts.length - 1];
+        if (lastEdit) {
+            vi.spyOn(lastEdit, 'getBoundingClientRect').mockReturnValue({
+                top: -50, bottom: -30, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+            });
+        }
+        scrollParent.scrollTo = vi.fn();
+        ref.current?.scrollToPrevHunk();
+        expect(scrollParent.scrollTo).toHaveBeenCalledWith(
+            expect.objectContaining({ top: 1000 + (-50) - 0 - 200 }) // scrollTop(1000) + editTop(-50) - parentTop(0) - clientHeight/3(200)
+        );
+    });
+
     it('scrollToNextHunk is a no-op when diff has no edits', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         render(<UnifiedDiffViewer ref={ref} diff={NO_HUNK_DIFF} data-testid="diff" />);
