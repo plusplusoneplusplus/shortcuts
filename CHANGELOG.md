@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING**: VS Code UI renamed from "Pipelines" to "Workflows". Command IDs changed from `pipelinesViewer.*` to `workflowsViewer.*`. Config keys changed from `workspaceShortcuts.pipelinesViewer.*` to `workspaceShortcuts.workflowsViewer.*`. Custom editor viewType changed from `pipelinePreviewEditor` to `workflowPreviewEditor`.
+- CLI descriptions updated: "pipeline" → "workflow" in help text and output messages.
+- `pipeline-generator` skill updated with unified schema documentation covering both linear and DAG formats.
+
 ### CoC CLI Package (1.1.0)
 
 #### Breaking Changes
