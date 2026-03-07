@@ -53,10 +53,10 @@ function postJSON(
 
 function makeTask(workingDirectory: string, displayName: string) {
     return {
-        type: 'custom',
+        type: 'chat',
         priority: 'normal',
         displayName,
-        payload: { data: { prompt: 'test' }, workingDirectory },
+        payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', workingDirectory },
         config: {},
     };
 }

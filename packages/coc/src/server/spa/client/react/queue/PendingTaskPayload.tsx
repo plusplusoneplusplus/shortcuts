@@ -48,121 +48,95 @@ export function PendingTaskPayload({ task }: { task: any }) {
         return null;
     })();
 
-    if (type === 'follow-prompt') {
-        const hasFollowMeta = payload.skillName || payload.planFilePath || payload.promptFilePath;
-        return (
-            <div>
-                {hasFollowMeta && (
-                    <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
-                        {payload.skillName && <MetaRow label="Skill Name" value={payload.skillName} />}
-                        {payload.promptFilePath && <FilePathValue label="Prompt File" value={payload.promptFilePath} />}
-                        {payload.planFilePath && <FilePathValue label="Plan File" value={payload.planFilePath} />}
-                    </div>
-                )}
-                {payload.promptContent && (
-                    <>
-                        <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
-                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            {payload.promptContent}
-                        </pre>
-                    </>
-                )}
-                {payload.additionalContext && (
-                    <details className="mt-3">
-                        <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Additional Context</summary>
-                        <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
-                            {payload.additionalContext}
-                        </pre>
-                    </details>
-                )}
-                {imagesSection}
-            </div>
-        );
-    }
-
-    if (type === 'resolve-comments') {
-        const commentIds = Array.isArray(payload.commentIds) ? payload.commentIds : [];
-        return (
-            <div>
-                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Resolve Comments Details</h3>
-                <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
-                    {payload.filePath && <FilePathValue label="Document" value={payload.filePath} />}
-                    {commentIds.length > 0 && (
-                        <MetaRow
-                            label="Comments"
-                            value={`${commentIds.length} (${commentIds.join(', ')})`}
-                            breakAll
-                        />
-                    )}
-                </div>
-                {payload.promptTemplate && (
-                    <details>
-                        <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Prompt</summary>
-                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
-                            {payload.promptTemplate}
-                        </pre>
-                    </details>
-                )}
-                {imagesSection}
-            </div>
-        );
-    }
-
     if (type === 'chat') {
-        return (
-            <div>
-                {payload.prompt && (
-                    <>
-                        <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
-                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            {payload.prompt}
-                        </pre>
-                    </>
-                )}
-                {imagesSection}
-            </div>
-        );
-    }
+        const ctx = payload.context || {};
+        const mode = payload.mode || 'autopilot';
+        const hasMeta = ctx.skills?.length || ctx.files?.length || ctx.taskGeneration || ctx.resolveComments || ctx.replication || mode !== 'autopilot';
 
-    if (type === 'chat' && payload?.processId) {
-        return (
-            <div>
-                {payload.prompt && (
-                    <>
-                        <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Follow-up Message</h3>
-                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            {payload.prompt}
-                        </pre>
-                    </>
-                )}
-                {payload.processId && (
+        // Follow-up message
+        if (payload.processId) {
+            return (
+                <div>
+                    {payload.prompt && (
+                        <>
+                            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Follow-up Message</h3>
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                                {payload.prompt}
+                            </pre>
+                        </>
+                    )}
                     <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mt-3">
                         <MetaRow label="Parent Process" value={String(payload.processId)} />
                     </div>
-                )}
-                {imagesSection}
-            </div>
-        );
-    }
+                    {imagesSection}
+                </div>
+            );
+        }
 
-    if (type === 'ai-clarification') {
-        const hasClariMeta = payload.skillName || payload.instructionType || payload.model || payload.nearestHeading || payload.filePath;
+        // Task generation
+        if (ctx.taskGeneration) {
+            const tg = ctx.taskGeneration;
+            return (
+                <div>
+                    <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Task Generation Details</h3>
+                    <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
+                        {tg.name && <MetaRow label="Task Name" value={tg.name} />}
+                        {tg.targetFolder && <FilePathValue label="Target Folder" value={tg.targetFolder} />}
+                        {tg.depth && <MetaRow label="Depth" value={tg.depth} />}
+                        {tg.mode && <MetaRow label="Mode" value={tg.mode} />}
+                        {payload.model && <MetaRow label="Model" value={payload.model} />}
+                    </div>
+                    {payload.prompt && (
+                        <>
+                            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                                {payload.prompt}
+                            </pre>
+                        </>
+                    )}
+                    {imagesSection}
+                </div>
+            );
+        }
+
+        // Resolve comments
+        if (ctx.resolveComments) {
+            const rc = ctx.resolveComments;
+            const commentIds = Array.isArray(rc.commentIds) ? rc.commentIds : [];
+            return (
+                <div>
+                    <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Resolve Comments Details</h3>
+                    <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
+                        {rc.filePath && <FilePathValue label="Document" value={rc.filePath} />}
+                        {commentIds.length > 0 && (
+                            <MetaRow
+                                label="Comments"
+                                value={`${commentIds.length} (${commentIds.join(', ')})`}
+                                breakAll
+                            />
+                        )}
+                    </div>
+                    {payload.prompt && (
+                        <details>
+                            <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Prompt</summary>
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                                {payload.prompt}
+                            </pre>
+                        </details>
+                    )}
+                    {imagesSection}
+                </div>
+            );
+        }
+
+        // Standard chat (with optional context)
         return (
             <div>
-                {hasClariMeta && (
+                {hasMeta && (
                     <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
-                        {payload.filePath && <FilePathValue label="File" value={payload.filePath} />}
-                        {payload.skillName && <MetaRow label="Skill Name" value={payload.skillName} />}
-                        {payload.instructionType && <MetaRow label="Instruction Type" value={payload.instructionType} />}
-                        {payload.model && <MetaRow label="Model" value={payload.model} />}
-                        {payload.nearestHeading && <MetaRow label="Nearest Heading" value={payload.nearestHeading} />}
-                    </div>
-                )}
-                {payload.selectedText && (
-                    <div className="text-xs text-[#848484] mb-2">
-                        Selected: <code className="bg-[#f3f3f3] dark:bg-[#252526] px-1 rounded">
-                            {payload.selectedText.length > 200 ? payload.selectedText.substring(0, 200) + '...' : payload.selectedText}
-                        </code>
+                        {mode !== 'autopilot' && <MetaRow label="Mode" value={mode} />}
+                        {ctx.skills?.length > 0 && <MetaRow label="Skills" value={ctx.skills.join(', ')} />}
+                        {ctx.files?.map((f: string, i: number) => <FilePathValue key={i} label={i === 0 ? 'File' : 'Context'} value={f} />)}
                     </div>
                 )}
                 {payload.prompt && (
@@ -173,64 +147,14 @@ export function PendingTaskPayload({ task }: { task: any }) {
                         </pre>
                     </>
                 )}
-                {payload.customInstruction && (
-                    <details className="mt-3">
-                        <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Custom Instruction</summary>
+                {ctx.blocks?.map((b: any, i: number) => (
+                    <details key={i} className="mt-3">
+                        <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{b.label || 'Context'}</summary>
                         <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
-                            {payload.customInstruction}
+                            {b.content}
                         </pre>
                     </details>
-                )}
-                {imagesSection}
-            </div>
-        );
-    }
-
-    if (type === 'task-generation' || (payload && payload.kind === 'task-generation')) {
-        return (
-            <div>
-                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Task Generation Details</h3>
-                <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
-                    {payload.name && <MetaRow label="Task Name" value={payload.name} />}
-                    {payload.targetFolder && <FilePathValue label="Target Folder" value={payload.targetFolder} />}
-                    {payload.depth && <MetaRow label="Depth" value={payload.depth} />}
-                    {payload.mode && <MetaRow label="Mode" value={payload.mode} />}
-                    {payload.model && <MetaRow label="Model" value={payload.model} />}
-                </div>
-                {payload.prompt && (
-                    <>
-                        <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Prompt</h3>
-                        <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            {payload.prompt}
-                        </pre>
-                    </>
-                )}
-                {imagesSection}
-            </div>
-        );
-    }
-
-    if (type === 'code-review') {
-        return (
-            <div>
-                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Code Review Details</h3>
-                <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm">
-                    {payload.commitSha && <MetaRow label="Commit SHA" value={payload.commitSha} />}
-                    {payload.diffType && <MetaRow label="Diff Type" value={payload.diffType} />}
-                    {payload.rulesFolder && <FilePathValue label="Rules Folder" value={payload.rulesFolder} />}
-                </div>
-                {imagesSection}
-            </div>
-        );
-    }
-
-    if (type === 'custom' && payload.data) {
-        return (
-            <div>
-                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Payload</h3>
-                <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    {JSON.stringify(payload.data, null, 2)}
-                </pre>
+                ))}
                 {imagesSection}
             </div>
         );

@@ -6,30 +6,33 @@
  * to the ProcessStore and WebSocket for real-time UI updates.
  *
  * Task types supported:
- * - ai-clarification: Sends prompt to CopilotSDKService
- * - chat: Interactive SPA conversation, sends prompt to CopilotSDKService (readonly flag for read-only mode)
- * - custom: Sends payload.data.prompt to CopilotSDKService
- * - follow-prompt: Reads prompt file and sends to CopilotSDKService
- * - task-generation: Builds task creation prompt and sends to CopilotSDKService
- * - code-review / resolve-comments: Marked as completed (no-op placeholder)
+ * - chat (mode=ask): Read-only AI conversation
+ * - chat (mode=plan): AI proposes changes without applying them
+ * - chat (mode=autopilot): Full read/write AI execution
+ * - run-workflow: DAG pipeline execution
+ * - run-script: Shell script execution
+ *
+ * Chat context presets enable specialized behavior:
+ * - context.taskGeneration: Build task creation prompts
+ * - context.replication: Git commit replication
+ * - context.resolveComments: Server-side comment resolution
+ * - context.files: File-path-based prompt assembly
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ResolveCommentsPayload, RunWorkflowPayload, RunScriptPayload, TaskGenerationPayload, ChatPayload, ReplicateTemplatePayload } from '@plusplusoneplusplus/coc-server';
+import type { RunWorkflowPayload, RunScriptPayload, ChatPayload } from '@plusplusoneplusplus/coc-server';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
-    isAIClarificationPayload, isChatPayload,
+    isChatPayload,
     isChatFollowUp,
-    isCustomTaskPayload,
-    isFollowPromptPayload,
-    isReplicateTemplatePayload,
-    isResolveCommentsPayload,
     isRunWorkflowPayload,
     isRunScriptPayload,
-    isTaskGenerationPayload,
+    hasTaskGenerationContext,
+    hasResolveCommentsContext,
+    hasReplicationContext,
     saveImagesToTempFiles,
 } from '@plusplusoneplusplus/coc-server';
 import type { AIProcess, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
@@ -736,10 +739,6 @@ export class CLITaskExecutor implements TaskExecutor {
     // ========================================================================
 
     private extractPrompt(task: QueuedTask): string {
-        if (isTaskGenerationPayload(task.payload)) {
-            return task.payload.prompt;
-        }
-
         if (isRunWorkflowPayload(task.payload)) {
             return `Run workflow: ${path.basename(task.payload.workflowPath)}`;
         }
@@ -747,83 +746,76 @@ export class CLITaskExecutor implements TaskExecutor {
         if (isChatPayload(task.payload)) {
             const payload = task.payload as unknown as ChatPayload;
             const prompt = payload.prompt || task.displayName || 'Chat message';
-            if (payload.readonly) {
-                return READONLY_PROMPT_PREFIX + prompt;
-            }
-            return prompt;
-        }
 
-        if (isAIClarificationPayload(task.payload)) {
-            return task.payload.prompt || task.displayName || 'AI clarification task';
-        }
-
-        if (isFollowPromptPayload(task.payload)) {
-            // New-style payloads (planFilePath without additionalContext):
-            // Use VS Code extension format: "Follow the instruction {promptFilePath}. {planFilePath}"
-            const hasAdditionalContext = !!task.payload.additionalContext;
-            const hasPlanFilePath = !!task.payload.planFilePath;
-            const contextSuffix = this.findContextFileSuffix(task.payload.planFilePath);
-
-            if (!hasAdditionalContext && hasPlanFilePath && !task.payload.promptContent) {
-                // New-style: file-path-based prompt referencing both files
-                try {
-                    if (task.payload.promptFilePath && fs.existsSync(task.payload.promptFilePath)) {
-                        const base = `Follow the instruction ${task.payload.promptFilePath}. ${task.payload.planFilePath}`;
-                        return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
-                    }
-                } catch {
-                    // Fall through to legacy handling
-                }
-            }
-
-            if (!hasAdditionalContext && hasPlanFilePath && task.payload.promptContent) {
-                // Skill-type: promptContent + planFilePath reference (no inline content)
-                const base = `${task.payload.promptContent} ${task.payload.planFilePath}`;
-                return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
-            }
-
-            // Legacy path: resolve context block from additionalContext + planFilePath content
-            const contextBlock = this.resolveContextBlock(task.payload);
-
-            // Prefer direct prompt content when available (no file I/O needed)
-            let prompt: string;
-            if (task.payload.promptContent) {
-                prompt = task.payload.promptContent;
-            } else {
-                // Fall back to file-based prompt for backward compatibility / skill jobs
-                try {
-                    if (task.payload.promptFilePath && fs.existsSync(task.payload.promptFilePath)) {
-                        prompt = `Follow the instruction ${task.payload.promptFilePath}.`;
-                    } else {
-                        prompt = `Follow prompt: ${task.payload.promptFilePath || 'unknown'}`;
-                    }
-                } catch {
-                    prompt = `Follow prompt: ${task.payload.promptFilePath || 'unknown'}`;
-                }
-            }
-
-            // Prepend context block if available
-            if (contextBlock) {
-                prompt = `Context document:\n\n${contextBlock}\n\n---\n\n${prompt}`;
-            }
-
-            // Append CONTEXT.md reference if available
-            if (contextSuffix) {
-                prompt = `${prompt}\n\n${contextSuffix}`;
-            }
-
-            return prompt;
-        }
-
-        if (isCustomTaskPayload(task.payload)) {
-            const data = task.payload.data;
-            if (typeof data.prompt === 'string' && data.prompt.trim()) {
-                let prompt = data.prompt;
-                if (typeof data.planFilePath === 'string' && data.planFilePath.trim()) {
-                    prompt = `${prompt}\n\nFile: ${data.planFilePath}`;
-                }
+            // Task generation: the prompt is just the user's input; enrichment happens in executeTaskGeneration
+            if (hasTaskGenerationContext(task.payload)) {
                 return prompt;
             }
+
+            // Resolve comments: the prompt is the template
+            if (hasResolveCommentsContext(task.payload)) {
+                return prompt;
+            }
+
+            // Mode-based prompt prefixing
+            if (payload.mode === 'ask') {
+                return READONLY_PROMPT_PREFIX + prompt;
+            }
+            if (payload.mode === 'plan') {
+                return 'IMPORTANT: You are in plan mode. Propose changes and explain what needs to be done, but do NOT apply any modifications to files.\n\n' + prompt;
+            }
+
+            // Context files: resolve file-path-based prompts
+            const ctx = payload.context;
+            if (ctx?.files?.length) {
+                const hasAdditionalBlocks = ctx.blocks && ctx.blocks.length > 0;
+                const promptFile = ctx.files[0];
+                const planFile = ctx.files.length > 1 ? ctx.files[1] : undefined;
+                const contextSuffix = this.findContextFileSuffix(planFile);
+
+                if (!hasAdditionalBlocks && planFile && !prompt.includes('\n')) {
+                    // File-path-based prompt referencing prompt + plan files
+                    try {
+                        if (fs.existsSync(promptFile)) {
+                            const base = `Follow the instruction ${promptFile}. ${planFile}`;
+                            return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
+                        }
+                    } catch {
+                        // Fall through
+                    }
+                }
+
+                // Resolve context block from inline blocks + plan file content
+                const contextBlock = this.resolveContextBlock({
+                    additionalContext: ctx.blocks?.map(b => b.content).join('\n\n'),
+                    planFilePath: planFile,
+                });
+
+                let resolved = prompt;
+                // If prompt looks like inline content (has newlines), use it directly
+                // Otherwise build file-reference-based prompt
+                if (!prompt.includes('\n') && promptFile) {
+                    try {
+                        if (fs.existsSync(promptFile)) {
+                            resolved = `Follow the instruction ${promptFile}.`;
+                        } else {
+                            resolved = `Follow prompt: ${promptFile}`;
+                        }
+                    } catch {
+                        resolved = `Follow prompt: ${promptFile}`;
+                    }
+                }
+
+                if (contextBlock) {
+                    resolved = `Context document:\n\n${contextBlock}\n\n---\n\n${resolved}`;
+                }
+                if (contextSuffix) {
+                    resolved = `${resolved}\n\n${contextSuffix}`;
+                }
+                return resolved;
+            }
+
+            return prompt;
         }
 
         return task.displayName || `Queue task: ${task.type}`;
@@ -835,12 +827,8 @@ export class CLITaskExecutor implements TaskExecutor {
      * The AI agent already has access to skills via the skill tool.
      */
     private applySkillContent(prompt: string, task: QueuedTask): string {
-        const payload = task.payload as { skillName?: string; skillNames?: string[] };
-        const names = payload.skillNames?.length
-            ? payload.skillNames
-            : payload.skillName
-                ? [payload.skillName]
-                : [];
+        const payload = task.payload as { context?: { skills?: string[] } };
+        const names = payload.context?.skills ?? [];
         if (names.length === 0) return prompt;
 
         const directives = names.map(n => `Use ${n} skill when available`).join('\n');
@@ -852,24 +840,37 @@ export class CLITaskExecutor implements TaskExecutor {
     // ========================================================================
 
     private async executeByType(task: QueuedTask, prompt: string): Promise<unknown> {
-        // Task generation: build the appropriate prompt and delegate to AI
-        if (isTaskGenerationPayload(task.payload)) {
-            return this.executeTaskGeneration(task);
-        }
-
         // Run workflow: parse YAML and execute via pipeline-core
         if (isRunWorkflowPayload(task.payload)) {
             return this.executeRunPipeline(task);
         }
 
-        // For types that need AI execution (exclude follow-ups — they short-circuit in execute())
-        if (
-            isAIClarificationPayload(task.payload) ||
-            (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) ||
-            isCustomTaskPayload(task.payload) ||
-            isFollowPromptPayload(task.payload)
-        ) {
-            const isChatTask = task.type === 'chat';
+        // Run script: spawn child process
+        if (isRunScriptPayload(task.payload)) {
+            return this.executeRunScript(task);
+        }
+
+        // All chat tasks (ask/plan/autopilot with optional context presets)
+        if (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) {
+            const payload = task.payload as unknown as ChatPayload;
+
+            // Task generation: build enriched prompt and delegate to AI
+            if (hasTaskGenerationContext(task.payload)) {
+                return this.executeTaskGeneration(task);
+            }
+
+            // Replicate template: run commit replication via pipeline-core
+            if (hasReplicationContext(task.payload)) {
+                return this.executeReplicateTemplate(task);
+            }
+
+            // Resolve comments: build prompt with resolve-comment tool
+            if (hasResolveCommentsContext(task.payload) || payload.tools?.includes('resolve-comments')) {
+                return this.executeResolveComments(task);
+            }
+
+            // Standard chat: send to AI with optional follow-up suggestions
+            const isChatTask = true;
             const tools = (isChatTask && this.followUpSuggestions.enabled) ? [createSuggestFollowUpsTool()] : undefined;
             const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
                 ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
@@ -877,22 +878,7 @@ export class CLITaskExecutor implements TaskExecutor {
             return this.executeWithAI(task, prompt + countSuffix, tools ? { tools } : undefined);
         }
 
-        // Resolve comments: build prompt from payload and execute with AI
-        if (isResolveCommentsPayload(task.payload)) {
-            return this.executeResolveComments(task);
-        }
-
-        // Run script: spawn a child process and capture stdout/stderr
-        if (isRunScriptPayload(task.payload)) {
-            return this.executeRunScript(task);
-        }
-
-        // Replicate template: run commit replication via pipeline-core
-        if (isReplicateTemplatePayload(task.payload)) {
-            return this.executeReplicateTemplate(task);
-        }
-
-        // For code-review: placeholder (no-op)
+        // Fallback: no-op
         return { status: 'completed', message: `Task type '${task.type}' executed (no-op in CLI mode)` };
     }
 
@@ -941,7 +927,8 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeReplicateTemplate(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as unknown as ReplicateTemplatePayload;
+        const payload = task.payload as unknown as ChatPayload;
+        const replication = payload.context!.replication!;
         const processId = `queue_${task.id}`;
 
         // 1. Resolve workspace root
@@ -952,15 +939,15 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         // 2. Update process with enriched prompt preview
-        const preview = `Replicate commit ${payload.commitHash.slice(0, 8)} → "${payload.instruction}"`;
+        const preview = `Replicate commit ${replication.commitHash.slice(0, 8)} → "${payload.prompt}"`;
         this.store.updateProcess(processId, {
-            fullPrompt: payload.instruction,
+            fullPrompt: payload.prompt,
             promptPreview: preview,
         });
 
         // 3. Create AI invoker (same pattern as executeRunPipeline)
         const aiInvoker = createCLIAIInvoker({
-            model: payload.model ?? (task.config as any)?.model,
+            model: replication.model ?? payload.model ?? (task.config as any)?.model,
             approvePermissions: this.approvePermissions,
             workingDirectory,
         });
@@ -1000,13 +987,13 @@ export class CLITaskExecutor implements TaskExecutor {
             result = await replicateCommit(
                 {
                     template: {
-                        name: payload.templateName,
+                        name: replication.templateName,
                         kind: 'commit',
-                        commitHash: payload.commitHash,
-                        hints: payload.hints,
+                        commitHash: replication.commitHash,
+                        hints: replication.hints,
                     },
                     repoRoot: workingDirectory,
-                    instruction: payload.instruction,
+                    instruction: payload.prompt,
                 },
                 aiInvoker,
                 onProgress,
@@ -1040,8 +1027,8 @@ export class CLITaskExecutor implements TaskExecutor {
             replicateResult: {
                 summary: result.summary,
                 files: result.files,
-                commitHash: payload.commitHash,
-                templateName: payload.templateName,
+                commitHash: replication.commitHash,
+                templateName: replication.templateName,
             },
         };
     }
@@ -1203,13 +1190,15 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeTaskGeneration(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as unknown as TaskGenerationPayload;
+        const payload = task.payload as unknown as ChatPayload;
+        const tg = payload.context!.taskGeneration!;
+        const workingDirectory = payload.workingDirectory || this.defaultWorkingDirectory || '';
 
-        const tasksBase = path.resolve(payload.workingDirectory, '.vscode/tasks');
-        const isAutoFolder = payload.targetFolder === AUTO_FOLDER_SENTINEL;
-        const resolvedTarget = (isAutoFolder || !payload.targetFolder)
+        const tasksBase = path.resolve(workingDirectory, '.vscode/tasks');
+        const isAutoFolder = tg.targetFolder === AUTO_FOLDER_SENTINEL;
+        const resolvedTarget = (isAutoFolder || !tg.targetFolder)
             ? tasksBase
-            : path.resolve(tasksBase, payload.targetFolder);
+            : path.resolve(tasksBase, tg.targetFolder);
         fs.mkdirSync(resolvedTarget, { recursive: true });
 
         // Build autoFolderContext when auto-folder mode is requested
@@ -1228,19 +1217,19 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         let aiPrompt: string;
-        if (payload.mode === 'from-feature') {
-            const context = await gatherFeatureContext(resolvedTarget, payload.workingDirectory);
+        if (tg.mode === 'from-feature') {
+            const context = await gatherFeatureContext(resolvedTarget, workingDirectory);
             const selectedContext: SelectedContext = {
                 description: context.description,
                 planContent: context.planContent,
                 specContent: context.specContent,
                 relatedFiles: context.relatedFiles,
             };
-            aiPrompt = payload.depth === 'deep'
-                ? buildDeepModePrompt(selectedContext, payload.prompt, payload.name, resolvedTarget, payload.workingDirectory)
-                : buildCreateFromFeaturePrompt(selectedContext, payload.prompt, payload.name, resolvedTarget);
-        } else if (payload.name?.trim()) {
-            aiPrompt = buildCreateTaskPromptWithName(payload.name, payload.prompt, resolvedTarget, autoFolderContext);
+            aiPrompt = tg.depth === 'deep'
+                ? buildDeepModePrompt(selectedContext, payload.prompt, tg.name, resolvedTarget, workingDirectory)
+                : buildCreateFromFeaturePrompt(selectedContext, payload.prompt, tg.name, resolvedTarget);
+        } else if (tg.name?.trim()) {
+            aiPrompt = buildCreateTaskPromptWithName(tg.name, payload.prompt, resolvedTarget, autoFolderContext);
         } else if (isAutoFolder) {
             aiPrompt = buildCreateTaskPromptWithName(undefined, payload.prompt, resolvedTarget, autoFolderContext);
         } else {
@@ -1248,7 +1237,7 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         // Apply go-deep prefix when depth is 'deep', regardless of mode
-        if (payload.depth === 'deep') {
+        if (tg.depth === 'deep') {
             aiPrompt = applyDeepModePrefix(aiPrompt);
         }
 
@@ -1419,13 +1408,14 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private async executeResolveComments(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as unknown as ResolveCommentsPayload;
-        const aiPrompt = payload.promptTemplate;
+        const payload = task.payload as unknown as ChatPayload;
+        const rc = payload.context?.resolveComments;
+        const aiPrompt = payload.prompt;
 
         // Update process store with the enriched prompt
         const processId = `queue_${task.id}`;
-        const commentCount = Array.isArray(payload.commentIds) ? payload.commentIds.length : 0;
-        const targetFile = payload.filePath || payload.documentUri || 'document';
+        const commentCount = rc ? rc.commentIds.length : 0;
+        const targetFile = rc?.filePath || rc?.documentUri || 'document';
         const preview = `Resolve ${commentCount} comment(s) in ${targetFile}`;
         try {
             await this.store.updateProcess(processId, {
@@ -1445,10 +1435,10 @@ export class CLITaskExecutor implements TaskExecutor {
         // Only return comment IDs that AI explicitly resolved via the tool.
         // Fall back to all IDs if the tool wasn't called (backward compat).
         const resolvedIds = getResolvedIds();
-        const commentIds = resolvedIds.length > 0 ? resolvedIds : payload.commentIds;
+        const commentIds = resolvedIds.length > 0 ? resolvedIds : (rc?.commentIds ?? []);
 
         // Server-side resolution: persist comment status and broadcast WS events
-        if (this.dataDir && payload.wsId && commentIds.length > 0) {
+        if (this.dataDir && rc?.wsId && commentIds.length > 0) {
             try {
                 const { TaskCommentsManager } = await import('./task-comments-handler');
                 const mgr = new TaskCommentsManager(this.dataDir);
@@ -1456,11 +1446,11 @@ export class CLITaskExecutor implements TaskExecutor {
                 await Promise.all(
                     commentIds.map(async (id) => {
                         try {
-                            await mgr.updateComment(payload.wsId!, payload.filePath, id, { status: 'resolved' });
+                            await mgr.updateComment(rc.wsId!, rc.filePath, id, { status: 'resolved' });
                             if (wsServer) {
-                                wsServer.broadcastFileEvent(payload.filePath, {
+                                wsServer.broadcastFileEvent(rc.filePath, {
                                     type: 'comment-resolved',
-                                    filePath: payload.filePath,
+                                    filePath: rc.filePath,
                                     commentId: id,
                                 });
                             }
@@ -1481,26 +1471,14 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     private getWorkingDirectory(task: QueuedTask): string | undefined {
-        if (isTaskGenerationPayload(task.payload)) {
-            return task.payload.workingDirectory || this.defaultWorkingDirectory;
-        }
         if (isRunWorkflowPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
-        if (isFollowPromptPayload(task.payload)) {
+        if (isRunScriptPayload(task.payload)) {
             return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         if (isChatPayload(task.payload)) {
             return task.payload.workingDirectory || task.payload.folderPath || this.defaultWorkingDirectory;
-        }
-        if (isAIClarificationPayload(task.payload)) {
-            return task.payload.workingDirectory || this.defaultWorkingDirectory;
-        }
-        if (isResolveCommentsPayload(task.payload)) {
-            return task.payload.workingDirectory || this.defaultWorkingDirectory;
-        }
-        if (isReplicateTemplatePayload(task.payload)) {
-            return task.payload.workingDirectory || this.defaultWorkingDirectory;
         }
         return this.defaultWorkingDirectory;
     }
@@ -1674,25 +1652,20 @@ export class CLITaskExecutor implements TaskExecutor {
 // Default Task Classification Policy
 // ============================================================================
 
-/** Task types that are safe to run concurrently (typically stateless or operating on independent inputs). */
-const SHARED_TASK_TYPES: ReadonlySet<string> = new Set([
-    'task-generation',
-    'ai-clarification',
-    'code-review',
-    'resolve-comments',
-    'update-document',
-    'replicate-template',
-]);
-
 /**
- * Default policy: tasks whose type is in SHARED_TASK_TYPES run as shared
- * (concurrent); everything else is exclusive (serialised).
+ * Default concurrency policy based on the unified task/mode model.
+ *
+ * - `run-workflow` and `run-script` are always exclusive (serialised).
+ * - Chat tasks: `ask` and `plan` modes are shared (concurrent);
+ *   `autopilot` mode is exclusive.
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
-    if (task.type === 'chat') {
-        return !(task.payload as any)?.readonly;
+    if (task.type === 'run-workflow' || task.type === 'run-script') return true;
+    if (isChatPayload(task.payload)) {
+        const mode = (task.payload as any).mode;
+        return mode === 'autopilot';
     }
-    return !SHARED_TASK_TYPES.has(task.type);
+    return true; // default: exclusive
 }
 
 // ============================================================================

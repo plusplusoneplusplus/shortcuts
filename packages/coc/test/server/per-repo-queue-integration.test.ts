@@ -73,11 +73,13 @@ function postJSON(url: string, data: unknown) {
 /** Create enqueue task body with workingDirectory for per-repo routing */
 function makeTask(workingDirectory?: string, overrides: Record<string, any> = {}) {
     return {
-        type: 'custom',
+        type: 'chat',
         priority: 'normal',
         displayName: overrides.displayName || 'Test task',
         payload: {
-            data: { prompt: overrides.prompt || 'test prompt' },
+            kind: 'chat',
+            mode: 'autopilot',
+            prompt: overrides.prompt || 'test prompt',
             ...(workingDirectory ? { workingDirectory } : {}),
         },
         config: {},
@@ -655,8 +657,8 @@ describe('Per-Repo Queue Integration', () => {
 
         it('should accept task without repoId (backward compatible)', async () => {
             const res = await postJSON(`${baseUrl}/api/queue`, {
-                type: 'custom',
-                payload: { data: { prompt: 'No repo' } },
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'No repo' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -677,9 +679,9 @@ describe('Per-Repo Queue Integration', () => {
 
         it('should handle empty repoId string (treated as no repoId)', async () => {
             const res = await postJSON(`${baseUrl}/api/queue`, {
-                type: 'custom',
+                type: 'chat',
                 repoId: '   ',
-                payload: { data: { prompt: 'test' } },
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' },
             });
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
@@ -728,7 +730,6 @@ describe('Per-Repo Queue Integration', () => {
             // Enqueue tasks — they'll be picked up by the executor
             const taskA = await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-hist-a', {
                 displayName: 'History A',
-                type: 'custom',
             }));
             const taskAId = JSON.parse(taskA.body).task.id;
 

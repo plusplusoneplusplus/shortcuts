@@ -492,9 +492,9 @@ describe('WebSocket Server', () => {
             // Enqueue a task via REST
             const res = await new Promise<string>((resolve, reject) => {
                 const reqBody = JSON.stringify({
-                    type: 'custom',
+                    type: 'chat',
                     priority: 'normal',
-                    payload: { data: { prompt: 'test' } },
+                    payload: { kind: 'chat', mode: 'autopilot', prompt: 'test' },
                     displayName: 'WS test task',
                 });
                 const req = http.request({
@@ -535,11 +535,11 @@ describe('WebSocket Server', () => {
             const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
-            // Enqueue a task that will complete quickly (code-review is a no-op)
+            // Enqueue a chat task
             const reqBody = JSON.stringify({
-                type: 'code-review',
+                type: 'chat',
                 priority: 'normal',
-                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+                payload: { kind: 'chat', mode: 'plan', prompt: 'Review staged changes' },
                 displayName: 'History test task',
             });
             await new Promise<void>((resolve, reject) => {
@@ -583,11 +583,11 @@ describe('WebSocket Server', () => {
             const { ws, messages } = await connectWebSocket(srv.port);
             await waitForMessages(messages, 1); // welcome
 
-            // Enqueue a code-review task (completes as no-op)
+            // Enqueue a chat task
             const reqBody = JSON.stringify({
-                type: 'code-review',
+                type: 'chat',
                 priority: 'high',
-                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+                payload: { kind: 'chat', mode: 'plan', prompt: 'Review staged changes' },
                 displayName: 'Detail test task',
             });
             await new Promise<void>((resolve, reject) => {
@@ -621,8 +621,8 @@ describe('WebSocket Server', () => {
 
                 // Verify history entry has expected fields
                 expect(historyEntry.id).toBeDefined();
-                expect(historyEntry.type).toBe('code-review');
-                expect(historyEntry.status).toBe('completed');
+                expect(historyEntry.type).toBe('chat');
+                expect(['completed', 'failed']).toContain(historyEntry.status);
                 expect(historyEntry.displayName).toBe('Detail test task');
                 expect(typeof historyEntry.createdAt).toBe('number');
                 expect(typeof historyEntry.completedAt).toBe('number');

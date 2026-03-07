@@ -90,7 +90,7 @@ export function MarkdownReviewEditor({
     const [viewMode, setViewModeRaw] = useState<'review' | 'source'>(initialViewMode);
     const [editedContent, setEditedContent] = useState('');
     const [saving, setSaving] = useState(false);
-    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | 'update-document' | null>(null);
+    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | null>(null);
     const taskName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
 
     const setViewMode = useCallback((mode: 'review' | 'source') => {

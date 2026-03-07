@@ -16,7 +16,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ServerResponse } from 'http';
 import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
-import type { TaskGenerationPayload } from '@plusplusoneplusplus/coc-server';
+import type { ChatPayload } from '@plusplusoneplusplus/coc-server';
 import {
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
@@ -321,21 +321,26 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 ? images.filter((img: unknown) => typeof img === 'string').slice(0, 10)
                 : undefined;
 
-            const payload: TaskGenerationPayload = {
-                kind: 'task-generation',
-                workingDirectory: ws.rootPath,
+            const payload: ChatPayload = {
+                kind: 'chat',
+                mode: 'autopilot',
                 prompt: prompt.trim(),
-                targetFolder,
-                name,
-                model,
-                mode,
-                depth,
-                ...(validImages && validImages.length > 0 ? { images: validImages } : {}),
+                workingDirectory: ws.rootPath,
                 workspaceId: id,
+                model,
+                context: {
+                    taskGeneration: {
+                        targetFolder,
+                        name,
+                        depth,
+                        mode,
+                        ...(validImages && validImages.length > 0 ? { images: validImages } : {}),
+                    },
+                },
             };
 
             const taskInput: CreateTaskInput = {
-                type: 'task-generation',
+                type: 'chat',
                 priority: priority || 'normal',
                 payload: payload as unknown as Record<string, unknown>,
                 config: { model, timeoutMs: DEFAULT_AI_TIMEOUT_MS },

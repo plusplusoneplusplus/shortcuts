@@ -27,7 +27,6 @@ import {
     needsRelocationCheck,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { BaseAnchorData } from '@plusplusoneplusplus/pipeline-core';
-import type { ResolveCommentsPayload } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 
@@ -436,16 +435,23 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         bridge.getOrCreateBridge(rootPath);
         const queueManager = bridge.registry.getQueueForRepo(rootPath);
         const input: CreateTaskInput = {
-            type: 'resolve-comments',
+            type: 'chat',
             priority: 'normal',
             payload: {
-                documentUri: taskPath,
-                commentIds,
-                promptTemplate: prompt,
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt,
+                tools: ['resolve-comments'],
                 workingDirectory: rootPath,
-                documentContent,
-                filePath: taskPath,
-                wsId,
+                context: {
+                    resolveComments: {
+                        documentUri: taskPath,
+                        commentIds,
+                        documentContent,
+                        filePath: taskPath,
+                        wsId,
+                    },
+                },
             },
             config: {},
             displayName: `Resolve comments: ${taskPath}`,

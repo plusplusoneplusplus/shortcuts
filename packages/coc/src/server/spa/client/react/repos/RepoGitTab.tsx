@@ -307,13 +307,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     displayName: `Skill: ${skillName} — ${shortId}`,
                     payload: {
-                        skillName,
-                        promptContent,
+                        kind: 'chat',
+                        mode: 'autopilot',
+                        prompt: promptContent,
                         workingDirectory: ws?.rootPath || '',
+                        context: {
+                            skills: [skillName],
+                        },
                     },
                 }),
             });

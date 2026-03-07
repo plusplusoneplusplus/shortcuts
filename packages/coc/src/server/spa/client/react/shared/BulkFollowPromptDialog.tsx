@@ -142,31 +142,45 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
 
                 const taskName = file.fileName.replace(/\.md$/, '');
 
-                let payload: Record<string, string>;
+                let chatPayload: Record<string, any>;
                 if (type === 'prompt') {
                     const promptFilePath = workingDirectory
                         ? toNativePath(workingDirectory + '/' + (path || ''))
                         : path || '';
-                    payload = { promptFilePath, planFilePath, workingDirectory };
-                } else {
-                    payload = {
-                        skillName: name,
-                        promptContent: `Use the ${name} skill.`,
-                        planFilePath,
+                    chatPayload = {
+                        kind: 'chat',
+                        mode: 'autopilot',
+                        prompt: `Follow the instruction ${promptFilePath}.`,
                         workingDirectory,
+                        context: {
+                            files: [promptFilePath, planFilePath],
+                        },
+                    };
+                } else {
+                    chatPayload = {
+                        kind: 'chat',
+                        mode: 'autopilot',
+                        prompt: `Use the ${name} skill.`,
+                        workingDirectory,
+                        context: {
+                            files: [planFilePath],
+                            skills: [name],
+                        },
                     };
                 }
 
                 const trimmed = additionalInfo.trim();
                 if (trimmed) {
-                    payload.additionalInfo = trimmed;
+                    if (!chatPayload.context) chatPayload.context = {};
+                    if (!chatPayload.context.blocks) chatPayload.context.blocks = [];
+                    chatPayload.context.blocks.push({ label: 'Additional Info', content: trimmed });
                 }
 
                 const body: any = {
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     displayName: `Follow: ${name} on ${taskName}`,
-                    payload,
+                    payload: chatPayload,
                 };
                 if (model) body.config = { model };
 

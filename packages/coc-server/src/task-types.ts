@@ -1,12 +1,14 @@
 /**
  * Domain-Specific Task Types
  *
- * Task type union, payload interfaces, and type guard functions for the CoC
- * execution layer. These are application-level concerns that belong in
- * coc-server (not in the generic pipeline-core queue engine).
+ * Unified task type model: three task types with mode-based AI dispatch.
  *
- * CodeReviewPayload is intentionally excluded — it was unused.
- * The 'code-review' string stays in TaskType for forward-compatibility.
+ *   TaskType = 'chat' | 'run-workflow' | 'run-script'
+ *   ChatMode = 'ask' | 'plan' | 'autopilot'
+ *
+ * All former AI task types (follow-prompt, ai-clarification, code-review,
+ * resolve-comments, task-generation, replicate-template, custom) are now
+ * expressed as `type: 'chat'` with the appropriate mode and context.
  */
 
 import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
@@ -21,87 +23,77 @@ export type TargetType = 'prompt' | 'script';
 // Task Type Union
 // ============================================================================
 
-export type TaskType =
-    | 'follow-prompt'
-    | 'resolve-comments'
-    | 'code-review'
-    | 'ai-clarification'
-    | 'chat'
-    | 'task-generation'
-    | 'run-workflow'
-    | 'run-script'
-    | 'custom';
+export type TaskType = 'chat' | 'run-workflow' | 'run-script';
+
+// ============================================================================
+// Chat Mode
+// ============================================================================
+
+/** Controls permissions and concurrency for chat tasks. */
+export type ChatMode = 'ask' | 'plan' | 'autopilot';
+
+// ============================================================================
+// Chat Context
+// ============================================================================
+
+/** Contextual information injected into the prompt before sending to AI. */
+export interface ChatContext {
+    /** Files/folders to include as context (replaces promptFilePath, planFilePath). */
+    files?: string[];
+    /** Inline text blocks to inject. */
+    blocks?: Array<{ label: string; content: string }>;
+    /** Skill names to activate. */
+    skills?: string[];
+    /** Task generation preset (FS introspection config). */
+    taskGeneration?: {
+        targetFolder?: string;
+        name?: string;
+        depth?: 'simple' | 'normal' | 'deep';
+        mode?: 'from-feature';
+        images?: string[];
+    };
+    /** Commit replication preset. */
+    replication?: {
+        commitHash: string;
+        templateName: string;
+        hints?: string[];
+        model?: string;
+    };
+    /** Resolve-comments preset (server-side comment resolution data). */
+    resolveComments?: {
+        documentUri: string;
+        commentIds: string[];
+        documentContent: string;
+        filePath: string;
+        wsId?: string;
+    };
+    /** Schedule-specific metadata. */
+    scheduleId?: string;
+    scheduleParams?: Record<string, string>;
+}
 
 // ============================================================================
 // Payload Interfaces
 // ============================================================================
 
-export interface FollowPromptPayload {
-    repoId?: string;
-    promptFilePath?: string;
-    promptContent?: string;
-    planFilePath?: string;
-    skillName?: string;
-    skillNames?: string[];
-    additionalContext?: string;
-    workingDirectory?: string;
-    folderPath?: string;
-}
-
-export interface ResolveCommentsPayload {
-    repoId?: string;
-    documentUri: string;
-    commentIds: string[];
-    promptTemplate: string;
-    workingDirectory?: string;
-    documentContent: string;
-    filePath: string;
-    /** Workspace ID — used by server to persist comment resolution and broadcast WS events. */
-    wsId?: string;
-}
-
-export interface AIClarificationPayload {
-    repoId?: string;
-    prompt?: string;
-    workingDirectory?: string;
-    model?: string;
-    selectedText?: string;
-    filePath?: string;
-    startLine?: number;
-    endLine?: number;
-    surroundingLines?: string;
-    nearestHeading?: string | null;
-    instructionType?: string;
-    customInstruction?: string;
-    promptFileContent?: string;
-    skillName?: string;
-}
-
 export interface ChatPayload {
     readonly kind: 'chat';
+    mode: ChatMode;
     prompt: string;
-    readonly?: boolean;
+    context?: ChatContext;
+    /** Additional tools to inject (e.g., 'resolve-comments'). */
+    tools?: string[];
+    /** For follow-ups: the process ID of the existing conversation. */
     processId?: string;
+    /** For follow-ups: the queue task ID to re-activate. */
     parentTaskId?: string;
     attachments?: Attachment[];
     imageTempDir?: string;
-    skillNames?: string[];
     workspaceId?: string;
     folderPath?: string;
     workingDirectory?: string;
-}
-
-export interface TaskGenerationPayload {
-    readonly kind: 'task-generation';
-    workingDirectory: string;
-    prompt: string;
-    targetFolder?: string;
-    name?: string;
+    /** Model override for this task. */
     model?: string;
-    depth?: 'simple' | 'normal' | 'deep';
-    mode?: 'from-feature';
-    images?: string[];
-    workspaceId?: string;
 }
 
 export interface RunWorkflowPayload {
@@ -122,55 +114,15 @@ export interface RunScriptPayload {
     scheduleId?: string;
 }
 
-export interface ReplicateTemplatePayload {
-    readonly kind: 'replicate-template';
-    templateName: string;
-    commitHash: string;
-    instruction: string;
-    hints?: string[];
-    model?: string;
-    workingDirectory?: string;
-}
-
-export interface CustomTaskPayload {
-    repoId?: string;
-    data: Record<string, unknown>;
-}
-
 // ============================================================================
 // Payload Union
 // ============================================================================
 
-export type TaskPayload =
-    | FollowPromptPayload
-    | ResolveCommentsPayload
-    | AIClarificationPayload
-    | ChatPayload
-    | TaskGenerationPayload
-    | RunWorkflowPayload
-    | RunScriptPayload
-    | ReplicateTemplatePayload
-    | CustomTaskPayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload;
 
 // ============================================================================
 // Type Guards
 // ============================================================================
-
-// Guards accept Record<string, unknown> to match QueuedTask.payload (which is
-// Record<string, unknown> after pipeline-core was generified). The intersection
-// return type ensures callers get properly typed access to payload properties.
-
-export function isFollowPromptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & FollowPromptPayload {
-    return 'promptFilePath' in payload || 'promptContent' in payload;
-}
-
-export function isResolveCommentsPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ResolveCommentsPayload {
-    return 'documentUri' in payload && 'commentIds' in payload;
-}
-
-export function isAIClarificationPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & AIClarificationPayload {
-    return 'prompt' in payload && !('data' in payload);
-}
 
 export function isChatPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
     return (payload as any).kind === 'chat';
@@ -178,14 +130,6 @@ export function isChatPayload(payload: Record<string, unknown>): payload is Reco
 
 export function isChatFollowUp(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
     return isChatPayload(payload) && !!(payload as any).processId;
-}
-
-export function isCustomTaskPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & CustomTaskPayload {
-    return 'data' in payload;
-}
-
-export function isTaskGenerationPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & TaskGenerationPayload {
-    return (payload as any).kind === 'task-generation';
 }
 
 export function isRunWorkflowPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunWorkflowPayload {
@@ -196,13 +140,17 @@ export function isRunScriptPayload(payload: Record<string, unknown>): payload is
     return (payload as any).kind === 'run-script';
 }
 
-export function isReplicateTemplatePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ReplicateTemplatePayload {
-    return (
-        typeof payload === 'object' &&
-        payload !== null &&
-        (payload as any).kind === 'replicate-template' &&
-        typeof (payload as any).templateName === 'string' &&
-        typeof (payload as any).commitHash === 'string' &&
-        typeof (payload as any).instruction === 'string'
-    );
+/** Check whether a chat payload carries task-generation context. */
+export function hasTaskGenerationContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!(payload as any).context?.taskGeneration;
+}
+
+/** Check whether a chat payload carries resolve-comments context. */
+export function hasResolveCommentsContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!(payload as any).context?.resolveComments;
+}
+
+/** Check whether a chat payload carries replication context. */
+export function hasReplicationContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!(payload as any).context?.replication;
 }

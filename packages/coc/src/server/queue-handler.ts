@@ -26,17 +26,13 @@ import * as fs from 'fs';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom', 'chat', 'run-workflow']);
+const VALID_TASK_TYPES: Set<string> = new Set(['chat', 'run-workflow', 'run-script']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
-    'follow-prompt': 'Follow Prompt',
-    'resolve-comments': 'Resolve Comments',
-    'code-review': 'Code Review',
-    'ai-clarification': 'AI Clarification',
-    'custom': 'Task',
     'chat': 'Chat',
     'run-workflow': 'Run Workflow',
+    'run-script': 'Run Script',
 };
 
 /**
@@ -53,30 +49,20 @@ function generateDisplayName(type: string, payload: any): string {
             const snippet = payload.prompt.trim();
             return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
         }
-        // AI clarification: use prompt text
+        // Chat with prompt: use prompt text
         if (typeof payload.prompt === 'string' && payload.prompt.trim()) {
             const snippet = payload.prompt.trim();
             return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
         }
-        // Follow prompt: use file path basename
-        if (typeof payload.promptFilePath === 'string' && payload.promptFilePath.trim()) {
-            const filePath = payload.promptFilePath.trim();
+        // Chat with context files: use first file path basename
+        if (payload.context?.files?.length > 0) {
+            const filePath = payload.context.files[0];
             const basename = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
             return `${typeLabel}: ${basename}`;
         }
-        // Code review: use commit SHA or diff type
-        if (payload.diffType) {
-            const sha = payload.commitSha ? ` (${String(payload.commitSha).substring(0, 7)})` : '';
-            return `${typeLabel}: ${payload.diffType}${sha}`;
-        }
-        // Custom: use data.prompt if available
-        if (payload.data && typeof payload.data.prompt === 'string' && payload.data.prompt.trim()) {
-            const snippet = payload.data.prompt.trim();
-            return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
-        }
-        // Run pipeline: use pipeline path basename
-        if (typeof payload.pipelinePath === 'string' && payload.pipelinePath.trim()) {
-            const basename = path.basename(payload.pipelinePath);
+        // Run workflow: use workflow path basename
+        if (typeof payload.workflowPath === 'string' && payload.workflowPath.trim()) {
+            const basename = path.basename(payload.workflowPath);
             return `${typeLabel}: ${basename}`;
         }
     }
@@ -167,10 +153,11 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
 
     const payload = taskSpec.payload || {};
 
-    // Ensure chat payloads carry kind:'chat' so downstream
+    // Ensure chat payloads carry kind:'chat' and a valid mode so downstream
     // isChatPayload() guards match (e.g. extractPrompt applies READONLY_PROMPT_PREFIX).
-    if (taskSpec.type === 'chat' && !payload.kind) {
-        payload.kind = 'chat';
+    if (taskSpec.type === 'chat') {
+        if (!payload.kind) payload.kind = 'chat';
+        if (!payload.mode) payload.mode = 'autopilot';
     }
 
     // Promote top-level prompt into payload when not already present

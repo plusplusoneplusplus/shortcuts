@@ -201,7 +201,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
 
     // ── File-level AI dialog state ─────────────────────────────────────
     const [aiDialogTarget, setAiDialogTarget] = useState<{ path: string; name: string } | null>(null);
-    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | 'update-document' | null>(null);
+    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | null>(null);
     const closeAiDialog = useCallback(() => { setAiDialogType(null); setAiDialogTarget(null); }, []);
 
     const closeFileDialog = useCallback(

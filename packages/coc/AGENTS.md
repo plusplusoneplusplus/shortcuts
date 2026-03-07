@@ -92,8 +92,8 @@ src/
 │   ├── websocket.ts      # WebSocket server - `ws` library, workspace-scoped event broadcasting
 │   ├── sse-handler.ts    # SSE streaming - Real-time process output via Server-Sent Events
 │   ├── types.ts          # Server types - ExecutionServer, Route, ServeCommandOptions
-│   ├── queue-handler.ts          # Queue management API endpoints
-│   ├── queue-executor-bridge.ts  # Bridges queue system to pipeline executor
+│   ├── queue-handler.ts          # Queue management API — validates 3 task types (chat, run-workflow, run-script)
+│   ├── queue-executor-bridge.ts  # Bridges queue to AI/workflow/script execution — unified chat dispatch with context-based routing
 │   ├── queue-persistence.ts      # Persistent queue state storage
 │   ├── multi-repo-executor-bridge.ts  # Multi-repo workflow execution
 │   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence

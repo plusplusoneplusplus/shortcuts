@@ -16,19 +16,24 @@ import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
-    'follow-prompt': 'Follow Prompt',
-    'run-workflow': 'Run Workflow',
-    'code-review': 'Code Review',
     'chat': 'Chat',
-    'custom': 'Custom',
+    'run-workflow': 'Run Workflow',
+    'run-script': 'Run Script',
 };
 
-/** Types grouped under the "Other" filter bucket. */
-export const OTHER_TYPES = new Set(['resolve-comments', 'ai-clarification', 'task-generation']);
+/** Mode-based labels for chat tasks. */
+const CHAT_MODE_LABELS: Record<string, string> = {
+    'ask': 'Ask',
+    'plan': 'Plan',
+    'autopilot': 'Autopilot',
+};
 
 export function taskMatchesFilter(task: any, filter: string): boolean {
     if (filter === 'all') return true;
-    if (filter === 'other') return OTHER_TYPES.has(task.type) || (!TASK_TYPE_LABELS[task.type] && !OTHER_TYPES.has(task.type));
+    // Mode-based filtering for chat tasks
+    if (filter === 'ask' || filter === 'plan' || filter === 'autopilot') {
+        return task.type === 'chat' && task.payload?.mode === filter;
+    }
     return task.type === filter;
 }
 
@@ -36,16 +41,17 @@ export function taskMatchesFilter(task: any, filter: string): boolean {
 export function getTaskTypeIcon(task: any): string {
     const type = task.type as string;
     const payload = task.payload || {};
-    if (type === 'chat') return '💬';
-    if (type === 'follow-prompt') {
-        if (payload.skillName || (Array.isArray(payload.skillNames) && payload.skillNames.length)) return '🔧';
-        if (payload.promptFilePath) return '↩️';
-        return '📝';
+    if (type === 'chat') {
+        if (payload.mode === 'ask') return '💡';
+        if (payload.mode === 'plan') return '📋';
+        if (payload.context?.skills?.length) return '🔧';
+        if (payload.context?.taskGeneration) return '📝';
+        if (payload.context?.resolveComments) return '💬';
+        if (payload.context?.files?.length) return '↩️';
+        return '🤖';
     }
-    if (type === 'code-review') return '🔍';
-    if (type === 'resolve-comments') return '💬';
-    if (type === 'ai-clarification') return '💡';
     if (type === 'run-workflow') return '▶️';
+    if (type === 'run-script') return '⚡';
     return '🤖';
 }
 
@@ -114,8 +120,12 @@ export function ActivityListPane({
         for (const [type, label] of Object.entries(TASK_TYPE_LABELS)) {
             if (types.has(type)) opts.push({ value: type, label });
         }
-        const hasOther = allTasks.some((t: any) => !TASK_TYPE_LABELS[t.type]);
-        if (hasOther) opts.push({ value: 'other', label: 'Other' });
+        // Add mode-based sub-filters for chat tasks
+        const chatTasks = allTasks.filter((t: any) => t.type === 'chat');
+        const modes = new Set(chatTasks.map((t: any) => t.payload?.mode as string).filter(Boolean));
+        for (const [mode, label] of Object.entries(CHAT_MODE_LABELS)) {
+            if (modes.has(mode)) opts.push({ value: mode, label: `Chat: ${label}` });
+        }
         return opts;
     }, [allTasks]);
 

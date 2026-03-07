@@ -88,6 +88,7 @@ packages/coc-server/
 
 The package exports from `src/index.ts`:
 - **Types**: `ExecutionServerOptions`, `ExecutionServer`, `Route`, `BulkQueueRequest`, `BulkQueueResponse`, `ExportMetadata`, `UserPreferences`, `FollowUpSuggestion`, etc.
+- **Task Types** (from `task-types.ts`): `TaskType` (`'chat' | 'run-workflow' | 'run-script'`), `ChatMode` (`'ask' | 'plan' | 'autopilot'`), `ChatContext`, `ChatPayload`, `RunWorkflowPayload`, `RunScriptPayload`, guards (`isChatPayload`, `hasTaskGenerationContext`, `hasResolveCommentsContext`, `hasReplicationContext`)
 - **Tools**: `createSuggestFollowUpsTool` — factory for a `suggest_follow_ups` custom tool (passthrough handler, 2–3 follow-up questions)
 - **Router**: `createRequestHandler`, `readJsonBody`, `sendJson`, `send404`, `send400`, `send500`; shared: `createRouter`, `serveStaticFile`, `readBody`
 - **API**: `registerApiRoutes`, `sendJSON`, `sendError`, `parseBody`, `QueueExecutorBridge`

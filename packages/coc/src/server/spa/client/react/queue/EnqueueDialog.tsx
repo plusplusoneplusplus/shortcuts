@@ -137,10 +137,11 @@ export function EnqueueDialog() {
                     priority: 'normal',
                     payload: {
                         kind: 'chat',
+                        mode: 'ask',
                         prompt: effectivePrompt || `Ask: ${effectiveSkill}`,
-                        readonly: true,
                         workspaceId: workspaceId || undefined,
                         workingDirectory: ws?.rootPath || undefined,
+                        ...(effectiveSkill ? { context: { skills: [effectiveSkill] } } : {}),
                     },
                     images: images.length > 0 ? images : undefined,
                 };
@@ -151,17 +152,21 @@ export function EnqueueDialog() {
                     body: JSON.stringify(body),
                 });
             } else if (effectiveSkill) {
-                // Skill-based task: POST to /api/queue/tasks with follow-prompt type
+                // Skill-based task
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
                 const workingDirectory = ws?.rootPath || '';
                 const body: any = {
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     displayName: `Skill: ${effectiveSkill}`,
                     payload: {
-                        skillName: effectiveSkill,
-                        promptContent: effectivePrompt || `Use the ${effectiveSkill} skill.`,
+                        kind: 'chat',
+                        mode: 'autopilot',
+                        prompt: effectivePrompt || `Use the ${effectiveSkill} skill.`,
                         workingDirectory,
+                        context: {
+                            skills: [effectiveSkill],
+                        },
                     },
                     images: images.length > 0 ? images : undefined,
                 };
@@ -172,13 +177,15 @@ export function EnqueueDialog() {
                     body: JSON.stringify(body),
                 });
             } else {
-                // Freeform prompt: POST to /api/queue/tasks with follow-prompt type
+                // Freeform prompt
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
                 const body: any = {
-                    type: 'follow-prompt',
+                    type: 'chat',
                     priority: 'normal',
                     payload: {
-                        promptContent: effectivePrompt,
+                        kind: 'chat',
+                        mode: 'autopilot',
+                        prompt: effectivePrompt,
                         workingDirectory: ws?.rootPath || folderPath || undefined,
                     },
                     images: images.length > 0 ? images : undefined,

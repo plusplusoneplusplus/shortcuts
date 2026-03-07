@@ -476,13 +476,18 @@ export class ScheduleManager extends EventEmitter {
             if (this.queueManager) {
                 if (!schedule.targetType || schedule.targetType === 'prompt') {
                     const taskId = this.queueManager.enqueue({
-                        type: 'follow-prompt',
+                        type: 'chat',
                         priority: 'normal',
                         payload: {
-                            promptFilePath: schedule.target,
+                            kind: 'chat',
+                            mode: 'autopilot',
+                            prompt: `Follow the instruction ${schedule.target}.`,
+                            context: {
+                                files: [schedule.target],
+                                scheduleId: schedule.id,
+                                scheduleParams: schedule.params,
+                            },
                             workingDirectory: '',
-                            scheduleId: schedule.id,
-                            scheduleParams: schedule.params,
                         },
                         config: {},
                         displayName: `[Schedule] ${schedule.name}`,

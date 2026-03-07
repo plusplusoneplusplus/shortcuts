@@ -47,6 +47,9 @@ const sdkMocks = createMockSDKService();
 const { mockSendMessage, mockIsAvailable, mockSendFollowUp, mockCanResumeSession } = sdkMocks;
 
 const mockExecutePipeline = vi.fn();
+const mockExecuteWorkflow = vi.fn();
+const mockCompileToWorkflow = vi.fn();
+const mockFlattenWorkflowResult = vi.fn();
 const mockGatherFeatureContext = vi.fn();
 const mockResolveSkillSync = vi.fn();
 
@@ -56,6 +59,9 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
         executePipeline: (...args: any[]) => mockExecutePipeline(...args),
+        executeWorkflow: (...args: any[]) => mockExecuteWorkflow(...args),
+        compileToWorkflow: (...args: any[]) => mockCompileToWorkflow(...args),
+        flattenWorkflowResult: (...args: any[]) => mockFlattenWorkflowResult(...args),
         gatherFeatureContext: (...args: any[]) => mockGatherFeatureContext(...args),
         resolveSkillSync: (...args: any[]) => mockResolveSkillSync(...args),
     };
@@ -5634,8 +5640,13 @@ job:
             mockIsAvailable.mockReset();
             mockIsAvailable.mockResolvedValue({ available: true });
             mockExecutePipeline.mockReset();
+            mockExecuteWorkflow.mockReset();
+            mockCompileToWorkflow.mockReset();
+            mockFlattenWorkflowResult.mockReset();
             mockCreateCLIAIInvoker.mockReset();
             mockCreateCLIAIInvoker.mockReturnValue(vi.fn());
+            // Default: compileToWorkflow returns a minimal config
+            mockCompileToWorkflow.mockReturnValue({ name: 'Test Job', nodes: {} });
         });
 
         it('should execute a run-workflow task successfully', async () => {
@@ -5647,9 +5658,13 @@ job:
                 return '';
             });
 
-            mockExecutePipeline.mockResolvedValue({
-                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 100 },
-                output: { formattedOutput: 'Pipeline result output' },
+            mockExecuteWorkflow.mockResolvedValue({ success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 100 });
+            mockFlattenWorkflowResult.mockReturnValue({
+                success: true,
+                stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 100 },
+                items: [],
+                leafOutput: [],
+                formattedOutput: 'Pipeline result output',
             });
 
             const executor = new CLITaskExecutor(store);
@@ -5671,7 +5686,7 @@ job:
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            expect(mockExecutePipeline).toHaveBeenCalledOnce();
+            expect(mockExecuteWorkflow).toHaveBeenCalledOnce();
             expect(mockCreateCLIAIInvoker).toHaveBeenCalledOnce();
             // Verify the pipeline result is returned
             expect(result.result).toEqual(expect.objectContaining({
@@ -5688,9 +5703,13 @@ job:
                 return '';
             });
 
-            mockExecutePipeline.mockResolvedValue({
-                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                output: { formattedOutput: 'result' },
+            mockExecuteWorkflow.mockResolvedValue({ success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 });
+            mockFlattenWorkflowResult.mockReturnValue({
+                success: true,
+                stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                items: [],
+                leafOutput: [],
+                formattedOutput: 'result',
             });
 
             const executor = new CLITaskExecutor(store);
@@ -5724,7 +5743,7 @@ job:
                 return '';
             });
 
-            mockExecutePipeline.mockRejectedValue(new Error('Workflow execution failed'));
+            mockExecuteWorkflow.mockRejectedValue(new Error('Workflow execution failed'));
 
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
@@ -5755,9 +5774,13 @@ job:
                 return '';
             });
 
-            mockExecutePipeline.mockResolvedValue({
-                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                output: { formattedOutput: 'done' },
+            mockExecuteWorkflow.mockResolvedValue({ success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 });
+            mockFlattenWorkflowResult.mockReturnValue({
+                success: true,
+                stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                items: [],
+                leafOutput: [],
+                formattedOutput: 'done',
             });
 
             const executor = new CLITaskExecutor(store);
@@ -5789,9 +5812,13 @@ job:
                 if (String(p).includes('pipeline.yaml')) { return SIMPLE_JOB_YAML; }
                 return '';
             });
-            mockExecutePipeline.mockResolvedValue({
-                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                output: { formattedOutput: 'done' },
+            mockExecuteWorkflow.mockResolvedValue({ success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 });
+            mockFlattenWorkflowResult.mockReturnValue({
+                success: true,
+                stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                items: [],
+                leafOutput: [],
+                formattedOutput: 'done',
             });
 
             const mcpServers = {
@@ -5826,9 +5853,13 @@ job:
                 if (String(p).includes('pipeline.yaml')) { return SIMPLE_JOB_YAML; }
                 return '';
             });
-            mockExecutePipeline.mockResolvedValue({
-                executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                output: { formattedOutput: 'done' },
+            mockExecuteWorkflow.mockResolvedValue({ success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 });
+            mockFlattenWorkflowResult.mockReturnValue({
+                success: true,
+                stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                items: [],
+                leafOutput: [],
+                formattedOutput: 'done',
             });
 
             const executor = new CLITaskExecutor(store);
@@ -5868,10 +5899,13 @@ job:
                 reducePhaseTimeMs: 0,
                 maxConcurrency: 1,
             };
-            mockExecutePipeline.mockResolvedValue({
-                executionStats,
-                output: { formattedOutput: 'done' },
-                itemProcessIds: [],
+            mockExecuteWorkflow.mockResolvedValue({ success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 5000 });
+            mockFlattenWorkflowResult.mockReturnValue({
+                success: true,
+                stats: executionStats,
+                items: [],
+                leafOutput: [],
+                formattedOutput: 'done',
             });
 
             const executor = new CLITaskExecutor(store);
@@ -5928,22 +5962,25 @@ job:
             it('should create child AIProcess records for each map item', async () => {
                 setupFsMock();
                 const itemProcessIds = ['queue_cp-3items-m0', 'queue_cp-3items-m1', 'queue_cp-3items-m2'];
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
                     // Simulate 3 map items firing the callback
                     for (let i = 0; i < 3; i++) {
-                        opts.onItemProcessCreated?.({
+                        opts.onItemProcess?.({
                             itemIndex: i,
                             processId: itemProcessIds[i],
-                            item: `input item ${i}`,
-                            phase: 'map',
-                            success: true,
+                            itemLabel: `input item ${i}`,
+                            nodeId: 'map',
+                            status: 'completed',
                         });
                     }
-                    return {
-                        executionStats: { totalItems: 3, successfulItems: 3, failedItems: 0, durationMs: 100 },
-                        output: { formattedOutput: 'done' },
-                        itemProcessIds,
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 100 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 3, successfulItems: 3, failedItems: 0, durationMs: 100 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -5967,19 +6004,22 @@ job:
 
             it('should set correct parentProcessId on child processes', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
-                    opts.onItemProcessCreated?.({
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcess?.({
                         itemIndex: 0,
                         processId: 'queue_cp-parent-m0',
-                        item: 'test input',
-                        phase: 'map',
-                        success: true,
+                        itemLabel: 'test input',
+                        nodeId: 'map',
+                        status: 'completed',
                     });
-                    return {
-                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                        output: { formattedOutput: 'done' },
-                        itemProcessIds: ['queue_cp-parent-m0'],
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -5993,20 +6033,22 @@ job:
 
             it('should set type pipeline-item and metadata on child processes', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
-                    opts.onItemProcessCreated?.({
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcess?.({
                         itemIndex: 2,
                         processId: 'queue_cp-meta-m2',
-                        item: 'some input',
-                        phase: 'map',
-                        success: true,
-                        sessionId: 'sdk-session-123',
+                        itemLabel: 'some input',
+                        nodeId: 'map',
+                        status: 'completed',
                     });
-                    return {
-                        executionStats: { totalItems: 3, successfulItems: 3, failedItems: 0, durationMs: 50 },
-                        output: { formattedOutput: 'done' },
-                        itemProcessIds: ['queue_cp-meta-m2'],
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 3, successfulItems: 3, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6020,31 +6062,33 @@ job:
                     metadata: {
                         type: 'pipeline-item',
                         itemIndex: 2,
-                        phase: 'map',
+                        nodeId: 'map',
                         parentPipelineId: 'queue_cp-meta',
                     },
-                    sdkSessionId: 'sdk-session-123',
                 });
             });
 
             it('should update parent process with groupMetadata.childProcessIds on completion', async () => {
                 setupFsMock();
                 const childIds = ['queue_cp-group-m0', 'queue_cp-group-m1'];
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
                     for (let i = 0; i < 2; i++) {
-                        opts.onItemProcessCreated?.({
+                        opts.onItemProcess?.({
                             itemIndex: i,
                             processId: childIds[i],
-                            item: `item ${i}`,
-                            phase: 'map',
-                            success: true,
+                            itemLabel: `item ${i}`,
+                            nodeId: 'map',
+                            status: 'completed',
                         });
                     }
-                    return {
-                        executionStats: { totalItems: 2, successfulItems: 2, failedItems: 0, durationMs: 50 },
-                        output: { formattedOutput: 'done' },
-                        itemProcessIds: childIds,
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 2, successfulItems: 2, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6067,21 +6111,24 @@ job:
 
             it('should emit SSE event per child process creation', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
                     for (let i = 0; i < 2; i++) {
-                        opts.onItemProcessCreated?.({
+                        opts.onItemProcess?.({
                             itemIndex: i,
                             processId: `queue_cp-sse-m${i}`,
-                            item: `item ${i}`,
-                            phase: 'map',
-                            success: true,
+                            itemLabel: `item ${i}`,
+                            nodeId: 'map',
+                            status: 'completed',
                         });
                     }
-                    return {
-                        executionStats: { totalItems: 2, successfulItems: 2, failedItems: 0, durationMs: 50 },
-                        output: { formattedOutput: 'done' },
-                        itemProcessIds: ['queue_cp-sse-m0', 'queue_cp-sse-m1'],
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 2, successfulItems: 2, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6110,18 +6157,22 @@ job:
                     return originalAddProcess(process);
                 });
 
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
-                    opts.onItemProcessCreated?.({
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcess?.({
                         itemIndex: 0,
                         processId: 'queue_cp-fail-m0',
-                        item: 'test',
-                        phase: 'map',
-                        success: true,
+                        itemLabel: 'test',
+                        nodeId: 'map',
+                        status: 'completed',
                     });
-                    return {
-                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                        output: { formattedOutput: 'pipeline completed' },
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'pipeline completed',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6134,10 +6185,13 @@ job:
 
             it('should not update parent groupMetadata when no itemProcessIds returned', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockResolvedValue({
-                    executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                    output: { formattedOutput: 'done' },
-                    // No itemProcessIds
+                mockExecuteWorkflow.mockResolvedValue({ success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6153,19 +6207,22 @@ job:
 
             it('should handle object items by JSON-stringifying them', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
-                    opts.onItemProcessCreated?.({
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcess?.({
                         itemIndex: 0,
                         processId: 'queue_cp-obj-m0',
-                        item: { name: 'test', value: 42 },
-                        phase: 'map',
-                        success: true,
+                        itemLabel: '{"name":"test","value":42}',
+                        nodeId: 'map',
+                        status: 'completed',
                     });
-                    return {
-                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                        output: { formattedOutput: 'done' },
-                        itemProcessIds: ['queue_cp-obj-m0'],
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6180,20 +6237,23 @@ job:
 
             it('should set failed status and error on failed items', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
-                    opts.onItemProcessCreated?.({
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcess?.({
                         itemIndex: 0,
                         processId: 'queue_cp-err-m0',
-                        item: 'bad input',
-                        phase: 'map',
-                        success: false,
+                        itemLabel: 'bad input',
+                        nodeId: 'map',
+                        status: 'failed',
                         error: 'AI model timeout',
                     });
-                    return {
-                        executionStats: { totalItems: 1, successfulItems: 0, failedItems: 1, durationMs: 50 },
-                        output: { formattedOutput: 'done' },
-                        itemProcessIds: ['queue_cp-err-m0'],
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 1, successfulItems: 0, failedItems: 1, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'done',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6208,22 +6268,24 @@ job:
                 });
             });
 
-            it('should populate conversationTurns with user + assistant turns when rawResponse is provided', async () => {
+            it('should populate fullPrompt and status from onItemProcess event', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
-                    opts.onItemProcessCreated?.({
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcess?.({
                         itemIndex: 0,
                         processId: 'queue_cp-conv-m0',
-                        item: 'Summarize this document',
-                        phase: 'map',
-                        success: true,
-                        rawResponse: 'Here is the summary.',
+                        itemLabel: 'Summarize this document',
+                        nodeId: 'map',
+                        status: 'completed',
                     });
-                    return {
-                        executionStats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
-                        output: { formattedOutput: 'Here is the summary.' },
-                        itemProcessIds: ['queue_cp-conv-m0'],
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 1, successfulItems: 1, failedItems: 0, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: 'Here is the summary.',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6233,29 +6295,29 @@ job:
                     (call: any[]) => call[0].type === 'pipeline-item'
                 );
                 const child = childCalls[0][0];
-                expect(child.result).toBe('Here is the summary.');
-                expect(child.conversationTurns).toHaveLength(2);
-                expect(child.conversationTurns[0]).toMatchObject({ role: 'user', content: 'Summarize this document', turnIndex: 0 });
-                expect(child.conversationTurns[1]).toMatchObject({ role: 'assistant', content: 'Here is the summary.', turnIndex: 1 });
+                expect(child.fullPrompt).toBe('Summarize this document');
+                expect(child.status).toBe('completed');
             });
 
-            it('should only have user turn in conversationTurns when rawResponse is undefined', async () => {
+            it('should use itemLabel fallback for fullPrompt when itemLabel is provided', async () => {
                 setupFsMock();
-                mockExecutePipeline.mockImplementation(async (_config: any, opts: any) => {
-                    opts.onItemProcessCreated?.({
+                mockExecuteWorkflow.mockImplementation(async (_config: any, opts: any) => {
+                    opts.onItemProcess?.({
                         itemIndex: 0,
                         processId: 'queue_cp-noai-m0',
-                        item: 'bad input',
-                        phase: 'map',
-                        success: false,
+                        itemLabel: 'bad input',
+                        nodeId: 'map',
+                        status: 'failed',
                         error: 'timeout',
-                        rawResponse: undefined,
                     });
-                    return {
-                        executionStats: { totalItems: 1, successfulItems: 0, failedItems: 1, durationMs: 50 },
-                        output: { formattedOutput: '' },
-                        itemProcessIds: ['queue_cp-noai-m0'],
-                    };
+                    return { success: true, results: new Map(), leaves: new Map(), tiers: [], totalDurationMs: 50 };
+                });
+                mockFlattenWorkflowResult.mockReturnValue({
+                    success: true,
+                    stats: { totalItems: 1, successfulItems: 0, failedItems: 1, durationMs: 50 },
+                    items: [],
+                    leafOutput: [],
+                    formattedOutput: '',
                 });
 
                 const executor = new CLITaskExecutor(store);
@@ -6265,9 +6327,9 @@ job:
                     (call: any[]) => call[0].type === 'pipeline-item'
                 );
                 const child = childCalls[0][0];
-                expect(child.result).toBeUndefined();
-                expect(child.conversationTurns).toHaveLength(1);
-                expect(child.conversationTurns[0]).toMatchObject({ role: 'user', content: 'bad input', turnIndex: 0 });
+                expect(child.fullPrompt).toBe('bad input');
+                expect(child.status).toBe('failed');
+                expect(child.error).toBe('timeout');
             });
         });
     });

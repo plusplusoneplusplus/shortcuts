@@ -28,6 +28,30 @@ export interface StoredProcessEntry {
     process: SerializedAIProcess;
 }
 
+// ============================================================================
+// Process Type Migration
+// ============================================================================
+
+/** Map of legacy queue process types to the unified `queue-chat` type. */
+const LEGACY_PROCESS_TYPE_MAP: Record<string, string> = {
+    'queue-follow-prompt': 'queue-chat',
+    'queue-ai-clarification': 'queue-chat',
+    'queue-resolve-comments': 'queue-chat',
+    'queue-code-review': 'queue-chat',
+    'queue-task-generation': 'queue-chat',
+    'queue-custom': 'queue-chat',
+};
+
+/**
+ * Normalize a legacy process type string to the unified model.
+ * Processes stored as `queue-follow-prompt`, `queue-ai-clarification`, etc.
+ * are migrated to `queue-chat` on read. Non-matching types pass through.
+ */
+function migrateProcessType(type: string | undefined): string | undefined {
+    if (!type) return type;
+    return LEGACY_PROCESS_TYPE_MAP[type] ?? type;
+}
+
 /** Lightweight index entry stored in processes/index.json */
 export interface ProcessIndexEntry {
     id: string;
@@ -121,7 +145,9 @@ export class FileProcessStore implements ProcessStore {
     async getProcess(id: string): Promise<AIProcess | undefined> {
         await this.ensureInitialized();
         const entry = await this.readProcessFile(id);
-        return entry ? deserializeProcess(entry.process) : undefined;
+        if (!entry) return undefined;
+        entry.process.type = migrateProcessType(entry.process.type);
+        return deserializeProcess(entry.process);
     }
 
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
@@ -140,7 +166,10 @@ export class FileProcessStore implements ProcessStore {
             indexEntries = indexEntries.filter(e => statuses.includes(e.status as AIProcessStatus));
         }
         if (filter?.type) {
-            indexEntries = indexEntries.filter(e => e.type === filter.type);
+            indexEntries = indexEntries.filter(e => {
+                const migrated = migrateProcessType(e.type);
+                return migrated === filter.type || e.type === filter.type;
+            });
         }
         if (filter?.since) {
             const sinceTime = filter.since.getTime();
@@ -158,6 +187,7 @@ export class FileProcessStore implements ProcessStore {
         for (const ie of indexEntries) {
             const entry = await this.readProcessFile(ie.id);
             if (entry) {
+                entry.process.type = migrateProcessType(entry.process.type);
                 processes.push(deserializeProcess(entry.process));
             }
         }
