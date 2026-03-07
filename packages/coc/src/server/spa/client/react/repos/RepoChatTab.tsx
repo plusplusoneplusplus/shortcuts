@@ -20,6 +20,9 @@ import { useChatSessions } from '../chat/useChatSessions';
 import { useChatReadState } from '../chat/useChatReadState';
 import { usePinnedChats } from '../chat/usePinnedChats';
 import { useArchivedChats } from '../chat/useArchivedChats';
+import { getConversationTurns } from '../chat/chatConversationUtils';
+import { ChatStartPane } from '../chat/ChatStartPane';
+import { ChatConversationPane } from '../chat/ChatConversationPane';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useVisualViewport } from '../hooks/useVisualViewport';
 import { cn } from '../shared/cn';
@@ -39,35 +42,6 @@ interface RepoChatTabProps {
     newChatTriggerProcessedRef?: React.MutableRefObject<number>;
     /** When provided, sidebar "New Chat" opens the floating dialog instead of inline start screen. */
     onOpenNewChatDialog?: (readOnly: boolean) => void;
-}
-
-function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
-    const process = data?.process;
-    if (process?.conversationTurns && Array.isArray(process.conversationTurns) && process.conversationTurns.length > 0) {
-        return process.conversationTurns;
-    }
-    if (Array.isArray(data?.conversation) && data.conversation.length > 0) {
-        return data.conversation;
-    }
-    if (Array.isArray(data?.turns) && data.turns.length > 0) {
-        return data.turns;
-    }
-    if (process) {
-        const synthetic: ClientConversationTurn[] = [];
-        const userContent = process.fullPrompt || process.promptPreview;
-        if (userContent) {
-            synthetic.push({ role: 'user', content: userContent, timestamp: process.startTime || undefined, timeline: [] });
-        }
-        if (process.result) {
-            synthetic.push({ role: 'assistant', content: process.result, timestamp: process.endTime || undefined, timeline: [] });
-        }
-        return synthetic;
-    }
-    // Fallback: construct from task payload when process has no turns
-    if (task?.payload?.prompt) {
-        return [{ role: 'user', content: task.payload.prompt, timeline: [] }];
-    }
-    return [];
 }
 
 export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newChatTrigger, newChatTriggerProcessedRef, onOpenNewChatDialog }: RepoChatTabProps) {
@@ -98,7 +72,6 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
     const [models, setModels] = useState<string[]>([]);
     const [readOnly, setReadOnly] = useState(false);
     const [skills, setSkills] = useState<SkillItem[]>([]);
-    const [copied, setCopied] = useState(false);
 
     const initialImagePaste = useImagePaste();
     const followUpImagePaste = useImagePaste();
@@ -754,302 +727,79 @@ export function RepoChatTab({ workspaceId, workspacePath, initialSessionId, newC
 
     // --- render helpers ---
 
+    const handleStartInputChange = useCallback((value: string, selectionStart: number) => {
+        setInputValue(value);
+        inputDrafts.current.set(selectedTaskId ?? null, value);
+        slashCommands.handleInputChange(value, selectionStart);
+    }, [selectedTaskId, slashCommands]);
+
+    const handleFollowUpInputChange = useCallback((value: string, selectionStart: number) => {
+        setInputValue(value);
+        inputDrafts.current.set(selectedTaskId ?? null, value);
+        slashCommands.handleInputChange(value, selectionStart);
+    }, [selectedTaskId, slashCommands]);
+
     const renderStartScreen = () => (
-        <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
-            {isMobile && (
-                <button
-                    className="self-start text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff]"
-                    onClick={() => setMobileShowDetail(false)}
-                    data-testid="chat-detail-back-btn"
-                >
-                    ← Back
-                </button>
-            )}
-            <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat with this repository</div>
-            <div className="w-full max-w-md relative">
-                <textarea
-                    className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                    rows={3}
-                    placeholder="Ask anything… Type / for skills"
-                    value={inputValue}
-                    onChange={e => {
-                        setInputValue(e.target.value);
-                        inputDrafts.current.set(selectedTaskId ?? null, e.target.value);
-                        slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
-                    }}
-                    onKeyDown={e => {
-                        if (slashCommands.handleKeyDown(e)) {
-                            if (e.key === 'Enter' || e.key === 'Tab') {
-                                const selected = slashCommands.filteredSkills[slashCommands.highlightIndex];
-                                if (selected) slashCommands.selectSkill(selected.name, inputValue, setInputValue);
-                            }
-                            return;
-                        }
-                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void handleStartChat(); }
-                    }}
-                    onPaste={initialImagePaste.addFromPaste}
-                />
-                <SlashCommandMenu
-                    skills={skills}
-                    filter={slashCommands.menuFilter}
-                    onSelect={name => slashCommands.selectSkill(name, inputValue, setInputValue)}
-                    onDismiss={slashCommands.dismissMenu}
-                    visible={slashCommands.menuVisible}
-                    highlightIndex={slashCommands.highlightIndex}
-                />
-            </div>
-            <ImagePreviews images={initialImagePaste.images} onRemove={initialImagePaste.removeImage} />
-            {error && <div className="text-xs text-red-500">{error}</div>}
-            {isMobile ? (
-                <div className="space-y-2 w-full max-w-md" data-testid="chat-start-controls">
-                    <div className="flex items-center gap-2">
-                        <label className="flex items-center gap-1 text-xs text-[#848484] cursor-pointer" data-testid="chat-readonly-toggle">
-                            <input
-                                type="checkbox"
-                                checked={readOnly}
-                                onChange={e => setReadOnly(e.target.checked)}
-                                className="accent-blue-500"
-                            />
-                            Read-only
-                        </label>
-                        <select
-                            value={model}
-                            onChange={e => handleModelChange(e.target.value)}
-                            className="flex-1 px-2 py-1.5 text-sm rounded border bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                            data-testid="chat-model-select"
-                        >
-                            <option value="">Default</option>
-                            {models.map(m => (
-                                <option key={m} value={m}>{m}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()} className="w-full justify-center">
-                        {sending ? '...' : 'Start Chat'}
-                    </Button>
-                </div>
-            ) : (
-                <div className="flex items-center gap-2" data-testid="chat-start-controls">
-                    <label className="flex items-center gap-1 text-xs text-[#848484] cursor-pointer" data-testid="chat-readonly-toggle">
-                        <input
-                            type="checkbox"
-                            checked={readOnly}
-                            onChange={e => setReadOnly(e.target.checked)}
-                            className="accent-blue-500"
-                        />
-                        Read-only
-                    </label>
-                    <select
-                        value={model}
-                        onChange={e => handleModelChange(e.target.value)}
-                        className="px-2 py-1.5 text-sm rounded border bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                        data-testid="chat-model-select"
-                    >
-                        <option value="">Default</option>
-                        {models.map(m => (
-                            <option key={m} value={m}>{m}</option>
-                        ))}
-                    </select>
-                    <Button disabled={!inputValue.trim() || sending} onClick={() => void handleStartChat()}>
-                        {sending ? '...' : 'Start Chat'}
-                    </Button>
-                </div>
-            )}
-        </div>
+        <ChatStartPane
+            isMobile={isMobile}
+            inputValue={inputValue}
+            onInputChange={handleStartInputChange}
+            onStartChat={handleStartChat}
+            sending={sending}
+            error={error}
+            readOnly={readOnly}
+            onReadOnlyChange={setReadOnly}
+            model={model}
+            models={models}
+            onModelChange={handleModelChange}
+            images={initialImagePaste.images}
+            onRemoveImage={initialImagePaste.removeImage}
+            onPaste={initialImagePaste.addFromPaste}
+            skills={skills}
+            slashCommands={slashCommands}
+            onSetInputValue={setInputValue}
+            onMobileBack={isMobile ? () => setMobileShowDetail(false) : undefined}
+        />
     );
 
     const renderConversation = () => (
-        <div className="flex flex-col min-h-0 flex-1" style={isMobile && keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}>
-            {/* Header */}
-            <div className={cn(
-                "px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]",
-                isMobile ? "flex flex-col gap-1.5" : "flex items-center justify-between"
-            )} data-testid="chat-conversation-header">
-                <div className="flex items-center gap-2">
-                    {isMobile && (
-                        <button
-                            className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
-                            onClick={() => setMobileShowDetail(false)}
-                            data-testid="chat-detail-back-btn"
-                        >
-                            ← Back
-                        </button>
-                    )}
-                    <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
-                    {(task?.payload as any)?.readonly && (
-                        <span
-                            className="text-xs px-2 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 whitespace-nowrap"
-                            data-testid="chat-readonly-badge"
-                            title="This chat session is read-only — the AI will not modify files"
-                        >
-                            Read-only
-                        </span>
-                    )}
-                </div>
-                <div className={cn("flex items-center gap-2", isMobile && "flex-wrap")}>
-                    {isStreaming && <Button size="sm" variant="secondary" onClick={stopStreaming}>Stop</Button>}
-                    {task?.status === 'queued' && (
-                        <Button size="sm" variant="secondary" onClick={() => void handleCancelChat()} data-testid="cancel-chat-header-btn">
-                            Cancel
-                        </Button>
-                    )}
-                    {(sessionExpired || taskFinished) && !isStreaming && (
-                        <>
-                            <Button size="sm" variant="secondary" className="hidden sm:inline-flex" onClick={() => void handleResumeInTerminal()} disabled={!processId}>
-                                Resume in Terminal
-                            </Button>
-                            <Button size="sm" variant="primary" onClick={() => void handleResumeChat()} disabled={resuming}>
-                                {resuming ? '…' : '↻ Resume'}
-                            </Button>
-                        </>
-                    )}
-                    {(task?.config?.model || task?.metadata?.model) && (
-                        <span
-                            className={cn(
-                                "text-xs px-2 py-1 rounded bg-[#e8e8e8] dark:bg-[#2d2d2d] text-[#848484]",
-                                isMobile ? "truncate max-w-[160px]" : "whitespace-nowrap"
-                            )}
-                            data-testid="chat-model-badge"
-                            title={task.config?.model || task.metadata?.model}
-                        >
-                            {task.config?.model || task.metadata?.model}
-                        </span>
-                    )}
-                    <button
-                        title="Copy conversation"
-                        data-testid="copy-conversation-btn"
-                        disabled={isStreaming || turns.length === 0}
-                        onClick={() => {
-                            void copyToClipboard(formatConversationAsText(turns)).then(() => {
-                                setCopied(true);
-                                setTimeout(() => setCopied(false), 2000);
-                            });
-                        }}
-                        className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                    >
-                        {copied ? (
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M2 8L6 12L14 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                        ) : (
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <rect x="4" y="4" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                                <path d="M4 4V3a1 1 0 011-1h6a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.5"/>
-                                <path d="M3 2h7a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5"/>
-                            </svg>
-                        )}
-                    </button>
-                    {metadataProcess && <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />}
-                </div>
-            </div>
-
-            {/* Conversation area */}
-            <div ref={conversationContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-                {loading ? <Spinner /> : turns.map((turn, i) => {
-                    const prevTurn = i > 0 ? turns[i - 1] : null;
-                    const showSeparator = prevTurn?.historical && !turn.historical;
-                    return (
-                        <div key={i}>
-                            {showSeparator && (
-                                <div className="flex items-center gap-2 py-2 text-xs text-[#848484]">
-                                    <div className="flex-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />
-                                    <span>Resumed from previous session</span>
-                                    <div className="flex-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />
-                                </div>
-                            )}
-                            <ConversationTurnBubble
-                                turn={turn}
-                                onRetry={
-                                    !readOnly && turn.isError && turn.role === 'assistant' && !sending
-                                        ? retryLastMessage
-                                        : undefined
-                                }
-                            />
-                        </div>
-                    );
-                })}
-                {!loading && task?.status === 'queued' && (
-                    <div className="flex items-center gap-2 text-sm text-[#848484] py-4">
-                        <Spinner /> Waiting to start…
-                        <Button size="sm" variant="secondary" onClick={() => void handleCancelChat()} data-testid="cancel-chat-inline-btn">
-                            Cancel
-                        </Button>
-                    </div>
-                )}
-                {!loading && error && turns.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-sm text-[#848484] gap-2">
-                        <span>⚠️ {error}</span>
-                        <Button size="sm" variant="secondary" onClick={() => loadSession(chatTaskId!)}>
-                            Retry
-                        </Button>
-                    </div>
-                )}
-            </div>
-
-            {/* Input area */}
-            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
-                {error && <div className="text-xs text-red-500">{error}</div>}
-                {sessionExpired ? (
-                    <div className="flex items-center justify-center gap-2 py-2 text-sm text-[#848484]">
-                        Session expired — use header buttons to resume.
-                    </div>
-                ) : (
-                    <>
-                        {suggestions.length > 0 && !isStreaming && (
-                            <SuggestionChips
-                                suggestions={suggestions}
-                                onSelect={(text) => {
-                                        setInputValue(prev => prev ? `${prev} ${text}` : text);
-                                        textareaRef.current?.focus();
-                                    }}
-                                disabled={inputDisabled || sessionExpired}
-                            />
-                        )}
-                        <ImagePreviews images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage} />
-                        <div className="flex items-center gap-2 relative">
-                            <div className="flex-1 relative">
-                                <textarea
-                                    ref={textareaRef}
-                                    rows={1}
-                                    value={inputValue}
-                                    disabled={inputDisabled}
-                                    placeholder="Follow up… Type / for skills"
-                                    onChange={e => {
-                                        setInputValue(e.target.value);
-                                        inputDrafts.current.set(selectedTaskId ?? null, e.target.value);
-                                        slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
-                                    }}
-                                    onKeyDown={e => {
-                                        if (slashCommands.handleKeyDown(e)) {
-                                            if (e.key === 'Enter' || e.key === 'Tab') {
-                                                const selected = slashCommands.filteredSkills[slashCommands.highlightIndex];
-                                                if (selected) slashCommands.selectSkill(selected.name, inputValue, setInputValue);
-                                            }
-                                            return;
-                                        }
-                                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void sendFollowUp(); }
-                                    }}
-                                    onPaste={followUpImagePaste.addFromPaste}
-                                    onFocus={isMobile ? e => e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) : undefined}
-                                    className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
-                                />
-                                <SlashCommandMenu
-                                    skills={skills}
-                                    filter={slashCommands.menuFilter}
-                                    onSelect={name => slashCommands.selectSkill(name, inputValue, setInputValue)}
-                                    onDismiss={slashCommands.dismissMenu}
-                                    visible={slashCommands.menuVisible}
-                                    highlightIndex={slashCommands.highlightIndex}
-                                />
-                            </div>
-                            <Button disabled={inputDisabled || !inputValue.trim()} onClick={() => void sendFollowUp()}>
-                                {sending ? '...' : 'Send'}
-                            </Button>
-                        </div>
-                    </>
-                )}
-            </div>
-        </div>
+        <ChatConversationPane
+            isMobile={isMobile}
+            keyboardHeight={keyboardHeight}
+            turns={turns}
+            loading={loading}
+            task={task}
+            isStreaming={isStreaming}
+            sending={sending}
+            sessionExpired={sessionExpired}
+            error={error}
+            inputValue={inputValue}
+            suggestions={suggestions}
+            readOnly={readOnly}
+            resuming={resuming}
+            metadataProcess={metadataProcess}
+            processId={processId}
+            chatTaskId={chatTaskId}
+            inputDisabled={inputDisabled}
+            taskFinished={taskFinished}
+            onInputChange={handleFollowUpInputChange}
+            onSetInputValue={setInputValue}
+            onStopStreaming={stopStreaming}
+            onCancelChat={() => void handleCancelChat()}
+            onResumeChat={() => void handleResumeChat()}
+            onResumeInTerminal={() => void handleResumeInTerminal()}
+            onSendFollowUp={() => void sendFollowUp()}
+            onRetryLastMessage={retryLastMessage}
+            onLoadSession={loadSession}
+            onMobileBack={isMobile ? () => setMobileShowDetail(false) : undefined}
+            followUpImages={followUpImagePaste.images}
+            onRemoveFollowUpImage={followUpImagePaste.removeImage}
+            onFollowUpPaste={followUpImagePaste.addFromPaste}
+            skills={skills}
+            slashCommands={slashCommands}
+            conversationContainerRef={conversationContainerRef}
+            textareaRef={textareaRef}
+        />
     );
 
     // --- render ---

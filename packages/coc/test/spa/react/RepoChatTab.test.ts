@@ -16,15 +16,33 @@ const REPO_CHAT_TAB_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'
 );
 
+const CHAT_START_PANE_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'ChatStartPane.tsx'
+);
+
+const CHAT_CONVERSATION_PANE_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'ChatConversationPane.tsx'
+);
+
+const CHAT_UTILS_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'chatConversationUtils.ts'
+);
+
 const INDEX_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'index.ts'
 );
 
 describe('RepoChatTab', () => {
     let source: string;
+    let startPaneSource: string;
+    let conversationPaneSource: string;
+    let chatUtilsSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_CHAT_TAB_PATH, 'utf-8');
+        startPaneSource = fs.readFileSync(CHAT_START_PANE_PATH, 'utf-8');
+        conversationPaneSource = fs.readFileSync(CHAT_CONVERSATION_PANE_PATH, 'utf-8');
+        chatUtilsSource = fs.readFileSync(CHAT_UTILS_PATH, 'utf-8');
     });
 
     describe('exports', () => {
@@ -179,19 +197,19 @@ describe('RepoChatTab', () => {
 
     describe('empty state', () => {
         it('renders "Chat with this repository" heading', () => {
-            expect(source).toContain('Chat with this repository');
+            expect(startPaneSource).toContain('Chat with this repository');
         });
 
         it('renders textarea with placeholder', () => {
-            expect(source).toContain('Ask anything');
+            expect(startPaneSource).toContain('Ask anything');
         });
 
         it('renders Start Chat button', () => {
-            expect(source).toContain('Start Chat');
+            expect(startPaneSource).toContain('Start Chat');
         });
 
         it('disables Start Chat when input is empty', () => {
-            expect(source).toContain('disabled={!inputValue.trim() || sending}');
+            expect(startPaneSource).toContain('disabled={!inputValue.trim() || sending}');
         });
     });
 
@@ -251,23 +269,23 @@ describe('RepoChatTab', () => {
 
     describe('active chat UI', () => {
         it('renders Chat header', () => {
-            const lines = source.split('\n');
+            const lines = conversationPaneSource.split('\n');
             const headerLine = lines.find(l => l.includes('>Chat<'));
             expect(headerLine).toBeDefined();
         });
 
         it('renders Stop button when streaming', () => {
-            expect(source).toContain('isStreaming && <Button');
-            expect(source).toContain('>Stop<');
+            expect(conversationPaneSource).toContain('isStreaming && <Button');
+            expect(conversationPaneSource).toContain('>Stop<');
         });
 
         it('renders ConversationTurnBubble for each turn', () => {
-            expect(source).toContain('ConversationTurnBubble');
-            expect(source).toContain('turns.map');
+            expect(conversationPaneSource).toContain('ConversationTurnBubble');
+            expect(conversationPaneSource).toContain('turns.map');
         });
 
         it('renders Spinner when loading', () => {
-            expect(source).toContain('loading ? <Spinner');
+            expect(conversationPaneSource).toContain('loading ? <Spinner');
         });
     });
 
@@ -285,7 +303,7 @@ describe('RepoChatTab', () => {
         });
 
         it('handles Ctrl/Cmd+Enter for send', () => {
-            expect(source).toContain("(e.ctrlKey || e.metaKey) && e.key === 'Enter'");
+            expect(conversationPaneSource).toContain("(e.ctrlKey || e.metaKey) && e.key === 'Enter'");
         });
     });
 
@@ -398,20 +416,20 @@ describe('RepoChatTab', () => {
 
     describe('getConversationTurns helper', () => {
         it('checks process.conversationTurns first', () => {
-            expect(source).toContain('process?.conversationTurns');
+            expect(chatUtilsSource).toContain('process?.conversationTurns');
         });
 
         it('falls back to data.conversation', () => {
-            expect(source).toContain("data?.conversation");
+            expect(chatUtilsSource).toContain("data?.conversation");
         });
 
         it('falls back to data.turns', () => {
-            expect(source).toContain("data?.turns");
+            expect(chatUtilsSource).toContain("data?.turns");
         });
 
         it('creates synthetic turns from fullPrompt and result', () => {
-            expect(source).toContain('process.fullPrompt || process.promptPreview');
-            expect(source).toContain('process.result');
+            expect(chatUtilsSource).toContain('process.fullPrompt || process.promptPreview');
+            expect(chatUtilsSource).toContain('process.result');
         });
     });
 
@@ -498,7 +516,9 @@ describe('RepoChatTab', () => {
         });
 
         it('renders ImagePreviews for initial chat', () => {
-            expect(source).toContain('images={initialImagePaste.images} onRemove={initialImagePaste.removeImage}');
+            expect(source).toContain('images={initialImagePaste.images}');
+            expect(source).toContain('onRemoveImage={initialImagePaste.removeImage}');
+            expect(startPaneSource).toContain('<ImagePreviews');
         });
 
         it('includes images in handleStartChat POST body', () => {
@@ -511,11 +531,14 @@ describe('RepoChatTab', () => {
         });
 
         it('attaches onPaste to follow-up textarea', () => {
-            expect(source).toContain('onPaste={followUpImagePaste.addFromPaste}');
+            expect(source).toContain('onFollowUpPaste={followUpImagePaste.addFromPaste}');
+            expect(conversationPaneSource).toContain('onPaste={onFollowUpPaste}');
         });
 
         it('renders ImagePreviews for follow-up', () => {
-            expect(source).toContain('images={followUpImagePaste.images} onRemove={followUpImagePaste.removeImage}');
+            expect(source).toContain('followUpImages={followUpImagePaste.images}');
+            expect(source).toContain('onRemoveFollowUpImage={followUpImagePaste.removeImage}');
+            expect(conversationPaneSource).toContain('<ImagePreviews');
         });
 
         it('clears follow-up images after successful send', () => {
@@ -893,36 +916,36 @@ describe('RepoChatTab', () => {
 
     describe('waiting state and error visibility', () => {
         it('shows "Waiting to start…" indicator for queued tasks', () => {
-            expect(source).toContain("Waiting to start…");
+            expect(conversationPaneSource).toContain("Waiting to start…");
         });
 
         it('queued indicator only shows when not loading and task is queued', () => {
-            expect(source).toContain("!loading && task?.status === 'queued'");
+            expect(conversationPaneSource).toContain("!loading && task?.status === 'queued'");
         });
 
         it('shows prominent error with retry in conversation area', () => {
-            const convArea = source.substring(source.indexOf('Conversation area'), source.indexOf('Input area'));
+            const convArea = conversationPaneSource.substring(conversationPaneSource.indexOf('Conversation area'), conversationPaneSource.indexOf('Input area'));
             expect(convArea).toContain('⚠️ {error}');
             expect(convArea).toContain('Retry');
         });
 
         it('error display only shows when not loading, has error, and no turns', () => {
-            expect(source).toContain('!loading && error && turns.length === 0');
+            expect(conversationPaneSource).toContain('!loading && error && turns.length === 0');
         });
 
         it('retry button calls loadSession with chatTaskId', () => {
-            const convArea = source.substring(source.indexOf('Conversation area'), source.indexOf('Input area'));
-            expect(convArea).toContain('loadSession(chatTaskId!)');
+            const convArea = conversationPaneSource.substring(conversationPaneSource.indexOf('Conversation area'), conversationPaneSource.indexOf('Input area'));
+            expect(convArea).toContain('onLoadSession(chatTaskId!)');
         });
     });
 
     describe('getConversationTurns task payload fallback', () => {
         it('accepts optional task parameter', () => {
-            expect(source).toContain('function getConversationTurns(data: any, task?: any)');
+            expect(chatUtilsSource).toContain('function getConversationTurns(data: any, task?: any)');
         });
 
         it('falls back to task.payload.prompt when no process data', () => {
-            expect(source).toContain('task?.payload?.prompt');
+            expect(chatUtilsSource).toContain('task?.payload?.prompt');
         });
 
         it('passes loadedTask to getConversationTurns in loadSession', () => {
@@ -945,54 +968,54 @@ describe('RepoChatTab', () => {
         });
 
         it('shows header resume button when taskFinished', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('sessionExpired || taskFinished');
         });
 
         it('hides header resume button when streaming', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('!isStreaming');
         });
 
         it('shows Resume in Terminal button in header', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
-            expect(headerSection).toContain('handleResumeInTerminal');
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('onResumeInTerminal');
             expect(headerSection).toContain('Resume in Terminal');
         });
 
         it('Resume in Terminal appears before Resume in header', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             const terminalIdx = headerSection.indexOf('Resume in Terminal');
             const resumeIdx = headerSection.indexOf('↻ Resume');
             expect(terminalIdx).toBeLessThan(resumeIdx);
         });
 
         it('disables header Resume in Terminal when processId is falsy', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             const resumeBlock = headerSection.substring(headerSection.indexOf('sessionExpired || taskFinished'));
             expect(resumeBlock).toContain('disabled={!processId}');
         });
 
         it('does not render bottom buttons when taskFinished', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            const inputSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Input area */}'));
             expect(inputSection).not.toContain('taskFinished && (');
         });
 
         it('expired state shows informational message instead of buttons', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            const inputSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Input area */}'));
             const expiredBranch = inputSection.substring(
                 inputSection.indexOf('sessionExpired ? ('),
                 inputSection.indexOf(') : (')
             );
             expect(expiredBranch).toContain('Session expired');
-            expect(expiredBranch).not.toContain('handleResumeChat');
+            expect(expiredBranch).not.toContain('onResumeChat');
             expect(expiredBranch).not.toContain('Resume in Terminal');
             expect(expiredBranch).not.toContain('New Chat');
             expect(expiredBranch).not.toContain('<textarea');
         });
 
         it('keeps textarea visible when not expired', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            const inputSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Input area */}'));
             const elseBranch = inputSection.substring(inputSection.indexOf(') : ('));
             expect(elseBranch).toContain('<textarea');
         });
@@ -1042,27 +1065,27 @@ describe('RepoChatTab', () => {
         });
 
         it('shows Cancel button in header when task is queued', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain("task?.status === 'queued'");
             expect(headerSection).toContain('Cancel');
             expect(headerSection).toContain('data-testid="cancel-chat-header-btn"');
         });
 
         it('header Cancel button calls handleCancelChat', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
-            expect(headerSection).toContain('handleCancelChat()');
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
+            expect(headerSection).toContain('onCancelChat()');
         });
 
         it('shows inline Cancel button next to "Waiting to start…"', () => {
-            const convArea = source.substring(source.indexOf('{/* Conversation area */}'), source.indexOf('{/* Input area */}'));
+            const convArea = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Conversation area */}'), conversationPaneSource.indexOf('{/* Input area */}'));
             expect(convArea).toContain('Waiting to start…');
             expect(convArea).toContain('data-testid="cancel-chat-inline-btn"');
             expect(convArea).toContain('Cancel');
         });
 
         it('inline Cancel button calls handleCancelChat', () => {
-            const convArea = source.substring(source.indexOf('Waiting to start'), source.indexOf('{/* Input area */}'));
-            expect(convArea).toContain('handleCancelChat()');
+            const convArea = conversationPaneSource.substring(conversationPaneSource.indexOf('Waiting to start'), conversationPaneSource.indexOf('{/* Input area */}'));
+            expect(convArea).toContain('onCancelChat()');
         });
 
         it('passes onCancelSession prop to ChatSessionSidebar', () => {
@@ -1160,36 +1183,30 @@ describe('RepoChatTab', () => {
         });
 
         it('renders a select dropdown with data-testid on start screen', () => {
-            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
-            expect(startScreen).toContain('data-testid="chat-model-select"');
-            expect(startScreen).toContain('<select');
+            expect(startPaneSource).toContain('data-testid="chat-model-select"');
+            expect(startPaneSource).toContain('<select');
         });
 
         it('select has Default option with empty value', () => {
-            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
-            expect(startScreen).toContain('<option value="">Default</option>');
+            expect(startPaneSource).toContain('<option value="">Default</option>');
         });
 
         it('maps models array to option elements', () => {
-            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
-            expect(startScreen).toContain('models.map(m =>');
-            expect(startScreen).toContain('<option key={m} value={m}>{m}</option>');
+            expect(startPaneSource).toContain('models.map(m =>');
+            expect(startPaneSource).toContain('<option key={m} value={m}>{m}</option>');
         });
 
         it('select is bound to model state', () => {
-            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
-            expect(startScreen).toContain('value={model}');
+            expect(startPaneSource).toContain('value={model}');
         });
 
         it('select calls handleModelChange on change', () => {
-            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
-            expect(startScreen).toContain('handleModelChange(e.target.value)');
+            expect(startPaneSource).toContain('onModelChange(e.target.value)');
         });
 
         it('select is placed inline next to Start Chat button', () => {
-            const startScreen = source.substring(source.indexOf('renderStartScreen'), source.indexOf('renderConversation'));
-            const selectIdx = startScreen.indexOf('<select');
-            const buttonIdx = startScreen.indexOf('Start Chat');
+            const selectIdx = startPaneSource.indexOf('<select');
+            const buttonIdx = startPaneSource.indexOf('Start Chat');
             expect(selectIdx).toBeGreaterThan(-1);
             expect(buttonIdx).toBeGreaterThan(selectIdx);
         });
@@ -1209,33 +1226,33 @@ describe('RepoChatTab', () => {
 
     describe('model badge in header', () => {
         it('renders a model badge with data-testid in header area', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('data-testid="chat-model-badge"');
         });
 
         it('reads model from task.config.model or task.metadata.model', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('task?.config?.model');
             expect(headerSection).toContain('task?.metadata?.model');
         });
 
         it('only shows model badge when model is available', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain("(task?.config?.model || task?.metadata?.model) && (");
         });
 
         it('displays model text from config or metadata', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('task.config?.model || task.metadata?.model');
         });
 
         it('model badge is not present in the input area', () => {
-            const inputSection = source.substring(source.indexOf('{/* Input area */}'));
+            const inputSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Input area */}'));
             expect(inputSection).not.toContain('chat-model-badge');
         });
 
         it('model badge has a title attribute for accessibility', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('title={task.config?.model || task.metadata?.model}');
         });
     });
@@ -1313,19 +1330,11 @@ describe('RepoChatTab', () => {
         });
 
         it('renders SlashCommandMenu in start screen', () => {
-            const startScreen = source.substring(
-                source.indexOf('const renderStartScreen'),
-                source.indexOf('const renderConversation')
-            );
-            expect(startScreen).toContain('<SlashCommandMenu');
+            expect(startPaneSource).toContain('<SlashCommandMenu');
         });
 
         it('renders SlashCommandMenu in follow-up area', () => {
-            const convSection = source.substring(
-                source.indexOf('const renderConversation'),
-                source.indexOf('// --- render ---')
-            );
-            expect(convSection).toContain('<SlashCommandMenu');
+            expect(conversationPaneSource).toContain('<SlashCommandMenu');
         });
 
         it('handleStartChat extracts skills via parseAndExtract', () => {
@@ -1362,45 +1371,27 @@ describe('RepoChatTab', () => {
         });
 
         it('start screen textarea placeholder mentions skills', () => {
-            const startScreen = source.substring(
-                source.indexOf('const renderStartScreen'),
-                source.indexOf('const renderConversation')
-            );
-            expect(startScreen).toContain('Type / for skills');
+            expect(startPaneSource).toContain('Type / for skills');
         });
 
         it('follow-up textarea placeholder mentions skills', () => {
-            const convSection = source.substring(
-                source.indexOf('const renderConversation'),
-                source.indexOf('// --- render ---')
-            );
-            expect(convSection).toContain('Type / for skills');
+            expect(conversationPaneSource).toContain('Type / for skills');
         });
 
         it('start screen textarea calls slashCommands.handleInputChange on change', () => {
-            const startScreen = source.substring(
-                source.indexOf('const renderStartScreen'),
-                source.indexOf('const renderConversation')
-            );
-            expect(startScreen).toContain('slashCommands.handleInputChange');
+            // ChatStartPane receives onInputChange from RepoChatTab; handleStartInputChange calls slashCommands.handleInputChange
+            const handleStart = source.substring(source.indexOf('const handleStartInputChange'), source.indexOf('const handleFollowUpInputChange'));
+            expect(handleStart).toContain('slashCommands.handleInputChange');
         });
 
         it('start screen textarea calls slashCommands.handleKeyDown on keyDown', () => {
-            const startScreen = source.substring(
-                source.indexOf('const renderStartScreen'),
-                source.indexOf('const renderConversation')
-            );
-            expect(startScreen).toContain('slashCommands.handleKeyDown');
+            expect(startPaneSource).toContain('slashCommands.handleKeyDown');
         });
     });
 
     describe('read-only toggle', () => {
         it('renders a read-only checkbox in start screen', () => {
-            const startScreen = source.substring(
-                source.indexOf('const renderStartScreen'),
-                source.indexOf('const renderConversation')
-            );
-            expect(startScreen).toContain('data-testid="chat-readonly-toggle"');
+            expect(startPaneSource).toContain('data-testid="chat-readonly-toggle"');
         });
 
         it('has readOnly state', () => {
@@ -1413,16 +1404,13 @@ describe('RepoChatTab', () => {
         });
 
         it('shows read-only badge in conversation header', () => {
-            const convSection = source.substring(
-                source.indexOf('const renderConversation'),
-            );
-            expect(convSection).toContain('data-testid="chat-readonly-badge"');
-            expect(convSection).toContain('Read-only');
+            expect(conversationPaneSource).toContain('data-testid="chat-readonly-badge"');
+            expect(conversationPaneSource).toContain('Read-only');
         });
 
         it('badge checks payload.readonly for read-only mode', () => {
-            expect(source).toContain("task?.payload");
-            expect(source).toContain("readonly");
+            expect(conversationPaneSource).toContain("task?.payload");
+            expect(conversationPaneSource).toContain("readonly");
         });
     });
 
@@ -1471,27 +1459,27 @@ describe('RepoChatTab', () => {
         });
 
         it('renders ConversationMetadataPopover in the chat header', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('<ConversationMetadataPopover');
         });
 
         it('passes metadataProcess as the process prop', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('process={metadataProcess}');
         });
 
         it('passes turns.length as the turnsCount prop', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('turnsCount={turns.length}');
         });
 
         it('conditionally renders popover only when metadataProcess is defined', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             expect(headerSection).toContain('metadataProcess && <ConversationMetadataPopover');
         });
 
         it('popover is placed inside the header button group', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             // The popover should be after the resume buttons and before closing the button group div
             const popoverIdx = headerSection.indexOf('<ConversationMetadataPopover');
             const stopIdx = headerSection.indexOf('>Stop<');
@@ -1499,7 +1487,7 @@ describe('RepoChatTab', () => {
         });
 
         it('header button group uses items-center alignment for info icon', () => {
-            const headerSection = source.substring(source.indexOf('{/* Header */}'), source.indexOf('{/* Conversation area */}'));
+            const headerSection = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Header */}'), conversationPaneSource.indexOf('{/* Conversation area */}'));
             // The div containing buttons should use items-center for vertical alignment
             expect(headerSection).toContain('"flex items-center gap-2"');
         });
@@ -1508,46 +1496,46 @@ describe('RepoChatTab', () => {
     describe('mobile layout — follow-up input bar', () => {
         it('always uses flex items-center gap-2 relative for the follow-up wrapper', () => {
             // Unified horizontal layout for both mobile and desktop
-            expect(source).toContain('"flex items-center gap-2 relative"');
-            expect(source).not.toContain('isMobile ? "space-y-2"');
+            expect(conversationPaneSource).toContain('"flex items-center gap-2 relative"');
+            expect(conversationPaneSource).not.toContain('isMobile ? "space-y-2"');
         });
 
         it('textarea wrapper always uses flex-1 relative', () => {
-            expect(source).toContain('"flex-1 relative"');
-            expect(source).not.toContain('isMobile ? "w-full relative"');
+            expect(conversationPaneSource).toContain('"flex-1 relative"');
+            expect(conversationPaneSource).not.toContain('isMobile ? "w-full relative"');
         });
 
         it('Send button is rendered inline without a separate controls row', () => {
-            expect(source).not.toContain('data-testid="chat-followup-controls-row"');
+            expect(conversationPaneSource).not.toContain('data-testid="chat-followup-controls-row"');
         });
 
         it('no mobile-specific justify-between wrapper around Send button', () => {
-            expect(source).not.toContain('"flex items-center justify-between gap-2"');
+            expect(conversationPaneSource).not.toContain('"flex items-center justify-between gap-2"');
         });
 
         it('Send button does not need ml-auto in the follow-up input area', () => {
-            const inputArea = source.substring(source.indexOf('{/* Input area */}'));
+            const inputArea = conversationPaneSource.substring(conversationPaneSource.indexOf('{/* Input area */}'));
             expect(inputArea).not.toContain('className="ml-auto"');
         });
     });
 
     describe('mobile layout — new-chat start form', () => {
         it('uses isMobile to conditionally choose start-form layout', () => {
-            expect(source).toContain('data-testid="chat-start-controls"');
+            expect(startPaneSource).toContain('data-testid="chat-start-controls"');
         });
 
         it('on mobile, Start Chat button has w-full justify-center classes', () => {
-            expect(source).toContain('className="w-full justify-center"');
+            expect(startPaneSource).toContain('className="w-full justify-center"');
         });
 
         it('on mobile, model select uses flex-1 to fill available width', () => {
             // The mobile branch select has flex-1 class
-            expect(source).toContain('"flex-1 px-2 py-1.5 text-sm rounded border');
+            expect(startPaneSource).toContain('"flex-1 px-2 py-1.5 text-sm rounded border');
         });
 
         it('on desktop, model select keeps original classes without flex-1', () => {
             // Desktop branch select starts with px-2
-            expect(source).toContain('"px-2 py-1.5 text-sm rounded border');
+            expect(startPaneSource).toContain('"px-2 py-1.5 text-sm rounded border');
         });
     });
 });
@@ -1555,10 +1543,15 @@ describe('RepoChatTab', () => {
 
 describe('RepoChatTab — retry strategy', () => {
     let source: string;
+    let conversationPaneSource: string;
 
     beforeAll(() => {
         source = require('fs').readFileSync(
             require('path').join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'),
+            'utf-8'
+        );
+        conversationPaneSource = require('fs').readFileSync(
+            require('path').join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'ChatConversationPane.tsx'),
             'utf-8'
         );
     });
@@ -1586,23 +1579,23 @@ describe('RepoChatTab — retry strategy', () => {
     });
 
     it('passes onRetry to ConversationTurnBubble for error turns', () => {
-        expect(source).toContain('onRetry={');
-        expect(source).toContain('turn.isError');
-        expect(source).toContain('retryLastMessage');
+        expect(conversationPaneSource).toContain('onRetry={');
+        expect(conversationPaneSource).toContain('turn.isError');
+        expect(conversationPaneSource).toContain('onRetryLastMessage');
     });
 
     it('guards onRetry behind readOnly check', () => {
-        const retryProp = source.substring(
-            source.indexOf('onRetry={'),
-            source.indexOf('onRetry={') + 300
+        const retryProp = conversationPaneSource.substring(
+            conversationPaneSource.indexOf('onRetry={'),
+            conversationPaneSource.indexOf('onRetry={') + 300
         );
         expect(retryProp).toContain('!readOnly');
     });
 
     it('guards onRetry behind !sending check', () => {
-        const retryProp = source.substring(
-            source.indexOf('onRetry={'),
-            source.indexOf('onRetry={') + 300
+        const retryProp = conversationPaneSource.substring(
+            conversationPaneSource.indexOf('onRetry={'),
+            conversationPaneSource.indexOf('onRetry={') + 300
         );
         expect(retryProp).toContain('!sending');
     });

@@ -14,10 +14,9 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const SRC = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'),
-    'utf-8',
-);
+const CHAT_CONVERSATION_PANE_PATH = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'ChatConversationPane.tsx');
+
+const SRC = fs.readFileSync(CHAT_CONVERSATION_PANE_PATH, 'utf-8');
 
 describe('RepoChatTab mobile: conversation header layout', () => {
     it('header uses flex-col on mobile and flex-row justify-between on desktop', () => {

@@ -9,10 +9,11 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const SRC = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'),
-    'utf-8',
-);
+const REPO_CHAT_TAB_PATH = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx');
+const CHAT_CONVERSATION_PANE_PATH = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'ChatConversationPane.tsx');
+
+const SRC = fs.readFileSync(REPO_CHAT_TAB_PATH, 'utf-8');
+const CONVERSATION_PANE_SRC = fs.readFileSync(CHAT_CONVERSATION_PANE_PATH, 'utf-8');
 
 describe('RepoChatTab per-chat input state: inputDrafts ref', () => {
     it('declares inputDrafts as a useRef<Map<string | null, string>>', () => {
@@ -20,13 +21,13 @@ describe('RepoChatTab per-chat input state: inputDrafts ref', () => {
     });
 
     it('persists draft in start-screen textarea onChange', () => {
-        // The start-screen textarea onChange should write to inputDrafts
-        expect(SRC).toContain('inputDrafts.current.set(selectedTaskId ?? null, e.target.value)');
+        // The start-screen textarea onChange handler (handleStartInputChange) writes to inputDrafts
+        expect(SRC).toContain('inputDrafts.current.set(selectedTaskId ?? null, value)');
     });
 
     it('persists draft in follow-up textarea onChange', () => {
-        // Both textareas should persist drafts — the pattern appears at least twice
-        const matches = SRC.match(/inputDrafts\.current\.set\(selectedTaskId \?\? null, e\.target\.value\)/g);
+        // Both textareas should persist drafts — handleStartInputChange and handleFollowUpInputChange
+        const matches = SRC.match(/inputDrafts\.current\.set\(selectedTaskId \?\? null, value\)/g);
         expect(matches).not.toBeNull();
         expect(matches!.length).toBeGreaterThanOrEqual(2);
     });
@@ -64,15 +65,15 @@ describe('RepoChatTab per-chat input state: inputDisabled', () => {
     });
 
     it('uses inputDisabled on follow-up textarea disabled prop', () => {
-        expect(SRC).toContain('disabled={inputDisabled}');
+        expect(CONVERSATION_PANE_SRC).toContain('disabled={inputDisabled}');
     });
 
     it('uses inputDisabled on follow-up send button', () => {
-        expect(SRC).toContain('disabled={inputDisabled || !inputValue.trim()}');
+        expect(CONVERSATION_PANE_SRC).toContain('disabled={inputDisabled || !inputValue.trim()}');
     });
 
     it('uses inputDisabled on SuggestionChips', () => {
-        expect(SRC).toContain('disabled={inputDisabled || sessionExpired}');
+        expect(CONVERSATION_PANE_SRC).toContain('disabled={inputDisabled || sessionExpired}');
     });
 
     it('still has taskFinished for header resume logic', () => {

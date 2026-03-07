@@ -13,11 +13,23 @@ const QUEUE_TASK_DETAIL_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'QueueTaskDetail.tsx'
 );
 
+const PENDING_PAYLOAD_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'PendingTaskPayload.tsx'
+);
+
+const PENDING_INFO_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'PendingTaskInfoPanel.tsx'
+);
+
 describe('QueueTaskDetail', () => {
     let source: string;
+    let payloadSource: string;
+    let infoSource: string;
 
     beforeAll(() => {
         source = fs.readFileSync(QUEUE_TASK_DETAIL_PATH, 'utf-8');
+        payloadSource = fs.readFileSync(PENDING_PAYLOAD_PATH, 'utf-8');
+        infoSource = fs.readFileSync(PENDING_INFO_PATH, 'utf-8');
     });
 
     describe('exports', () => {
@@ -203,13 +215,12 @@ describe('QueueTaskDetail', () => {
 
     describe('lazy image loading', () => {
         it('PendingTaskPayload fetches images when payload.hasImages is true', () => {
-            expect(source).toContain('payload.hasImages');
-            expect(source).toContain("fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)");
+            expect(payloadSource).toContain('payload.hasImages');
+            expect(payloadSource).toContain("fetchApi(`/queue/${encodeURIComponent(task.id)}/images`)");
         });
 
         it('PendingTaskPayload renders ImageGallery for fetched images', () => {
-            const pendingPayloadSection = source.substring(source.indexOf('function PendingTaskPayload'));
-            expect(pendingPayloadSection).toContain('<ImageGallery');
+            expect(payloadSource).toContain('<ImageGallery');
         });
 
         it('ConversationTurnBubble receives taskId prop', () => {
@@ -217,17 +228,14 @@ describe('QueueTaskDetail', () => {
         });
 
         it('clears payloadImages and loading state before the early-return guard', () => {
-            // The useEffect in PendingTaskPayload must reset state before the guard
-            const pendingPayloadSection = source.substring(source.indexOf('function PendingTaskPayload'));
-            const effectStart = pendingPayloadSection.indexOf('useEffect(() => {');
-            const effectBody = pendingPayloadSection.substring(effectStart, effectStart + 500);
+            const effectStart = payloadSource.indexOf('useEffect(() => {');
+            const effectBody = payloadSource.substring(effectStart, effectStart + 500);
             const clearImagesIdx = effectBody.indexOf('setPayloadImages([])');
             const clearLoadingIdx = effectBody.indexOf('setPayloadImagesLoading(false)');
             const guardIdx = effectBody.indexOf('if (!task?.id || !payload.hasImages');
             expect(clearImagesIdx).toBeGreaterThan(-1);
             expect(clearLoadingIdx).toBeGreaterThan(-1);
             expect(guardIdx).toBeGreaterThan(-1);
-            // Both resets must come before the early-return guard
             expect(clearImagesIdx).toBeLessThan(guardIdx);
             expect(clearLoadingIdx).toBeLessThan(guardIdx);
         });
@@ -284,36 +292,37 @@ describe('QueueTaskDetail', () => {
         });
 
         it('defines FilePathValue component', () => {
-            expect(source).toContain('function FilePathValue(');
+            expect(payloadSource).toContain('function FilePathValue(');
         });
 
         it('FilePathValue uses shared FilePathLink component', () => {
-            const filePathValueSection = source.substring(source.indexOf('function FilePathValue'));
+            const filePathValueSection = payloadSource.substring(payloadSource.indexOf('function FilePathValue'));
             expect(filePathValueSection).toContain('<FilePathLink path={value}');
         });
 
         it('uses FilePathValue for Working Directory', () => {
-            expect(source).toContain('<FilePathValue label="Working Directory" value={workingDir}');
+            expect(infoSource).toContain('<FilePathValue label="Working Directory" value={workingDir}');
         });
 
         it('uses FilePathValue for Prompt File', () => {
-            expect(source).toContain('<FilePathValue label="Prompt File" value={payload.promptFilePath}');
+            expect(payloadSource).toContain('<FilePathValue label="Prompt File" value={payload.promptFilePath}');
         });
 
         it('uses FilePathValue for Plan File', () => {
-            expect(source).toContain('<FilePathValue label="Plan File" value={payload.planFilePath}');
+            expect(payloadSource).toContain('<FilePathValue label="Plan File" value={payload.planFilePath}');
         });
 
         it('uses FilePathValue for metadata file path fields', () => {
-            expect(source).toContain('<FilePathValue label="File" value={payload.filePath}');
-            expect(source).toContain('<FilePathValue label="Target Folder" value={payload.targetFolder}');
-            expect(source).toContain('<FilePathValue label="Rules Folder" value={payload.rulesFolder}');
+            expect(payloadSource).toContain('<FilePathValue label="File" value={payload.filePath}');
+            expect(payloadSource).toContain('<FilePathValue label="Target Folder" value={payload.targetFolder}');
+            expect(payloadSource).toContain('<FilePathValue label="Rules Folder" value={payload.rulesFolder}');
         });
 
         it('does not use MetaRow for file-path fields', () => {
-            expect(source).not.toContain('MetaRow label="Working Directory"');
-            expect(source).not.toContain('MetaRow label="Prompt File"');
-            expect(source).not.toContain('MetaRow label="Plan File"');
+            const combined = source + infoSource + payloadSource;
+            expect(combined).not.toContain('MetaRow label="Working Directory"');
+            expect(combined).not.toContain('MetaRow label="Prompt File"');
+            expect(combined).not.toContain('MetaRow label="Plan File"');
         });
     });
 });

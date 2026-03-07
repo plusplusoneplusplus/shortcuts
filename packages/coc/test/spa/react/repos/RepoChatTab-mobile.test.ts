@@ -15,10 +15,13 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const REPO_CHAT_TAB_SOURCE = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx'),
-    'utf-8',
-);
+const REPO_CHAT_TAB_PATH = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoChatTab.tsx');
+const CHAT_START_PANE_PATH = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'ChatStartPane.tsx');
+const CHAT_CONVERSATION_PANE_PATH = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'chat', 'ChatConversationPane.tsx');
+
+const REPO_CHAT_TAB_SOURCE = fs.readFileSync(REPO_CHAT_TAB_PATH, 'utf-8');
+const START_PANE_SOURCE = fs.readFileSync(CHAT_START_PANE_PATH, 'utf-8');
+const CONVERSATION_PANE_SOURCE = fs.readFileSync(CHAT_CONVERSATION_PANE_PATH, 'utf-8');
 
 describe('RepoChatTab mobile: two-level nav state', () => {
     it('has mobileShowDetail state (not mobileSidebarOpen)', () => {
@@ -73,27 +76,25 @@ describe('RepoChatTab mobile: two-level conditional render', () => {
 
 describe('RepoChatTab mobile: back button', () => {
     it('renders back button with chat-detail-back-btn test ID', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('data-testid="chat-detail-back-btn"');
+        expect(CONVERSATION_PANE_SOURCE).toContain('data-testid="chat-detail-back-btn"');
     });
 
     it('back button calls setMobileShowDetail(false)', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('onClick={() => setMobileShowDetail(false)}');
+        expect(REPO_CHAT_TAB_SOURCE).toContain('onMobileBack={isMobile ? () => setMobileShowDetail(false) : undefined}');
     });
 
     it('back button shows ← Back text', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('← Back');
+        expect(CONVERSATION_PANE_SOURCE).toContain('← Back');
     });
 
     it('back button is only shown on mobile', () => {
-        const normalized = REPO_CHAT_TAB_SOURCE.replace(/\r\n/g, '\n');
-        const matches = normalized.match(/\{isMobile && \(\s*<button[\s\S]*?chat-detail-back-btn/g);
-        expect(matches).toBeTruthy();
-        expect(matches!.length).toBeGreaterThanOrEqual(1);
+        expect(CONVERSATION_PANE_SOURCE).toContain('isMobile && onMobileBack &&');
+        expect(CONVERSATION_PANE_SOURCE).toContain('chat-detail-back-btn');
     });
 
     it('back button styled consistently with queue detail back button', () => {
-        expect(REPO_CHAT_TAB_SOURCE).toContain('text-[#0078d4]');
-        expect(REPO_CHAT_TAB_SOURCE).toContain('hover:text-[#005a9e]');
+        expect(CONVERSATION_PANE_SOURCE).toContain('text-[#0078d4]');
+        expect(CONVERSATION_PANE_SOURCE).toContain('hover:text-[#005a9e]');
     });
 });
 
