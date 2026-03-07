@@ -17,7 +17,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { cn } from '../shared/cn';
-import { formatDuration, statusIcon, statusLabel } from '../utils/format';
+import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { Badge } from '../shared';
 import type { ClientConversationTurn } from '../types/dashboard';
 
@@ -41,6 +41,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [processDetails, setProcessDetails] = useState<any>(null);
+    const [copied, setCopied] = useState(false);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const followUpEventSourceRef = useRef<EventSource | null>(null);
@@ -399,6 +400,32 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                             Resume CLI
                         </Button>
                     )}
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        title="Copy conversation"
+                        data-testid="copy-conversation-btn"
+                        disabled={loading || turns.length === 0}
+                        onClick={() => {
+                            void copyToClipboard(formatConversationAsText(turns)).then(() => {
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                            });
+                        }}
+                        className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                        {copied ? (
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M2 8L6 12L14 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        ) : (
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="4" y="4" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                                <path d="M4 4V3a1 1 0 011-1h6a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.5"/>
+                                <path d="M3 2h7a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5"/>
+                            </svg>
+                        )}
+                    </button>
                     {!isPending && metadataProcess && (
                         <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
                     )}

@@ -263,6 +263,47 @@ describe('ActivityChatDetail: inline chat detail', () => {
     it('has scroll-to-bottom button', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Scroll to bottom');
     });
+
+    it('has copy-conversation button with data-testid', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="copy-conversation-btn"');
+    });
+
+    it('imports copyToClipboard and formatConversationAsText from utils/format', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('copyToClipboard');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('formatConversationAsText');
+    });
+
+    it('has copied state for copy button feedback', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useState(false)');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setCopied(true)');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setCopied(false)');
+    });
+
+    it('copy button is disabled when loading or turns empty', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('disabled={loading || turns.length === 0}');
+    });
+
+    it('copy button calls formatConversationAsText with turns', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('formatConversationAsText(turns)');
+    });
+
+    it('copy button shows checkmark icon after copying (2s revert)', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setCopied(false), 2000');
+    });
+
+    it('copy button has clipboard and checkmark SVG icons', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('M2 8L6 12L14 4');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('copied ?');
+    });
+
+    it('header has right-side actions group with copy and metadata', () => {
+        const headerStart = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('{/* Header */}');
+        const headerEnd = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('{/* Conversation area */}');
+        const headerBlock = ACTIVITY_CHAT_DETAIL_SOURCE.substring(headerStart, headerEnd);
+        // The copy button and metadata popover are in a separate right-side div
+        expect(headerBlock).toContain('copy-conversation-btn');
+        expect(headerBlock).toContain('ConversationMetadataPopover');
+    });
 });
 
 // ── ActivityListPane: shared left rail ─────────────────────────────────
