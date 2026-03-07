@@ -11,6 +11,11 @@ import { MinimizedDialogsProvider, MinimizedDialogsTray } from '../../../src/ser
 import { EnqueueDialog } from '../../../src/server/spa/client/react/queue/EnqueueDialog';
 import { mockViewport } from '../../spa/helpers/viewport-mock';
 
+// jsdom doesn't implement scrollIntoView
+if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = vi.fn();
+}
+
 // Re-export flattenFolders for unit testing by extracting it
 // Since flattenFolders is module-local, we replicate the logic here for unit tests
 interface FolderOption { label: string; value: string; }
@@ -282,7 +287,7 @@ describe('EnqueueDialog', () => {
         fireEvent.change(folderSelect, { target: { value: 'feature1' } });
 
         // Enter prompt
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'Test prompt' } });
 
         // Submit
@@ -322,7 +327,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Enter prompt and submit without folder
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'Test prompt' } });
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => {
@@ -641,7 +646,7 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'Test with images' } });
 
         // Simulate paste with an image blob
@@ -811,7 +816,7 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'My freeform task' } });
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => {
@@ -854,7 +859,7 @@ describe('EnqueueDialog', () => {
         const modelSelect = screen.getAllByRole('combobox')[0];
         fireEvent.change(modelSelect, { target: { value: 'gpt-4' } });
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'Prompt with model' } });
 
         fireEvent.click(screen.getByText('Enqueue'));
@@ -900,7 +905,7 @@ describe('EnqueueDialog', () => {
         const wsSelect = screen.getAllByRole('combobox')[1];
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'Task in workspace' } });
 
         fireEvent.click(screen.getByText('Enqueue'));
@@ -1170,7 +1175,7 @@ describe('EnqueueDialog', () => {
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'ctrl enter test' } });
         fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
 
@@ -1192,7 +1197,7 @@ describe('EnqueueDialog', () => {
         );
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'plain enter test' } });
         fireEvent.keyDown(textarea, { key: 'Enter' });
 
@@ -1270,7 +1275,7 @@ describe('EnqueueDialog minimize behavior', () => {
         });
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'Fix the login bug' } });
 
         const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
@@ -1312,7 +1317,7 @@ describe('EnqueueDialog minimize behavior', () => {
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
 
         const longPrompt = 'This is a very long prompt that exceeds thirty characters';
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: longPrompt } });
 
         const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
@@ -1356,7 +1361,7 @@ describe('EnqueueDialog minimize behavior', () => {
         });
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'My important prompt' } });
 
         const minimizeBtn = document.querySelector('[data-testid="dialog-minimize-btn"]') as HTMLElement;
@@ -1366,7 +1371,7 @@ describe('EnqueueDialog minimize behavior', () => {
         await act(async () => { fireEvent.click(pill); });
 
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        expect((screen.getByPlaceholderText('Enter your prompt...') as HTMLTextAreaElement).value)
+        expect((screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement).value)
             .toBe('My important prompt');
     });
 
@@ -1412,7 +1417,7 @@ describe('EnqueueDialog minimize behavior', () => {
         });
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
 
-        const textarea = screen.getByPlaceholderText('Enter your prompt...');
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills');
         fireEvent.change(textarea, { target: { value: 'test prompt' } });
 
         const submitBtn = screen.getByText('Enqueue');
@@ -1420,5 +1425,246 @@ describe('EnqueueDialog minimize behavior', () => {
 
         // While submitting, minimize button should be absent
         expect(document.querySelector('[data-testid="dialog-minimize-btn"]')).toBeNull();
+    });
+});
+
+// ============================================================================
+// Slash-command integration tests
+// ============================================================================
+
+describe('EnqueueDialog slash commands', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    function setupFetchWithSkills(skills: Array<{ name: string; description?: string }>, capturePosts?: { body: any; url: string }[]) {
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                capturePosts?.push({ body: JSON.parse(opts.body || '{}'), url });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        name: 'tasks', relativePath: '', children: [],
+                    }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+    }
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows slash-command menu when typing / in the prompt textarea', async () => {
+        setupFetchWithSkills([
+            { name: 'impl', description: 'Implementation' },
+            { name: 'draft', description: 'Draft spec' },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
+        // Simulate typing '/'
+        fireEvent.change(textarea, { target: { value: '/', selectionStart: 1 } });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
+        });
+
+        // Both skills should appear in the menu
+        expect(screen.getByText('impl')).toBeTruthy();
+        expect(screen.getByText('draft')).toBeTruthy();
+    });
+
+    it('filters slash-command menu as user types after /', async () => {
+        setupFetchWithSkills([
+            { name: 'impl', description: 'Implementation' },
+            { name: 'draft', description: 'Draft spec' },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
+        // Type '/im' to filter
+        fireEvent.change(textarea, { target: { value: '/im', selectionStart: 3 } });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
+        });
+
+        // Only 'impl' should match the filter
+        expect(screen.getByText('impl')).toBeTruthy();
+        expect(screen.queryByText('draft')).toBeNull();
+    });
+
+    it('sets selectedSkill dropdown when slash-command skill is selected via click', async () => {
+        setupFetchWithSkills([
+            { name: 'impl', description: 'Implementation' },
+            { name: 'draft', description: 'Draft spec' },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '/', selectionStart: 1 } });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
+        });
+
+        // Click on 'impl' in the menu (uses mousedown to prevent blur)
+        const implItem = screen.getByText('impl');
+        fireEvent.mouseDown(implItem);
+
+        // Skill dropdown should now show 'impl' selected
+        await waitFor(() => {
+            const skillSelect = screen.getByTestId('skill-select') as HTMLSelectElement;
+            expect(skillSelect.value).toBe('impl');
+        });
+    });
+
+    it('submits skill task when /skill-name is typed in prompt without dropdown selection', async () => {
+        const posts: Array<{ body: any; url: string }> = [];
+        setupFetchWithSkills(
+            [{ name: 'impl', description: 'Implementation' }],
+            posts,
+        );
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
+        // Type '/impl fix the bug' without using the autocomplete menu
+        fireEvent.change(textarea, { target: { value: '/impl fix the bug', selectionStart: 17 } });
+
+        // Submit
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => expect(posts.length).toBeGreaterThan(0));
+
+        const body = posts[0].body;
+        expect(body.type).toBe('follow-prompt');
+        expect(body.displayName).toBe('Skill: impl');
+        expect(body.payload.skillName).toBe('impl');
+        expect(body.payload.promptContent).toBe('fix the bug');
+    });
+
+    it('placeholder text includes slash-command hint', async () => {
+        setupFetchWithSkills([]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        expect(screen.getByPlaceholderText('Enter your prompt… Type / for skills')).toBeTruthy();
+    });
+
+    it('dismisses slash-command menu on Escape', async () => {
+        setupFetchWithSkills([
+            { name: 'impl', description: 'Implementation' },
+        ]);
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+
+        const textarea = screen.getByPlaceholderText('Enter your prompt… Type / for skills') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '/', selectionStart: 1 } });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
+        });
+
+        // Press Escape
+        fireEvent.keyDown(textarea, { key: 'Escape' });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('slash-command-menu')).toBeNull();
+        });
+    });
+
+    it('dropdown skill takes priority over slash-command skill on submit', async () => {
+        const posts: Array<{ body: any; url: string }> = [];
+        setupFetchWithSkills(
+            [
+                { name: 'impl', description: 'Implementation' },
+                { name: 'draft', description: 'Draft spec' },
+            ],
+            posts,
+        );
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-select')).toBeTruthy());
+
+        // Select 'draft' in dropdown
+        fireEvent.change(screen.getByTestId('skill-select'), { target: { value: 'draft' } });
+
+        // Type '/impl do stuff' in prompt
+        const textarea = screen.getByPlaceholderText(/context for draft skill/) as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '/impl do stuff', selectionStart: 14 } });
+
+        fireEvent.click(screen.getByText('Enqueue'));
+        await waitFor(() => expect(posts.length).toBeGreaterThan(0));
+
+        const body = posts[0].body;
+        // Dropdown selection ('draft') takes priority over /impl in prompt
+        expect(body.payload.skillName).toBe('draft');
     });
 });

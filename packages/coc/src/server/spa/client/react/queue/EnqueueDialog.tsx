@@ -3,7 +3,7 @@
  * Posts to POST /api/queue/tasks with type 'follow-prompt' for both freeform and skill-based tasks.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { Dialog, FloatingDialog, Button } from '../shared';
@@ -15,6 +15,8 @@ import { ImagePreviews } from '../shared/ImagePreviews';
 import { filterGitMetadataFolders } from '../hooks/useTaskTree';
 import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
+import { useSlashCommands } from '../repos/useSlashCommands';
+import { SlashCommandMenu } from '../repos/SlashCommandMenu';
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -48,6 +50,8 @@ export function EnqueueDialog() {
     const [submitting, setSubmitting] = useState(false);
     const [minimized, setMinimized] = useState(false);
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const slashCommands = useSlashCommands(skills);
 
     // Sync model from preferences when loaded
     useEffect(() => {
@@ -116,20 +120,25 @@ export function EnqueueDialog() {
     }, []);
 
     const handleSubmit = useCallback(async () => {
-        if (!selectedSkill && !prompt.trim()) return;
+        // Parse /skill tokens from prompt text
+        const { skills: slashSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(prompt);
+        const effectiveSkill = selectedSkill || slashSkills[0] || '';
+        const effectivePrompt = effectiveSkill ? cleanedPrompt : prompt.trim();
+
+        if (!effectiveSkill && !effectivePrompt) return;
         setSubmitting(true);
         try {
-            if (selectedSkill) {
+            if (effectiveSkill) {
                 // Skill-based task: POST to /api/queue/tasks with follow-prompt type
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
                 const workingDirectory = ws?.rootPath || '';
                 const body: any = {
                     type: 'follow-prompt',
                     priority: 'normal',
-                    displayName: `Skill: ${selectedSkill}`,
+                    displayName: `Skill: ${effectiveSkill}`,
                     payload: {
-                        skillName: selectedSkill,
-                        promptContent: prompt.trim() || `Use the ${selectedSkill} skill.`,
+                        skillName: effectiveSkill,
+                        promptContent: effectivePrompt || `Use the ${effectiveSkill} skill.`,
                         workingDirectory,
                     },
                     images: images.length > 0 ? images : undefined,
@@ -147,7 +156,7 @@ export function EnqueueDialog() {
                     type: 'follow-prompt',
                     priority: 'normal',
                     payload: {
-                        promptContent: prompt.trim(),
+                        promptContent: effectivePrompt,
                         workingDirectory: ws?.rootPath || folderPath || undefined,
                     },
                     images: images.length > 0 ? images : undefined,
@@ -161,27 +170,39 @@ export function EnqueueDialog() {
             }
             setPrompt('');
             setSelectedSkill('');
-            persistQueueTaskSkill(selectedSkill);
+            persistQueueTaskSkill(effectiveSkill);
             // Record skill usage for ordering
-            if (selectedSkill && workspaceId) {
+            if (effectiveSkill && workspaceId) {
                 fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/preferences/skill-usage`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ skillName: selectedSkill }),
+                    body: JSON.stringify({ skillName: effectiveSkill }),
                 }).catch(() => { /* ignore */ });
             }
             clearImages();
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkill, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill, slashCommands]);
+
+    const handleSlashSelect = useCallback((name: string) => {
+        slashCommands.selectSkill(name, prompt, setPrompt);
+        setSelectedSkill(name);
+    }, [slashCommands, prompt]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (slashCommands.handleKeyDown(e)) {
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                const selected = slashCommands.filteredSkills[slashCommands.highlightIndex];
+                if (selected) handleSlashSelect(selected.name);
+            }
+            return;
+        }
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitting) {
             e.preventDefault();
             handleSubmit();
         }
-    }, [submitting, handleSubmit]);
+    }, [submitting, handleSubmit, slashCommands, handleSlashSelect]);
 
     // Reset minimized state when dialog closes externally
     useEffect(() => {
@@ -219,15 +240,29 @@ export function EnqueueDialog() {
         <div className="flex flex-col gap-3">
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
-                <textarea
-                    value={prompt}
-                    onChange={e => setPrompt(e.target.value)}
-                    onPaste={submitting ? undefined : addFromPaste}
-                    onKeyDown={handleKeyDown}
-                    placeholder={selectedSkill ? `Additional context for ${selectedSkill} skill (optional)` : 'Enter your prompt...'}
-                    rows={4}
-                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
-                />
+                <div className="relative">
+                    <textarea
+                        ref={textareaRef}
+                        value={prompt}
+                        onChange={e => {
+                            setPrompt(e.target.value);
+                            slashCommands.handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                        }}
+                        onPaste={submitting ? undefined : addFromPaste}
+                        onKeyDown={handleKeyDown}
+                        placeholder={selectedSkill ? `Additional context for ${selectedSkill} skill (optional)` : 'Enter your prompt… Type / for skills'}
+                        rows={4}
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4] resize-y"
+                    />
+                    <SlashCommandMenu
+                        skills={skills}
+                        filter={slashCommands.menuFilter}
+                        onSelect={handleSlashSelect}
+                        onDismiss={slashCommands.dismissMenu}
+                        visible={slashCommands.menuVisible}
+                        highlightIndex={slashCommands.highlightIndex}
+                    />
+                </div>
                 <ImagePreviews images={images} onRemove={removeImage} showHint />
             </div>
             {workspaceId && skills.length > 0 && (
