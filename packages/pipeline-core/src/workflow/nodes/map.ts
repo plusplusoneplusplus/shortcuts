@@ -82,6 +82,7 @@ export async function executeMap(
                         result = await options.aiInvoker!(prompt, {
                             model: config.model ?? options.model,
                             timeoutMs: config.timeoutMs ?? options.timeoutMs,
+                            workingDirectory: options.workingDirectory ?? options.workflowDirectory,
                         });
                     } catch (err) {
                         return batch.map(item => ({
@@ -112,6 +113,7 @@ export async function executeMap(
                     result = await options.aiInvoker!(prompt, {
                         model: config.model ?? options.model,
                         timeoutMs: config.timeoutMs ?? options.timeoutMs,
+                        workingDirectory: options.workingDirectory ?? options.workflowDirectory,
                     });
                 } catch (err) {
                     return {

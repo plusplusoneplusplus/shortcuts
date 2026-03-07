@@ -340,6 +340,10 @@ export interface WorkflowSettings {
     timeoutMs?: number;
     /** Default error handling strategy for all nodes. */
     onError?: 'abort' | 'warn';
+    /** Enable tool-call caching for AI nodes. */
+    toolCallCache?: boolean;
+    /** Default working directory for AI invocations and script nodes. */
+    workingDirectory?: string;
 }
 
 /**
@@ -482,6 +486,8 @@ export interface WorkflowExecutionOptions {
      * Distinct from `workflowDirectory` which is the pipeline package directory.
      */
     workspaceRoot?: string;
+    /** Working directory for AI invocations. Falls back to workflowDirectory. */
+    workingDirectory?: string;
     /** Override the default AI model for all nodes. */
     model?: string;
     /** Override the default concurrency. */

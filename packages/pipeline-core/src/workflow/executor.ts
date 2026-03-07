@@ -18,7 +18,7 @@ import { executeReduce } from './nodes/reduce';
 import { executeAI } from './nodes/ai';
 import { getLogger, LogCategory } from '../logger';
 import type {
-    WorkflowConfig, WorkflowExecutionOptions, WorkflowResult,
+    WorkflowConfig, WorkflowExecutionOptions, WorkflowSettings, WorkflowResult,
     NodeResult, Items,
 } from './types';
 import type { WorkflowContext } from './context';
@@ -26,6 +26,24 @@ import type { WorkflowContext } from './context';
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Merge workflow-level settings into execution options.
+ * Caller-provided values take precedence over settings.
+ */
+function applySettingsDefaults(
+    settings: WorkflowSettings | undefined,
+    options: WorkflowExecutionOptions,
+): WorkflowExecutionOptions {
+    if (!settings) return options;
+    return {
+        ...options,
+        model: options.model ?? settings.model,
+        concurrency: options.concurrency ?? settings.concurrency,
+        timeoutMs: options.timeoutMs ?? settings.timeoutMs,
+        workingDirectory: options.workingDirectory ?? settings.workingDirectory,
+    };
+}
 
 class CancellationError extends Error {
     constructor() {
@@ -152,6 +170,9 @@ export async function executeWorkflow(
     // 1. Validate — throws WorkflowValidationError on structural problems
     validate(config);
 
+    // 1b. Merge settings defaults into options
+    const effectiveOptions = applySettingsDefaults(config.settings, options);
+
     // 2. Build graph and derive execution schedule
     const graph = buildGraph(config.nodes);
     const tiers = schedule(graph);
@@ -164,7 +185,7 @@ export async function executeWorkflow(
     // 3. Shared execution context
     const ctx: WorkflowContext = {
         config,
-        options,
+        options: effectiveOptions,
         results: new Map(),
         tiers,
         startTime,
@@ -175,7 +196,7 @@ export async function executeWorkflow(
         const tier = tiers[i];
 
         // Cancellation check — before starting any new tier
-        if (options.signal?.aborted) {
+        if (effectiveOptions.signal?.aborted) {
             throw new CancellationError();
         }
 

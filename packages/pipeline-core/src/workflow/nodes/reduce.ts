@@ -77,6 +77,7 @@ async function executeAIReduce(
         result = await options.aiInvoker!(prompt, {
             model: config.model ?? options.model,
             timeoutMs: config.timeoutMs ?? options.timeoutMs,
+            workingDirectory: options.workingDirectory ?? options.workflowDirectory,
         });
     } catch (err) {
         return [{ __error: err instanceof Error ? err.message : String(err) } as Item];
