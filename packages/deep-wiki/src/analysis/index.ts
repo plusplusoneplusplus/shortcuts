@@ -9,14 +9,15 @@
  */
 
 import type { AnalysisOptions, AnalysisResult, ComponentAnalysis } from '../types';
-import type { AIInvoker, JobProgress, ItemCompleteCallback } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AnalysisProgress, AnalysisItemCompleteCallback } from './analysis-executor';
 import { runAnalysisExecutor } from './analysis-executor';
 
 // Re-export for convenience
 export { parseAnalysisResponse, extractJSON } from './response-parser';
 export { buildAnalysisPromptTemplate, getAnalysisOutputFields, getInvestigationSteps } from './prompts';
 export { componentToPromptItem, runAnalysisExecutor } from './analysis-executor';
-export type { AnalysisExecutorOptions, AnalysisExecutorResult } from './analysis-executor';
+export type { AnalysisExecutorOptions, AnalysisExecutorResult, AnalysisProgress, AnalysisItemCompleteCallback } from './analysis-executor';
 
 // ============================================================================
 // Public API
@@ -35,9 +36,9 @@ export type { AnalysisExecutorOptions, AnalysisExecutorResult } from './analysis
 export async function analyzeComponents(
     options: AnalysisOptions,
     aiInvoker: AIInvoker,
-    onProgress?: (progress: JobProgress) => void,
+    onProgress?: (progress: AnalysisProgress) => void,
     isCancelled?: () => boolean,
-    onItemComplete?: ItemCompleteCallback,
+    onItemComplete?: AnalysisItemCompleteCallback,
 ): Promise<AnalysisResult> {
     const startTime = Date.now();
 

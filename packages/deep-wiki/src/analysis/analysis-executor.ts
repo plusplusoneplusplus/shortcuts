@@ -1,28 +1,23 @@
 /**
  * Analysis Executor
  *
- * Orchestrates Phase 3 (Deep Analysis) using the MapReduceExecutor
- * from pipeline-core. Converts ComponentInfo items into PromptItems,
- * runs parallel AI sessions with MCP tools, and parses results
- * into ComponentAnalysis objects.
+ * Orchestrates Phase 3 (Deep Analysis) using direct AI invocation
+ * with concurrency-limited map phase. Converts ComponentInfo items into
+ * PromptItems, runs parallel AI sessions with MCP tools, and parses
+ * results into ComponentAnalysis objects.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
-    createPromptMapJob,
-    createPromptMapInput,
-    createExecutor,
+    ConcurrencyLimiter,
+    substituteVariables,
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     AIInvoker,
     PromptItem,
-    PromptMapResult,
-    PromptMapOutput,
-    JobProgress,
-    ItemCompleteCallback,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ComponentInfo, ComponentGraph, ComponentAnalysis } from '../types';
 import { buildAnalysisPromptTemplate, getAnalysisOutputFields } from './prompts';
@@ -31,6 +26,26 @@ import { parseAnalysisResponse } from './response-parser';
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Progress information for analysis execution. */
+export interface AnalysisProgress {
+    phase: 'mapping' | 'reducing';
+    completedItems: number;
+    totalItems: number;
+    percentage: number;
+}
+
+/** Result of a single analysis map item. */
+interface AnalysisMapResult {
+    item: PromptItem;
+    success: boolean;
+    rawResponse?: string;
+    output?: Record<string, unknown>;
+    error?: string;
+}
+
+/** Callback invoked after each individual item completes during analysis. */
+export type AnalysisItemCompleteCallback = (item: PromptItem, result: AnalysisMapResult) => void;
 
 /**
  * Options for running the analysis executor.
@@ -51,14 +66,14 @@ export interface AnalysisExecutorOptions {
     /** AI model to use */
     model?: string;
     /** Progress callback */
-    onProgress?: (progress: JobProgress) => void;
+    onProgress?: (progress: AnalysisProgress) => void;
     /** Cancellation check function */
     isCancelled?: () => boolean;
     /**
      * Optional callback invoked after each individual component analysis completes.
      * Useful for incremental per-component cache writes during long-running analysis.
      */
-    onItemComplete?: ItemCompleteCallback;
+    onItemComplete?: AnalysisItemCompleteCallback;
 }
 
 /**
@@ -193,9 +208,9 @@ interface AnalysisRoundOptions {
     concurrency: number;
     timeoutMs?: number;
     model?: string;
-    onProgress?: (progress: JobProgress) => void;
+    onProgress?: (progress: AnalysisProgress) => void;
     isCancelled?: () => boolean;
-    onItemComplete?: ItemCompleteCallback;
+    onItemComplete?: AnalysisItemCompleteCallback;
 }
 
 /**
@@ -205,54 +220,83 @@ interface AnalysisRoundOptions {
 async function executeAnalysisRound(
     options: AnalysisRoundOptions
 ): Promise<{ analyses: ComponentAnalysis[]; failedComponentIds: string[] }> {
-    const { components, graph, aiInvoker, promptTemplate, outputFields, concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete } = options;
+    const { components, graph, aiInvoker, promptTemplate, outputFields, concurrency, model, onProgress, isCancelled, onItemComplete } = options;
     // Convert components to PromptItems
     const items: PromptItem[] = components.map(c => componentToPromptItem(c, graph));
 
-    // Create prompt map input
-    const input = createPromptMapInput(items, promptTemplate, outputFields);
+    // Run map phase with concurrency limiter
+    const limiter = new ConcurrencyLimiter(concurrency);
+    const mapResults: AnalysisMapResult[] = new Array(items.length);
+    let completed = 0;
 
-    // Create the job
-    const job = createPromptMapJob({
-        aiInvoker,
-        outputFormat: 'json',
-        model,
-        maxConcurrency: concurrency,
-    });
+    const tasks = items.map((item, index) => limiter.run(async () => {
+        if (isCancelled?.()) {
+            mapResults[index] = { item, success: false, error: 'Cancelled' };
+            return;
+        }
 
-    // Create the executor (no executor-level retry — we handle retry at the analysis level)
-    const executor = createExecutor({
-        aiInvoker,
-        maxConcurrency: concurrency,
-        reduceMode: 'deterministic',
-        showProgress: true,
-        retryOnFailure: false,
-        timeoutMs,
-        jobName: 'Deep Analysis',
-        onProgress,
-        isCancelled,
-        onItemComplete,
-    });
+        try {
+            const prompt = substituteVariables(promptTemplate, item, {
+                strict: false,
+                missingValueBehavior: 'preserve',
+            });
+            const aiResult = await aiInvoker(prompt, { model });
+            const rawResponse = aiResult.response;
+            let output: Record<string, unknown> | undefined;
+            let success = aiResult.success;
 
-    // Execute map-reduce
-    const result = await executor.execute(job, input);
+            // Try to parse structured JSON output from AI response
+            if (rawResponse && outputFields.length > 0) {
+                try {
+                    const jsonMatch = rawResponse.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, rawResponse];
+                    const parsed = JSON.parse(jsonMatch[1]!.trim());
+                    if (typeof parsed === 'object' && parsed !== null) {
+                        output = parsed as Record<string, unknown>;
+                    }
+                } catch {
+                    // JSON parse failed — rawResponse is still available for fallback parsing
+                }
+            }
+
+            const mapResult: AnalysisMapResult = {
+                item,
+                success,
+                rawResponse,
+                output,
+                error: success ? undefined : (aiResult.error || 'AI invocation failed'),
+            };
+            mapResults[index] = mapResult;
+            onItemComplete?.(item, mapResult);
+        } catch (err) {
+            mapResults[index] = { item, success: false, error: String(err) };
+        }
+
+        completed++;
+        onProgress?.({
+            phase: 'mapping',
+            completedItems: completed,
+            totalItems: items.length,
+            percentage: Math.round((completed / items.length) * 100),
+        });
+    }));
+
+    await Promise.all(tasks);
 
     // Parse results into ComponentAnalysis objects
     const analyses: ComponentAnalysis[] = [];
     const failedComponentIds: string[] = [];
+    const logger = getLogger();
 
-    if (result.output) {
-        const logger = getLogger();
-        const output = result.output as PromptMapOutput;
-        for (const mapResult of output.results) {
-            const componentId = mapResult.item.componentId;
+    for (const mapResult of mapResults) {
+        const componentId = mapResult.item.componentId;
 
-            if (mapResult.success && mapResult.rawResponse) {
-                try {
-                    const analysis = parseAnalysisResponse(mapResult.rawResponse, componentId);
-                    analyses.push(analysis);
-                } catch (parseErr1) {
-                    // Parse failed — try with the output fields
+        if (mapResult.success && mapResult.rawResponse) {
+            try {
+                const analysis = parseAnalysisResponse(mapResult.rawResponse, componentId);
+                analyses.push(analysis);
+            } catch (parseErr1) {
+                // Parse failed — try with the output fields
+                if (mapResult.output) {
                     try {
                         const analysis = parseOutputAsAnalysis(mapResult.output, componentId);
                         analyses.push(analysis);
@@ -262,24 +306,28 @@ async function executeAnalysisRound(
                         logger.debug(LogCategory.MAP_REDUCE, `  Parse error 2: ${parseErr2 instanceof Error ? parseErr2.message : String(parseErr2)}`);
                         failedComponentIds.push(componentId);
                     }
-                }
-            } else if (mapResult.success && mapResult.output) {
-                // No raw response but has parsed output
-                try {
-                    const analysis = parseOutputAsAnalysis(mapResult.output, componentId);
-                    analyses.push(analysis);
-                } catch {
+                } else {
+                    logger.debug(LogCategory.MAP_REDUCE, `Analysis parse failed for component "${componentId}". rawResponse (${mapResult.rawResponse.length} chars): ${mapResult.rawResponse.substring(0, 500)}`);
+                    logger.debug(LogCategory.MAP_REDUCE, `  Parse error: ${parseErr1 instanceof Error ? parseErr1.message : String(parseErr1)}`);
                     failedComponentIds.push(componentId);
                 }
-            } else if (!mapResult.success && mapResult.rawResponse) {
-                // Map-reduce reported failure (e.g. pipeline-core JSON parse failed),
-                // but raw response is available — try deep-wiki's more tolerant parser
-                try {
-                    const analysis = parseAnalysisResponse(mapResult.rawResponse, componentId);
-                    analyses.push(analysis);
-                    logger.debug(LogCategory.MAP_REDUCE, `Analysis recovered for component "${componentId}" from rawResponse (pipeline-core parse had failed: ${mapResult.error})`);
-                } catch (recoveryErr) {
-                    // Recovery also failed — try output fields as last resort
+            }
+        } else if (mapResult.success && mapResult.output) {
+            // No raw response but has parsed output
+            try {
+                const analysis = parseOutputAsAnalysis(mapResult.output, componentId);
+                analyses.push(analysis);
+            } catch {
+                failedComponentIds.push(componentId);
+            }
+        } else if (!mapResult.success && mapResult.rawResponse) {
+            // Map reported failure but raw response is available — try tolerant parser
+            try {
+                const analysis = parseAnalysisResponse(mapResult.rawResponse, componentId);
+                analyses.push(analysis);
+                logger.debug(LogCategory.MAP_REDUCE, `Analysis recovered for component "${componentId}" from rawResponse (AI call had failed: ${mapResult.error})`);
+            } catch (recoveryErr) {
+                if (mapResult.output) {
                     try {
                         const analysis = parseOutputAsAnalysis(mapResult.output, componentId);
                         analyses.push(analysis);
@@ -288,16 +336,15 @@ async function executeAnalysisRound(
                         logger.debug(LogCategory.MAP_REDUCE, `  Recovery parse error: ${recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr)}`);
                         failedComponentIds.push(componentId);
                     }
+                } else {
+                    logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for component "${componentId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}`);
+                    logger.debug(LogCategory.MAP_REDUCE, `  Recovery parse error: ${recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr)}`);
+                    failedComponentIds.push(componentId);
                 }
-            } else {
-                logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for component "${componentId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse ? `${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}` : 'none'}`);
-                failedComponentIds.push(componentId);
             }
-        }
-    } else {
-        // All failed
-        for (const component of components) {
-            failedComponentIds.push(component.id);
+        } else {
+            logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for component "${componentId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse ? `${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}` : 'none'}`);
+            failedComponentIds.push(componentId);
         }
     }
 

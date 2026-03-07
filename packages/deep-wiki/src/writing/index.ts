@@ -8,7 +8,8 @@
  */
 
 import type { WritingOptions, WikiOutput } from '../types';
-import type { AIInvoker, JobProgress, ItemCompleteCallback } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { ArticleProgress, ArticleItemCompleteCallback } from './article-executor';
 import { runArticleExecutor } from './article-executor';
 
 // Re-export for convenience
@@ -17,7 +18,7 @@ export { buildReducePromptTemplate, getReduceOutputFields, buildComponentSummary
 export { runArticleExecutor, analysisToPromptItem, generateStaticIndexPages, generateStaticDomainPages, generateStaticHierarchicalIndexPages } from './article-executor';
 export { writeWikiOutput, getArticleFilePath, slugify, normalizeLineEndings } from './file-writer';
 export { generateWebsite, generateEmbeddedData, generateHtmlTemplate, readComponentGraph, readMarkdownFiles, stableStringify } from './website-generator';
-export type { ArticleExecutorOptions, ArticleExecutorResult } from './article-executor';
+export type { ArticleExecutorOptions, ArticleExecutorResult, ArticleProgress, ArticleItemCompleteCallback } from './article-executor';
 
 // ============================================================================
 // Public API
@@ -40,9 +41,9 @@ export type { ArticleExecutorOptions, ArticleExecutorResult } from './article-ex
 export async function generateArticles(
     options: WritingOptions,
     aiInvoker: AIInvoker,
-    onProgress?: (progress: JobProgress) => void,
+    onProgress?: (progress: ArticleProgress) => void,
     isCancelled?: () => boolean,
-    onItemComplete?: ItemCompleteCallback,
+    onItemComplete?: ArticleItemCompleteCallback,
 ): Promise<WikiOutput> {
     const startTime = Date.now();
 

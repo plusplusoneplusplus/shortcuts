@@ -201,24 +201,20 @@ export async function runPhase3Analysis(
             (progress) => {
                 if (progress.phase === 'mapping') {
                     spinner.update(
-                        `Analyzing components: ${progress.completedItems}/${progress.totalItems} ` +
-                        `(${progress.failedItems} failed)`
+                        `Analyzing components: ${progress.completedItems}/${progress.totalItems}`
                     );
                 }
             },
             isCancelled,
             // Per-component incremental save callback
             (item, mapResult) => {
-                if (!gitHash || !mapResult.success || !mapResult.output) {
+                if (!gitHash || !mapResult.success || !mapResult.rawResponse) {
                     return;
                 }
                 try {
-                    // Extract componentId and rawResponse from the PromptMapResult
-                    const output = mapResult.output as { item?: { componentId?: string }; rawResponse?: string };
-                    const componentId = output?.item?.componentId;
-                    const rawResponse = output?.rawResponse;
-                    if (componentId && rawResponse) {
-                        const analysis = parseAnalysisResponse(rawResponse, componentId);
+                    const componentId = item.componentId;
+                    if (componentId) {
+                        const analysis = parseAnalysisResponse(mapResult.rawResponse, componentId);
                         saveAnalysis(componentId, analysis, options.output, gitHash);
                     }
                 } catch {

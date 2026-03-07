@@ -1,8 +1,8 @@
 /**
  * Article Executor
  *
- * Orchestrates Phase 4 (Article Generation) using the MapReduceExecutor
- * from pipeline-core. Runs two stages:
+ * Orchestrates Phase 4 (Article Generation) using direct AI invocation
+ * with concurrency-limited map and AI-powered reduce phases:
  * 1. Map: Generate per-component markdown articles (text mode, no structured output)
  * 2. Reduce: AI generates index, architecture, and getting-started pages
  *
@@ -10,16 +10,12 @@
  */
 
 import {
-    createPromptMapJob,
-    createPromptMapInput,
-    createExecutor,
+    ConcurrencyLimiter,
+    substituteVariables,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     AIInvoker,
     PromptItem,
-    PromptMapOutput,
-    JobProgress,
-    ItemCompleteCallback,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     ComponentGraph,
@@ -42,6 +38,25 @@ import type { DomainInfo } from '../types';
 // Types
 // ============================================================================
 
+/** Progress information for article generation. */
+export interface ArticleProgress {
+    phase: 'mapping' | 'reducing';
+    completedItems: number;
+    totalItems: number;
+    percentage: number;
+}
+
+/** Result of a single mapped item. */
+interface MapItemResult {
+    item: PromptItem;
+    success: boolean;
+    text?: string;
+    error?: string;
+}
+
+/** Callback invoked after each individual item completes during the map phase. */
+export type ArticleItemCompleteCallback = (item: PromptItem, result: MapItemResult) => void;
+
 /**
  * Options for the article executor.
  */
@@ -61,14 +76,14 @@ export interface ArticleExecutorOptions {
     /** AI model to use */
     model?: string;
     /** Progress callback */
-    onProgress?: (progress: JobProgress) => void;
+    onProgress?: (progress: ArticleProgress) => void;
     /** Cancellation check */
     isCancelled?: () => boolean;
     /**
      * Optional callback invoked after each individual article completes.
      * Useful for incremental per-article cache writes during long-running generation.
      */
-    onItemComplete?: ItemCompleteCallback;
+    onItemComplete?: ArticleItemCompleteCallback;
 }
 
 /**
@@ -104,6 +119,118 @@ export function analysisToPromptItem(
         analysis: JSON.stringify(analysis, null, 2),
         componentGraph: buildSimplifiedGraph(graph),
     };
+}
+
+// ============================================================================
+// Map & Reduce Helpers
+// ============================================================================
+
+/**
+ * Run a prompt-map phase: substitute template variables per item, invoke AI concurrently.
+ * Returns per-item results with the original item, success flag, and text.
+ */
+async function runPromptMap(
+    items: PromptItem[],
+    promptTemplate: string,
+    aiInvoker: AIInvoker,
+    options: {
+        concurrency: number;
+        model?: string;
+        timeoutMs?: number;
+        onProgress?: (progress: ArticleProgress) => void;
+        onItemComplete?: ArticleItemCompleteCallback;
+        isCancelled?: () => boolean;
+    }
+): Promise<MapItemResult[]> {
+    const limiter = new ConcurrencyLimiter(options.concurrency);
+    const results: MapItemResult[] = new Array(items.length);
+    let completed = 0;
+
+    const tasks = items.map((item, index) => limiter.run(async () => {
+        if (options.isCancelled?.()) {
+            results[index] = { item, success: false, error: 'Cancelled' };
+            return;
+        }
+
+        try {
+            const prompt = substituteVariables(promptTemplate, item, {
+                strict: false,
+                missingValueBehavior: 'preserve',
+            });
+            const aiResult = await aiInvoker(prompt, { model: options.model });
+            const mapResult: MapItemResult = {
+                item,
+                success: aiResult.success,
+                text: aiResult.response,
+                error: aiResult.success ? undefined : (aiResult.error || 'AI invocation failed'),
+            };
+            results[index] = mapResult;
+            options.onItemComplete?.(item, mapResult);
+        } catch (err) {
+            results[index] = { item, success: false, error: String(err) };
+        }
+
+        completed++;
+        options.onProgress?.({
+            phase: 'mapping',
+            completedItems: completed,
+            totalItems: items.length,
+            percentage: Math.round((completed / items.length) * 100),
+        });
+    }));
+
+    await Promise.all(tasks);
+    return results;
+}
+
+/**
+ * Run an AI-powered reduce phase: combine item summaries and ask AI to generate structured output.
+ * Returns the parsed JSON fields from the AI response, or undefined on failure.
+ */
+async function runAIReduce(
+    itemSummaries: string[],
+    reducePromptTemplate: string,
+    outputFields: string[],
+    parameters: Record<string, string>,
+    aiInvoker: AIInvoker,
+    options: { model?: string; timeoutMs?: number }
+): Promise<Record<string, string> | undefined> {
+    const resultsBlock = itemSummaries.map((s, i) => `--- Item ${i + 1} ---\n${s}`).join('\n\n');
+    const allVars: Record<string, string> = {
+        ...parameters,
+        RESULTS: resultsBlock,
+        COUNT: String(itemSummaries.length),
+    };
+
+    const prompt = substituteVariables(reducePromptTemplate, allVars, {
+        strict: false,
+        missingValueBehavior: 'preserve',
+    });
+
+    const result = await aiInvoker(prompt, { model: options.model });
+    if (!result.success || !result.response) { return undefined; }
+
+    // Try to parse structured output from AI response
+    try {
+        // Extract JSON from the response (may be wrapped in markdown code fences)
+        const jsonMatch = result.response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, result.response];
+        const parsed = JSON.parse(jsonMatch[1]!.trim());
+        if (typeof parsed === 'object' && parsed !== null) {
+            return parsed as Record<string, string>;
+        }
+    } catch {
+        // Try direct parse of the entire response
+        try {
+            const parsed = JSON.parse(result.response);
+            if (typeof parsed === 'object' && parsed !== null) {
+                return parsed as Record<string, string>;
+            }
+        } catch {
+            // AI didn't return valid JSON
+        }
+    }
+
+    return undefined;
 }
 
 // ============================================================================
@@ -162,58 +289,35 @@ async function runFlatArticleExecutor(
     // Build the article prompt template (text mode — no output fields)
     const promptTemplate = buildComponentArticlePromptTemplate(depth);
 
-    // Create prompt map input
-    const input = createPromptMapInput(items, promptTemplate, []);
-
-    // Map phase only — reduce is done separately with component summaries
-    // to avoid exceeding token limits (full articles can be very large)
-    const job = createPromptMapJob({
-        aiInvoker,
-        outputFormat: 'list',
+    // Run map phase
+    const mapResults = await runPromptMap(items, promptTemplate, aiInvoker, {
+        concurrency,
         model,
-        maxConcurrency: concurrency,
-    });
-
-    // Create the executor
-    const executor = createExecutor({
-        aiInvoker,
-        maxConcurrency: concurrency,
-        reduceMode: 'deterministic',
-        showProgress: true,
-        retryOnFailure: false,
         timeoutMs,
-        jobName: 'Article Generation',
         onProgress,
-        isCancelled,
         onItemComplete,
+        isCancelled,
     });
-
-    // Execute map phase
-    const result = await executor.execute(job, input);
 
     // Collect component articles from map results
     const articles: GeneratedArticle[] = [];
     const failedComponentIds: string[] = [];
 
-    if (result.output) {
-        const output = result.output as PromptMapOutput;
-        for (const mapResult of output.results) {
-            const componentId = mapResult.item.componentId;
-            const componentInfo = graph.components.find(m => m.id === componentId);
-            const componentName = componentInfo?.name || componentId;
+    for (const mapResult of mapResults) {
+        const componentId = mapResult.item.componentId;
+        const componentInfo = graph.components.find(m => m.id === componentId);
+        const componentName = componentInfo?.name || componentId;
 
-            if (mapResult.success && (mapResult.rawText || mapResult.rawResponse)) {
-                const content = mapResult.rawText || mapResult.rawResponse || '';
-                articles.push({
-                    type: 'component',
-                    slug: normalizeComponentId(componentId),
-                    title: componentName,
-                    content,
-                    componentId: componentId,
-                });
-            } else {
-                failedComponentIds.push(componentId);
-            }
+        if (mapResult.success && mapResult.text) {
+            articles.push({
+                type: 'component',
+                slug: normalizeComponentId(componentId),
+                title: componentName,
+                content: mapResult.text,
+                componentId: componentId,
+            });
+        } else {
+            failedComponentIds.push(componentId);
         }
     }
 
@@ -229,51 +333,29 @@ async function runFlatArticleExecutor(
         );
     });
 
-    const reduceInput = createPromptMapInput(
-        componentSummaries.map((summary, i) => ({
-            summary,
-            componentId:  analyses[i].componentId,
-        })),
-        '{{summary}}',
-        []
-    );
-
-    const reduceJob = createPromptMapJob({
-        aiInvoker,
-        outputFormat: 'ai',
-        model,
-        maxConcurrency: 1,
-        aiReducePrompt: buildReducePromptTemplate(),
-        aiReduceOutput: getReduceOutputFields(),
-        aiReduceModel: model,
-        aiReduceParameters: {
-            projectName: graph.project.name,
-            projectDescription: graph.project.description || 'No description available',
-            buildSystem: graph.project.buildSystem || 'Unknown',
-            language: graph.project.language || 'Unknown',
-        },
-    });
-
-    const reduceExecutor = createExecutor({
-        aiInvoker,
-        maxConcurrency: 1,
-        reduceMode: 'deterministic',
-        showProgress: false,
-        retryOnFailure: false,
-        timeoutMs,
-        jobName: 'Index Generation',
-        onProgress,
-        isCancelled,
+    onProgress?.({
+        phase: 'reducing',
+        completedItems: 0,
+        totalItems: 1,
+        percentage: 0,
     });
 
     try {
-        const reduceResult = await reduceExecutor.execute(reduceJob, reduceInput);
-        const reduceOutput = reduceResult.output as PromptMapOutput | undefined;
-        const formattedOutput = reduceOutput?.formattedOutput;
+        const parsed = await runAIReduce(
+            componentSummaries,
+            buildReducePromptTemplate(),
+            getReduceOutputFields(),
+            {
+                projectName: graph.project.name,
+                projectDescription: graph.project.description || 'No description available',
+                buildSystem: graph.project.buildSystem || 'Unknown',
+                language: graph.project.language || 'Unknown',
+            },
+            aiInvoker,
+            { model, timeoutMs }
+        );
 
-        if (formattedOutput) {
-            const parsed = JSON.parse(formattedOutput) as Record<string, string>;
-
+        if (parsed) {
             if (parsed.index) {
                 articles.push({
                     type: 'index',
@@ -390,55 +472,37 @@ async function runComponentMapPhase(
     } = options;
 
     const allItems: PromptItem[] = analyses.map(a => analysisToPromptItem(a, graph));
-    const defaultPromptTemplate = buildComponentArticlePromptTemplate(depth);
-    const input = createPromptMapInput(allItems, defaultPromptTemplate, []);
+    const promptTemplate = buildComponentArticlePromptTemplate(depth);
 
-    const job = createPromptMapJob({
-        aiInvoker,
-        outputFormat: 'list',
+    const mapResults = await runPromptMap(allItems, promptTemplate, aiInvoker, {
+        concurrency,
         model,
-        maxConcurrency: concurrency,
-    });
-
-    const executor = createExecutor({
-        aiInvoker,
-        maxConcurrency: concurrency,
-        reduceMode: 'deterministic',
-        showProgress: true,
-        retryOnFailure: false,
         timeoutMs,
-        jobName: 'Article Generation (Hierarchical)',
         onProgress,
-        isCancelled,
         onItemComplete,
+        isCancelled,
     });
-
-    const mapResult = await executor.execute(job, input);
 
     const articles: GeneratedArticle[] = [];
     const failedIds = new Set<string>();
 
-    if (mapResult.output) {
-        const output = mapResult.output as PromptMapOutput;
-        for (const result of output.results) {
-            const componentId = result.item.componentId;
-            const componentInfo = graph.components.find(m => m.id === componentId);
-            const componentName = componentInfo?.name || componentId;
-            const domainId = componentDomainMap.get(componentId);
+    for (const result of mapResults) {
+        const componentId = result.item.componentId;
+        const componentInfo = graph.components.find(m => m.id === componentId);
+        const componentName = componentInfo?.name || componentId;
+        const domainId = componentDomainMap.get(componentId);
 
-            if (result.success && (result.rawText || result.rawResponse)) {
-                const content = result.rawText || result.rawResponse || '';
-                articles.push({
-                    type: 'component',
-                    slug: normalizeComponentId(componentId),
-                    title: componentName,
-                    content,
-                    componentId: componentId,
-                    domainId,
-                });
-            } else {
-                failedIds.add(componentId);
-            }
+        if (result.success && result.text) {
+            articles.push({
+                type: 'component',
+                slug: normalizeComponentId(componentId),
+                title: componentName,
+                content: result.text,
+                componentId: componentId,
+                domainId,
+            });
+        } else {
+            failedIds.add(componentId);
         }
     }
 
@@ -455,7 +519,7 @@ async function runDomainReducePhase(
     graph: ComponentGraph,
     options: ArticleExecutorOptions
 ): Promise<DomainReduceResult> {
-    const { aiInvoker, timeoutMs, model, isCancelled } = options;
+    const { aiInvoker, timeoutMs, model } = options;
 
     const domainComponentSummaries = domainAnalyses.map(a => {
         const mod = graph.components.find(m => m.id === a.componentId);
@@ -467,42 +531,6 @@ async function runDomainReducePhase(
         );
     });
 
-    const domainReduceInput = createPromptMapInput(
-        domainComponentSummaries.map((summary, i) => ({
-            summary,
-            componentId:  domainAnalyses[i].componentId,
-        })),
-        '{{summary}}',
-        []
-    );
-
-    const domainReduceJob = createPromptMapJob({
-        aiInvoker,
-        outputFormat: 'ai',
-        model,
-        maxConcurrency: 1,
-        aiReducePrompt: buildDomainReducePromptTemplate(),
-        aiReduceOutput: getDomainReduceOutputFields(),
-        aiReduceModel: model,
-        aiReduceParameters: {
-            domainName: domain.name,
-            domainDescription: domain.description,
-            domainPath: domain.path,
-            projectName: graph.project.name,
-        },
-    });
-
-    const domainReduceExecutor = createExecutor({
-        aiInvoker,
-        maxConcurrency: 1,
-        reduceMode: 'deterministic',
-        showProgress: false,
-        retryOnFailure: false,
-        timeoutMs,
-        jobName: `Domain Reduce: ${domain.name}`,
-        isCancelled,
-    });
-
     const fallbackSummary = {
         domainId: domain.id,
         name: domain.name,
@@ -512,12 +540,21 @@ async function runDomainReducePhase(
     };
 
     try {
-        const domainResult = await domainReduceExecutor.execute(domainReduceJob, domainReduceInput);
-        const domainOutput = domainResult.output as PromptMapOutput | undefined;
-        const formattedOutput = domainOutput?.formattedOutput;
+        const parsed = await runAIReduce(
+            domainComponentSummaries,
+            buildDomainReducePromptTemplate(),
+            getDomainReduceOutputFields(),
+            {
+                domainName: domain.name,
+                domainDescription: domain.description,
+                domainPath: domain.path,
+                projectName: graph.project.name,
+            },
+            aiInvoker,
+            { model, timeoutMs }
+        );
 
-        if (formattedOutput) {
-            const parsed = JSON.parse(formattedOutput) as Record<string, string>;
+        if (parsed) {
             const articles: GeneratedArticle[] = [];
 
             let domainSummary = fallbackSummary;
@@ -574,54 +611,26 @@ async function runProjectReducePhase(
     graph: ComponentGraph,
     options: ArticleExecutorOptions
 ): Promise<GeneratedArticle[]> {
-    const { aiInvoker, timeoutMs, model, isCancelled } = options;
+    const { aiInvoker, timeoutMs, model } = options;
 
-    const projectReduceItems = domainSummaries.map(s => ({
-        domainId: s.domainId,
-        domainName: s.name,
-        summary: JSON.stringify(s),
-    }));
-
-    const projectReduceInput = createPromptMapInput(
-        projectReduceItems,
-        '{{summary}}',
-        []
-    );
-
-    const projectReduceJob = createPromptMapJob({
-        aiInvoker,
-        outputFormat: 'ai',
-        model,
-        maxConcurrency: 1,
-        aiReducePrompt: buildHierarchicalReducePromptTemplate(),
-        aiReduceOutput: getReduceOutputFields(),
-        aiReduceModel: model,
-        aiReduceParameters: {
-            projectName: graph.project.name,
-            projectDescription: graph.project.description || 'No description available',
-            buildSystem: graph.project.buildSystem || 'Unknown',
-            language: graph.project.language || 'Unknown',
-        },
-    });
-
-    const projectReduceExecutor = createExecutor({
-        aiInvoker,
-        maxConcurrency: 1,
-        reduceMode: 'deterministic',
-        showProgress: false,
-        retryOnFailure: false,
-        timeoutMs,
-        jobName: 'Project Reduce',
-        isCancelled,
-    });
+    const projectSummaryStrings = domainSummaries.map(s => JSON.stringify(s));
 
     try {
-        const projectResult = await projectReduceExecutor.execute(projectReduceJob, projectReduceInput);
-        const projectOutput = projectResult.output as PromptMapOutput | undefined;
-        const formattedOutput = projectOutput?.formattedOutput;
+        const parsed = await runAIReduce(
+            projectSummaryStrings,
+            buildHierarchicalReducePromptTemplate(),
+            getReduceOutputFields(),
+            {
+                projectName: graph.project.name,
+                projectDescription: graph.project.description || 'No description available',
+                buildSystem: graph.project.buildSystem || 'Unknown',
+                language: graph.project.language || 'Unknown',
+            },
+            aiInvoker,
+            { model, timeoutMs }
+        );
 
-        if (formattedOutput) {
-            const parsed = JSON.parse(formattedOutput) as Record<string, string>;
+        if (parsed) {
             const articles: GeneratedArticle[] = [];
 
             if (parsed.index) {

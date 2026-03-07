@@ -189,9 +189,8 @@ export async function runPhase4Writing(
                         return;
                     }
                     try {
-                        const output = mapResult.output as { item?: { componentId?: string }; rawText?: string; rawResponse?: string };
-                        const componentId = output?.item?.componentId;
-                        const content = output?.rawText || output?.rawResponse;
+                        const componentId = item.componentId;
+                        const content = mapResult.text;
                         if (componentId && content) {
                             const componentInfo = graph.components.find(m => m.id === componentId);
                             const article: GeneratedArticle = {

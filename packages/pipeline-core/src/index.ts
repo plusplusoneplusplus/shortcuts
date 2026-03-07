@@ -347,6 +347,10 @@ export {
     setHomeDirectoryOverride,
     // Timeline Utilities
     mergeConsecutiveContentItems,
+    // AI Invoker types
+    type AIInvoker,
+    type AIInvokerOptions,
+    type AIInvokerResult,
 } from './ai';
 
 // ============================================================================
