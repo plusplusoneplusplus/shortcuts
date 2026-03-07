@@ -7,6 +7,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { Item, Items, WorkflowExecutionOptions } from '../types';
+import { substituteVariables } from '../../utils/template-engine';
 
 // ---------------------------------------------------------------------------
 // JSON extraction
@@ -75,19 +76,33 @@ export function mergeOutput(item: Item, response: string, outputFields?: string[
 
 /**
  * Resolve a prompt template from either an inline string or a file path.
+ * Optionally substitutes top-level parameters (preserving special and item-level variables).
  */
 export async function resolvePrompt(
     prompt: string | undefined,
     promptFile: string | undefined,
-    options: WorkflowExecutionOptions
+    options: WorkflowExecutionOptions,
+    parameters?: Record<string, string>,
 ): Promise<string> {
-    if (prompt) return prompt;
-    if (promptFile) {
+    let resolved: string;
+    if (prompt) {
+        resolved = prompt;
+    } else if (promptFile) {
         const workflowDir = options.workflowDirectory ?? process.cwd();
         const filePath = path.resolve(workflowDir, promptFile);
-        return fs.readFile(filePath, 'utf-8');
+        resolved = await fs.readFile(filePath, 'utf-8');
+    } else {
+        throw new Error('Node config requires either `prompt` or `promptFile`');
     }
-    throw new Error('Node config requires either `prompt` or `promptFile`');
+
+    // Substitute top-level parameters (before item-level substitution)
+    if (parameters && Object.keys(parameters).length > 0) {
+        resolved = substituteVariables(resolved, parameters, {
+            missingValueBehavior: 'preserve',
+            preserveSpecialVariables: true,
+        });
+    }
+    return resolved;
 }
 
 // ---------------------------------------------------------------------------

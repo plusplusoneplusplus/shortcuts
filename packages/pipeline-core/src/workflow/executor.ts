@@ -170,8 +170,14 @@ export async function executeWorkflow(
     // 1. Validate — throws WorkflowValidationError on structural problems
     validate(config);
 
-    // 1b. Merge settings defaults into options
-    const effectiveOptions = applySettingsDefaults(config.settings, options);
+    // 1b. Merge settings defaults and parameters into options
+    const mergedParams = (config.parameters || options.parameters)
+        ? { ...config.parameters, ...options.parameters }
+        : undefined;
+    const effectiveOptions = applySettingsDefaults(config.settings, {
+        ...options,
+        ...(mergedParams ? { parameters: mergedParams } : {}),
+    });
 
     // 2. Build graph and derive execution schedule
     const graph = buildGraph(config.nodes);

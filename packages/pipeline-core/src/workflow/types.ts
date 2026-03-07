@@ -365,6 +365,8 @@ export interface WorkflowConfig {
      * Order does not matter — the engine resolves execution order via topological sort.
      */
     nodes: Record<string, NodeConfig>;
+    /** Top-level parameters available in all node prompts via {{key}} syntax. */
+    parameters?: Record<string, string>;
 }
 
 // =============================================================================
@@ -496,6 +498,8 @@ export interface WorkflowExecutionOptions {
     timeoutMs?: number;
     /** Abort signal for cancellation support. */
     signal?: AbortSignal;
+    /** Runtime parameter overrides. Merged on top of config.parameters (runtime wins). */
+    parameters?: Record<string, string>;
     /**
      * Progress callback invoked when a node starts, completes, or warns.
      * Useful for UI integration and logging.
