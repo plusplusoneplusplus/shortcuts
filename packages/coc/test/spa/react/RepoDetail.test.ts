@@ -40,7 +40,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'tasks', 'activity', 'workflows', 'schedules', 'templates', 'copilot', 'explorer']);
+        expect(keys).toEqual(['info', 'git', 'explorer', 'tasks', 'activity', 'workflows', 'schedules', 'templates', 'copilot']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {
@@ -48,12 +48,12 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab).toBeUndefined();
     });
 
-    it('has explorer as the last tab', () => {
-        expect(SUB_TABS[SUB_TABS.length - 1].key).toBe('explorer');
+    it('has explorer as the third tab (after git)', () => {
+        expect(SUB_TABS[2].key).toBe('explorer');
     });
 
-    it('activity is the fourth entry (after tasks)', () => {
-        expect(SUB_TABS[3].key).toBe('activity');
+    it('activity is the fifth entry (after tasks)', () => {
+        expect(SUB_TABS[4].key).toBe('activity');
     });
 });
 

@@ -38,13 +38,13 @@ interface RepoDetailProps {
 export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'info', label: 'Info' },
     { key: 'git', label: 'Git' },
+    { key: 'explorer', label: 'Explorer' },
     { key: 'tasks', label: 'Tasks' },
     { key: 'activity', label: 'Activity' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'templates', label: 'Templates' },
     { key: 'copilot', label: 'Copilot' },
-    { key: 'explorer', label: 'Explorer' },
 ];
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {

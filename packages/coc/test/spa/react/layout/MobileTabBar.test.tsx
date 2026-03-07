@@ -10,12 +10,12 @@ import type { RepoSubTab } from '../../../../src/server/spa/client/react/types/d
 const ALL_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'info', label: 'Info' },
     { key: 'git', label: 'Git' },
+    { key: 'explorer', label: 'Explorer' },
     { key: 'tasks', label: 'Tasks' },
     { key: 'activity', label: 'Activity' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
     { key: 'copilot', label: 'Copilot' },
-    { key: 'explorer', label: 'Explorer' },
 ];
 
 const DEFAULT_PINNED: RepoSubTab[] = ['tasks', 'activity', 'git'];
