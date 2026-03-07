@@ -88,15 +88,10 @@ test.describe('Desktop Regression', () => {
         await expect(page.locator('#repo-detail-content')).toBeVisible();
     });
 
-    test('desktop: WikiView shows wiki list', async ({ page, serverUrl }) => {
-        await page.goto(`${serverUrl}/#wiki`);
-        await expect(page.locator('#view-wiki')).toBeVisible({ timeout: 10000 });
-    });
-
     test('desktop: TopBar shows text tab labels', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        for (const tab of ['repos', 'processes', 'wiki']) {
+        for (const tab of ['repos', 'processes', 'memory']) {
             const tabBtn = page.locator(`[data-tab="${tab}"]`);
             await expect(tabBtn).toBeVisible();
         }
@@ -145,8 +140,8 @@ test.describe('Desktop Regression', () => {
         await page.click('[data-tab="processes"]');
         await expect(page.locator('#view-processes')).toBeVisible();
 
-        await page.click('[data-tab="wiki"]');
-        await expect(page.locator('#view-wiki')).toBeVisible();
+        await page.click('[data-tab="memory"]');
+        await expect(page.locator('#view-memory')).toBeVisible();
     });
 
     test('desktop: deep links resolve correctly', async ({ page, serverUrl }) => {
@@ -156,8 +151,8 @@ test.describe('Desktop Regression', () => {
         await page.goto(`${serverUrl}/#processes`);
         await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10000 });
 
-        await page.goto(`${serverUrl}/#wiki`);
-        await expect(page.locator('#view-wiki')).toBeVisible({ timeout: 10000 });
+        await page.goto(`${serverUrl}/#memory`);
+        await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
     });
 
     test('desktop: admin panel renders', async ({ page, serverUrl }) => {

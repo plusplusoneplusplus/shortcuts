@@ -26,7 +26,7 @@ export function MemoryView() {
     }, [dispatch]);
 
     return (
-        <div className="flex flex-col h-full overflow-hidden">
+        <div id="view-memory" className="flex flex-col h-full overflow-hidden">
             {/* Sub-tab bar */}
             <div className="flex items-center gap-1 px-3 pt-2 pb-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
                 {SUB_TABS.map(({ id, label }) => (
