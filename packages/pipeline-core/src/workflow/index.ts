@@ -57,6 +57,7 @@ export {
     // Progress events
     type WorkflowNodePhase,
     type WorkflowProgressEvent,
+    type WorkflowItemProcessEvent,
 
     // Type guards
     isLoadNode,

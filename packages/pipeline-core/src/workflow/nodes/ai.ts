@@ -28,6 +28,14 @@ export async function executeAI(
     const prompt = resolvedPrompt
         .replace(/\{\{ITEMS\}\}/g, JSON.stringify(inputs, null, 2));
 
+    const nodeId = options.currentNodeId ?? '';
+    const processId = options.processTracker?.registerProcess(`AI: ${nodeId}`)
+        ?? `${nodeId}-ai`;
+
+    options.onItemProcess?.({
+        nodeId, itemIndex: 0, processId, status: 'running',
+    });
+
     let result;
     try {
         result = await options.aiInvoker!(prompt, {
@@ -36,12 +44,27 @@ export async function executeAI(
             workingDirectory: options.workingDirectory ?? options.workflowDirectory,
         });
     } catch (err) {
-        return [{ __error: err instanceof Error ? err.message : String(err) } as Item];
+        const error = err instanceof Error ? err.message : String(err);
+        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
+        options.onItemProcess?.({
+            nodeId, itemIndex: 0, processId, status: 'failed', error,
+        });
+        return [{ __error: error } as Item];
     }
 
     if (!result.success || !result.response) {
-        return [{ __error: result.error ?? 'AI node invocation failed' } as Item];
+        const error = result.error ?? 'AI node invocation failed';
+        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
+        options.onItemProcess?.({
+            nodeId, itemIndex: 0, processId, status: 'failed', error,
+        });
+        return [{ __error: error } as Item];
     }
+
+    options.processTracker?.updateProcess(processId, 'completed', result.response);
+    options.onItemProcess?.({
+        nodeId, itemIndex: 0, processId, status: 'completed',
+    });
 
     return [mergeOutput({} as Item, result.response, config.output)];
 }

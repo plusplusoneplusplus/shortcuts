@@ -493,6 +493,22 @@ export interface WorkflowProgressEvent {
     };
 }
 
+/** Event emitted when a map/ai node creates a child process for an individual item. */
+export interface WorkflowItemProcessEvent {
+    /** Node ID in the workflow. */
+    nodeId: string;
+    /** Zero-based index of the item within the node's input array. */
+    itemIndex: number;
+    /** Process ID from the ProcessTracker (or a generated fallback). */
+    processId: string;
+    /** Status of the item process. */
+    status: 'running' | 'completed' | 'failed';
+    /** Short label for UI display (e.g., first field value). */
+    itemLabel?: string;
+    /** Error message when status is 'failed'. */
+    error?: string;
+}
+
 // =============================================================================
 // Execution Options
 // =============================================================================
@@ -539,6 +555,8 @@ export interface WorkflowExecutionOptions {
     parameters?: Record<string, string>;
     /** Structured progress callback for node-level events. */
     onProgress?: (event: WorkflowProgressEvent) => void;
+    /** Called when a map/ai node creates a child process for an individual item. */
+    onItemProcess?: (event: WorkflowItemProcessEvent) => void;
     /** Current node ID (set internally by the executor for sub-node callbacks). @internal */
     currentNodeId?: string;
 }

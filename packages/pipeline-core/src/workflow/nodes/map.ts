@@ -8,7 +8,7 @@
  * the invariant that the output array length equals the input array length.
  */
 
-import type { MapNodeConfig, Items, WorkflowExecutionOptions } from '../types';
+import type { MapNodeConfig, Items, WorkflowExecutionOptions, Item } from '../types';
 import { ConcurrencyLimiter } from '../../map-reduce';
 import {
     resolvePrompt,
@@ -18,6 +18,15 @@ import {
     mergeOutput,
     extractJsonFromResponse,
 } from './utils';
+
+// ---------------------------------------------------------------------------
+// Item label helper
+// ---------------------------------------------------------------------------
+
+function getItemLabel(item: Item, index: number): string {
+    const firstValue = Object.values(item)[0];
+    return firstValue != null ? String(firstValue) : `item-${index}`;
+}
 
 // ---------------------------------------------------------------------------
 // Batch response parsing
@@ -74,8 +83,17 @@ export async function executeMap(
         // ---- Batch mode ----
         const batches = splitIntoBatches(inputs, batchSize);
         const batchResults = await Promise.all(
-            batches.map(batch =>
+            batches.map((batch, batchIndex) =>
                 limiter.run(async () => {
+                    const nodeId = options.currentNodeId ?? '';
+                    const itemLabel = `batch-${batchIndex}`;
+                    const processId = options.processTracker?.registerProcess(`Map: ${itemLabel}`)
+                        ?? `${nodeId}-batch-${batchIndex}`;
+
+                    options.onItemProcess?.({
+                        nodeId, itemIndex: batchIndex, processId, status: 'running', itemLabel,
+                    });
+
                     const prompt = buildBatchPrompt(resolvedPrompt, batch);
                     let result;
                     try {
@@ -85,17 +103,26 @@ export async function executeMap(
                             workingDirectory: options.workingDirectory ?? options.workflowDirectory,
                         });
                     } catch (err) {
-                        return batch.map(item => ({
-                            ...item,
-                            __error: err instanceof Error ? err.message : String(err),
-                        }));
+                        const error = err instanceof Error ? err.message : String(err);
+                        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
+                        options.onItemProcess?.({
+                            nodeId, itemIndex: batchIndex, processId, status: 'failed', itemLabel, error,
+                        });
+                        return batch.map(item => ({ ...item, __error: error }));
                     }
                     if (!result.success) {
-                        return batch.map(item => ({
-                            ...item,
-                            __error: result.error ?? 'AI invocation failed',
-                        }));
+                        const error = result.error ?? 'AI invocation failed';
+                        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
+                        options.onItemProcess?.({
+                            nodeId, itemIndex: batchIndex, processId, status: 'failed', itemLabel, error,
+                        });
+                        return batch.map(item => ({ ...item, __error: error }));
                     }
+
+                    options.processTracker?.updateProcess(processId, 'completed', result.response);
+                    options.onItemProcess?.({
+                        nodeId, itemIndex: batchIndex, processId, status: 'completed', itemLabel,
+                    });
                     return parseBatchResponse(result.response!, batch, config.output);
                 })
             )
@@ -105,8 +132,17 @@ export async function executeMap(
 
     // ---- Single-item mode ----
     const results = await Promise.all(
-        inputs.map(item =>
+        inputs.map((item, index) =>
             limiter.run(async () => {
+                const nodeId = options.currentNodeId ?? '';
+                const itemLabel = getItemLabel(item, index);
+                const processId = options.processTracker?.registerProcess(`Map: ${itemLabel}`)
+                    ?? `${nodeId}-${index}`;
+
+                options.onItemProcess?.({
+                    nodeId, itemIndex: index, processId, status: 'running', itemLabel,
+                });
+
                 const prompt = buildItemPrompt(resolvedPrompt, item);
                 let result;
                 try {
@@ -116,14 +152,26 @@ export async function executeMap(
                         workingDirectory: options.workingDirectory ?? options.workflowDirectory,
                     });
                 } catch (err) {
-                    return {
-                        ...item,
-                        __error: err instanceof Error ? err.message : String(err),
-                    };
+                    const error = err instanceof Error ? err.message : String(err);
+                    options.processTracker?.updateProcess(processId, 'failed', undefined, error);
+                    options.onItemProcess?.({
+                        nodeId, itemIndex: index, processId, status: 'failed', itemLabel, error,
+                    });
+                    return { ...item, __error: error };
                 }
                 if (!result.success) {
-                    return { ...item, __error: result.error ?? 'AI invocation failed' };
+                    const error = result.error ?? 'AI invocation failed';
+                    options.processTracker?.updateProcess(processId, 'failed', undefined, error);
+                    options.onItemProcess?.({
+                        nodeId, itemIndex: index, processId, status: 'failed', itemLabel, error,
+                    });
+                    return { ...item, __error: error };
                 }
+
+                options.processTracker?.updateProcess(processId, 'completed', result.response);
+                options.onItemProcess?.({
+                    nodeId, itemIndex: index, processId, status: 'completed', itemLabel,
+                });
                 return mergeOutput(item, result.response!, config.output);
             })
         )
