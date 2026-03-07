@@ -17,6 +17,7 @@ const BASE_PROCESS = {
     endTime: '2026-01-15T10:05:00Z',
     workingDirectory: '/home/user/project',
     workspaceName: 'my-workspace',
+    sdkSessionId: 'sdk-sess-789',
     metadata: { queueTaskId: 'qt-456', model: 'gpt-4', backend: 'copilot-sdk', mode: 'autopilot' },
 };
 
@@ -68,6 +69,8 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('gpt-4')).toBeDefined();
         expect(screen.getByText('Mode')).toBeDefined();
         expect(screen.getByText('autopilot')).toBeDefined();
+        expect(screen.getByText('Session ID')).toBeDefined();
+        expect(screen.getByText('sdk-sess-789')).toBeDefined();
         expect(screen.getByText('Backend')).toBeDefined();
         expect(screen.getByText('copilot-sdk')).toBeDefined();
         expect(screen.getByText('Working Directory')).toBeDefined();

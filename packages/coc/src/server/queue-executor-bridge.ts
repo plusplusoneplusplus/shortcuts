@@ -408,7 +408,7 @@ export class CLITaskExecutor implements TaskExecutor {
                         status: 'completed',
                         endTime: new Date(),
                         result: typeof result === 'string' ? result : JSON.stringify(result),
-                        sdkSessionId: sessionId,
+                        ...(sessionId ? { sdkSessionId: sessionId } : {}),
                         conversationTurns: combinedTurns,
                     });
                     this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);

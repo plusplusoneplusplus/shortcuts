@@ -81,6 +81,32 @@ describe('executor session tracking', () => {
             expect(process?.sdkSessionId).toBe('sdk-session-001');
         });
 
+        it('should preserve sdkSessionId from onSessionCreated when result has no sessionId', async () => {
+            // Simulate onSessionCreated firing during execution, but result.sessionId being undefined
+            mockSendMessage.mockImplementation(async (options: any) => {
+                if (options?.onSessionCreated) {
+                    options.onSessionCreated('early-session-id');
+                }
+                return { success: true, response: 'done' }; // no sessionId in result
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'task-preserve-session',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat', mode: 'ask', prompt: 'test' },
+                config: { timeoutMs: 30000 },
+            };
+
+            await executor.execute(task);
+
+            const process = store.processes.get('queue_task-preserve-session');
+            expect(process?.sdkSessionId).toBe('early-session-id');
+        });
+
         it('should populate initial conversationTurns with user prompt and assistant response', async () => {
             const executor = new CLITaskExecutor(store);
             const task: QueuedTask = {
