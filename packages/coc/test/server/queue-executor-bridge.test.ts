@@ -172,7 +172,7 @@ describe('CLITaskExecutor', () => {
             expect(store.addProcess).toHaveBeenCalledOnce();
             const addedProcess = (store.addProcess as any).mock.calls[0][0];
             expect(addedProcess.id).toBe('queue_task-1');
-            expect(addedProcess.type).toBe('queue-chat');
+            expect(addedProcess.type).toBe('chat');
             expect(addedProcess.status).toBe('running');
             expect(addedProcess.fullPrompt).toContain('Explain this code');
             // Prompt should NOT contain the old prefix — mode is now SDK-level
@@ -266,7 +266,7 @@ describe('CLITaskExecutor', () => {
             expect(store.addProcess).toHaveBeenCalled();
             const addedProcess = (store.addProcess as any).mock.calls.at(-1)[0];
             expect(addedProcess.id).toBe('queue_chat-1');
-            expect(addedProcess.type).toBe('queue-chat');
+            expect(addedProcess.type).toBe('chat');
             expect(addedProcess.status).toBe('running');
             expect(addedProcess.fullPrompt).toContain('What does this repo do?');
 
@@ -2286,7 +2286,7 @@ describe('CLITaskExecutor', () => {
             // Seed the store with a process that has an sdkSessionId
             store.getProcess.mockResolvedValue({
                 id: 'queue_task-cp-1',
-                type: 'queue-chat',
+                type: 'chat',
                 status: 'running',
                 sdkSessionId: 'sdk-session-abc',
                 startTime: new Date(),
@@ -2307,7 +2307,7 @@ describe('CLITaskExecutor', () => {
 
             store.getProcess.mockResolvedValue({
                 id: 'queue_task-cp-2',
-                type: 'queue-chat',
+                type: 'chat',
                 status: 'running',
                 startTime: new Date(),
                 promptPreview: 'test',
@@ -2326,7 +2326,7 @@ describe('CLITaskExecutor', () => {
                 callCount++;
                 return {
                     id: 'queue_task-guard-1',
-                    type: 'queue-chat',
+                    type: 'chat',
                     status: 'cancelled',
                     startTime: new Date(),
                     promptPreview: 'test',
@@ -2377,7 +2377,7 @@ describe('CLITaskExecutor', () => {
 
             const addedProcess = (store.addProcess as any).mock.calls[0][0] as AIProcess;
             expect(addedProcess.metadata).toEqual({
-                type: 'queue-chat',
+                type: 'chat',
                 queueTaskId: 'task-meta-1',
                 priority: 'high',
                 model: undefined,

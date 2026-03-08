@@ -186,7 +186,7 @@ Queue behavior is controlled via VS Code settings:
 ### Integration with AIProcessManager
 
 Each queued task automatically registers a process in `AIProcessManager`:
-- Process type: `queue-{taskType}` (e.g., `queue-follow-prompt`)
+- Process type: plain task type (e.g., `chat`, `run-workflow`, `run-script`)
 - Process ID linked to task ID via metadata
 - Process status updates as task executes
 - Process completion/failure tracked automatically

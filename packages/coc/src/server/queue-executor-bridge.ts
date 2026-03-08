@@ -317,14 +317,14 @@ export class CLITaskExecutor implements TaskExecutor {
         const workingDirectory = this.getWorkingDirectory(task);
         const process: AIProcess = {
             id: processId,
-            type: `queue-${task.type}`,
+            type: task.type,
             promptPreview: prompt.length > 80 ? prompt.substring(0, 77) + '...' : prompt,
             fullPrompt: prompt,
             status: 'running',
             startTime: new Date(),
             workingDirectory,
             metadata: {
-                type: `queue-${task.type}`,
+                type: task.type,
                 queueTaskId: task.id,
                 priority: task.priority,
                 model: task.config.model,
@@ -1448,7 +1448,7 @@ export class CLITaskExecutor implements TaskExecutor {
         this.store.getProcess(processId).then(current => {
             return this.store.updateProcess(processId, {
                 metadata: {
-                    type: current?.metadata?.type ?? `queue-${task.type}`,
+                    type: current?.metadata?.type ?? task.type,
                     ...(current?.metadata ?? {}),
                     executionStats: flatResult.stats,
                     pipelineConfig: config,

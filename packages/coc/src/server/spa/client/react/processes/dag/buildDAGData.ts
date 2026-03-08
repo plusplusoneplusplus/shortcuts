@@ -84,7 +84,7 @@ export function buildDAGData(process: any): DAGChartData | null {
     if (!metadata) return null;
 
     let stats = metadata.executionStats;
-    // Fallback: queue-run-workflow stores stats in result JSON when metadata lacks them
+    // Fallback: run-workflow stores stats in result JSON when metadata lacks them
     if (!stats && process?.result) {
         try {
             const parsed = typeof process.result === 'string'
