@@ -794,3 +794,218 @@ describe('Diff Comments REST API', () => {
         });
     });
 });
+
+// ============================================================================
+// WebSocket Broadcast Tests
+// ============================================================================
+
+describe('Diff Comments WebSocket Broadcasts', () => {
+    let tmpDir: string;
+    let httpServer: http.Server;
+    let baseUrl: string;
+    let broadcastSpy: ReturnType<typeof vi.fn>;
+    let routes: import('@plusplusoneplusplus/coc-server').Route[];
+
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-diff-ws-'));
+        routes = [];
+        broadcastSpy = vi.fn();
+
+        const mockWsServer = {
+            broadcastProcessEvent: broadcastSpy,
+        } as any;
+
+        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        registerDiffCommentsRoutes(routes, tmpDir, {} as any, undefined, () => mockWsServer);
+
+        httpServer = http.createServer(async (req, res) => {
+            const url = req.url || '';
+            const method = req.method || 'GET';
+            for (const route of routes) {
+                if (route.method && route.method !== method) continue;
+                const match = url.match(route.pattern);
+                if (match) {
+                    await route.handler(req, res, match);
+                    return;
+                }
+            }
+            res.writeHead(404);
+            res.end();
+        });
+
+        await new Promise<void>((resolve) => {
+            httpServer.listen(0, '127.0.0.1', () => resolve());
+        });
+        const addr = httpServer.address() as import('net').AddressInfo;
+        baseUrl = `http://127.0.0.1:${addr.port}`;
+    });
+
+    afterEach(async () => {
+        await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    const WS_ID = 'ws-broadcast';
+
+    function collectionUrl() {
+        return `${baseUrl}/api/diff-comments/${WS_ID}`;
+    }
+
+    function itemUrl(key: string, id: string) {
+        return `${baseUrl}/api/diff-comments/${WS_ID}/${key}/${id}`;
+    }
+
+    function replyUrl(key: string, id: string) {
+        return `${baseUrl}/api/diff-comments/${WS_ID}/${key}/${id}/replies`;
+    }
+
+    function makePostBody(ctxOverrides: Partial<DiffCommentContext> = {}) {
+        const context = makeContext(ctxOverrides);
+        return {
+            context,
+            selection: { diffLineStart: 0, diffLineEnd: 2, side: 'added', startColumn: 0, endColumn: 10 },
+            selectedText: 'export default',
+            comment: 'Needs review',
+            status: 'open',
+        };
+    }
+
+    it('broadcasts diff-comment-updated with action "added" on create', async () => {
+        const res = await postJSON(collectionUrl(), makePostBody());
+        expect(res.status).toBe(201);
+        const { comment } = JSON.parse(res.body);
+
+        expect(broadcastSpy).toHaveBeenCalledTimes(1);
+        const msg = broadcastSpy.mock.calls[0][0];
+        expect(msg.type).toBe('diff-comment-updated');
+        expect(msg.action).toBe('added');
+        expect(msg.workspaceId).toBe(WS_ID);
+        expect(msg.comment.id).toBe(comment.id);
+        expect(msg.storageKey).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('broadcasts diff-comment-updated with action "updated" on PATCH', async () => {
+        const createRes = await postJSON(collectionUrl(), makePostBody());
+        const { comment } = JSON.parse(createRes.body);
+        const manager = new DiffCommentsManager(tmpDir);
+        const key = manager.hashContext(makeContext());
+        broadcastSpy.mockClear();
+
+        const res = await patchJSON(itemUrl(key, comment.id), { comment: 'Updated text' });
+        expect(res.status).toBe(200);
+
+        expect(broadcastSpy).toHaveBeenCalledTimes(1);
+        const msg = broadcastSpy.mock.calls[0][0];
+        expect(msg.type).toBe('diff-comment-updated');
+        expect(msg.action).toBe('updated');
+        expect(msg.workspaceId).toBe(WS_ID);
+        expect(msg.storageKey).toBe(key);
+        expect(msg.comment.comment).toBe('Updated text');
+    });
+
+    it('broadcasts diff-comment-updated with action "deleted" on DELETE', async () => {
+        const createRes = await postJSON(collectionUrl(), makePostBody());
+        const { comment } = JSON.parse(createRes.body);
+        const manager = new DiffCommentsManager(tmpDir);
+        const key = manager.hashContext(makeContext());
+        broadcastSpy.mockClear();
+
+        const res = await deleteRequest(itemUrl(key, comment.id));
+        expect(res.status).toBe(204);
+
+        expect(broadcastSpy).toHaveBeenCalledTimes(1);
+        const msg = broadcastSpy.mock.calls[0][0];
+        expect(msg.type).toBe('diff-comment-updated');
+        expect(msg.action).toBe('deleted');
+        expect(msg.workspaceId).toBe(WS_ID);
+        expect(msg.storageKey).toBe(key);
+        expect(msg.commentId).toBe(comment.id);
+    });
+
+    it('broadcasts diff-comment-updated with action "updated" on reply', async () => {
+        const createRes = await postJSON(collectionUrl(), makePostBody());
+        const { comment } = JSON.parse(createRes.body);
+        const manager = new DiffCommentsManager(tmpDir);
+        const key = manager.hashContext(makeContext());
+        broadcastSpy.mockClear();
+
+        const res = await postJSON(replyUrl(key, comment.id), { text: 'A reply', author: 'User' });
+        expect(res.status).toBe(201);
+
+        expect(broadcastSpy).toHaveBeenCalledTimes(1);
+        const msg = broadcastSpy.mock.calls[0][0];
+        expect(msg.type).toBe('diff-comment-updated');
+        expect(msg.action).toBe('updated');
+        expect(msg.workspaceId).toBe(WS_ID);
+        expect(msg.storageKey).toBe(key);
+        expect(msg.comment).toBeDefined();
+        expect(msg.comment.replies).toHaveLength(1);
+    });
+
+    it('does not throw when getWsServer returns undefined', async () => {
+        // Re-register routes with getWsServer returning undefined
+        const localRoutes: import('@plusplusoneplusplus/coc-server').Route[] = [];
+        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        registerDiffCommentsRoutes(localRoutes, tmpDir, {} as any, undefined, () => undefined);
+
+        const localServer = http.createServer(async (req, res) => {
+            const url = req.url || '';
+            const method = req.method || 'GET';
+            for (const route of localRoutes) {
+                if (route.method && route.method !== method) continue;
+                const match = url.match(route.pattern);
+                if (match) {
+                    await route.handler(req, res, match);
+                    return;
+                }
+            }
+            res.writeHead(404);
+            res.end();
+        });
+
+        await new Promise<void>((resolve) => {
+            localServer.listen(0, '127.0.0.1', () => resolve());
+        });
+        const addr = localServer.address() as import('net').AddressInfo;
+        const localBaseUrl = `http://127.0.0.1:${addr.port}`;
+
+        const res = await postJSON(`${localBaseUrl}/api/diff-comments/${WS_ID}`, makePostBody());
+        expect(res.status).toBe(201);
+
+        await new Promise<void>((resolve) => localServer.close(() => resolve()));
+    });
+
+    it('does not broadcast when getWsServer is not provided', async () => {
+        const localRoutes: import('@plusplusoneplusplus/coc-server').Route[] = [];
+        const { registerDiffCommentsRoutes } = await import('../../src/server/diff-comments-handler');
+        registerDiffCommentsRoutes(localRoutes, tmpDir, {} as any);
+
+        const localServer = http.createServer(async (req, res) => {
+            const url = req.url || '';
+            const method = req.method || 'GET';
+            for (const route of localRoutes) {
+                if (route.method && route.method !== method) continue;
+                const match = url.match(route.pattern);
+                if (match) {
+                    await route.handler(req, res, match);
+                    return;
+                }
+            }
+            res.writeHead(404);
+            res.end();
+        });
+
+        await new Promise<void>((resolve) => {
+            localServer.listen(0, '127.0.0.1', () => resolve());
+        });
+        const addr = localServer.address() as import('net').AddressInfo;
+        const localBaseUrl = `http://127.0.0.1:${addr.port}`;
+
+        const res = await postJSON(`${localBaseUrl}/api/diff-comments/${WS_ID}`, makePostBody());
+        expect(res.status).toBe(201);
+        // No error = success. broadcastSpy should not be called since we didn't pass it.
+        expect(broadcastSpy).not.toHaveBeenCalled();
+
+        await new Promise<void>((resolve) => localServer.close(() => resolve()));
+    });
+});

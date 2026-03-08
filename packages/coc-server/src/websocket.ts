@@ -134,7 +134,8 @@ export type ServerMessage =
     | { type: 'schedule-removed'; repoId: string; scheduleId: string }
     | { type: 'schedule-triggered'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
-    | { type: 'git-changed'; workspaceId: string; trigger: string; timestamp: number };
+    | { type: 'git-changed'; workspaceId: string; trigger: string; timestamp: number }
+    | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string };
 
 /** Client → Server message types */
 export type ClientMessage =
@@ -396,6 +397,9 @@ export class ProcessWebSocketServer {
             return message.workspaceId;
         }
         if (message.type === 'git-changed') {
+            return message.workspaceId;
+        }
+        if (message.type === 'diff-comment-updated') {
             return message.workspaceId;
         }
         return undefined;

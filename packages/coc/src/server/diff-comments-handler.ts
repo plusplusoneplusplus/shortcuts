@@ -479,6 +479,14 @@ export function registerDiffCommentsRoutes(
                     replies: body.replies,
                     aiResponse: body.aiResponse,
                 });
+                const storageKey = manager.hashContext(body.context);
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'diff-comment-updated',
+                    action: 'added',
+                    workspaceId: wsId,
+                    storageKey,
+                    comment,
+                });
                 sendJSON(res, 201, { comment });
             } catch {
                 sendError(res, 500, 'Failed to create comment');
@@ -555,6 +563,13 @@ export function registerDiffCommentsRoutes(
                 if (!comment) {
                     return sendError(res, 404, 'Comment not found');
                 }
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'diff-comment-updated',
+                    action: 'updated',
+                    workspaceId: wsId,
+                    storageKey,
+                    comment,
+                });
                 sendJSON(res, 200, { comment });
             } catch {
                 sendError(res, 500, 'Failed to update comment');
@@ -578,6 +593,13 @@ export function registerDiffCommentsRoutes(
                 if (!deleted) {
                     return sendError(res, 404, 'Comment not found');
                 }
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'diff-comment-updated',
+                    action: 'deleted',
+                    workspaceId: wsId,
+                    storageKey,
+                    commentId: id,
+                });
                 sendJSON(res, 204, null);
             } catch {
                 sendError(res, 500, 'Failed to delete comment');
@@ -614,6 +636,13 @@ export function registerDiffCommentsRoutes(
                 if (!reply) {
                     return sendError(res, 404, 'Comment not found');
                 }
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'diff-comment-updated',
+                    action: 'updated',
+                    workspaceId: wsId,
+                    storageKey,
+                    comment: await manager.getComment(wsId, storageKey, id),
+                });
                 sendJSON(res, 201, { reply });
             } catch {
                 sendError(res, 500, 'Failed to add reply');
@@ -680,6 +709,14 @@ export function registerDiffCommentsRoutes(
                     author: 'AI',
                     text: aiResponse,
                     isAI: true,
+                });
+
+                getWsServer?.()?.broadcastProcessEvent({
+                    type: 'diff-comment-updated',
+                    action: 'updated',
+                    workspaceId: wsId,
+                    storageKey,
+                    comment: await manager.getComment(wsId, storageKey, commentId),
                 });
 
                 sendJSON(res, 200, { aiResponse, reply });
