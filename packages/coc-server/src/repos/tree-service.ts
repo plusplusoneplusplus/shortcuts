@@ -295,6 +295,85 @@ export class RepoTreeService {
     }
 
     /**
+     * Recursively list all files under `relativePath` inside the repo.
+     * Returns a flat array of relative paths (files only, no directories).
+     * Respects gitignore unless `showIgnored` is set. Capped by `maxEntries`.
+     */
+    async listFilesRecursive(
+        repoId: string,
+        relativePath: string,
+        options?: { showIgnored?: boolean },
+    ): Promise<{ files: string[]; truncated: boolean }> {
+        const repo = await this.resolveRepo(repoId);
+        if (!repo) {
+            throw new Error(`Repo not found: ${repoId}`);
+        }
+
+        const repoRoot = repo.localPath;
+        const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
+        const absRoot = path.resolve(repoRoot, normalizedRel);
+        assertInsideRepo(repoRoot, absRoot);
+
+        const files: string[] = [];
+        const showIgnored = options?.showIgnored ?? false;
+
+        const walk = async (dir: string): Promise<void> => {
+            if (files.length >= this.maxEntries) return;
+
+            let dirents: fs.Dirent[];
+            try {
+                dirents = await fs.promises.readdir(dir, { withFileTypes: true });
+            } catch {
+                return;
+            }
+
+            // Resolve symlinks and filter broken ones
+            const resolved: { name: string; isDir: boolean }[] = [];
+            for (const dirent of dirents) {
+                const fullPath = path.join(dir, dirent.name);
+                if (dirent.isSymbolicLink()) {
+                    try {
+                        const targetStat = await fs.promises.stat(fullPath);
+                        resolved.push({ name: dirent.name, isDir: targetStat.isDirectory() });
+                    } catch {
+                        continue;
+                    }
+                } else {
+                    resolved.push({ name: dirent.name, isDir: dirent.isDirectory() });
+                }
+            }
+
+            // Gitignore filtering
+            let filtered = resolved;
+            if (!showIgnored) {
+                const entryInfos = resolved.map(e => ({ name: e.name, isDir: e.isDir }));
+                const ignoredNames = getGitIgnoredNames(repoRoot, dir, entryInfos);
+                if (ignoredNames.size > 0) {
+                    filtered = resolved.filter(e => !ignoredNames.has(e.name));
+                }
+            }
+
+            // Sort alphabetically for deterministic output
+            filtered.sort((a, b) => a.name.localeCompare(b.name));
+
+            for (const entry of filtered) {
+                if (files.length >= this.maxEntries) return;
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDir) {
+                    await walk(fullPath);
+                } else {
+                    const relPath = path.relative(repoRoot, fullPath).split(path.sep).join('/');
+                    files.push(relPath);
+                }
+            }
+        };
+
+        await walk(absRoot);
+        const truncated = files.length >= this.maxEntries;
+        return { files: truncated ? files.slice(0, this.maxEntries) : files, truncated };
+    }
+
+    /**
      * Read file content.
      * @returns content (text or base64), encoding, and mimeType.
      * @throws if file not found, path traversal detected, or file exceeds 1 MB.

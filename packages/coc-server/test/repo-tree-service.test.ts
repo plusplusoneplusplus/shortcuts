@@ -445,3 +445,102 @@ describe('RepoTreeService.toRepoInfo', () => {
         expect(info.remoteUrl).toBe('https://github.com/test/repo.git');
     });
 });
+
+describe('RepoTreeService.listFilesRecursive', () => {
+    it('returns all files recursively as flat paths', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'readme.md'), '');
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), '');
+        fs.writeFileSync(path.join(repoDir, 'src', 'util.ts'), '');
+
+        const result = await service.listFilesRecursive(REPO_ID, '.');
+        expect(result.files).toContain('readme.md');
+        expect(result.files).toContain('src/index.ts');
+        expect(result.files).toContain('src/util.ts');
+        expect(result.truncated).toBe(false);
+    });
+
+    it('does not include directories in the output', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'main.ts'), '');
+
+        const result = await service.listFilesRecursive(REPO_ID, '.');
+        for (const f of result.files) {
+            expect(f).not.toBe('src');
+        }
+    });
+
+    it('handles deeply nested directories', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'a', 'b', 'c'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'a', 'b', 'c', 'deep.txt'), '');
+
+        const result = await service.listFilesRecursive(REPO_ID, '.');
+        expect(result.files).toContain('a/b/c/deep.txt');
+    });
+
+    it('truncates when files exceed maxEntries', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 10; i++) {
+            fs.writeFileSync(path.join(repoDir, `file-${String(i).padStart(2, '0')}.txt`), '');
+        }
+        const smallService = new RepoTreeService(dataDir, { maxEntries: 3 });
+        const result = await smallService.listFilesRecursive(REPO_ID, '.');
+        expect(result.files).toHaveLength(3);
+        expect(result.truncated).toBe(true);
+    });
+
+    it('returns sorted files alphabetically', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'z.txt'), '');
+        fs.writeFileSync(path.join(repoDir, 'a.txt'), '');
+        fs.writeFileSync(path.join(repoDir, 'm.txt'), '');
+
+        const result = await service.listFilesRecursive(REPO_ID, '.');
+        expect(result.files).toEqual(['a.txt', 'm.txt', 'z.txt']);
+    });
+
+    it('scopes to subdirectory when relativePath is given', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'root.txt'), '');
+        fs.writeFileSync(path.join(repoDir, 'src', 'main.ts'), '');
+
+        const result = await service.listFilesRecursive(REPO_ID, 'src');
+        expect(result.files).toEqual(['src/main.ts']);
+    });
+
+    it('throws for unknown repoId', async () => {
+        seedDefaultRepo();
+        await expect(service.listFilesRecursive('nonexistent', '.')).rejects.toThrow(/repo not found/i);
+    });
+
+    it('throws for path traversal', async () => {
+        seedDefaultRepo();
+        await expect(service.listFilesRecursive(REPO_ID, '../../../etc')).rejects.toThrow(/path traversal detected/i);
+    });
+
+    it('returns empty array for empty directory', async () => {
+        seedDefaultRepo();
+        const result = await service.listFilesRecursive(REPO_ID, '.');
+        expect(result.files).toEqual([]);
+        expect(result.truncated).toBe(false);
+    });
+
+    it('filters gitignored files by default', async () => {
+        if (!isGitAvailable()) return;
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), 'dist/\n');
+        fs.mkdirSync(path.join(repoDir, 'dist'));
+        fs.writeFileSync(path.join(repoDir, 'dist', 'bundle.js'), '');
+        fs.mkdirSync(path.join(repoDir, 'src'));
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), '');
+
+        const result = await service.listFilesRecursive(REPO_ID, '.');
+        expect(result.files).not.toContain('dist/bundle.js');
+        expect(result.files).toContain('src/index.ts');
+    });
+});

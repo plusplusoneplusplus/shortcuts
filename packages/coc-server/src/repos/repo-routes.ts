@@ -6,6 +6,7 @@
  *
  * GET  /api/repos                      — list all repos
  * GET  /api/repos/:repoId/tree         — list directory entries
+ * GET  /api/repos/:repoId/files        — list all files recursively
  * GET  /api/repos/:repoId/blob         — read file content
  * PUT  /api/repos/:repoId/blob         — write file content
  *
@@ -107,6 +108,40 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
 
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
                 const result = await service.listDirectory(parsed.repoId, parsed.path, { showIgnored });
+                sendJson(res, result);
+            } catch (err) {
+                if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {
+                    send404(res, `Path not found: ${err.message}`);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- List all files (recursive) -------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/files$/,
+        handler: async (req, res, match) => {
+            try {
+                const parsedUrl = url.parse(req.url ?? '', true);
+                const parsed = parseRepoRequest(res, match, parsedUrl.query, {
+                    pathRequired: false,
+                    pathDefault: '.',
+                });
+                if (!parsed) return;
+
+                const service = new RepoTreeService(dataDir);
+                const repo = await service.resolveRepo(parsed.repoId);
+                if (!repo) {
+                    send404(res, `Unknown repo: ${parsed.repoId}`);
+                    return;
+                }
+
+                const showIgnored = parsedUrl.query.showIgnored === 'true';
+                const result = await service.listFilesRecursive(parsed.repoId, parsed.path, { showIgnored });
                 sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {

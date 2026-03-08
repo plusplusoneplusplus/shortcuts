@@ -13,6 +13,7 @@ import { FileTree } from './FileTree';
 import { PreviewPane } from './PreviewPane';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
+import { QuickOpen } from './QuickOpen';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 
@@ -49,6 +50,9 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         position: { x: number; y: number };
         entry: TreeEntry;
     } | null>(null);
+
+    // Quick Open state (Ctrl+P)
+    const [quickOpenVisible, setQuickOpenVisible] = useState(false);
 
     // Fetch root entries on mount
     useEffect(() => {
@@ -107,6 +111,24 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const handleFileOpen = useCallback((entry: TreeEntry) => {
         setPreviewFile({ path: entry.path, name: entry.name });
     }, []);
+
+    const handleQuickOpenSelect = useCallback((filePath: string) => {
+        const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
+        setSelectedPath(filePath);
+        setPreviewFile({ path: filePath, name });
+        // Expand ancestor directories
+        const segments = filePath.split('/');
+        if (segments.length > 1) {
+            setExpandedPaths(prev => {
+                const next = new Set(prev);
+                for (let i = 1; i < segments.length; i++) {
+                    next.add(segments.slice(0, i).join('/'));
+                }
+                return next;
+            });
+        }
+        location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(filePath)}`;
+    }, [workspaceId]);
 
     const handleTreeContextMenu = useCallback((e: React.MouseEvent, entry: TreeEntry) => {
         setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });
@@ -218,9 +240,15 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         }
     }, [searchQuery, childrenMap, rootEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Keyboard shortcut: '/' to focus search, Escape to clear
+    // Keyboard shortcut: '/' to focus search, Escape to clear, Ctrl+P for Quick Open
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            // Ctrl+P / Cmd+P → Quick Open
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                e.preventDefault();
+                setQuickOpenVisible(true);
+                return;
+            }
             if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
                 e.preventDefault();
                 searchInputRef.current?.focus();
@@ -381,6 +409,14 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     onClose={() => setContextMenu(null)}
                 />
             )}
+
+            {/* Quick Open (Ctrl+P) */}
+            <QuickOpen
+                workspaceId={workspaceId}
+                open={quickOpenVisible}
+                onClose={() => setQuickOpenVisible(false)}
+                onFileSelect={handleQuickOpenSelect}
+            />
         </div>
     );
 }

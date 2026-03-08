@@ -10,6 +10,8 @@ export { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
 export type { MonacoFileEditorProps } from './MonacoFileEditor';
 export { SearchBar } from './SearchBar';
 export type { SearchBarProps } from './SearchBar';
+export { QuickOpen, fuzzyMatch, highlightFuzzy } from './QuickOpen';
+export type { QuickOpenProps } from './QuickOpen';
 export { Breadcrumbs } from './Breadcrumbs';
 export type { BreadcrumbsProps } from './Breadcrumbs';
 export type { TreeEntry } from './types';

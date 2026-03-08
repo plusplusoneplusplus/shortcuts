@@ -320,3 +320,39 @@ describe('PUT /api/repos/:repoId/blob', () => {
         expect(body.error).toMatch(/directory traversal/i);
     });
 });
+
+describe('GET /api/repos/:repoId/files', () => {
+    it('returns all files recursively', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'README.md'), '# Hello');
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export {}');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/files`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.files).toBeDefined();
+        expect(Array.isArray(body.files)).toBe(true);
+        expect(body.files).toContain('README.md');
+        expect(body.files).toContain('src/index.ts');
+        expect(typeof body.truncated).toBe('boolean');
+    });
+
+    it('returns 404 for unknown repo', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/nonexistent/files`);
+        expect(res.status).toBe(404);
+    });
+
+    it('scopes to subdirectory with path param', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'root.txt'), '');
+        fs.writeFileSync(path.join(repoDir, 'src', 'main.ts'), '');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/files?path=src`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.files).toContain('src/main.ts');
+        expect(body.files).not.toContain('root.txt');
+    });
+});
