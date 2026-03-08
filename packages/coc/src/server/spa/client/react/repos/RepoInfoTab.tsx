@@ -89,7 +89,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     </span>
                 </MetaRow>
                 <MetaRow label="Workflows" value={String(repo.workflows?.length || 0)} />
-                <MetaRow label="Tasks" value={String(repo.taskCount || 0)} />
+                <MetaRow label="Plans" value={String(repo.taskCount || 0)} />
                 <MetaRow label="Completed" value={String(stats.success)} />
                 <MetaRow label="Failed" value={String(stats.failed)} />
                 <MetaRow label="Running" value={String(stats.running)} />

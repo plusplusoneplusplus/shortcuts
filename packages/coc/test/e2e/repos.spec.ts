@@ -516,7 +516,7 @@ test.describe('Info Tab Content', () => {
 
         // Verify pipeline and task count cells exist
         await expect(page.locator('.meta-item', { hasText: 'Workflows' })).toBeVisible();
-        await expect(page.locator('.meta-item', { hasText: 'Tasks' })).toBeVisible();
+        await expect(page.locator('.meta-item', { hasText: 'Plans' })).toBeVisible();
     });
 
     test('git info displays branch', async ({ page, serverUrl }) => {

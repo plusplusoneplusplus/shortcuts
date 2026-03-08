@@ -11,7 +11,7 @@ const ALL_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'info', label: 'Info' },
     { key: 'git', label: 'Git' },
     { key: 'explorer', label: 'Explorer' },
-    { key: 'tasks', label: 'Tasks' },
+    { key: 'tasks', label: 'Plans' },
     { key: 'activity', label: 'Activity' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
@@ -41,7 +41,7 @@ describe('MobileTabBar: basic render', () => {
         expect(screen.getByTestId('mobile-tab-bar')).toBeTruthy();
     });
 
-    it('renders pinned tabs by default (Tasks, Activity, Git)', () => {
+    it('renders pinned tabs by default (Plans, Activity, Git)', () => {
         renderBar();
         const nav = screen.getByTestId('mobile-tab-bar');
         expect(nav.querySelector('[data-tab="tasks"]')).toBeTruthy();

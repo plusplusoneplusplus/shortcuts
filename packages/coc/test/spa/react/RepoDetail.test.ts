@@ -55,6 +55,12 @@ describe('RepoDetail SUB_TABS', () => {
     it('activity is the fifth entry (after tasks)', () => {
         expect(SUB_TABS[4].key).toBe('activity');
     });
+
+    it('tasks tab has label "Plans"', () => {
+        const tasksTab = SUB_TABS.find(t => t.key === 'tasks');
+        expect(tasksTab).toBeDefined();
+        expect(tasksTab!.label).toBe('Plans');
+    });
 });
 
 describe('RepoDetail Activity tab rendering', () => {
