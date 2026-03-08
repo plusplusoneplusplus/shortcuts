@@ -280,7 +280,7 @@ export function ActivityListPane({
                     {isPaused && <Badge status="warning">Paused</Badge>}
                     {availableFilters.length > 2 && (
                         <select
-                            className="text-xs bg-transparent border border-[#e0e0e0] dark:border-[#3c3c3c] rounded px-1.5 py-0.5 text-[#848484] outline-none"
+                            className="text-xs bg-transparent border border-[#e0e0e0] dark:border-[#474749] rounded px-1.5 py-0.5 text-[#848484] dark:text-[#999] outline-none"
                             value={filterType}
                             onChange={e => setFilterType(e.target.value)}
                             data-testid="queue-filter-dropdown"
@@ -318,7 +318,7 @@ export function ActivityListPane({
 
                 {filteredRunning.length > 0 && (
                     <div>
-                        <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
+                        <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] mb-1 font-medium">
                             Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
                         </div>
                         <div className="flex flex-col gap-1">
@@ -339,7 +339,7 @@ export function ActivityListPane({
 
                 {filteredQueued.length > 0 && (
                     <div>
-                        <div className="text-[11px] uppercase text-[#848484] mb-1 font-medium">
+                        <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] mb-1 font-medium">
                             Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
                         </div>
                         <div className="flex flex-col gap-1">
@@ -410,7 +410,7 @@ export function ActivityListPane({
                 {filteredHistory.length > 0 && (
                     <div>
                         <button
-                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
                             onClick={() => setShowHistory(!showHistory)}
                         >
                             {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
@@ -436,11 +436,11 @@ export function ActivityListPane({
                                                     {task.displayName || task.type || 'Task'}
                                                 </span>
                                             </span>
-                                            <span className="text-[10px] text-[#848484] shrink-0 whitespace-nowrap tabular-nums">
+                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                 {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                             </span>
                                         </div>
-                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] text-[#848484] mt-0.5 truncate">{p}</div> : null; })()}
+                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate">{p}</div> : null; })()}
                                         {task.error && (
                                             <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                 {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
@@ -492,20 +492,20 @@ export function QueueTaskItem({ task, status, now, selected, onClick, onContextM
                     <span className="truncate">{name}</span>
                 </div>
                 {elapsed && (
-                    <span className="text-[10px] text-[#848484] shrink-0 whitespace-nowrap tabular-nums">
+                    <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                         {elapsed}
                     </span>
                 )}
             </div>
             {promptPreview && (
-                <div className="text-[10px] text-[#848484] mt-0.5 truncate">{promptPreview}</div>
+                <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate">{promptPreview}</div>
             )}
             {showProgress && progress && progress.total > 0 && (
                 <div className="mt-1" data-testid="workflow-progress-indicator">
                     <div className="text-[10px] text-[#0078d4] dark:text-[#3794ff]">
                         ▶ Map: {progress.completed}/{progress.total}
                     </div>
-                    <div className="mt-0.5 h-[2px] rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] overflow-hidden">
+                    <div className="mt-0.5 h-[2px] rounded-full bg-[#e0e0e0] dark:bg-[#474749] overflow-hidden">
                         <div
                             className="h-full rounded-full bg-[#0078d4] dark:bg-[#3794ff] transition-[width] duration-300"
                             style={{ width: `${Math.min(100, (progress.completed / progress.total) * 100)}%` }}

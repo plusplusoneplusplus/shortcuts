@@ -25,7 +25,7 @@ export function Card({ className, children, onClick, onContextMenu, 'aria-label'
             onContextMenu={onContextMenu}
             onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e as any) : undefined}
             className={cn(
-                'rounded-md border border-[#e0e0e0] bg-[#f3f3f3] dark:border-[#3c3c3c] dark:bg-[#252526] overflow-hidden transition-colors',
+                'rounded-md border border-[#e0e0e0] bg-[#f3f3f3] dark:border-[#474749] dark:bg-[#2d2d30] overflow-hidden transition-colors',
                 onClick && 'cursor-pointer hover:border-[#0078d4] dark:hover:border-[#3794ff]',
                 className
             )}
