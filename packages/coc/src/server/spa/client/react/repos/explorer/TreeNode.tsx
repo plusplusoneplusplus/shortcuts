@@ -90,7 +90,7 @@ export function TreeNode({
             <div
                 ref={rowRef}
                 className={cn(
-                    'flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs transition-colors',
+                    'flex items-center gap-1.5 px-3 py-2 lg:py-1 cursor-pointer text-sm lg:text-xs transition-colors',
                     'hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
                     selectedPath === entry.path && 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 text-[#0078d4] dark:text-[#3794ff]',
                     isFocused && 'ring-1 ring-[#0078d4]/50 dark:ring-[#3794ff]/50',

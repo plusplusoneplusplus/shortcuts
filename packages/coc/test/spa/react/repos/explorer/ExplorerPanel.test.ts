@@ -269,7 +269,8 @@ describe('ExplorerPanel', () => {
         });
 
         it('passes onClose to PreviewPane that clears previewFile', () => {
-            expect(source).toContain('onClose={() => setPreviewFile(null)}');
+            // On desktop, onClose clears previewFile; on mobile the back bar handles it
+            expect(source).toContain('onClose={isMobile ? undefined : () => setPreviewFile(null)}');
         });
 
         it('has handleFileOpen callback that sets previewFile', () => {

@@ -1,11 +1,13 @@
 /**
  * ExplorerPanel — top-level panel for the Explorer sub-tab.
  * Left/right split: FileTree sidebar + placeholder preview pane.
+ * On mobile, shows either the file tree OR the preview pane (not both).
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Spinner } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { FileTree } from './FileTree';
 import { PreviewPane } from './PreviewPane';
@@ -19,6 +21,7 @@ export interface ExplorerPanelProps {
 }
 
 export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
+    const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
         minWidth: 160,
@@ -268,12 +271,15 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         );
     }
 
+    // On mobile: show file tree OR preview pane, not both
+    const showMobilePreview = isMobile && !!previewFile;
+
     return (
         <div className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
-            {/* Left aside — file tree */}
+            {/* Left aside — file tree (hidden on mobile when previewing a file) */}
             <aside
                 className="w-full flex-1 min-h-0 lg:flex-none border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col"
-                style={{ width: undefined }}
+                style={showMobilePreview ? { display: 'none' } : { width: undefined }}
                 data-testid="explorer-sidebar"
             >
                 <style>{`@media (min-width: 1024px) { [data-testid="explorer-sidebar"] { width: ${sidebarWidth}px !important; } }`}</style>
@@ -314,7 +320,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 />
             </aside>
 
-            {/* Resize handle */}
+            {/* Resize handle — desktop only */}
             <div
                 className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
                 onMouseDown={handleMouseDown}
@@ -326,15 +332,44 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 tabIndex={0}
             />
 
-            {/* Right main — preview pane */}
-            <main className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile ? '' : ' flex items-center justify-center'}`} data-testid="explorer-preview-pane">
+            {/* Right main — preview pane (full-screen on mobile when file is open) */}
+            <main
+                className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile ? '' : ' flex items-center justify-center'}`}
+                style={isMobile && !previewFile ? { display: 'none' } : undefined}
+                data-testid="explorer-preview-pane"
+            >
                 {previewFile
-                    ? <PreviewPane
-                        repoId={workspaceId}
-                        filePath={previewFile.path}
-                        fileName={previewFile.name}
-                        onClose={() => setPreviewFile(null)}
-                      />
+                    ? (
+                        <div className="flex flex-col w-full h-full">
+                            {/* Mobile back bar */}
+                            {isMobile && (
+                                <div
+                                    className="flex items-center gap-2 h-10 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] flex-shrink-0"
+                                    data-testid="explorer-mobile-back-bar"
+                                >
+                                    <button
+                                        className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline flex items-center gap-1"
+                                        onClick={() => setPreviewFile(null)}
+                                        data-testid="explorer-mobile-back-btn"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                                        </svg>
+                                        Files
+                                    </button>
+                                    <span className="text-xs text-[#848484] truncate flex-1 text-right">{previewFile.name}</span>
+                                </div>
+                            )}
+                            <div className="flex-1 min-h-0">
+                                <PreviewPane
+                                    repoId={workspaceId}
+                                    filePath={previewFile.path}
+                                    fileName={previewFile.name}
+                                    onClose={isMobile ? undefined : () => setPreviewFile(null)}
+                                />
+                            </div>
+                        </div>
+                    )
                     : <p className="text-[#848484] text-sm">Click a file to preview</p>}
             </main>
 

@@ -26,7 +26,7 @@ export function SearchBar({ value, onChange, onClear, inputRef, placeholder = 'F
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
                 className={cn(
-                    'w-full pl-7 pr-7 px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white',
+                    'w-full pl-7 pr-7 px-2 py-2.5 lg:py-1.5 text-base lg:text-sm rounded border border-[#e0e0e0] bg-white',
                     'dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]',
                     'focus:outline-none focus:border-[#0078d4]',
                 )}
