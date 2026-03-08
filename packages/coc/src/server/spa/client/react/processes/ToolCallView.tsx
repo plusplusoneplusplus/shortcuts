@@ -8,6 +8,7 @@ import { cn, FilePathLink, shortenFilePath } from '../shared';
 import { computeLineDiff, type DiffLine } from '../../diff-utils';
 import { ToolResultPopover } from './ToolResultPopover';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { renderMarkdownToHtml } from '../../markdown-renderer';
 
 interface ToolCallData {
     id?: string;
@@ -126,6 +127,19 @@ function getToolSummary(toolName: string, args: any): string {
                 parts.push(prompt.length > 60 ? `${prompt.slice(0, 57)}...` : prompt);
             }
             return parts.join(' ');
+        }
+        case 'task_complete': {
+            if (typeof args.summary === 'string' && args.summary.trim()) {
+                const s = args.summary.trim();
+                return s.length > 80 ? `${s.slice(0, 77)}...` : s;
+            }
+            return 'Task completed';
+        }
+        case 'suggest_follow_ups': {
+            if (Array.isArray(args.suggestions)) {
+                return args.suggestions.slice(0, 3).join(' · ');
+            }
+            return '';
         }
         default: {
             for (const key of ['path', 'filePath', 'file', 'pattern', 'query', 'command', 'url']) {
@@ -334,7 +348,9 @@ export function ToolCallView({
     onToggleSubtools,
     children,
 }: ToolCallProps) {
-    const [expanded, setExpanded] = useState(false);
+    const toolName = toolCall.toolName || toolCall.name || 'unknown';
+    const isTaskComplete = toolName === 'task_complete';
+    const [expanded, setExpanded] = useState(isTaskComplete);
     const [hoverVisible, setHoverVisible] = useState(false);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
     const headerRef = useRef<HTMLDivElement | null>(null);
@@ -345,7 +361,7 @@ export function ToolCallView({
     if (depth > 20) return null;
 
     const depthLevel = Math.max(0, Math.min(depth, 8));
-    const name = toolCall.toolName || toolCall.name || 'unknown';
+    const name = toolName;
     const argsObj = parseArgsObject(toolCall.args);
     const args = formatArgs(toolCall.args);
     const hasDetails = args || toolCall.result || toolCall.error;
@@ -372,6 +388,14 @@ export function ToolCallView({
         )
         : null;
     const bashOptionsText = bashOptions && Object.keys(bashOptions).length > 0 ? JSON.stringify(bashOptions, null, 2) : '';
+
+    const taskCompleteSummary = isTaskComplete
+        ? (resultText || (argsObj && typeof argsObj.summary === 'string' ? argsObj.summary : ''))
+        : '';
+    const taskCompleteHtml = useMemo(() => {
+        if (!isTaskComplete || !taskCompleteSummary) return '';
+        return renderMarkdownToHtml(taskCompleteSummary);
+    }, [isTaskComplete, taskCompleteSummary]);
 
     const hasHoverResult = (name === 'task' || name === 'view' || isShellLike || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit') && !!resultText;
 
@@ -520,7 +544,7 @@ export function ToolCallView({
                     {name === 'view' && argsObj && (
                         <ViewToolView args={argsObj} result={visibleResult} />
                     )}
-                    {!isShellLike && name !== 'edit' && name !== 'create' && name !== 'view' && args && (
+                    {!isShellLike && name !== 'edit' && name !== 'create' && name !== 'view' && !isTaskComplete && args && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -528,7 +552,14 @@ export function ToolCallView({
                             </pre>
                         </div>
                     )}
-                    {name !== 'view' && resultText && (
+                    {isTaskComplete && taskCompleteHtml && (
+                        <div
+                            className="markdown-body text-xs text-[#1e1e1e] dark:text-[#cccccc]"
+                            data-testid="task-complete-markdown"
+                            dangerouslySetInnerHTML={{ __html: taskCompleteHtml }}
+                        />
+                    )}
+                    {name !== 'view' && !isTaskComplete && resultText && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Result</div>
                             {isImageDataUrl(resultText) ? (
