@@ -281,6 +281,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setRightPanelView({ type: 'working-tree-file', filePath, stage });
     }, []);
 
+    const handleMobileBack = useCallback(() => {
+        setRightPanelView(null);
+    }, []);
+
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
     const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
@@ -493,9 +497,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     return (
         <>
         <div className={`repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="repo-git-tab">
-            {/* Left panel — commit list */}
+            {/* Left panel — commit list (hidden on mobile when detail is active) */}
             <aside
-                className="w-full lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                className={`w-full lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]${rightPanelView ? ' hidden lg:block' : ''}`}
                 data-testid="git-commit-list-panel"
                 onKeyDown={handlePanelKeyDown}
             >
@@ -553,9 +557,23 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 aria-label="Resize sidebar"
                 tabIndex={0}
             />
-            {/* Right panel — commit detail */}
-            <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e]" data-testid="git-detail-panel">
-                {detailPanel}
+            {/* Right panel — commit detail (hidden on mobile when no detail selected) */}
+            <main className={`flex-1 min-w-0 min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e] flex flex-col${!rightPanelView ? ' hidden lg:flex' : ''}`} data-testid="git-detail-panel">
+                {/* Mobile back button */}
+                {rightPanelView && (
+                    <div className="lg:hidden shrink-0 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="git-mobile-back">
+                        <button
+                            onClick={handleMobileBack}
+                            className="text-xs text-[#0078d4] dark:text-[#3794ff] flex items-center gap-1 hover:underline"
+                            data-testid="git-mobile-back-btn"
+                        >
+                            ← Back to list
+                        </button>
+                    </div>
+                )}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                    {detailPanel}
+                </div>
             </main>
         </div>
         {contextMenu && contextMenuItems.length > 0 && (

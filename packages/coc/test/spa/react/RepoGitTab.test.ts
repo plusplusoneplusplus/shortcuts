@@ -866,4 +866,45 @@ describe('RepoGitTab', () => {
             expect(asideBlock![0]).not.toContain('lg:w-[320px]');
         });
     });
+
+    describe('mobile responsive layout', () => {
+        it('hides left panel on mobile when detail view is active (hidden lg:block)', () => {
+            expect(source).toContain("hidden lg:block");
+        });
+
+        it('hides right panel on mobile when no detail is selected (hidden lg:flex)', () => {
+            expect(source).toContain("hidden lg:flex");
+        });
+
+        it('defines handleMobileBack callback that clears rightPanelView', () => {
+            expect(source).toContain('const handleMobileBack = useCallback');
+            expect(source).toContain('setRightPanelView(null)');
+        });
+
+        it('renders mobile back button with data-testid', () => {
+            expect(source).toContain('data-testid="git-mobile-back"');
+            expect(source).toContain('data-testid="git-mobile-back-btn"');
+        });
+
+        it('mobile back button is hidden on desktop (lg:hidden)', () => {
+            expect(source).toContain('lg:hidden');
+            expect(source).toContain('handleMobileBack');
+        });
+
+        it('mobile back button shows "← Back to list" text', () => {
+            expect(source).toContain('← Back to list');
+        });
+
+        it('conditionally applies hidden class on aside based on rightPanelView', () => {
+            expect(source).toContain("rightPanelView ? ' hidden lg:block' : ''");
+        });
+
+        it('conditionally applies hidden class on main based on rightPanelView', () => {
+            expect(source).toContain("!rightPanelView ? ' hidden lg:flex' : ''");
+        });
+
+        it('wraps detailPanel in flex-1 container for proper sizing with back button', () => {
+            expect(source).toContain('className="flex-1 min-h-0 overflow-hidden"');
+        });
+    });
 });
