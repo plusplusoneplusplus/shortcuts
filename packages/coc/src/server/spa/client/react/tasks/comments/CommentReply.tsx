@@ -2,7 +2,7 @@
  * CommentReply — a single reply row inside a CommentCard.
  */
 
-import type { TaskCommentReply } from '../../../task-comments-types';
+import type { AnyCommentReply } from '../../../shared-comment-types';
 
 function formatRelative(dateStr: string | null | undefined): string {
     if (!dateStr) return '';
@@ -20,7 +20,7 @@ function formatRelative(dateStr: string | null | undefined): string {
 }
 
 interface CommentReplyProps {
-    reply: TaskCommentReply;
+    reply: AnyCommentReply;
 }
 
 export function CommentReply({ reply }: CommentReplyProps) {

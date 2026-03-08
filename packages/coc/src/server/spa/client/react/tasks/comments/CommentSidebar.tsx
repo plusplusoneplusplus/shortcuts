@@ -5,7 +5,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { cn, Spinner } from '../../shared';
 import { CommentCard } from './CommentCard';
-import type { TaskComment } from '../../../task-comments-types';
+import type { AnyComment } from '../../../shared-comment-types';
 
 type StatusFilter = 'all' | 'open' | 'resolved';
 type CategoryFilter = string;
@@ -13,8 +13,8 @@ type CategoryFilter = string;
 export interface CommentSidebarProps {
     taskId: string;
     filePath: string;
-    comments: TaskComment[];
-    filteredComments?: TaskComment[];
+    comments: AnyComment[];
+    filteredComments?: AnyComment[];
     loading: boolean;
     className?: string;
     compact?: boolean;
@@ -27,7 +27,7 @@ export interface CommentSidebarProps {
     onDelete: (id: string) => void;
     onEdit: (id: string, text: string) => void;
     onAskAI: (id: string, commandId: string, customQuestion?: string) => void;
-    onCommentClick: (comment: TaskComment) => void;
+    onCommentClick: (comment: AnyComment) => void;
     aiLoadingIds?: Set<string>;
     aiErrors?: Map<string, string>;
     onClearAiError?: (id: string) => void;
@@ -224,8 +224,8 @@ export function CommentSidebar({
                     </div>
                 )}
                 {filtered.map(comment => (
-                    <div key={comment.id} className={cn((comment as any).status === 'orphaned' && 'opacity-50 italic')}>
-                        {(comment as any).status === 'orphaned' && (
+                    <div key={comment.id} className={cn(comment.status === 'orphaned' && 'opacity-50 italic')}>
+                        {comment.status === 'orphaned' && (
                             <span
                                 className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 px-2 py-0.5"
                                 data-testid="orphaned-badge"

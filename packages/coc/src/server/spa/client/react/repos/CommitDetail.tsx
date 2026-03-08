@@ -197,7 +197,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                     <CommentSidebar
                         taskId={workspaceId}
                         filePath={filePath}
-                        comments={comments as any}
+                        comments={comments}
                         loading={commentsLoading}
                         onResolve={(id) => { void resolveComment(id); }}
                         onUnresolve={(id) => { void unresolveComment(id); }}

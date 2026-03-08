@@ -10,15 +10,15 @@ import { clampToViewport } from './InlineCommentPopup';
 import { AICommandMenu } from './AICommandMenu';
 import { MarkdownView } from '../../processes/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
-import type { TaskComment, TaskCommentCategory } from '../../../task-comments-types';
-import { CATEGORY_INFO, getCommentCategory } from '../../../task-comments-types';
+import type { AnyComment, AnyCommentCategory } from '../../../shared-comment-types';
+import { getAnyCommentCategory, getAnyCommentCategoryInfo } from '../../../shared-comment-types';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
 export interface CommentPopoverProps {
-    comment: TaskComment;
+    comment: AnyComment;
     position: { top: number; left: number };
     onClose: () => void;
     onResolve: (id: string) => void;
@@ -54,8 +54,8 @@ export function CommentPopover({
     const [editText, setEditText] = useState(comment.comment);
     const { isMobile } = useBreakpoint();
 
-    const category: TaskCommentCategory = getCommentCategory(comment);
-    const info = CATEGORY_INFO[category];
+    const category: AnyCommentCategory = getAnyCommentCategory(comment);
+    const info = getAnyCommentCategoryInfo(comment);
     const isResolved = comment.status === 'resolved';
 
     useEffect(() => {

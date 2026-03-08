@@ -157,7 +157,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                     <CommentSidebar
                         taskId={workspaceId}
                         filePath={filePath}
-                        comments={comments as any}
+                        comments={comments}
                         loading={commentsLoading}
                         onResolve={(id) => { void resolveComment(id); }}
                         onUnresolve={(id) => { void unresolveComment(id); }}

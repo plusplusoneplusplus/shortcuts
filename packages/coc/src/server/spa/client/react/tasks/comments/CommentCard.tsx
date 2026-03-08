@@ -11,7 +11,7 @@ import { CommentReply } from './CommentReply';
 import { MarkdownView } from '../../processes/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import { AICommandMenu } from './AICommandMenu';
-import type { TaskComment } from '../../../task-comments-types';
+import type { AnyComment } from '../../../shared-comment-types';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
@@ -31,7 +31,7 @@ function formatRelative(dateStr: string | null | undefined): string {
 }
 
 export interface CommentCardProps {
-    comment: TaskComment;
+    comment: AnyComment;
     onResolve: () => void;
     onUnresolve: () => void;
     onEdit: (text: string) => void;
