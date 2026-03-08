@@ -21,7 +21,7 @@ export function TruncatedPath({ path, className }: TruncatedPathProps) {
     const fileName = sep >= 0 ? path.slice(sep + 1) : path;
 
     return (
-        <span className={`flex min-w-0 font-mono ${className ?? ''}`} title={path}>
+        <span className={`flex min-w-0 overflow-hidden font-mono ${className ?? ''}`} title={path}>
             {dirPrefix && (
                 <span className="truncate flex-shrink text-inherit opacity-70">{dirPrefix}</span>
             )}

@@ -247,6 +247,10 @@ describe('BranchChanges', () => {
             expect(source).toContain('→');
         });
 
+        it('applies min-w-0 on the renamed file span for proper truncation', () => {
+            expect(source).toContain('flex-1 min-w-0 truncate');
+        });
+
         it('imports Spinner from shared', () => {
             expect(source).toContain("Spinner");
             expect(source).toContain("from '../shared'");

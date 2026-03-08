@@ -52,6 +52,12 @@ describe('TruncatedPath', () => {
         expect(fileSpan.className).toContain('flex-shrink-0');
     });
 
+    it('applies overflow-hidden on the outer span to prevent content overflow', () => {
+        render(<TruncatedPath path="a/b/c/file.ts" />);
+        const el = screen.getByTitle('a/b/c/file.ts');
+        expect(el.className).toContain('overflow-hidden');
+    });
+
     it('applies custom className', () => {
         render(<TruncatedPath path="a/file.ts" className="text-red-500" />);
         const el = screen.getByTitle('a/file.ts');

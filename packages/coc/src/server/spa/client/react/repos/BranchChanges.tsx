@@ -240,7 +240,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                                             {STATUS_CHARS[file.status] || '?'}
                                         </span>
                                         {file.oldPath ? (
-                                            <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 truncate" title={`${file.oldPath} → ${file.path}`}>
+                                            <span className="font-mono text-[#1e1e1e] dark:text-[#ccc] flex-1 min-w-0 truncate" title={`${file.oldPath} → ${file.path}`}>
                                                 {file.oldPath} → {file.path}
                                             </span>
                                         ) : (
