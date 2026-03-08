@@ -67,10 +67,11 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
         if (!task) return null;
         return {
             ...task,
+            ...(processDetails || {}),
             id: processId ?? task.id,
-            metadata: { queueTaskId: task.id, model: task.config?.model, mode: (task as any)?.payload?.mode, ...task.metadata },
+            metadata: { queueTaskId: task.id, model: task.config?.model, mode: (task as any)?.payload?.mode, ...task.metadata, ...(processDetails?.metadata || {}) },
         };
-    }, [task, processId]);
+    }, [task, processId, processDetails]);
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;

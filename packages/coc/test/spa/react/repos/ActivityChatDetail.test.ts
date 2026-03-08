@@ -19,6 +19,39 @@ describe('ActivityChatDetail', () => {
         source = fs.readFileSync(ACTIVITY_CHAT_DETAIL_PATH, 'utf-8');
     });
 
+    describe('metadataProcess includes processDetails (session ID)', () => {
+        it('merges processDetails into metadataProcess', () => {
+            // metadataProcess should spread processDetails so fields like sdkSessionId are available
+            const metaBlock = source.substring(
+                source.indexOf('const metadataProcess'),
+                source.indexOf('const metadataProcess') + 400,
+            );
+            expect(metaBlock).toContain('processDetails');
+        });
+
+        it('spreads processDetails onto the metadata object', () => {
+            const metaBlock = source.substring(
+                source.indexOf('const metadataProcess'),
+                source.indexOf('const metadataProcess') + 400,
+            );
+            expect(metaBlock).toContain('...(processDetails');
+        });
+
+        it('includes processDetails in useMemo dependency array', () => {
+            const metaBlock = source.substring(
+                source.indexOf('const metadataProcess'),
+                source.indexOf('const metadataProcess') + 400,
+            );
+            expect(metaBlock).toContain('processDetails');
+            // Verify it's in the dependency array (after the closing bracket)
+            const depsSection = source.substring(
+                source.indexOf('const metadataProcess'),
+                source.indexOf('const metadataProcess') + 600,
+            );
+            expect(depsSection).toMatch(/\[.*processDetails.*\]/s);
+        });
+    });
+
     describe('scroll-to-bottom on task selection', () => {
         it('declares isInitialLoadRef', () => {
             expect(source).toContain('isInitialLoadRef');
