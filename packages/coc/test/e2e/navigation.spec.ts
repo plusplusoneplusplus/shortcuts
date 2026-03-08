@@ -27,10 +27,8 @@ test.describe('Navigation', () => {
     });
 
     test('clicking Wiki tab switches to wiki view', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
+        await page.goto(serverUrl + '#wiki');
 
-        await page.click('[data-tab="wiki"]');
-        await expect(page.locator('[data-tab="wiki"]')).toHaveClass(/bg-\[#0078d4\]/);
         await expect(page.locator('#view-wiki')).toBeVisible();
     });
 
@@ -55,7 +53,6 @@ test.describe('Navigation', () => {
 
         await expect(page.locator('[data-tab="repos"]')).toBeVisible();
         await expect(page.locator('[data-tab="processes"]')).toBeVisible();
-        await expect(page.locator('[data-tab="wiki"]')).toBeVisible();
     });
 
     test('hash navigation works for tab routing', async ({ page, serverUrl }) => {

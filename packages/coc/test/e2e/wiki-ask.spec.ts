@@ -62,8 +62,7 @@ async function selectWiki(
     wikiId: string,
     opts?: { expandAsk?: boolean },
 ): Promise<void> {
-    await page.goto(serverUrl);
-    await page.click('[data-tab="wiki"]');
+    await page.goto(serverUrl + '#wiki');
     await expect(page.locator('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
     await page.click('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]');
     await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });

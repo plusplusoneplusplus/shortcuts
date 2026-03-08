@@ -38,8 +38,7 @@ test.describe('Wiki tab empty state & list', () => {
             await seedWiki(serverUrl, 'wiki-1', wikiDir1, undefined, 'Frontend Wiki');
             await seedWiki(serverUrl, 'wiki-2', wikiDir2, undefined, 'Backend Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             // 2 wiki cards in the list
             await expect(page.locator('.wiki-card')).toHaveCount(2, { timeout: 10000 });
@@ -51,8 +50,7 @@ test.describe('Wiki tab empty state & list', () => {
     });
 
     test('wiki list shows empty state when no wikis', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="wiki"]');
+        await page.goto(serverUrl + '#wiki');
 
         await expect(page.locator('.wiki-card')).toHaveCount(0);
         await expect(page.locator('#wiki-empty')).toBeVisible();
@@ -65,8 +63,7 @@ test.describe('Wiki tab empty state & list', () => {
 
 test.describe('Add Wiki dialog', () => {
     test('add wiki button opens overlay dialog', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="wiki"]');
+        await page.goto(serverUrl + '#wiki');
 
         await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
@@ -74,8 +71,7 @@ test.describe('Add Wiki dialog', () => {
     });
 
     test('cancel button closes add wiki dialog', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="wiki"]');
+        await page.goto(serverUrl + '#wiki');
 
         await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
@@ -85,8 +81,7 @@ test.describe('Add Wiki dialog', () => {
     });
 
     test('overlay click closes add wiki dialog', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="wiki"]');
+        await page.goto(serverUrl + '#wiki');
 
         await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
@@ -103,8 +98,7 @@ test.describe('Add Wiki dialog', () => {
 
 test.describe('Add Wiki form validation', () => {
     test('empty path does not submit and overlay stays open', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="wiki"]');
+        await page.goto(serverUrl + '#wiki');
         await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
 
@@ -119,8 +113,7 @@ test.describe('Add Wiki form validation', () => {
     });
 
     test('validation error on non-existent path', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="wiki"]');
+        await page.goto(serverUrl + '#wiki');
         await page.click('#wiki-list-add-btn');
         await expect(page.locator('#add-wiki-overlay')).toBeVisible();
 
@@ -144,8 +137,7 @@ test.describe('Add Wiki success workflow', () => {
     test('submit add-wiki form with manual path', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-add-'));
         try {
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
             await page.click('#wiki-list-add-btn');
 
             await page.fill('#wiki-path', tmpDir);
@@ -178,8 +170,7 @@ test.describe('Wiki selection & display', () => {
             createWikiFixture(wikiDir);
             await seedWiki(serverUrl, 'wiki-sel-1', wikiDir, undefined, 'Select Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-sel-1"]')).toBeVisible({ timeout: 10000 });
             await page.click('.wiki-card[data-wiki-id="wiki-sel-1"]');
@@ -199,8 +190,7 @@ test.describe('Wiki selection & display', () => {
             createWikiFixture(wikiDir);
             await seedWiki(serverUrl, 'wiki-detail-1', wikiDir, undefined, 'Detail Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-detail-1"]')).toBeVisible({ timeout: 10000 });
             await page.click('.wiki-card[data-wiki-id="wiki-detail-1"]');
@@ -219,8 +209,7 @@ test.describe('Wiki selection & display', () => {
             createWikiFixture(wikiDir);
             await seedWiki(serverUrl, 'wiki-desel-1', wikiDir, undefined, 'Deselect Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             // Select wiki
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-desel-1"]')).toBeVisible({ timeout: 10000 });
@@ -253,8 +242,7 @@ test.describe('Delete wiki via REST API', () => {
             createWikiFixture(wikiDir);
             await seedWiki(serverUrl, 'wiki-del-1', wikiDir, undefined, 'Doomed Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-del-1"]')).toBeVisible({ timeout: 10000 });
 
@@ -263,8 +251,7 @@ test.describe('Delete wiki via REST API', () => {
             expect(res.status).toBe(200);
 
             // Reload to see updated state
-            await page.reload();
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             // No wiki cards should remain
             await expect(page.locator('#wiki-card-list .wiki-card')).toHaveCount(0, { timeout: 10000 });
@@ -287,8 +274,7 @@ test.describe('Edit wiki dialog', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-edit-1', wikiDir, undefined, 'Edit Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-1"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -308,8 +294,7 @@ test.describe('Edit wiki dialog', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-edit-2', wikiDir, undefined, 'Edit Wiki 2');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-2"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -331,8 +316,7 @@ test.describe('Edit wiki dialog', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-edit-3', wikiDir, undefined, 'Edit Wiki 3');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-3"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -355,8 +339,7 @@ test.describe('Edit wiki dialog', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-edit-4', wikiDir, undefined, 'Original Name');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-edit-4"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -388,8 +371,7 @@ test.describe('Delete wiki via UI', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-del-btn-1', wikiDir, undefined, 'Delete Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-del-btn-1"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -408,8 +390,7 @@ test.describe('Delete wiki via UI', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-del-confirm-1', wikiDir, undefined, 'Confirm Delete');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-del-confirm-1"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -431,8 +412,7 @@ test.describe('Delete wiki via UI', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-del-cancel-1', wikiDir, undefined, 'Cancel Delete');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-del-cancel-1"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -458,8 +438,7 @@ test.describe('Delete wiki via UI', () => {
             fs.mkdirSync(wikiDir, { recursive: true });
             await seedWiki(serverUrl, 'wiki-del-exec-1', wikiDir, undefined, 'Delete Me');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             const card = page.locator('.wiki-card[data-wiki-id="wiki-del-exec-1"]');
             await expect(card).toBeVisible({ timeout: 10000 });
@@ -491,8 +470,7 @@ test.describe('Admin action tabs', () => {
             createWikiFixture(wikiDir);
             await seedWiki(serverUrl, 'wiki-admin-1', wikiDir, undefined, 'Admin Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-admin-1"]')).toBeVisible({ timeout: 10000 });
             await page.click('.wiki-card[data-wiki-id="wiki-admin-1"]');
@@ -514,8 +492,7 @@ test.describe('Admin action tabs', () => {
             createWikiFixture(wikiDir);
             await seedWiki(serverUrl, 'wiki-toggle-1', wikiDir, undefined, 'Toggle Wiki');
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-toggle-1"]')).toBeVisible({ timeout: 10000 });
 
@@ -544,8 +521,7 @@ test.describe('Color & form options', () => {
     test('color selection persists after adding wiki', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wiki-color-'));
         try {
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
             await page.click('#wiki-list-add-btn');
 
             await page.fill('#wiki-path', tmpDir);

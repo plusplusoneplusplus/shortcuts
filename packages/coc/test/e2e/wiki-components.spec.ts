@@ -80,8 +80,7 @@ async function selectWiki(
     serverUrl: string,
     wikiId: string,
 ): Promise<void> {
-    await page.goto(serverUrl);
-    await page.click('[data-tab="wiki"]');
+    await page.goto(serverUrl + '#wiki');
     await expect(page.locator('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]')).toBeVisible({ timeout: 10_000 });
     await page.click('#wiki-card-list .wiki-card[data-wiki-id="' + wikiId + '"]');
     // Wait for tree to populate
@@ -145,8 +144,7 @@ test.describe('Component tree rendering', () => {
             createCustomWiki(wikiDir, [], []);
 
             await seedWiki(serverUrl, 'empty-wiki', wikiDir, undefined, 'Empty Wiki');
-            await page.goto(serverUrl);
-            await page.click('[data-tab="wiki"]');
+            await page.goto(serverUrl + '#wiki');
 
             await expect(page.locator('#wiki-card-list .wiki-card[data-wiki-id="empty-wiki"]')).toBeVisible({ timeout: 10_000 });
             await page.click('#wiki-card-list .wiki-card[data-wiki-id="empty-wiki"]');

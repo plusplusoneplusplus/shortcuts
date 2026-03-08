@@ -15,7 +15,6 @@ import { lazy, Suspense } from 'react';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab } from '../types/dashboard';
-import { SHOW_WIKI_TAB } from './TopBar';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -25,7 +24,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     const h = hash.replace(/^#/, '').split('/')[0];
     if (h === 'processes' || h === 'process' || h === 'session') return 'processes';
     if (h === 'repos' || h === 'tasks') return 'repos';
-    if (h === 'wiki' && SHOW_WIKI_TAB) return 'wiki';
+    if (h === 'wiki') return 'wiki';
     if (h === 'admin') return 'admin';
     if (h === 'reports') return 'reports';
     if (h === 'memory') return 'memory';
