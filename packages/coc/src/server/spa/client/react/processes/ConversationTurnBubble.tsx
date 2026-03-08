@@ -48,6 +48,8 @@ interface ConversationTurnBubbleProps {
     taskId?: string;
     /** Called when the user clicks the Retry button on an error assistant bubble. */
     onRetry?: () => void;
+    /** Process type (e.g. 'run-script') — used to label non-AI responses differently. */
+    processType?: string;
 }
 
 interface RenderToolCall {
@@ -503,8 +505,9 @@ function buildRawContent(turn: ClientConversationTurn): string {
 
 export { buildRawContent as _buildRawContent };
 
-export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, processType }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
+    const isScript = !isUser && processType === 'run-script';
     const assistantRender = !isUser ? buildAssistantRender(turn) : null;
     const userContentHtml = isUser ? toContentHtml(turn.content || '') : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
@@ -652,10 +655,14 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
                     <span
                         className={cn(
                             'font-medium uppercase tracking-wide role-label',
-                            isUser ? 'text-[#005a9e] dark:text-[#7bbef3]' : 'text-[#5f6a7a] dark:text-[#b0b8c3]'
+                            isUser
+                                ? 'text-[#005a9e] dark:text-[#7bbef3]'
+                                : isScript
+                                    ? 'text-[#16825d] dark:text-[#4ec9b0]'
+                                    : 'text-[#5f6a7a] dark:text-[#b0b8c3]'
                         )}
                     >
-                        {isUser ? 'You' : 'Assistant'}
+                        {isUser ? 'You' : isScript ? 'Script Output' : 'Assistant'}
                     </span>
                     {turn.isError && (
                         <span className="text-[#f14c4c] error-indicator text-[10px]">⚠ Error</span>

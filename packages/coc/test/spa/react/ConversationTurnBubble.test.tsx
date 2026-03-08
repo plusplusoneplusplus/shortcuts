@@ -84,6 +84,27 @@ describe('ConversationTurnBubble — semantic hooks', () => {
         expect(label!.textContent).toBe('Assistant');
     });
 
+    it('renders .role-label with "Script Output" for run-script process type', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'assistant' })} processType="run-script" />);
+        const label = container.querySelector('.role-label');
+        expect(label).toBeTruthy();
+        expect(label!.textContent).toBe('Script Output');
+    });
+
+    it('renders .role-label with "You" for user turns even when processType is run-script', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} processType="run-script" />);
+        const label = container.querySelector('.role-label');
+        expect(label).toBeTruthy();
+        expect(label!.textContent).toBe('You');
+    });
+
+    it('renders .role-label with "Assistant" when processType is chat', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'assistant' })} processType="chat" />);
+        const label = container.querySelector('.role-label');
+        expect(label).toBeTruthy();
+        expect(label!.textContent).toBe('Assistant');
+    });
+
     // --- timestamp ---
 
     it('renders .timestamp when turn.timestamp is set', () => {
