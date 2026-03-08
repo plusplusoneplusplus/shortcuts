@@ -53,7 +53,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const { isMobile } = useBreakpoint();
-    const { queueState } = useQueue();
+    const { state: queueState } = useQueue();
 
     const processId = task?.processId ?? (taskId ? `queue_${taskId}` : null);
     const isPending = task?.status === 'queued';

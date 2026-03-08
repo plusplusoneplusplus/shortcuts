@@ -84,19 +84,31 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         setLoading(false);
     }, [repoQueue]);
 
-    // Clear selection if the selected task is no longer in any list
+    // Clear selection if the selected task is no longer reachable.
+    // Tasks from deep-links may not appear in the paginated history list,
+    // so we verify via the API before clearing.
     useEffect(() => {
         if (!selectedTaskId || loading) return;
         const allTasks = [...running, ...queued, ...history];
-        if (!allTasks.find(t => t.id === selectedTaskId)) {
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
-            setSelectedTask(null);
-            selectedTaskRef.current = null;
-            const activityBase = '#repos/' + encodeURIComponent(workspaceId) + '/activity';
-            if (location.hash.startsWith(activityBase + '/')) {
-                location.hash = activityBase;
-            }
-        }
+        if (allTasks.find(t => t.id === selectedTaskId)) return;
+
+        let cancelled = false;
+        fetchApi(`/queue/${encodeURIComponent(selectedTaskId)}`)
+            .then((data: any) => {
+                if (cancelled) return;
+                if (!data?.task) throw new Error('not found');
+            })
+            .catch(() => {
+                if (cancelled) return;
+                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                setSelectedTask(null);
+                selectedTaskRef.current = null;
+                const activityBase = '#repos/' + encodeURIComponent(workspaceId) + '/activity';
+                if (location.hash.startsWith(activityBase + '/')) {
+                    location.hash = activityBase;
+                }
+            });
+        return () => { cancelled = true; };
     }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId]);
 
     // Update selectedTask when lists change
