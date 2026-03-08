@@ -369,7 +369,15 @@ test.describe('Queue Task Conversation – Tool Calls', () => {
 
         await gotoQueueTask(page, serverUrl, taskId);
 
-        // 2 tool call cards (2 unique tools: view + grep, each merges start+complete)
+        // Wait for streaming to complete and then check for tool call rendering
+        await waitForStreamingToComplete(page);
+
+        // Same-category tools (view + grep are both "read") are grouped into a collapsed group
+        const group = page.locator('.tool-call-group');
+        await expect(group).toHaveCount(1, { timeout: 10000 });
+
+        // Expand the group to reveal individual tool call cards
+        await group.locator('.tool-call-group-header').click();
         await expect(page.locator('.tool-call-card')).toHaveCount(2, { timeout: 5000 });
     });
 
