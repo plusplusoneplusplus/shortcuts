@@ -80,6 +80,9 @@ const mockTree = {
 
 function setupFetch(tree = mockTree) {
     return vi.fn().mockImplementation((url: string) => {
+        if (url.includes('tasks/settings')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }) });
+        }
         if (url.includes('comment-counts')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
@@ -239,10 +242,10 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         const copyPathBtn = screen.getByText('Copy Path');
         fireEvent.click(copyPathBtn);
-        expect(clipboardSpy).toHaveBeenCalledWith('.vscode/tasks/feature1');
+        expect(clipboardSpy).toHaveBeenCalledWith('/test/repos/abc/tasks/feature1');
     });
 
-    it('"Copy Absolute Path" writes rootPath + .vscode/tasks + relativePath to clipboard', async () => {
+    it('"Copy Absolute Path" writes rootPath + tasksFolderPath + relativePath to clipboard', async () => {
         // Pre-populate workspace with rootPath via dispatch
         const { unmount } = render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         unmount();
@@ -272,8 +275,8 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         const absPathBtn = screen.getByText('Copy Absolute Path');
         fireEvent.click(absPathBtn);
-        // Without rootPath in context, it falls back to '.vscode/tasks/feature1'
-        expect(clipboardSpy).toHaveBeenCalledWith('.vscode/tasks/feature1');
+        // Without rootPath in context, it falls back to tasksFolderPath/feature1
+        expect(clipboardSpy).toHaveBeenCalledWith('/test/repos/abc/tasks/feature1');
     });
 
     it('"Queue All Tasks" is disabled when folder has zero markdown files', async () => {
@@ -441,7 +444,7 @@ describe('Folder context menu', () => {
         // feature1 has relativePath='feature1', so relativePath is used
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         fireEvent.click(screen.getByText('Copy Path'));
-        expect(clipboardSpy).toHaveBeenCalledWith('.vscode/tasks/feature1');
+        expect(clipboardSpy).toHaveBeenCalledWith('/test/repos/abc/tasks/feature1');
     });
 
     it('"Generate Task with AI" calls onOpenGenerateDialog and closes context menu', async () => {

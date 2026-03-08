@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
 import { useTaskTree, countMarkdownFilesInFolder, isTaskDocument, isTaskDocumentGroup, flattenTaskTree, filterTaskItems } from '../hooks/useTaskTree';
+import { fetchApi } from '../hooks/useApi';
 import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useFileActions } from '../hooks/useFileActions';
@@ -81,6 +82,12 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const searchInputRef = useRef<HTMLInputElement>(null);
     const { isMobile } = useBreakpoint();
     const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false);
+    const [tasksFolder, setTasksFolder] = useState('.vscode/tasks');
+    useEffect(() => {
+        fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/settings`)
+            .then((data: any) => { if (data?.folderPath) setTasksFolder(data.folderPath); })
+            .catch(() => {});
+    }, [wsId]);
 
     // ── Search state ───────────────────────────────────────────────────
     const [searchQuery, setSearchQuery] = useState('');
@@ -449,7 +456,6 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const ws = appState.workspaces.find((w: any) => w.id === wsId);
     const fileMenuItems: ContextMenuItem[] = fileCtxMenu ? (() => {
         const { ctxItem } = fileCtxMenu;
-        const tasksFolder = '.vscode/tasks';
         return [
             // ── Reveal in Panel ──
             {
@@ -619,7 +625,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 label: 'Copy Path',
                 icon: '📋',
                 onClick: () => {
-                    navigator.clipboard.writeText(`.vscode/tasks/${folderPath}`);
+                    navigator.clipboard.writeText(`${tasksFolder}/${folderPath}`);
                 },
             },
             {
@@ -627,7 +633,6 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 icon: '📂',
                 onClick: () => {
                     const rootPath = (ws?.rootPath ?? '').replace(/\\/g, '/');
-                    const tasksFolder = '.vscode/tasks';
                     const abs = [rootPath, tasksFolder, folderPath].filter(Boolean).join('/');
                     navigator.clipboard.writeText(abs);
                 },
@@ -792,7 +797,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                             wsId={wsId}
                             openFilePath={openFilePath}
                             selectedFilePaths={Array.from(selectedFilePaths)}
-                            tasksFolderPath=".vscode/tasks"
+                            tasksFolderPath={tasksFolder}
                             selectedFolderPath={selectedFolderPath}
                             onClearSelection={clearSelection}
                             noBorder
@@ -852,6 +857,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                                 tree={tree}
                                 commentCounts={commentCounts}
                                 wsId={wsId}
+                                tasksFolder={tasksFolder}
                                 initialFolderPath={initialParams.initialFolderPath}
                                 initialFilePath={initialParams.initialFilePath}
                                 navigateToFilePath={navigateToFilePath}

@@ -78,6 +78,9 @@ const archivedTree = {
 
 function setupFetch(tree = mockTree) {
     return vi.fn().mockImplementation((url: string) => {
+        if (url.includes('tasks/settings')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ folderPath: 'tasks' }) });
+        }
         if (url.includes('comment-counts')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         }
@@ -274,7 +277,7 @@ describe('File context menu', () => {
 
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-notes'));
         fireEvent.click(screen.getByText('Copy Path'));
-        expect(clipboardSpy).toHaveBeenCalledWith('.vscode/tasks/notes.md');
+        expect(clipboardSpy).toHaveBeenCalledWith('tasks/notes.md');
     });
 
     // ── Rename dialog ──────────────────────────────────────────────────

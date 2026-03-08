@@ -90,6 +90,12 @@ describe('Constructor & path helpers', () => {
         expect(mgr.getTasksFolder()).toBe(path.join(tmpDir, '.vscode/tasks'));
     });
 
+    it('accepts absolute path for folderPath', () => {
+        const absTaskRoot = path.join(tmpDir, 'data', 'repos', 'abc', 'tasks');
+        const mgr = createManager({ folderPath: absTaskRoot });
+        expect(mgr.getTasksFolder()).toBe(absTaskRoot);
+    });
+
     it('returns archive subfolder', () => {
         const mgr = createManager({ folderPath: '.tasks' });
         expect(mgr.getArchiveFolder()).toBe(path.join(tmpDir, '.tasks', 'archive'));

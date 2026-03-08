@@ -141,7 +141,7 @@ describe('MarkdownReviewDialog', () => {
                 onClose={vi.fn()}
                 wsId="ws1"
                 filePath="plan.md"
-                displayPath="/workspace/.vscode/tasks/coc/plan.md"
+                displayPath="/data/repos/abc/tasks/coc/plan.md"
                 fetchMode="tasks"
             />
         );

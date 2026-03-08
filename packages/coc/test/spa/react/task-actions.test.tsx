@@ -62,7 +62,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath="feature1/task.md"
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -78,7 +78,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -94,7 +94,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath="feature1/task.md"
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -122,14 +122,14 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath="feature1/task.md"
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
         );
         fireEvent.click(screen.getByText('Copy path'));
 
-        expect(writeText).toHaveBeenCalledWith('.vscode/tasks/feature1/task.md');
+        expect(writeText).toHaveBeenCalledWith('/test/repos/abc/tasks/feature1/task.md');
     });
 
     it('"Queue all" button appears when non-context files are selected', () => {
@@ -139,7 +139,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={['feature1/task.md']}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -155,7 +155,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -170,7 +170,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={['feature1/task.md']}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
                 <ShowDialogReader />
@@ -190,7 +190,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
                 <ShowContextFilesReader />
@@ -213,7 +213,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={['feature1/task.md']}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={onClearSelection}
                 />
             </Wrap>
@@ -229,7 +229,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={['feature1/task.md', 'feature2/impl.md', 'README.md']}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -245,7 +245,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     selectedFolderPath="coc/tasks"
                     onClearSelection={vi.fn()}
                 />
@@ -263,7 +263,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     selectedFolderPath={null}
                     onClearSelection={vi.fn()}
                 />
@@ -282,7 +282,7 @@ describe('TaskActions — conditional buttons', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     selectedFolderPath="coc/tasks"
                     onClearSelection={vi.fn()}
                 />

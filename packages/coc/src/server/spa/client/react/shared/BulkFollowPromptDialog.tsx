@@ -136,8 +136,10 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
             let failed = 0;
 
             for (const file of taskFiles) {
+                const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+                const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
                 const planFilePath = workingDirectory
-                    ? toNativePath(workingDirectory + '/' + tasksFolder + '/' + file.relativePath)
+                    ? toNativePath(taskBase + '/' + file.relativePath)
                     : file.relativePath;
 
                 const taskName = file.fileName.replace(/\.md$/, '');

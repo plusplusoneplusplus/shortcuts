@@ -42,6 +42,7 @@ import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService } from '@plus
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { computeRepoId } from './queue-persistence';
+import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { defaultIsExclusive } from './queue-executor-bridge';
 import { SchedulePersistence } from './schedule-persistence';
 import { ScheduleManager } from './schedule-manager';
@@ -471,6 +472,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Watch tasks and workflows directories for already-registered workspaces (handles server restart)
     const existingWorkspaces = await store.getWorkspaces();
     for (const ws of existingWorkspaces) {
+        if (isMigrationNeeded(ws.rootPath, dataDir)) {
+            const migResult = await migrateTasksToRepoScoped({
+                workspaceRoot: ws.rootPath, workspaceId: ws.id, dataDir,
+            });
+            if (migResult.migrated) {
+                process.stderr.write(`[TaskMigration] ${migResult.fileCount} files: ${ws.rootPath}\n`);
+            }
+        }
         taskWatcher.watchWorkspace(ws.id, resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath);
         pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
         templateWatcher.watchWorkspace(ws.id, ws.rootPath);
@@ -484,6 +493,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     store.registerWorkspace = async (workspace: any) => {
         await originalRegister(workspace);
+        if (isMigrationNeeded(workspace.rootPath, dataDir)) {
+            const migResult = await migrateTasksToRepoScoped({
+                workspaceRoot: workspace.rootPath, workspaceId: workspace.id, dataDir,
+            });
+            if (migResult.migrated) {
+                process.stderr.write(`[TaskMigration] ${migResult.fileCount} files: ${workspace.rootPath}\n`);
+            }
+        }
         taskWatcher.watchWorkspace(workspace.id, resolveTaskRoot({ dataDir, rootPath: workspace.rootPath }).absolutePath);
         pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);

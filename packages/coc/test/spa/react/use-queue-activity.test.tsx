@@ -70,13 +70,15 @@ function Seeder({
 }
 
 describe('useQueueActivity — hook with context', () => {
+    const TASKS_FOLDER = '/data/repos/abc/tasks';
+
     beforeEach(() => {
         vi.restoreAllMocks();
     });
 
     it('returns empty fileMap and folderMap when queue is empty', () => {
         const wrapper = createWrapper({ workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }] });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({});
         expect(result.current.folderMap).toEqual({});
     });
@@ -86,10 +88,10 @@ describe('useQueueActivity — hook with context', () => {
             workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
             queued: [{
                 id: 'q1',
-                payload: { planFilePath: '/home/user/project/.vscode/tasks/feature1/task.plan.md' },
+                payload: { planFilePath: '/data/repos/abc/tasks/feature1/task.plan.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({ 'feature1/task.plan.md': 1 });
     });
 
@@ -98,10 +100,10 @@ describe('useQueueActivity — hook with context', () => {
             workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
             queued: [{
                 id: 'q1',
-                payload: { data: { originalTaskPath: '/home/user/project/.vscode/tasks/feature2/impl.md' } },
+                payload: { data: { originalTaskPath: '/data/repos/abc/tasks/feature2/impl.md' } },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({ 'feature2/impl.md': 1 });
     });
 
@@ -110,10 +112,10 @@ describe('useQueueActivity — hook with context', () => {
             workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
             running: [{
                 id: 'r1',
-                payload: { filePath: '/home/user/project/.vscode/tasks/bug/fix.md' },
+                payload: { filePath: '/data/repos/abc/tasks/bug/fix.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({ 'bug/fix.md': 1 });
     });
 
@@ -122,22 +124,23 @@ describe('useQueueActivity — hook with context', () => {
             workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
             queued: [{
                 id: 'q1',
-                payload: { filePath: '/other/path/.vscode/tasks/task.md' },
+                payload: { filePath: '/data/repos/def/tasks/task.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({});
     });
 
     it('normalises Windows backslash paths', () => {
+        const winFolder = 'C:\\Users\\dev\\.coc\\repos\\abc\\tasks';
         const wrapper = createWrapper({
             workspaces: [{ id: 'ws1', rootPath: 'C:\\Users\\dev\\project' }],
             queued: [{
                 id: 'q1',
-                payload: { planFilePath: 'C:\\Users\\dev\\project\\.vscode\\tasks\\feature\\task.md' },
+                payload: { planFilePath: 'C:\\Users\\dev\\.coc\\repos\\abc\\tasks\\feature\\task.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', winFolder), { wrapper });
         expect(result.current.fileMap).toEqual({ 'feature/task.md': 1 });
     });
 
@@ -145,11 +148,11 @@ describe('useQueueActivity — hook with context', () => {
         const wrapper = createWrapper({
             workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
             queued: [
-                { id: 'q1', payload: { planFilePath: '/home/user/project/.vscode/tasks/feature/task.md' } },
-                { id: 'q2', payload: { filePath: '/home/user/project/.vscode/tasks/feature/task.md' } },
+                { id: 'q1', payload: { planFilePath: '/data/repos/abc/tasks/feature/task.md' } },
+                { id: 'q2', payload: { filePath: '/data/repos/abc/tasks/feature/task.md' } },
             ],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap['feature/task.md']).toBe(2);
     });
 
@@ -158,20 +161,20 @@ describe('useQueueActivity — hook with context', () => {
             workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
             queued: [{
                 id: 'q1',
-                payload: { planFilePath: '/home/user/project/.vscode/tasks/a/b/task.md' },
+                payload: { planFilePath: '/data/repos/abc/tasks/a/b/task.md' },
             }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.folderMap).toEqual({ 'a': 1, 'a/b': 1 });
     });
 
     it('combines queued and running items', () => {
         const wrapper = createWrapper({
             workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
-            queued: [{ id: 'q1', payload: { planFilePath: '/home/user/project/.vscode/tasks/a/task1.md' } }],
-            running: [{ id: 'r1', payload: { planFilePath: '/home/user/project/.vscode/tasks/a/task2.md' } }],
+            queued: [{ id: 'q1', payload: { planFilePath: '/data/repos/abc/tasks/a/task1.md' } }],
+            running: [{ id: 'r1', payload: { planFilePath: '/data/repos/abc/tasks/a/task2.md' } }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap['a/task1.md']).toBe(1);
         expect(result.current.fileMap['a/task2.md']).toBe(1);
         expect(result.current.folderMap['a']).toBe(2);
@@ -180,9 +183,9 @@ describe('useQueueActivity — hook with context', () => {
     it('returns empty maps when workspace is not found', () => {
         const wrapper = createWrapper({
             workspaces: [{ id: 'ws-other', rootPath: '/other' }],
-            queued: [{ id: 'q1', payload: { planFilePath: '/home/user/project/.vscode/tasks/task.md' } }],
+            queued: [{ id: 'q1', payload: { planFilePath: '/data/repos/abc/tasks/task.md' } }],
         });
-        const { result } = renderHook(() => useQueueActivity('ws1'), { wrapper });
+        const { result } = renderHook(() => useQueueActivity('ws1', TASKS_FOLDER), { wrapper });
         expect(result.current.fileMap).toEqual({});
         expect(result.current.folderMap).toEqual({});
     });

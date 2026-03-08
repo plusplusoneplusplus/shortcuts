@@ -1,8 +1,8 @@
 /**
  * TaskWatcher Unit Tests
  *
- * Tests for the TaskWatcher class which watches `.vscode/tasks/`
- * directories for file changes and fires debounced callbacks.
+ * Tests for the TaskWatcher class which watches a repo-scoped tasks directory
+ * for file changes and fires debounced callbacks.
  *
  * Uses temporary directories for isolation.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -57,7 +57,7 @@ describe('TaskWatcher', () => {
     // Basic watching
     // ------------------------------------------------------------------
 
-    it('should fire callback when a .md file is created in .vscode/tasks/', async () => {
+    it('should fire callback when a .md file is created in the tasks directory', async () => {
         const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
         const callback = vi.fn();
@@ -223,7 +223,7 @@ describe('TaskWatcher', () => {
     // Non-existent directory
     // ------------------------------------------------------------------
 
-    it('should not throw when watching a workspace without .vscode/tasks/', () => {
+    it('should not throw when watching a workspace without a tasks directory', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-nodir-'));
         cleanupDirs.push(root);
         const tasksDir = path.join(root, '.vscode', 'tasks');

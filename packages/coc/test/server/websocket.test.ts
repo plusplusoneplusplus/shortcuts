@@ -779,7 +779,7 @@ describe('WebSocket Server', () => {
             const connAll = await connectWebSocket(srv.port);
             await waitForMessages(connAll.messages, 1);
 
-            // Manually register workspace and create a .vscode/tasks dir to trigger watcher
+            // Manually register workspace and create a tasks dir to trigger watcher
             // For unit-test purposes, we need to directly invoke the TaskWatcher callback
             // which broadcasts via wsServer. We'll do this via the workspace registration
             // flow that sets up the task watcher.

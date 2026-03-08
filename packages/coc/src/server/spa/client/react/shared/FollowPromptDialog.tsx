@@ -104,8 +104,10 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
             const workingDirectory = ws?.rootPath || '';
             const tasksFolder = await getTasksFolderPath(selectedWsId);
+            const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+            const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
             const planFilePath = workingDirectory
-                ? toNativePath(workingDirectory + '/' + tasksFolder + '/' + taskPath)
+                ? toNativePath(taskBase + '/' + taskPath)
                 : taskPath;
 
             const displayLabel = skillNames.length === 1 ? skillNames[0] : skillNames.join(', ');
@@ -168,8 +170,10 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
             const workingDirectory = ws?.rootPath || '';
             const tasksFolder = await getTasksFolderPath(selectedWsId);
+            const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+            const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
             const planFilePath = workingDirectory
-                ? toNativePath(workingDirectory + '/' + tasksFolder + '/' + taskPath)
+                ? toNativePath(taskBase + '/' + taskPath)
                 : taskPath;
 
             let chatPayload: Record<string, any>;

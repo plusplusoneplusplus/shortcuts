@@ -47,7 +47,7 @@ describe('buildCreateTaskPrompt', () => {
     });
 
     it('should include target path in prompt', () => {
-        const target = '/workspace/.vscode/tasks';
+        const target = '/workspace/data/repos/abc/tasks';
         const prompt = buildCreateTaskPrompt('some task', target);
         expect(prompt).toContain(target);
     });
@@ -58,8 +58,8 @@ describe('buildCreateTaskPrompt', () => {
     });
 
     it('should normalize Windows backslash paths to forward slashes', () => {
-        const prompt = buildCreateTaskPrompt('task', 'D:\\projects\\shortcuts\\.vscode\\tasks\\coc\\chat');
-        expect(prompt).toContain('D:/projects/shortcuts/.vscode/tasks/coc/chat');
+        const prompt = buildCreateTaskPrompt('task', 'D:\\projects\\shortcuts\\data\\repos\\abc\\tasks\\coc\\chat');
+        expect(prompt).toContain('D:/projects/shortcuts/data/repos/abc/tasks/coc/chat');
         expect(prompt).not.toContain('shortcuts\\.vscode');
     });
 });
@@ -92,13 +92,13 @@ describe('buildCreateTaskPromptWithName', () => {
     });
 
     it('should normalize Windows backslash paths to forward slashes', () => {
-        const prompt = buildCreateTaskPromptWithName('my-task', 'desc', 'C:\\Users\\dev\\.vscode\\tasks');
-        expect(prompt).toContain('C:/Users/dev/.vscode/tasks/my-task.plan.md');
+        const prompt = buildCreateTaskPromptWithName('my-task', 'desc', 'C:\\Users\\dev\\data\\repos\\abc\\tasks');
+        expect(prompt).toContain('C:/Users/dev/data/repos/abc/tasks/my-task.plan.md');
         expect(prompt).not.toContain('dev\\.vscode');
     });
 
     describe('with autoFolderContext', () => {
-        const tasksRoot = '/workspace/.vscode/tasks';
+        const tasksRoot = '/workspace/data/repos/abc/tasks';
         const existingFolders = ['coc', 'coc/chat', 'deep-wiki'];
 
         it('should include save-location and folder options when name is provided', () => {
@@ -169,12 +169,12 @@ describe('buildCreateTaskPromptWithName', () => {
 
         it('should normalize Windows tasksRoot to forward slashes', () => {
             const ctx: AutoFolderContext = {
-                tasksRoot: 'C:\\Users\\dev\\.vscode\\tasks',
+                tasksRoot: 'C:\\Users\\dev\\data\\repos\\abc\\tasks',
                 existingFolders: ['coc'],
             };
             const prompt = buildCreateTaskPromptWithName('t', 'desc', ctx.tasksRoot, ctx);
-            expect(prompt).toContain('C:/Users/dev/.vscode/tasks');
-            expect(prompt).not.toContain('dev\\.vscode');
+            expect(prompt).toContain('C:/Users/dev/data/repos/abc/tasks');
+            expect(prompt).not.toContain('dev\\data');
         });
     });
 });
@@ -233,8 +233,8 @@ describe('buildCreateFromFeaturePrompt', () => {
 
     it('should normalize Windows backslash paths to forward slashes', () => {
         const context: SelectedContext = { description: 'Feature' };
-        const prompt = buildCreateFromFeaturePrompt(context, 'focus', 'impl', 'D:\\projects\\shortcuts\\.vscode\\tasks');
-        expect(prompt).toContain('D:/projects/shortcuts/.vscode/tasks/impl.plan.md');
+        const prompt = buildCreateFromFeaturePrompt(context, 'focus', 'impl', 'D:\\projects\\shortcuts\\data\\repos\\abc\\tasks');
+        expect(prompt).toContain('D:/projects/shortcuts/data/repos/abc/tasks/impl.plan.md');
         expect(prompt).not.toContain('shortcuts\\.vscode');
     });
 });

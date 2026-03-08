@@ -88,7 +88,7 @@ describe('UpdateDocumentDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
@@ -100,7 +100,7 @@ describe('UpdateDocumentDialog', () => {
 
         await waitFor(() => {
             const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
-            expect(textarea.value).toContain('/project/.vscode/tasks/test/task.md');
+            expect(textarea.value).toContain('/test/repos/abc/tasks/test/task.md');
         });
     });
 
@@ -111,7 +111,7 @@ describe('UpdateDocumentDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -160,7 +160,7 @@ describe('UpdateDocumentDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -198,7 +198,7 @@ describe('UpdateDocumentDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -222,7 +222,7 @@ describe('UpdateDocumentDialog', () => {
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.payload.data.planFilePath).not.toContain('\\');
-            expect(body.payload.data.planFilePath).toBe('D:/projects/shortcuts/.vscode/tasks/test/task.md');
+            expect(body.payload.data.planFilePath).toBe('/test/repos/abc/tasks/test/task.md');
         });
     });
 });

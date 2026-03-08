@@ -339,6 +339,9 @@ describe('TaskTree folderMap wiring', () => {
         };
 
         fetchSpy.mockImplementation((url: string) => {
+            if (url.includes('tasks/settings')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ folderPath: '/data/repos/abc/tasks' }) });
+            }
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
@@ -375,12 +378,12 @@ describe('TaskTree folderMap wiring', () => {
                             {
                                 id: 'r1',
                                 status: 'running',
-                                payload: { planFilePath: `${rootPath}/.vscode/tasks/features/auth/spec.md` },
+                                payload: { planFilePath: `/data/repos/abc/tasks/features/auth/spec.md` },
                             },
                             {
                                 id: 'r2',
                                 status: 'running',
-                                payload: { planFilePath: `${rootPath}/.vscode/tasks/features/auth/other.md` },
+                                payload: { planFilePath: `/data/repos/abc/tasks/features/auth/other.md` },
                             },
                         ],
                         queued: [],

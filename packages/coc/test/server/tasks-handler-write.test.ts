@@ -1082,7 +1082,7 @@ describe('Tasks Handler Write', () => {
             const wsId2 = await registerWorkspaceWithName(srv, workspace2Dir, 'Workspace 2');
 
             createTaskFilesIn(workspaceDir, { 'task.md': '# Task' });
-            // workspace2Dir has no .vscode/tasks folder at all
+            // workspace2Dir has no tasks folder at all
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
                 sourcePath: 'task.md',

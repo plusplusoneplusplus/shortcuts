@@ -40,9 +40,12 @@ function extractTaskPath(
         candidates.push(payload.filePath);
     }
 
-    const prefix = wsRootPath
-        ? normalizePath(wsRootPath) + '/' + normalizePath(tasksFolder) + '/'
-        : '';
+    const normalizedFolder = normalizePath(tasksFolder);
+    const isAbsolute = normalizedFolder.startsWith('/') || /^[A-Za-z]:/.test(normalizedFolder);
+    if (!wsRootPath && !isAbsolute) return null;
+    const prefix = isAbsolute
+        ? normalizedFolder + '/'
+        : normalizePath(wsRootPath) + '/' + normalizedFolder + '/';
 
     for (const raw of candidates) {
         const norm = normalizePath(raw);
@@ -64,7 +67,8 @@ export function useQueueActivity(wsId: string, tasksFolder = '.vscode/tasks'): {
 
     return useMemo(() => {
         const ws = appState.workspaces.find((w: any) => w.id === wsId);
-        const wsRootPath: string = ws?.rootPath || '';
+        if (!ws) return { fileMap: {} as QueueActivityMap, folderMap: {} as QueueFolderActivityMap };
+        const wsRootPath: string = ws.rootPath || '';
         const map: QueueActivityMap = {};
 
         // Prefer per-repo data from repoQueueMap (updated in real-time via WebSocket)

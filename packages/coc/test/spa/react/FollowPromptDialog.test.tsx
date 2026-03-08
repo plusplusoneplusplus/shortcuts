@@ -100,7 +100,7 @@ describe('FollowPromptDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -232,7 +232,7 @@ describe('FollowPromptDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (url.includes('/preferences')) {
@@ -376,7 +376,7 @@ describe('FollowPromptDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -436,7 +436,7 @@ describe('FollowPromptDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -464,10 +464,10 @@ describe('FollowPromptDialog', () => {
             );
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
-            // Windows drive-letter paths should use backslashes (native style)
+            // Drive-letter paths use backslashes; absolute paths use forward slashes
             const files: string[] = body.payload.context.files;
-            files.forEach((f: string) => expect(f).not.toContain('/'));
-            expect(files.some((f: string) => f === 'D:\\projects\\shortcuts\\.vscode\\tasks\\test\\task.md')).toBe(true);
+            files.filter((f: string) => /^[A-Za-z]:/.test(f)).forEach((f: string) => expect(f).not.toContain('/'));
+            expect(files.some((f: string) => f === '/test/repos/abc/tasks/test/task.md')).toBe(true);
             expect(files.some((f: string) => f === 'D:\\projects\\shortcuts\\.vscode\\impl.prompt.md')).toBe(true);
         });
     });
@@ -500,7 +500,7 @@ describe('FollowPromptDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -557,7 +557,7 @@ describe('FollowPromptDialog', () => {
             if (url.includes('/tasks/settings')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
@@ -607,7 +607,7 @@ describe('FollowPromptDialog', () => {
                 // Delay to keep submitting state active
                 return new Promise(resolve => setTimeout(() => resolve({
                     ok: true,
-                    json: () => Promise.resolve({ folderPath: '.vscode/tasks' }),
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 }), 200));
             }
             if (opts?.method === 'POST' && url.includes('/queue/tasks')) {

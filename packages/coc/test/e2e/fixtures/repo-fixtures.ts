@@ -73,10 +73,10 @@ export function createRepoFixture(tmpDir: string): string {
 }
 
 /**
- * Populate `.vscode/tasks/` inside an existing repo directory.
+ * Populate the tasks directory inside an existing repo directory.
  *
  * Structure created:
- *   .vscode/tasks/
+ *   <tasksDir>/
  *   ├── task-a.md              (pending)
  *   ├── task-b.md              (done)
  *   ├── feature.plan.md        (in-progress)
@@ -107,10 +107,10 @@ export function createTasksFixture(repoDir: string): void {
 }
 
 /**
- * Populate `.vscode/tasks/` with a deeply nested structure for scroll tests.
+ * Populate the tasks directory with a deeply nested structure for scroll tests.
  *
  * Structure created:
- *   .vscode/tasks/
+ *   <tasksDir>/
  *   ├── task-root.md
  *   ├── level1/
  *   │   ├── task-l1.md

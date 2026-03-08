@@ -251,7 +251,7 @@ describe('file-path-preview delegation', () => {
     });
 
     it('click still works on file-path-link with data-no-preview-hover', async () => {
-        const fullPath = '/Users/test/Documents/Projects/shortcuts/.vscode/tasks/sample.md';
+        const fullPath = '/data/repos/abc/tasks/sample.md';
         document.body.innerHTML = `
             <div>
                 <span class="file-path-link" data-full-path="${fullPath}" data-no-preview-hover>sample.md</span>
@@ -279,7 +279,7 @@ describe('file-path-preview delegation', () => {
     });
 
     it('dispatches markdown review open event on click', async () => {
-        const fullPath = '/Users/test/Documents/Projects/shortcuts/.vscode/tasks/sample.md';
+        const fullPath = '/data/repos/abc/tasks/sample.md';
         document.body.innerHTML = `
             <div>
                 <span class="file-path-link" data-full-path="${fullPath}">sample.md</span>
@@ -381,7 +381,7 @@ describe('file-path-preview delegation', () => {
     });
 
     it('click still works on mobile (hover suppressed but click preserved)', async () => {
-        const fullPath = '/Users/test/Documents/Projects/shortcuts/.vscode/tasks/sample.md';
+        const fullPath = '/data/repos/abc/tasks/sample.md';
         document.body.innerHTML = `
             <div>
                 <span class="file-path-link" data-full-path="${fullPath}">sample.md</span>
@@ -1011,7 +1011,7 @@ describe('goto-file button for tasks-panel files', () => {
             return Promise.resolve({
                 ok: true,
                 json: async () => ({
-                    workspaces: [{ id: 'ws-1', rootPath: '/Users/test/projects/shortcuts' }],
+                    workspaces: [{ id: 'ws-1', rootPath: '/data/repos/abc' }],
                 }),
             });
         });
@@ -1023,8 +1023,8 @@ describe('goto-file button for tasks-panel files', () => {
         for (let i = 0; i < 10; i++) await Promise.resolve();
     }
 
-    it('shows goto button for .vscode/tasks/ file paths', async () => {
-        const taskPath = '/Users/test/projects/shortcuts/.vscode/tasks/coc/plan.md';
+    it('shows goto button for task file paths', async () => {
+        const taskPath = '/data/repos/abc/tasks/coc/plan.md';
         document.body.innerHTML = `
             <span class="file-path-link" data-full-path="${taskPath}">plan.md</span>
         `;
@@ -1076,7 +1076,7 @@ describe('goto-file button for tasks-panel files', () => {
     });
 
     it('dispatches coc-reveal-in-panel event when goto button is clicked', async () => {
-        const taskPath = '/Users/test/projects/shortcuts/.vscode/tasks/coc/feature/plan.md';
+        const taskPath = '/data/repos/abc/tasks/coc/feature/plan.md';
         document.body.innerHTML = `
             <span class="file-path-link" data-full-path="${taskPath}">plan.md</span>
         `;
@@ -1360,7 +1360,7 @@ describe('click-through fallback on tooltip click (Fix 3)', () => {
     });
 
     it('clicking a button inside tooltip does not trigger click-through', async () => {
-        const fullPath = '/Users/test/projects/shortcuts/.vscode/tasks/coc/plan.md';
+        const fullPath = '/data/repos/abc/tasks/coc/plan.md';
         document.body.innerHTML = `
             <span class="file-path-link" data-full-path="${fullPath}">plan.md</span>
         `;
@@ -1381,7 +1381,7 @@ describe('click-through fallback on tooltip click (Fix 3)', () => {
             return Promise.resolve({
                 ok: true,
                 json: async () => ({
-                    workspaces: [{ id: 'ws-1', rootPath: '/Users/test/projects/shortcuts' }],
+                    workspaces: [{ id: 'ws-1', rootPath: '/data/repos/abc' }],
                 }),
             });
         });

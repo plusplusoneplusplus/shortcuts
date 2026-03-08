@@ -171,9 +171,9 @@ describe('File path detection in inline markdown', () => {
         });
 
         it('detects mixed-separator Windows paths', () => {
-            const html = renderMarkdownToHtml('See D:\\projects\\shortcuts/.vscode/tasks/plan.md');
+            const html = renderMarkdownToHtml('See D:\\projects\\shortcuts/data/repos/abc/tasks/plan.md');
             expect(html).toContain('class="file-path-link"');
-            expect(html).toContain('data-full-path="D:/projects/shortcuts/.vscode/tasks/plan.md"');
+            expect(html).toContain('data-full-path="D:/projects/shortcuts/data/repos/abc/tasks/plan.md"');
         });
 
         it('shortens C:\\Users\\<user>\\ to ~/', () => {

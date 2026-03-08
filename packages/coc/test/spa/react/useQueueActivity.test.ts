@@ -226,9 +226,12 @@ function extractTaskPath(
         candidates.push(payload.filePath);
     }
 
-    const prefix = wsRootPath
-        ? normalizePath(wsRootPath) + '/' + normalizePath(tasksFolder) + '/'
-        : '';
+    const normalizedFolder = normalizePath(tasksFolder);
+    const isAbsolute = normalizedFolder.startsWith('/') || /^[A-Za-z]:/.test(normalizedFolder);
+    if (!wsRootPath && !isAbsolute) return null;
+    const prefix = isAbsolute
+        ? normalizedFolder + '/'
+        : normalizePath(wsRootPath) + '/' + normalizedFolder + '/';
 
     for (const raw of candidates) {
         const norm = normalizePath(raw);
@@ -243,7 +246,7 @@ function extractTaskPath(
 
 describe('extractTaskPath — with WS broadcast-shaped items', () => {
     const wsRoot = '/home/user/project';
-    const tasksFolder = '.vscode/tasks';
+    const tasksFolder = '/data/repos/abc/tasks';
 
     it('returns null when item has no payload', () => {
         expect(extractTaskPath({ id: '1' }, wsRoot, tasksFolder)).toBeNull();
@@ -254,7 +257,7 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
         const item = {
             id: '1',
             payload: {
-                planFilePath: '/home/user/project/.vscode/tasks/queue-refresh/fix.md',
+                planFilePath: '/data/repos/abc/tasks/queue-refresh/fix.md',
             },
         };
         expect(extractTaskPath(item, wsRoot, tasksFolder)).toBe('queue-refresh/fix.md');
@@ -265,7 +268,7 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
             id: '2',
             payload: {
                 data: {
-                    originalTaskPath: '/home/user/project/.vscode/tasks/feat/plan.md',
+                    originalTaskPath: '/data/repos/abc/tasks/feat/plan.md',
                 },
             },
         };
@@ -276,7 +279,7 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
         const item = {
             id: '3',
             payload: {
-                filePath: '/home/user/project/.vscode/tasks/bugfix/issue.md',
+                filePath: '/data/repos/abc/tasks/bugfix/issue.md',
             },
         };
         expect(extractTaskPath(item, wsRoot, tasksFolder)).toBe('bugfix/issue.md');
@@ -286,10 +289,10 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
         const item = {
             id: '4',
             payload: {
-                planFilePath: '/home/user/project/.vscode/tasks/a/plan.md',
-                filePath: '/home/user/project/.vscode/tasks/b/other.md',
+                planFilePath: '/data/repos/abc/tasks/a/plan.md',
+                filePath: '/data/repos/abc/tasks/b/other.md',
                 data: {
-                    originalTaskPath: '/home/user/project/.vscode/tasks/c/orig.md',
+                    originalTaskPath: '/data/repos/abc/tasks/c/orig.md',
                 },
             },
         };
@@ -297,13 +300,14 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
     });
 
     it('handles Windows-style backslash paths', () => {
+        const winTasksFolder = 'C:\\Users\\dev\\.coc\\repos\\abc\\tasks';
         const item = {
             id: '5',
             payload: {
-                planFilePath: 'C:\\Users\\dev\\project\\.vscode\\tasks\\feat\\spec.md',
+                planFilePath: 'C:\\Users\\dev\\.coc\\repos\\abc\\tasks\\feat\\spec.md',
             },
         };
-        expect(extractTaskPath(item, 'C:\\Users\\dev\\project', '.vscode/tasks')).toBe('feat/spec.md');
+        expect(extractTaskPath(item, 'C:\\Users\\dev\\project', winTasksFolder)).toBe('feat/spec.md');
     });
 
     it('returns null when payload fields are empty objects or wrong types', () => {
@@ -312,11 +316,11 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
         expect(extractTaskPath({ id: '8', payload: { data: {} } }, wsRoot, tasksFolder)).toBeNull();
     });
 
-    it('returns null when path does not match workspace root', () => {
+    it('returns null when path does not match workspace tasks folder', () => {
         const item = {
             id: '9',
             payload: {
-                planFilePath: '/other/project/.vscode/tasks/x/y.md',
+                planFilePath: '/data/repos/def/tasks/x/y.md',
             },
         };
         expect(extractTaskPath(item, wsRoot, tasksFolder)).toBeNull();
@@ -334,7 +338,7 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
             createdAt: '2025-01-01T00:00:00Z',
             workingDirectory: '/home/user/project',
             payload: {
-                planFilePath: '/home/user/project/.vscode/tasks/feature/impl.md',
+                planFilePath: '/data/repos/abc/tasks/feature/impl.md',
                 filePath: undefined,
                 workingDirectory: '/home/user/project',
                 data: undefined,
@@ -372,13 +376,13 @@ describe('mapQueued — payload passthrough', () => {
             id: '1', repoId: 'r1', type: 'pipeline', priority: 1,
             status: 'queued', displayName: 'My Task', createdAt: '2025-01-01',
             payload: {
-                planFilePath: '/workspace/.vscode/tasks/feat/plan.md',
+                planFilePath: '/data/repos/abc/tasks/feat/plan.md',
                 workingDirectory: '/workspace',
                 prompt: 'This is a very long prompt that should NOT be broadcast',
             },
         };
         const mapped = mapQueued(task);
-        expect(mapped.payload.planFilePath).toBe('/workspace/.vscode/tasks/feat/plan.md');
+        expect(mapped.payload.planFilePath).toBe('/data/repos/abc/tasks/feat/plan.md');
         expect(mapped.payload.workingDirectory).toBe('/workspace');
         // Large content should NOT be present
         expect((mapped.payload as any).prompt).toBeUndefined();
@@ -388,10 +392,10 @@ describe('mapQueued — payload passthrough', () => {
         const task = {
             id: '2', repoId: 'r1', type: 'pipeline', priority: 1,
             status: 'queued', displayName: 'Task 2', createdAt: '2025-01-01',
-            payload: { filePath: '/workspace/.vscode/tasks/bugfix/fix.md' },
+            payload: { filePath: '/data/repos/abc/tasks/bugfix/fix.md' },
         };
         const mapped = mapQueued(task);
-        expect(mapped.payload.filePath).toBe('/workspace/.vscode/tasks/bugfix/fix.md');
+        expect(mapped.payload.filePath).toBe('/data/repos/abc/tasks/bugfix/fix.md');
     });
 
     it('includes payload.data.originalTaskPath in mapped output', () => {
@@ -401,13 +405,13 @@ describe('mapQueued — payload passthrough', () => {
             payload: {
                 workingDirectory: '/workspace',
                 data: {
-                    originalTaskPath: '/workspace/.vscode/tasks/refactor/plan.md',
+                    originalTaskPath: '/data/repos/abc/tasks/refactor/plan.md',
                     someOtherLargeField: 'should not appear',
                 },
             },
         };
         const mapped = mapQueued(task);
-        expect(mapped.payload.data?.originalTaskPath).toBe('/workspace/.vscode/tasks/refactor/plan.md');
+        expect(mapped.payload.data?.originalTaskPath).toBe('/data/repos/abc/tasks/refactor/plan.md');
         // Only originalTaskPath should be hoisted, not other data fields
         expect((mapped.payload.data as any).someOtherLargeField).toBeUndefined();
     });
@@ -453,7 +457,7 @@ describe('mapQueued — payload passthrough', () => {
             id: 'abc', repoId: 'repo-1', type: 'pipeline', priority: 5,
             status: 'running', displayName: 'Full Task', createdAt: '2025-06-15T12:00:00Z',
             startedAt: '2025-06-15T12:01:00Z',
-            payload: { workingDirectory: '/ws', planFilePath: '/ws/.vscode/tasks/x.md' },
+            payload: { workingDirectory: '/ws', planFilePath: '/data/repos/abc/tasks/x.md' },
         };
         const mapped = mapQueued(task);
         expect(mapped.id).toBe('abc');
@@ -471,13 +475,13 @@ describe('mapQueued — payload passthrough', () => {
             id: 'e2e-1', repoId: 'repo-1', type: 'pipeline', priority: 1,
             status: 'queued', displayName: 'E2E Task', createdAt: '2025-01-01',
             payload: {
-                planFilePath: '/home/user/project/.vscode/tasks/queue-refresh/fix.md',
+                planFilePath: '/data/repos/abc/tasks/queue-refresh/fix.md',
                 workingDirectory: '/home/user/project',
                 prompt: 'Run the fix',
             },
         };
         const wsItem = mapQueued(fullTask);
-        const relPath = extractTaskPath(wsItem, '/home/user/project', '.vscode/tasks');
+        const relPath = extractTaskPath(wsItem, '/home/user/project', '/data/repos/abc/tasks');
         expect(relPath).toBe('queue-refresh/fix.md');
     });
 });

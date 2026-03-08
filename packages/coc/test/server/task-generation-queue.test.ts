@@ -248,7 +248,7 @@ describe('CLITaskExecutor — task-generation', () => {
 
     it('should handle from-feature mode with simple depth', async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tg-feature-'));
-        // Create minimal .vscode/tasks structure for gatherFeatureContext
+        // Create minimal tasks structure for gatherFeatureContext
         const tasksDir = path.join(workDir, '.vscode', 'tasks');
         fs.mkdirSync(tasksDir, { recursive: true });
 

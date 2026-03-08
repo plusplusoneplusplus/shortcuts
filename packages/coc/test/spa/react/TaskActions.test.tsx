@@ -37,7 +37,7 @@ describe('TaskActions — toolbar', () => {
                     wsId="ws1"
                     openFilePath={null}
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -52,7 +52,7 @@ describe('TaskActions — toolbar', () => {
                     wsId="ws1"
                     openFilePath="some/file.md"
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
@@ -74,13 +74,13 @@ describe('TaskActions — toolbar', () => {
                     wsId="ws1"
                     openFilePath="coc/add-retry-logic.plan.md"
                     selectedFilePaths={[]}
-                    tasksFolderPath=".vscode/tasks"
+                    tasksFolderPath="/test/repos/abc/tasks"
                     onClearSelection={vi.fn()}
                 />
             </Wrap>
         );
 
         fireEvent.click(screen.getByText('Copy path'));
-        expect(writeText).toHaveBeenCalledWith('.vscode/tasks/coc/add-retry-logic.plan.md');
+        expect(writeText).toHaveBeenCalledWith('/test/repos/abc/tasks/coc/add-retry-logic.plan.md');
     });
 });

@@ -15,6 +15,7 @@ interface TaskTreeProps {
     tree: TaskFolder;
     commentCounts: Record<string, number>;
     wsId: string;
+    tasksFolder?: string;
     initialFolderPath?: string | null;
     initialFilePath?: string | null;
     navigateToFilePath?: string | null;
@@ -71,6 +72,7 @@ export function TaskTree({
     tree,
     commentCounts,
     wsId,
+    tasksFolder,
     initialFolderPath,
     initialFilePath,
     navigateToFilePath,
@@ -83,7 +85,7 @@ export function TaskTree({
     onNavigateBack,
 }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
-    const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId);
+    const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId, tasksFolder);
     const dnd = useTaskDragDrop();
     const [columns, setColumns] = useState<TaskNode[][]>([]);
     const [activeFolderKeys, setActiveFolderKeys] = useState<(string | null)[]>([]);

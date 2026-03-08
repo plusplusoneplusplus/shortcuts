@@ -116,7 +116,7 @@ describe('useTaskGeneration', () => {
     // 5. done success populates result
     it('done success populates result', async () => {
         fetchMock.mockResolvedValueOnce(sseResponse([
-            'event: done\ndata: {"success":true,"filePath":".vscode/tasks/foo.md","content":"# Foo"}\n\n',
+            'event: done\ndata: {"success":true,"filePath":"/data/repos/abc/tasks/foo.md","content":"# Foo"}\n\n',
         ]));
 
         const { result } = renderHook(() => useTaskGeneration('ws-1'));
@@ -127,7 +127,7 @@ describe('useTaskGeneration', () => {
 
         expect(result.current.status).toBe('complete');
         expect(result.current.result).toEqual({
-            filePath: '.vscode/tasks/foo.md',
+            filePath: '/data/repos/abc/tasks/foo.md',
             content: '# Foo',
         });
     });

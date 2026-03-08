@@ -816,7 +816,7 @@ describe('Server Integration', () => {
     // Task Watcher Integration
     // ------------------------------------------------------------------
     describe('task watcher integration', () => {
-        it('should start task watcher when workspace is registered with .vscode/tasks/', async () => {
+        it('should start task watcher when workspace is registered with tasks directory', async () => {
             const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-tw-'));
             fs.mkdirSync(path.join(wsRoot, '.vscode', 'tasks'), { recursive: true });
 
@@ -866,9 +866,9 @@ describe('Server Integration', () => {
             fs.rmSync(wsRoot, { recursive: true, force: true });
         });
 
-        it('should handle workspace without .vscode/tasks/ gracefully', async () => {
+        it('should handle workspace without tasks directory gracefully', async () => {
             const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-tw-nodir-'));
-            // Do NOT create .vscode/tasks/
+            // Do NOT create tasks directory
 
             const res = await request(`${baseUrl}/api/workspaces`, {
                 method: 'POST',

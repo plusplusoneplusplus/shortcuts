@@ -672,7 +672,7 @@ describe('CLITaskExecutor', () => {
                 payload: {
                     kind: 'chat' as const,
                     mode: 'autopilot',
-                    prompt: 'Update the document\n\nFile: /project/.vscode/tasks/coc/add-retry-logic.plan.md',
+                    prompt: 'Update the document\n\nFile: /project/data/repos/abc/tasks/coc/add-retry-logic.plan.md',
                 },
                 config: {},
             };
@@ -681,7 +681,7 @@ describe('CLITaskExecutor', () => {
 
             expect(result.success).toBe(true);
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: expect.stringContaining('Update the document\n\nFile: /project/.vscode/tasks/coc/add-retry-logic.plan.md'),
+                prompt: expect.stringContaining('Update the document\n\nFile: /project/data/repos/abc/tasks/coc/add-retry-logic.plan.md'),
             }));
         });
 
@@ -1323,7 +1323,7 @@ describe('CLITaskExecutor', () => {
                         kind: 'chat' as const,
                         mode: 'autopilot',
                         prompt: '',
-                        context: { files: ['/workspace/.github/skills/impl/SKILL.md', '/workspace/.vscode/tasks/my-task.plan.md'] },
+                        context: { files: ['/workspace/.github/skills/impl/SKILL.md', '/workspace/data/repos/abc/tasks/my-task.plan.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1333,7 +1333,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Follow the instruction /workspace/.github/skills/impl/SKILL.md. /workspace/.vscode/tasks/my-task.plan.md'),
+                    prompt: expect.stringContaining('Follow the instruction /workspace/.github/skills/impl/SKILL.md. /workspace/data/repos/abc/tasks/my-task.plan.md'),
                     workingDirectory: '/workspace',
                 }));
 
@@ -1352,7 +1352,7 @@ describe('CLITaskExecutor', () => {
                     payload: {
                         kind: 'chat' as const,
                         mode: 'autopilot',
-                        prompt: 'Use the impl skill. /workspace/.vscode/tasks/my-task.plan.md',
+                        prompt: 'Use the impl skill. /workspace/data/repos/abc/tasks/my-task.plan.md',
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1362,7 +1362,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Use the impl skill. /workspace/.vscode/tasks/my-task.plan.md'),
+                    prompt: expect.stringContaining('Use the impl skill. /workspace/data/repos/abc/tasks/my-task.plan.md'),
                     workingDirectory: '/workspace',
                 }));
             });
@@ -1389,7 +1389,7 @@ describe('CLITaskExecutor', () => {
                         kind: 'chat' as const,
                         mode: 'autopilot',
                         prompt: '',
-                        context: { files: ['/workspace/.github/prompts/impl.prompt.md', '/workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md'] },
+                        context: { files: ['/workspace/.github/prompts/impl.prompt.md', '/workspace/data/repos/abc/tasks/coc/e2e-repo-tests/013-document-groups.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1400,7 +1400,7 @@ describe('CLITaskExecutor', () => {
                 expect(result.success).toBe(true);
                 // Should use the new-style format: "Follow the instruction {promptFilePath}. {planFilePath}"
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Follow the instruction /workspace/.github/prompts/impl.prompt.md. /workspace/.vscode/tasks/coc/e2e-repo-tests/013-document-groups.md'),
+                    prompt: expect.stringContaining('Follow the instruction /workspace/.github/prompts/impl.prompt.md. /workspace/data/repos/abc/tasks/coc/e2e-repo-tests/013-document-groups.md'),
                     workingDirectory: '/workspace',
                 }));
 
@@ -1430,7 +1430,7 @@ describe('CLITaskExecutor', () => {
                         kind: 'chat' as const,
                         mode: 'autopilot',
                         prompt: '',
-                        context: { files: ['/workspace/.vscode/workflows/.github/prompts/impl.prompt.md', '/workspace/.vscode/tasks/my-task.md'] },
+                        context: { files: ['/workspace/.vscode/workflows/.github/prompts/impl.prompt.md', '/workspace/data/repos/abc/tasks/my-task.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1509,7 +1509,7 @@ describe('CLITaskExecutor', () => {
                 existsSyncMock.mockImplementation((p: fs.PathLike) => {
                     const s = String(p).replace(/\\/g, '/');
                     if (s === '/workspace/.github/prompts/impl.prompt.md') return true;
-                    if (s === '/workspace/.vscode/tasks/feature/CONTEXT.md') return true;
+                    if (s === '/workspace/data/repos/abc/tasks/feature/CONTEXT.md') return true;
                     return false;
                 });
 
@@ -1524,7 +1524,7 @@ describe('CLITaskExecutor', () => {
                         kind: 'chat' as const,
                         mode: 'autopilot',
                         prompt: '',
-                        context: { files: ['/workspace/.github/prompts/impl.prompt.md', '/workspace/.vscode/tasks/feature/plan.md'] },
+                        context: { files: ['/workspace/.github/prompts/impl.prompt.md', '/workspace/data/repos/abc/tasks/feature/plan.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1533,7 +1533,7 @@ describe('CLITaskExecutor', () => {
                 const result = await executor.execute(task);
                 expect(result.success).toBe(true);
                 const prompt = mockSendMessage.mock.calls[0][0].prompt;
-                expect(prompt).toContain('See context details in /workspace/.vscode/tasks/feature/CONTEXT.md');
+                expect(prompt).toContain('See context details in /workspace/data/repos/abc/tasks/feature/CONTEXT.md');
                 existsSyncMock.mockReset();
             });
 
@@ -1541,7 +1541,7 @@ describe('CLITaskExecutor', () => {
                 const existsSyncMock = vi.mocked(fs.existsSync);
                 existsSyncMock.mockImplementation((p: fs.PathLike) => {
                     const s = String(p).replace(/\\/g, '/');
-                    if (s === '/workspace/.vscode/tasks/coc/CONTEXT.md') return true;
+                    if (s === '/workspace/data/repos/abc/tasks/coc/CONTEXT.md') return true;
                     return false;
                 });
 
@@ -1556,7 +1556,7 @@ describe('CLITaskExecutor', () => {
                         kind: 'chat' as const,
                         mode: 'autopilot',
                         prompt: 'Use the impl skill.',
-                        context: { files: ['', '/workspace/.vscode/tasks/coc/task.md'] },
+                        context: { files: ['', '/workspace/data/repos/abc/tasks/coc/task.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},
@@ -1566,7 +1566,7 @@ describe('CLITaskExecutor', () => {
                 expect(result.success).toBe(true);
                 const prompt = mockSendMessage.mock.calls[0][0].prompt;
                 expect(prompt).toContain('Use the impl skill.');
-                expect(prompt).toContain('See context details in /workspace/.vscode/tasks/coc/CONTEXT.md');
+                expect(prompt).toContain('See context details in /workspace/data/repos/abc/tasks/coc/CONTEXT.md');
                 existsSyncMock.mockReset();
             });
 
@@ -1589,7 +1589,7 @@ describe('CLITaskExecutor', () => {
                         kind: 'chat' as const,
                         mode: 'autopilot',
                         prompt: '',
-                        context: { files: ['/workspace/.github/prompts/review.prompt.md', '/workspace/.vscode/tasks/feature/plan.md'] },
+                        context: { files: ['/workspace/.github/prompts/review.prompt.md', '/workspace/data/repos/abc/tasks/feature/plan.md'] },
                         workingDirectory: '/workspace',
                     },
                     config: {},

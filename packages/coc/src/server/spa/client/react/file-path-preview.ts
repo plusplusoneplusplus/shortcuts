@@ -63,6 +63,7 @@ let scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
 let workspacesCache: WorkspaceInfo[] | null = null;
 let workspacesFetchedAt = 0;
 let workspacesLoading: Promise<WorkspaceInfo[]> | null = null;
+let lastResolvedRootPath = '';
 
 function escapeHtml(text: string): string {
     return text
@@ -193,6 +194,10 @@ async function fetchPreview(path: string): Promise<PreviewResponse> {
     if (!wsId) {
         throw new Error('No workspace available');
     }
+
+    // Cache rootPath for task file detection in renderPreview
+    const ws = (workspacesCache || []).find(w => w.id === wsId);
+    lastResolvedRootPath = ws?.rootPath ? normalizePath(ws.rootPath) : '';
 
     const params = new URLSearchParams({ path });
     const url = `${getApiBase()}/workspaces/${encodeURIComponent(wsId)}/files/preview?${params}`;
@@ -332,6 +337,21 @@ function renderError(message: string): void {
     attachBodyScrollGuard();
 }
 
+/** Detect task files by checking for `/tasks/` relative to workspace root, or legacy `.vscode/tasks/`. */
+function getTaskRelativePath(filePath: string): string | null {
+    const normalized = normalizePath(filePath);
+    // Legacy pattern: .vscode/tasks/
+    const legacyMarker = '.vscode/tasks/';
+    const legacyIdx = normalized.indexOf(legacyMarker);
+    if (legacyIdx !== -1) return toForwardSlashes(filePath).slice(filePath.toLowerCase().indexOf(legacyMarker) + legacyMarker.length);
+    // Modern pattern: <workspaceRoot>/tasks/
+    if (lastResolvedRootPath) {
+        const prefix = lastResolvedRootPath.endsWith('/') ? lastResolvedRootPath + 'tasks/' : lastResolvedRootPath + '/tasks/';
+        if (normalized.startsWith(prefix)) return toForwardSlashes(filePath).slice(filePath.length - (normalized.length - prefix.length));
+    }
+    return null;
+}
+
 function renderPreview(data: FilePreviewResponse): void {
     const tip = createTooltip();
     const gutterWidth = String(data.lines.length).length + 1;
@@ -343,10 +363,8 @@ function renderPreview(data: FilePreviewResponse): void {
     ).join('');
     const totalLabel = data.truncated ? ` (${data.totalLines} total)` : '';
 
-    const isTaskFile = data.path.includes('.vscode/tasks/');
-    const taskRelativePath = isTaskFile
-        ? data.path.split('.vscode/tasks/').pop() || ''
-        : '';
+    const taskRelativePath = getTaskRelativePath(data.path);
+    const isTaskFile = taskRelativePath !== null;
     const gotoBtn = isTaskFile
         ? `<button class="file-preview-goto-btn" data-task-path="${escapeHtml(taskRelativePath)}" title="Reveal in Tasks Panel">\u2B08</button>`
         : '';
