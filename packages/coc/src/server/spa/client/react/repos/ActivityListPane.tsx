@@ -78,7 +78,7 @@ export interface ActivityListPaneProps {
     selectedTaskId: string | null;
     isMobile: boolean;
     now: number;
-    workspaceId: string;
+    workspaceId?: string;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
     onRefresh: () => void;
@@ -174,7 +174,7 @@ export function ActivityListPane({
         await fetch(getApiBase() + '/queue/pause-marker', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ afterIndex, repoId: workspaceId }),
+            body: JSON.stringify({ afterIndex, ...(workspaceId ? { repoId: workspaceId } : {}) }),
         });
         fetchQueue();
     };
@@ -249,7 +249,7 @@ export function ActivityListPane({
                     </>
                 ) : (
                     <>
-                        <div className="mb-2">No tasks in queue for this repository</div>
+                        <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
                         <Button
                             variant="ghost"
                             size="sm"

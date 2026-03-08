@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
 
 // ── Mutable mock state ─────────────────────────────────────────────────
 
 let mockBreakpoint: BreakpointState = { breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true };
-const mockAppDispatch = vi.fn();
-let mockAppSelectedId: string | null = null;
 const mockQueueDispatch = vi.fn();
-let mockQueueSelectedTaskId: string | null = null;
+let mockQueueState: any = {
+    selectedTaskId: null,
+    running: [],
+    queued: [],
+    history: [],
+    stats: { isPaused: false },
+    queueInitialized: true,
+};
 
 // ── Module mocks ───────────────────────────────────────────────────────
 
@@ -16,41 +21,30 @@ vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => mockBreakpoint,
 }));
 
-vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
-    useApp: () => ({
-        state: { selectedId: mockAppSelectedId },
-        dispatch: mockAppDispatch,
-    }),
-}));
-
 vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({
-        state: { selectedTaskId: mockQueueSelectedTaskId },
+        state: mockQueueState,
         dispatch: mockQueueDispatch,
     }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/ProcessFilters', () => ({
-    ProcessFilters: () => <div data-testid="process-filters">ProcessFilters</div>,
+vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
+    fetchApi: vi.fn().mockResolvedValue({ running: [], queued: [], history: [], stats: {} }),
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/ProcessesSidebar', () => ({
-    ProcessesSidebar: () => <div data-testid="processes-sidebar">ProcessesSidebar</div>,
+vi.mock('../../../src/server/spa/client/react/repos/ActivityListPane', () => ({
+    ActivityListPane: (props: any) => (
+        <div data-testid="activity-list-pane" data-workspace-id={props.workspaceId ?? ''}>
+            ActivityListPane
+        </div>
+    ),
 }));
 
-vi.mock('../../../src/server/spa/client/react/processes/ProcessDetail', () => ({
-    ProcessDetail: () => <div data-testid="process-detail">ProcessDetail</div>,
-}));
-
-vi.mock('../../../src/server/spa/client/react/queue/QueueTaskDetail', () => ({
-    QueueTaskDetail: () => <div data-testid="queue-task-detail">QueueTaskDetail</div>,
-}));
-
-vi.mock('../../../src/server/spa/client/react/shared/ResponsiveSidebar', () => ({
-    ResponsiveSidebar: ({ children, width, tabletWidth }: any) => (
-        <aside data-testid="responsive-sidebar" data-width={width} data-tablet-width={tabletWidth}>
-            {children}
-        </aside>
+vi.mock('../../../src/server/spa/client/react/repos/ActivityDetailPane', () => ({
+    ActivityDetailPane: (props: any) => (
+        <div data-testid="activity-detail-pane" data-selected-task-id={props.selectedTaskId ?? ''}>
+            ActivityDetailPane
+        </div>
     ),
 }));
 
@@ -75,176 +69,93 @@ describe('ProcessesView', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         setBreakpoint('desktop');
-        mockAppSelectedId = null;
-        mockQueueSelectedTaskId = null;
+        mockQueueState = {
+            selectedTaskId: null,
+            running: [],
+            queued: [],
+            history: [],
+            stats: { isPaused: false },
+            queueInitialized: true,
+        };
         location.hash = '';
     });
 
-    // Test 1: Desktop — two-pane layout with 320px sidebar
-    it('Desktop: renders two-pane layout with ResponsiveSidebar at width 320', () => {
-        setBreakpoint('desktop');
-        render(<ProcessesView />);
+    // Test 1: Desktop — two-pane layout with ActivityListPane + ActivityDetailPane
+    it('Desktop: renders two-pane layout with ActivityListPane and ActivityDetailPane', async () => {
+        await act(async () => {
+            render(<ProcessesView />);
+        });
 
-        const sidebar = screen.getByTestId('responsive-sidebar');
-        expect(sidebar).toBeDefined();
-        expect(sidebar.getAttribute('data-width')).toBe('320');
-        expect(sidebar.getAttribute('data-tablet-width')).toBe('260');
+        const panel = screen.getByTestId('activity-split-panel');
+        expect(panel).toBeDefined();
 
-        // Sidebar contains filters and list
-        expect(screen.getByTestId('process-filters')).toBeDefined();
-        expect(screen.getByTestId('processes-sidebar')).toBeDefined();
-        expect(sidebar.contains(screen.getByTestId('process-filters'))).toBe(true);
-        expect(sidebar.contains(screen.getByTestId('processes-sidebar'))).toBe(true);
-
-        // Main panel renders detail
-        expect(screen.getByTestId('process-detail')).toBeDefined();
-
-        // No mobile components
-        expect(screen.queryByTestId('mobile-back-button')).toBeNull();
-        expect(screen.queryByTestId('mobile-filters-toggle')).toBeNull();
+        expect(screen.getByTestId('activity-list-pane')).toBeDefined();
+        expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
     });
 
-    // Test 2: Tablet — sidebar at 260px
-    it('Tablet: renders two-pane layout with ResponsiveSidebar', () => {
-        setBreakpoint('tablet');
-        render(<ProcessesView />);
+    // Test 2: Desktop — ActivityListPane has no workspaceId (global queue)
+    it('Desktop: ActivityListPane has no workspaceId for global queue', async () => {
+        await act(async () => {
+            render(<ProcessesView />);
+        });
 
-        const sidebar = screen.getByTestId('responsive-sidebar');
-        expect(sidebar).toBeDefined();
-        expect(sidebar.getAttribute('data-width')).toBe('320');
-        expect(sidebar.getAttribute('data-tablet-width')).toBe('260');
-
-        expect(screen.getByTestId('process-filters')).toBeDefined();
-        expect(screen.getByTestId('processes-sidebar')).toBeDefined();
+        const listPane = screen.getByTestId('activity-list-pane');
+        expect(listPane.getAttribute('data-workspace-id')).toBe('');
     });
 
-    // Test 3: Mobile — no selection shows full-width list
-    it('Mobile: no selection renders list with collapsible filters', () => {
-        setBreakpoint('mobile');
-        mockAppSelectedId = null;
-        mockQueueSelectedTaskId = null;
-        render(<ProcessesView />);
-
-        // List view visible
-        expect(screen.getByTestId('processes-sidebar')).toBeDefined();
-        expect(screen.getByTestId('mobile-filters-toggle')).toBeDefined();
-
-        // Detail view hidden
-        expect(screen.queryByTestId('process-detail')).toBeNull();
-        expect(screen.queryByTestId('queue-task-detail')).toBeNull();
-
-        // Filters collapsed by default
-        expect(screen.queryByTestId('mobile-filters-panel')).toBeNull();
-
-        // Height includes bottom nav offset
-        const container = document.getElementById('view-processes')!;
-        expect(container.className).toContain('h-[calc(100vh-48px-56px)]');
-    });
-
-    // Test 4: Mobile — selected process shows full-screen detail with back button
-    it('Mobile: selected process shows detail view with back button', () => {
-        setBreakpoint('mobile');
-        mockAppSelectedId = 'proc-123';
-        render(<ProcessesView />);
-
-        // Detail view visible
-        expect(screen.getByTestId('process-detail')).toBeDefined();
-        expect(screen.getByTestId('mobile-back-button')).toBeDefined();
-
-        // List view hidden
-        expect(screen.queryByTestId('processes-sidebar')).toBeNull();
-        expect(screen.queryByTestId('mobile-filters-toggle')).toBeNull();
-    });
-
-    // Test 5: Mobile — selected queue task shows QueueTaskDetail
-    it('Mobile: selected queue task shows QueueTaskDetail with back button', () => {
-        setBreakpoint('mobile');
-        mockQueueSelectedTaskId = 'task-456';
-        render(<ProcessesView />);
-
-        // QueueTaskDetail rendered (not ProcessDetail)
-        expect(screen.getByTestId('queue-task-detail')).toBeDefined();
-        expect(screen.queryByTestId('process-detail')).toBeNull();
-
-        // Back button present
-        expect(screen.getByTestId('mobile-back-button')).toBeDefined();
-    });
-
-    // Test 6: Mobile — back button clears selection and returns to list
-    it('Mobile: back button dispatches clear actions', () => {
-        setBreakpoint('mobile');
-        mockAppSelectedId = 'proc-123';
-        location.hash = '#process/proc-123';
-        render(<ProcessesView />);
-
-        fireEvent.click(screen.getByTestId('mobile-back-button'));
-
-        expect(mockAppDispatch).toHaveBeenCalledWith({ type: 'SELECT_PROCESS', id: null });
-        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: null });
-        expect(location.hash).toBe('#processes');
-    });
-
-    // Test 7: Mobile — filters accordion toggle
-    it('Mobile: filters accordion toggles on click', () => {
-        setBreakpoint('mobile');
-        render(<ProcessesView />);
-
-        const toggle = screen.getByTestId('mobile-filters-toggle');
-        expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(screen.queryByTestId('mobile-filters-panel')).toBeNull();
-
-        // Expand
-        fireEvent.click(toggle);
-        expect(toggle.getAttribute('aria-expanded')).toBe('true');
-        expect(screen.getByTestId('mobile-filters-panel')).toBeDefined();
-        expect(screen.getByTestId('process-filters')).toBeDefined();
-
-        // Collapse again
-        fireEvent.click(toggle);
-        expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(screen.queryByTestId('mobile-filters-panel')).toBeNull();
-    });
-
-    // Test 8: Mobile — height calculation includes bottom nav
-    it('Mobile: container height accounts for bottom nav', () => {
-        setBreakpoint('mobile');
-        render(<ProcessesView />);
-
-        const container = document.getElementById('view-processes')!;
-        expect(container.className).toContain('h-[calc(100vh-48px-56px)]');
-    });
-
-    // Test 9: Desktop — height calculation excludes bottom nav
-    it('Desktop: container height excludes bottom nav', () => {
-        setBreakpoint('desktop');
-        render(<ProcessesView />);
+    // Test 3: Desktop — height calculation excludes bottom nav
+    it('Desktop: container height excludes bottom nav', async () => {
+        await act(async () => {
+            render(<ProcessesView />);
+        });
 
         const container = document.getElementById('view-processes')!;
         expect(container.className).toContain('h-[calc(100vh-48px)]');
         expect(container.className).not.toContain('h-[calc(100vh-48px-56px)]');
     });
 
-    // Additional: back button does not change hash when not on process route
-    it('Mobile: back button does not change hash when not on process route', () => {
+    // Test 4: Mobile — no selection shows list only
+    it('Mobile: no selection renders list pane only', async () => {
         setBreakpoint('mobile');
-        mockAppSelectedId = 'proc-123';
-        location.hash = '#queue/task-456';
-        render(<ProcessesView />);
+        await act(async () => {
+            render(<ProcessesView />);
+        });
 
-        fireEvent.click(screen.getByTestId('mobile-back-button'));
-
-        expect(mockAppDispatch).toHaveBeenCalledWith({ type: 'SELECT_PROCESS', id: null });
-        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: null });
-        expect(location.hash).toBe('#queue/task-456');
+        expect(screen.getByTestId('activity-mobile-list')).toBeDefined();
+        expect(screen.getByTestId('activity-list-pane')).toBeDefined();
+        expect(screen.queryByTestId('activity-detail-pane')).toBeNull();
     });
 
-    // Additional: Desktop renders QueueTaskDetail when queue task is selected
-    it('Desktop: renders QueueTaskDetail when queue task is selected', () => {
-        setBreakpoint('desktop');
-        mockQueueSelectedTaskId = 'task-789';
-        render(<ProcessesView />);
+    // Test 5: Mobile — height includes bottom nav offset
+    it('Mobile: container height accounts for bottom nav', async () => {
+        setBreakpoint('mobile');
+        await act(async () => {
+            render(<ProcessesView />);
+        });
 
-        expect(screen.getByTestId('queue-task-detail')).toBeDefined();
-        expect(screen.queryByTestId('process-detail')).toBeNull();
+        const container = document.getElementById('view-processes')!;
+        expect(container.className).toContain('h-[calc(100vh-48px-56px)]');
+    });
+
+    // Test 6: Tablet — uses narrower left panel
+    it('Tablet: renders two-pane layout with ActivityListPane', async () => {
+        setBreakpoint('tablet');
+        await act(async () => {
+            render(<ProcessesView />);
+        });
+
+        expect(screen.getByTestId('activity-list-pane')).toBeDefined();
+        expect(screen.getByTestId('activity-detail-pane')).toBeDefined();
+    });
+
+    // Test 7: Desktop — detail pane shows selected task ID
+    it('Desktop: detail pane receives selectedTaskId', async () => {
+        mockQueueState.selectedTaskId = 'task-789';
+        await act(async () => {
+            render(<ProcessesView />);
+        });
+
+        const detailPane = screen.getByTestId('activity-detail-pane');
+        expect(detailPane.getAttribute('data-selected-task-id')).toBe('task-789');
     });
 });

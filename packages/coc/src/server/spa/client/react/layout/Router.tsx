@@ -7,7 +7,6 @@ import { useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { ProcessesView } from '../processes/ProcessesView';
-import { QueueView } from '../queue/QueueView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { AdminPanel } from '../admin/AdminPanel';
@@ -330,12 +329,7 @@ export function Router() {
 
     switch (state.activeTab) {
         case 'processes':
-            return (
-                <>
-                    <ProcessesView />
-                    <QueueView />
-                </>
-            );
+            return <ProcessesView />;
         case 'repos':
             return <ReposView />;
         case 'wiki':

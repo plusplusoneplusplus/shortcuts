@@ -795,47 +795,42 @@ describe('ConversationTurnBubble', () => {
 });
 
 describe('ProcessesView', () => {
-    it('renders the two-pane layout', () => {
+    it('renders the two-pane layout', async () => {
         render(<Wrap><ProcessesView /></Wrap>);
-        const view = document.getElementById('view-processes');
-        expect(view).not.toBeNull();
+        await waitFor(() => {
+            const view = document.getElementById('view-processes');
+            expect(view).not.toBeNull();
+        });
     });
 
-    it('keeps sidebar width fixed with a non-shrinking layout', () => {
-        const { container } = render(<Wrap><ProcessesView /></Wrap>);
-        const aside = container.querySelector('#view-processes > aside');
-        const main = container.querySelector('#view-processes > main');
-
-        expect(aside).not.toBeNull();
-        expect(main).not.toBeNull();
-        // ResponsiveSidebar uses inline styles for width on desktop
-        expect(aside!.style.width).toBe('320px');
-        expect(aside!.style.minWidth).toBe('320px');
-        expect(aside!.style.maxWidth).toBe('320px');
-        expect(aside!.className).toContain('shrink-0');
-        expect(main!.className).toContain('min-w-0');
+    it('renders ActivityListPane and ActivityDetailPane in split layout', async () => {
+        render(<Wrap><ProcessesView /></Wrap>);
+        await waitFor(() => {
+            const view = document.getElementById('view-processes');
+            expect(view).not.toBeNull();
+            expect(view!.getAttribute('data-testid')).toBe('activity-split-panel');
+        });
     });
 
-    it('wraps ProcessesSidebar in a single scrollable container', () => {
-        const { container } = render(<Wrap><ProcessesView /></Wrap>);
-        const aside = container.querySelector('#view-processes > aside');
-        expect(aside).not.toBeNull();
-
-        // The scrollable wrapper is the flex-1 div after ProcessFilters
-        const scrollable = aside!.querySelector(':scope > div.overflow-y-auto');
-        expect(scrollable).not.toBeNull();
-        expect(scrollable!.className).toContain('flex-1');
-        expect(scrollable!.className).toContain('min-h-0');
-        expect(scrollable!.className).toContain('flex');
-        expect(scrollable!.className).toContain('flex-col');
+    it('left panel has fixed width and does not shrink', async () => {
+        render(<Wrap><ProcessesView /></Wrap>);
+        await waitFor(() => {
+            const view = document.getElementById('view-processes');
+            expect(view).not.toBeNull();
+            const leftPanel = view!.querySelector(':scope > div.flex-shrink-0');
+            expect(leftPanel).not.toBeNull();
+        });
     });
 
-    it('does not have a separate border-t wrapper in sidebar', () => {
-        const { container } = render(<Wrap><ProcessesView /></Wrap>);
-        const aside = container.querySelector('#view-processes > aside');
-        // There should be no direct child div with border-t in the sidebar
-        const borderTDivs = Array.from(aside!.querySelectorAll(':scope > div.border-t'));
-        expect(borderTDivs.length).toBe(0);
+    it('right panel fills remaining space', async () => {
+        render(<Wrap><ProcessesView /></Wrap>);
+        await waitFor(() => {
+            const view = document.getElementById('view-processes');
+            expect(view).not.toBeNull();
+            const rightPanel = view!.querySelector(':scope > div.flex-1');
+            expect(rightPanel).not.toBeNull();
+            expect(rightPanel!.className).toContain('min-w-0');
+        });
     });
 });
 
