@@ -90,7 +90,7 @@ function resolveIsDark(theme: 'auto' | 'dark' | 'light'): boolean {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-/** Monaco editor options tuned for an explorer preview: no chrome, no margins. */
+/** Monaco editor options tuned for an explorer preview: minimal chrome, small gutter margin. */
 export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstructionOptions = {
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
@@ -101,7 +101,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
     padding: { top: 0, bottom: 0 },
     glyphMargin: false,
     folding: false,
-    lineDecorationsWidth: 0,
+    lineDecorationsWidth: 8,
     lineNumbersMinChars: 3,
     overviewRulerLanes: 0,
     overviewRulerBorder: false,

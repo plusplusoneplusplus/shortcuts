@@ -111,10 +111,10 @@ describe('EXPLORER_EDITOR_OPTIONS', () => {
         expect(EXPLORER_EDITOR_OPTIONS.padding).toEqual({ top: 0, bottom: 0 });
     });
 
-    it('disables glyph margin, folding, and line decorations to minimize left margin', () => {
+    it('disables glyph margin and folding; uses small line decorations width for gutter margin', () => {
         expect(EXPLORER_EDITOR_OPTIONS.glyphMargin).toBe(false);
         expect(EXPLORER_EDITOR_OPTIONS.folding).toBe(false);
-        expect(EXPLORER_EDITOR_OPTIONS.lineDecorationsWidth).toBe(0);
+        expect(EXPLORER_EDITOR_OPTIONS.lineDecorationsWidth).toBe(8);
     });
 
     it('disables overview ruler to remove right-side chrome', () => {
