@@ -65,14 +65,22 @@ export interface Logger {
 }
 
 /**
+ * Format a timestamp for log output.
+ * Returns ISO 8601 format: `2024-01-15T10:30:45.123Z`
+ */
+export function formatTimestamp(date: Date = new Date()): string {
+    return date.toISOString();
+}
+
+/**
  * Console-based logger implementation.
  * Outputs to stdout/stderr with timestamps and categories.
  */
 export const consoleLogger: Logger = {
-    debug: (cat, msg) => console.debug(`[DEBUG] [${cat}] ${msg}`),
-    info: (cat, msg) => console.log(`[INFO] [${cat}] ${msg}`),
-    warn: (cat, msg) => console.warn(`[WARN] [${cat}] ${msg}`),
-    error: (cat, msg, err) => console.error(`[ERROR] [${cat}] ${msg}`, err || ''),
+    debug: (cat, msg) => console.debug(`${formatTimestamp()} [DEBUG] [${cat}] ${msg}`),
+    info: (cat, msg) => console.log(`${formatTimestamp()} [INFO] [${cat}] ${msg}`),
+    warn: (cat, msg) => console.warn(`${formatTimestamp()} [WARN] [${cat}] ${msg}`),
+    error: (cat, msg, err) => console.error(`${formatTimestamp()} [ERROR] [${cat}] ${msg}`, err || ''),
 };
 
 /**

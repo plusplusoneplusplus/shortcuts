@@ -401,6 +401,43 @@ describe('Logger', () => {
             // Should have been called exactly once (just the error msg)
             expect(stderrSpy.mock.calls.length).toBe(1);
         });
+
+        it('should include ISO timestamp in debug output', () => {
+            setVerbosity('verbose');
+            setColorEnabled(false);
+            const logger = createCLILogger();
+            logger.debug('Cat', 'msg');
+            const output = stderrSpy.mock.calls[0][0] as string;
+            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[DEBUG\]/);
+            setColorEnabled(true);
+        });
+
+        it('should include ISO timestamp in info output', () => {
+            setColorEnabled(false);
+            const logger = createCLILogger();
+            logger.info('Cat', 'msg');
+            const output = stderrSpy.mock.calls[0][0] as string;
+            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+            setColorEnabled(true);
+        });
+
+        it('should include ISO timestamp in warn output', () => {
+            setColorEnabled(false);
+            const logger = createCLILogger();
+            logger.warn('Cat', 'msg');
+            const output = stderrSpy.mock.calls[0][0] as string;
+            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+            setColorEnabled(true);
+        });
+
+        it('should include ISO timestamp in error output', () => {
+            setColorEnabled(false);
+            const logger = createCLILogger();
+            logger.error('Cat', 'msg');
+            const output = stderrSpy.mock.calls[0][0] as string;
+            expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+            setColorEnabled(true);
+        });
     });
 
     // ========================================================================

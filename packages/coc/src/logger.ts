@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { Logger } from '@plusplusoneplusplus/pipeline-core';
+import { type Logger, formatTimestamp } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // ANSI Color Codes
@@ -288,19 +288,19 @@ export function createCLILogger(): Logger {
     return {
         debug(category: string, message: string): void {
             if (verbosity === 'verbose') {
-                process.stderr.write(`${gray(`[DEBUG] [${category}]`)} ${message}\n`);
+                process.stderr.write(`${gray(`${formatTimestamp()} [DEBUG] [${category}]`)} ${message}\n`);
             }
         },
         info(category: string, message: string): void {
             if (verbosity !== 'quiet') {
-                process.stderr.write(`${blue(`[${category}]`)} ${message}\n`);
+                process.stderr.write(`${gray(formatTimestamp())} ${blue(`[${category}]`)} ${message}\n`);
             }
         },
         warn(category: string, message: string): void {
-            process.stderr.write(`${yellow(`[WARN] [${category}]`)} ${message}\n`);
+            process.stderr.write(`${gray(formatTimestamp())} ${yellow(`[WARN] [${category}]`)} ${message}\n`);
         },
         error(category: string, message: string, error?: Error): void {
-            process.stderr.write(`${red(`[ERROR] [${category}]`)} ${message}\n`);
+            process.stderr.write(`${gray(formatTimestamp())} ${red(`[ERROR] [${category}]`)} ${message}\n`);
             if (error && verbosity === 'verbose') {
                 process.stderr.write(`${gray(error.stack || error.message)}\n`);
             }

@@ -39,7 +39,8 @@ export {
     nullLogger,
     setLogger,
     getLogger,
-    resetLogger
+    resetLogger,
+    formatTimestamp
 } from './logger';
 
 // ============================================================================
