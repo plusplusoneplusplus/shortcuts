@@ -361,6 +361,23 @@ describe('ActivityListPane: shared list component', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function getTaskTypeIcon');
     });
 
+    it('getTaskTypeIcon returns mode-based icons for chat tasks matching chat mode selector', () => {
+        // Icons should match the chat mode selector: 💡 Ask, 📋 Plan, 🤖 Autopilot
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("payload.mode === 'ask') return '💡'");
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("payload.mode === 'plan') return '📋'");
+    });
+
+    it('getTaskTypeIcon returns ▶️ for run-workflow and ⚡ for run-script', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("type === 'run-workflow') return '▶️'");
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("type === 'run-script') return '⚡'");
+    });
+
+    it('getTaskTypeIcon uses mode as primary icon for chat tasks without context overrides', () => {
+        // The function should NOT override mode-based icons with context-based icons
+        // (e.g., skills, taskGeneration, resolveComments, files should not change the icon)
+        expect(ACTIVITY_LIST_PANE_SOURCE).not.toMatch(/getTaskTypeIcon[\s\S]*?context\?\.skills/);
+    });
+
     it('exports getTaskPromptPreview helper', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function getTaskPromptPreview');
     });

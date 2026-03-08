@@ -38,17 +38,13 @@ export function taskMatchesFilter(task: any, filter: string): boolean {
     return task.type === filter;
 }
 
-/** Return a type-specific icon for a task. */
+/** Return a type-specific icon for a task, matching the chat mode selector icons. */
 export function getTaskTypeIcon(task: any): string {
     const type = task.type as string;
     const payload = task.payload || {};
     if (type === 'chat') {
         if (payload.mode === 'ask') return '💡';
         if (payload.mode === 'plan') return '📋';
-        if (payload.context?.skills?.length) return '🔧';
-        if (payload.context?.taskGeneration) return '📝';
-        if (payload.context?.resolveComments) return '💬';
-        if (payload.context?.files?.length) return '↩️';
         return '🤖';
     }
     if (type === 'run-workflow') return '▶️';
