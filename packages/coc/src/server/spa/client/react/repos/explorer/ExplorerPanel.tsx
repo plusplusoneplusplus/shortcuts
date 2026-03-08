@@ -11,6 +11,7 @@ import { FileTree } from './FileTree';
 import { PreviewPane } from './PreviewPane';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
+import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 
 export interface ExplorerPanelProps {
@@ -39,6 +40,12 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
     const searchInputRef = useRef<HTMLInputElement>(null);
     const preFilterExpandedRef = useRef<Set<string> | null>(null);
+
+    // Context menu state
+    const [contextMenu, setContextMenu] = useState<{
+        position: { x: number; y: number };
+        entry: TreeEntry;
+    } | null>(null);
 
     // Fetch root entries on mount
     useEffect(() => {
@@ -91,6 +98,52 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const handleFileOpen = useCallback((entry: TreeEntry) => {
         setPreviewFile({ path: entry.path, name: entry.name });
     }, []);
+
+    const handleTreeContextMenu = useCallback((e: React.MouseEvent, entry: TreeEntry) => {
+        setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });
+    }, []);
+
+    const buildContextMenuItems = useCallback((entry: TreeEntry): ContextMenuItem[] => {
+        const isDir = entry.type === 'dir';
+        const isExpanded = expandedPaths.has(entry.path);
+        const items: ContextMenuItem[] = [];
+
+        if (isDir) {
+            items.push({
+                label: isExpanded ? 'Collapse' : 'Expand',
+                icon: isExpanded ? '📂' : '📁',
+                onClick: () => handleToggle(entry.path),
+            });
+        } else {
+            items.push({
+                label: 'Open Preview',
+                icon: '👁️',
+                onClick: () => {
+                    setPreviewFile({ path: entry.path, name: entry.name });
+                },
+            });
+        }
+
+        items.push({
+            label: '',
+            separator: true,
+            onClick: () => {},
+        });
+
+        items.push({
+            label: 'Copy Path',
+            icon: '📋',
+            onClick: () => { navigator.clipboard.writeText(entry.path); },
+        });
+
+        items.push({
+            label: 'Copy Name',
+            icon: '📝',
+            onClick: () => { navigator.clipboard.writeText(entry.name); },
+        });
+
+        return items;
+    }, [expandedPaths, handleToggle]);
 
     const handleRefresh = useCallback(() => {
         setChildrenMap(new Map());
@@ -250,6 +303,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     onToggle={handleToggle}
                     onFileOpen={handleFileOpen}
                     onChildrenLoaded={handleChildrenLoaded}
+                    onContextMenu={handleTreeContextMenu}
                     filterQuery={searchQuery}
                 />
             </aside>
@@ -277,6 +331,15 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                       />
                     : <p className="text-[#848484] text-sm">Click a file to preview</p>}
             </main>
+
+            {/* Explorer context menu */}
+            {contextMenu && (
+                <ContextMenu
+                    position={contextMenu.position}
+                    items={buildContextMenuItems(contextMenu.entry)}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
         </div>
     );
 }

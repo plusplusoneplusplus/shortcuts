@@ -22,6 +22,7 @@ export interface TreeNodeProps {
     onSelect: (path: string, isDirectory: boolean) => void;
     onFileOpen?: (entry: TreeEntry) => void;
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
+    onContextMenu?: (e: React.MouseEvent, entry: TreeEntry) => void;
     isFocused?: boolean;
     treeIndex?: number;
     filterQuery?: string;
@@ -39,7 +40,7 @@ function getFileIcon(entry: TreeEntry): string {
 
 export function TreeNode({
     entry, depth, workspaceId, selectedPath, expandedPaths, childrenMap,
-    onToggle, onSelect, onFileOpen, onChildrenLoaded, isFocused, treeIndex, filterQuery,
+    onToggle, onSelect, onFileOpen, onChildrenLoaded, onContextMenu, isFocused, treeIndex, filterQuery,
 }: TreeNodeProps) {
     const isDir = entry.type === 'dir';
     const isExpanded = expandedPaths.has(entry.path);
@@ -77,6 +78,13 @@ export function TreeNode({
         onSelect(entry.path, isDir);
     };
 
+    const handleContextMenu = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect(entry.path, isDir);
+        onContextMenu?.(e, entry);
+    };
+
     return (
         <>
             <div
@@ -91,6 +99,7 @@ export function TreeNode({
                 data-testid={`tree-node-${entry.path}`}
                 data-tree-index={treeIndex}
                 onClick={handleClick}
+                onContextMenu={handleContextMenu}
                 onDoubleClick={() => { if (!isDir) onFileOpen?.(entry); }} /* kept for accessibility */
             >
                 {isDir && (
@@ -113,6 +122,7 @@ export function TreeNode({
                     onSelect={onSelect}
                     onFileOpen={onFileOpen}
                     onChildrenLoaded={onChildrenLoaded}
+                    onContextMenu={onContextMenu}
                     filterQuery={filterQuery}
                 />
             ))}
