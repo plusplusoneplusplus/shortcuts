@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -54,6 +54,7 @@ export interface AppContextState {
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
+    activeSkillsSubTab: SkillsSubTab;
     /** Per-repo remembered sub-tab (in-memory only, resets on page refresh). */
     repoTabState: Record<string, RepoSubTab>;
 }
@@ -90,6 +91,7 @@ const initialState: AppContextState = {
     conversationCache: {},
     wsStatus: 'closed',
     activeMemorySubTab: 'entries',
+    activeSkillsSubTab: 'installed',
     repoTabState: {},
 };
 
@@ -143,7 +145,8 @@ export type AppAction =
     | { type: 'SET_REPO_WIKI_DEEP_LINK'; wikiId: string; tab?: WikiProjectTab | null; adminTab?: WikiAdminTab | null; componentId?: string | null }
     | { type: 'CLEAR_REPO_WIKI_INITIAL' }
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
-    | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab };
+    | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
+    | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -337,6 +340,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedExplorerPath: action.path };
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
+        case 'SET_SKILLS_SUB_TAB':
+            return { ...state, activeSkillsSubTab: action.tab };
         default:
             return state;
     }

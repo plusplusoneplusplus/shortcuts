@@ -1542,8 +1542,8 @@ export class CLITaskExecutor implements TaskExecutor {
 
     /**
      * Resolve per-workspace skill configuration for the SDK session.
-     * Returns `skillDirectories` (the `.github/skills/` path if it exists)
-     * and `disabledSkills` from the workspace config.
+     * Returns `skillDirectories` (global + repo `.github/skills/` paths)
+     * and `disabledSkills` from the workspace config + global preferences.
      */
     private async resolveSkillConfig(
         task: QueuedTask,
@@ -1559,26 +1559,58 @@ export class CLITaskExecutor implements TaskExecutor {
                 const workspaces = await this.store.getWorkspaces();
                 const ws = workspaces.find(w => w.id === wsId);
                 if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
-                    disabledSkills = ws.disabledSkills;
+                    disabledSkills = [...ws.disabledSkills];
                 }
             } catch {
                 // Non-fatal: continue without workspace config
             }
         }
 
-        // Resolve skill directories from workspace root
-        let skillDirectories: string[] | undefined;
+        // Merge global disabled skills from preferences
+        if (this.dataDir) {
+            try {
+                const prefsPath = path.join(this.dataDir, 'preferences.json');
+                if (fs.existsSync(prefsPath)) {
+                    const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
+                    const globalDisabled: string[] = prefs?.globalDisabledSkills;
+                    if (Array.isArray(globalDisabled) && globalDisabled.length > 0) {
+                        disabledSkills = [...new Set([...(disabledSkills ?? []), ...globalDisabled])];
+                    }
+                }
+            } catch {
+                // Non-fatal
+            }
+        }
+
+        // Resolve skill directories: global first, then repo-local
+        const dirs: string[] = [];
+
+        // 1. Global skills (always included)
+        if (this.dataDir) {
+            const globalSkillsDir = path.join(this.dataDir, 'skills');
+            try {
+                if (fs.existsSync(globalSkillsDir)) {
+                    dirs.push(globalSkillsDir);
+                }
+            } catch {
+                // Non-fatal
+            }
+        }
+
+        // 2. Repo-local skills (workspace-specific)
         const root = workingDirectory;
         if (root) {
             const skillsDir = path.join(root, DEFAULT_SKILLS_SETTINGS.installPath);
             try {
                 if (fs.existsSync(skillsDir)) {
-                    skillDirectories = [skillsDir];
+                    dirs.push(skillsDir);
                 }
             } catch {
                 // Non-fatal: skip if path is inaccessible
             }
         }
+
+        const skillDirectories = dirs.length > 0 ? dirs : undefined;
 
         return { skillDirectories, disabledSkills };
     }

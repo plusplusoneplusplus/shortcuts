@@ -23,6 +23,7 @@ import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, inter
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
 import { gitCache } from './git-cache';
 import { registerSkillRoutes } from './skill-handler';
+import { registerGlobalSkillRoutes } from './global-skill-handler';
 import type { ProcessWebSocketServer } from './websocket';
 
 /**
@@ -1878,6 +1879,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
     // Register skill management routes
     registerSkillRoutes(routes, store, dataDir);
+
+    // Register global skill management routes
+    if (dataDir) {
+        registerGlobalSkillRoutes(routes, store, dataDir);
+    }
 }
 
 // ============================================================================

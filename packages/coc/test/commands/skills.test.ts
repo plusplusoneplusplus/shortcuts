@@ -171,3 +171,158 @@ describe('executeSkillInstall', () => {
         }
     });
 });
+
+// ============================================================================
+// Global skills (--global flag)
+// ============================================================================
+
+describe('executeSkillList --global', () => {
+    let globalDir: string;
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    let origDataDir: string | undefined;
+
+    beforeEach(() => {
+        globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-skill-list-'));
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        origDataDir = process.env.COC_DATA_DIR;
+        process.env.COC_DATA_DIR = globalDir;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        fs.rmSync(globalDir, { recursive: true, force: true });
+        if (origDataDir !== undefined) process.env.COC_DATA_DIR = origDataDir;
+        else delete process.env.COC_DATA_DIR;
+    });
+
+    it('returns 0 with no global skills message', async () => {
+        const code = await executeSkillList({ global: true });
+        expect(code).toBe(0);
+        const allText = consoleSpy.mock.calls.flat().join('\n');
+        expect(allText).toContain('No global skills installed');
+    });
+
+    it('lists global skills when installed', async () => {
+        const skillsDir = path.join(globalDir, 'skills', 'my-global');
+        fs.mkdirSync(skillsDir, { recursive: true });
+        fs.writeFileSync(path.join(skillsDir, 'SKILL.md'), '# My Global\nGlobal skill description');
+
+        const code = await executeSkillList({ global: true });
+        expect(code).toBe(0);
+        const allText = consoleSpy.mock.calls.flat().join('\n');
+        expect(allText).toContain('my-global');
+    });
+});
+
+describe('executeSkillList --all', () => {
+    let globalDir: string;
+    let workspaceDir: string;
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    let origDataDir: string | undefined;
+
+    beforeEach(() => {
+        globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-skill-all-'));
+        workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-skill-all-ws-'));
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        origDataDir = process.env.COC_DATA_DIR;
+        process.env.COC_DATA_DIR = globalDir;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        fs.rmSync(globalDir, { recursive: true, force: true });
+        fs.rmSync(workspaceDir, { recursive: true, force: true });
+        if (origDataDir !== undefined) process.env.COC_DATA_DIR = origDataDir;
+        else delete process.env.COC_DATA_DIR;
+    });
+
+    it('shows both global and repo skills', async () => {
+        // Create global skill
+        const globalSkillDir = path.join(globalDir, 'skills', 'global-skill');
+        fs.mkdirSync(globalSkillDir, { recursive: true });
+        fs.writeFileSync(path.join(globalSkillDir, 'SKILL.md'), '# Global\nGlobal desc');
+
+        // Create repo skill
+        const repoSkillDir = path.join(workspaceDir, '.github', 'skills', 'repo-skill');
+        fs.mkdirSync(repoSkillDir, { recursive: true });
+        fs.writeFileSync(path.join(repoSkillDir, 'SKILL.md'), '# Repo\nRepo desc');
+
+        const code = await executeSkillList({ all: true, workspace: workspaceDir });
+        expect(code).toBe(0);
+        const allText = consoleSpy.mock.calls.flat().join('\n');
+        expect(allText).toContain('global-skill');
+        expect(allText).toContain('repo-skill');
+        expect(allText).toContain('global');
+        expect(allText).toContain('repo');
+    });
+});
+
+describe('executeSkillDelete --global', () => {
+    let globalDir: string;
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+    let origDataDir: string | undefined;
+
+    beforeEach(() => {
+        globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-skill-del-'));
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        origDataDir = process.env.COC_DATA_DIR;
+        process.env.COC_DATA_DIR = globalDir;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        fs.rmSync(globalDir, { recursive: true, force: true });
+        if (origDataDir !== undefined) process.env.COC_DATA_DIR = origDataDir;
+        else delete process.env.COC_DATA_DIR;
+    });
+
+    it('deletes a global skill', async () => {
+        const skillDir = path.join(globalDir, 'skills', 'to-delete');
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# To Delete\nTest');
+
+        const code = await executeSkillDelete('to-delete', { global: true });
+        expect(code).toBe(0);
+        expect(fs.existsSync(skillDir)).toBe(false);
+    });
+
+    it('returns 1 when global skill does not exist', async () => {
+        fs.mkdirSync(path.join(globalDir, 'skills'), { recursive: true });
+        const code = await executeSkillDelete('nonexistent', { global: true });
+        expect(code).toBe(1);
+    });
+});
+
+describe('executeSkillInstallBundled --global', () => {
+    let globalDir: string;
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+    let origDataDir: string | undefined;
+
+    beforeEach(() => {
+        globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-skill-bundled-'));
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        origDataDir = process.env.COC_DATA_DIR;
+        process.env.COC_DATA_DIR = globalDir;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        fs.rmSync(globalDir, { recursive: true, force: true });
+        if (origDataDir !== undefined) process.env.COC_DATA_DIR = origDataDir;
+        else delete process.env.COC_DATA_DIR;
+    });
+
+    it('creates global skills directory and installs', async () => {
+        const code = await executeSkillInstallBundled([], { global: true });
+        // 0 if bundled skills exist, 1 if not — both are valid
+        expect([0, 1]).toContain(code);
+        // Global dir should have been created
+        expect(fs.existsSync(path.join(globalDir, 'skills'))).toBe(true);
+    });
+});

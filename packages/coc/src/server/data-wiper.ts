@@ -108,6 +108,10 @@ export class DataWiper {
         if (fs.existsSync(configYaml)) {
             result.preservedFiles.push(configYaml);
         }
+        const skillsDir = path.join(this.dataDir, 'skills');
+        if (fs.existsSync(skillsDir)) {
+            result.preservedFiles.push(skillsDir);
+        }
 
         if (dryRun) {
             return result;

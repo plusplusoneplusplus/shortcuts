@@ -2,14 +2,15 @@
  * Skills command group for CoC CLI.
  *
  * Provides skill management subcommands:
- *   coc skills list [--workspace <path>]
- *   coc skills install-bundled [<name>...] [--workspace <path>] [--replace]
- *   coc skills install <github-url> [--workspace <path>] [--replace] [--select <name,...>]
- *   coc skills delete <name> [--workspace <path>]
+ *   coc skills list [--workspace <path>] [--global] [--all]
+ *   coc skills install-bundled [<name>...] [--workspace <path>] [--global] [--replace]
+ *   coc skills install <github-url> [--workspace <path>] [--global] [--replace] [--select <name,...>]
+ *   coc skills delete <name> [--workspace <path>] [--global]
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import {
@@ -29,6 +30,12 @@ setLogger(consoleLogger);
 // ============================================================================
 // Helpers
 // ============================================================================
+
+function getGlobalSkillsDir(): string {
+    // COC_DATA_DIR env var is used in tests to override the default data directory
+    const dataDir = process.env.COC_DATA_DIR || path.join(os.homedir(), '.coc');
+    return path.join(dataDir, 'skills');
+}
 
 function getInstallPath(workspaceRoot: string, installPathOverride?: string): string {
     return path.join(workspaceRoot, installPathOverride || DEFAULT_SKILLS_SETTINGS.installPath);
@@ -73,9 +80,59 @@ function extractDescription(content: string): string | undefined {
 
 export interface SkillListOptions {
     workspace?: string;
+    global?: boolean;
+    all?: boolean;
 }
 
 export async function executeSkillList(options: SkillListOptions): Promise<number> {
+    // --all: show both global and repo skills
+    if (options.all) {
+        const globalDir = getGlobalSkillsDir();
+        const globalSkills = listInstalledSkills(globalDir);
+        const workspaceRoot = path.resolve(options.workspace || process.cwd());
+        const repoInstallPath = getInstallPath(workspaceRoot);
+        const repoSkills = listInstalledSkills(repoInstallPath);
+
+        if (globalSkills.length === 0 && repoSkills.length === 0) {
+            console.log('No skills installed.');
+            return 0;
+        }
+
+        const allSkills = [
+            ...globalSkills.map(s => ({ ...s, source: 'global' })),
+            ...repoSkills.map(s => ({ ...s, source: 'repo' })),
+        ];
+        const maxNameLen = Math.max(...allSkills.map(s => s.name.length), 4);
+        const maxSourceLen = 6; // 'global'
+        console.log(`All installed skills:\n`);
+        for (const skill of allSkills) {
+            const padded = skill.name.padEnd(maxNameLen + 2);
+            const src = skill.source.padEnd(maxSourceLen + 2);
+            console.log(`  ${padded}${src}${skill.description || ''}`);
+        }
+        console.log(`\n${allSkills.length} skill(s) total (${globalSkills.length} global, ${repoSkills.length} repo).`);
+        return 0;
+    }
+
+    // --global: show only global skills
+    if (options.global) {
+        const globalDir = getGlobalSkillsDir();
+        const skills = listInstalledSkills(globalDir);
+        if (skills.length === 0) {
+            console.log('No global skills installed in', globalDir);
+            return 0;
+        }
+        console.log(`Global skills in ${globalDir}/\n`);
+        const maxNameLen = Math.max(...skills.map(s => s.name.length), 4);
+        for (const skill of skills) {
+            const padded = skill.name.padEnd(maxNameLen + 2);
+            console.log(`  ${padded}${skill.description || ''}`);
+        }
+        console.log(`\n${skills.length} global skill(s) installed.`);
+        return 0;
+    }
+
+    // Default: repo-local skills
     const workspaceRoot = path.resolve(options.workspace || process.cwd());
     const installPath = getInstallPath(workspaceRoot);
     const skills = listInstalledSkills(installPath);
@@ -98,14 +155,22 @@ export async function executeSkillList(options: SkillListOptions): Promise<numbe
 export interface SkillInstallBundledOptions {
     workspace?: string;
     replace?: boolean;
+    global?: boolean;
 }
 
 export async function executeSkillInstallBundled(
     names: string[],
     options: SkillInstallBundledOptions
 ): Promise<number> {
-    const workspaceRoot = path.resolve(options.workspace || process.cwd());
-    const installPath = getInstallPath(workspaceRoot);
+    const installPath = options.global
+        ? getGlobalSkillsDir()
+        : getInstallPath(path.resolve(options.workspace || process.cwd()));
+
+    // Ensure directory exists for global installs
+    if (options.global) {
+        fs.mkdirSync(installPath, { recursive: true });
+    }
+
     const allBundled = getBundledSkills(installPath);
 
     if (allBundled.length === 0) {
@@ -141,6 +206,7 @@ export interface SkillInstallOptions {
     workspace?: string;
     replace?: boolean;
     select?: string;
+    global?: boolean;
 }
 
 export async function executeSkillInstall(
@@ -148,7 +214,14 @@ export async function executeSkillInstall(
     options: SkillInstallOptions
 ): Promise<number> {
     const workspaceRoot = path.resolve(options.workspace || process.cwd());
-    const installPath = getInstallPath(workspaceRoot);
+    const installPath = options.global
+        ? getGlobalSkillsDir()
+        : getInstallPath(workspaceRoot);
+
+    // Ensure directory exists for global installs
+    if (options.global) {
+        fs.mkdirSync(installPath, { recursive: true });
+    }
 
     const sourceResult = detectSource(githubUrl, workspaceRoot);
     if (!sourceResult.success) {
@@ -192,14 +265,16 @@ export async function executeSkillInstall(
 
 export interface SkillDeleteOptions {
     workspace?: string;
+    global?: boolean;
 }
 
 export async function executeSkillDelete(
     name: string,
     options: SkillDeleteOptions
 ): Promise<number> {
-    const workspaceRoot = path.resolve(options.workspace || process.cwd());
-    const installPath = getInstallPath(workspaceRoot);
+    const installPath = options.global
+        ? getGlobalSkillsDir()
+        : getInstallPath(path.resolve(options.workspace || process.cwd()));
     const skillPath = path.join(installPath, name);
 
     // Security: ensure skill path is within install path

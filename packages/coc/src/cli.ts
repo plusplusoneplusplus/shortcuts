@@ -169,16 +169,22 @@ export function createProgram(): Command {
 
     const skills = program
         .command('skills')
-        .description('Manage Agent Skills in .github/skills/');
+        .description('Manage Agent Skills in .github/skills/ or globally in ~/.coc/skills/');
 
     skills
         .command('list')
         .description('List installed skills')
         .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('-g, --global', 'List global skills from ~/.coc/skills/')
+        .option('-a, --all', 'List both global and repo skills')
         .option('--no-color', 'Disable colored output')
         .action(async (opts: Record<string, unknown>) => {
             applyGlobalOptions(opts, resolveConfig());
-            const exitCode = await executeSkillList({ workspace: opts.workspace as string | undefined });
+            const exitCode = await executeSkillList({
+                workspace: opts.workspace as string | undefined,
+                global: opts.global as boolean | undefined,
+                all: opts.all as boolean | undefined,
+            });
             process.exit(exitCode);
         });
 
@@ -186,6 +192,7 @@ export function createProgram(): Command {
         .command('install-bundled [names...]')
         .description('Install bundled skills')
         .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('-g, --global', 'Install to global ~/.coc/skills/ directory')
         .option('--replace', 'Replace existing skills', false)
         .option('--no-color', 'Disable colored output')
         .action(async (names: string[], opts: Record<string, unknown>) => {
@@ -193,6 +200,7 @@ export function createProgram(): Command {
             const exitCode = await executeSkillInstallBundled(names, {
                 workspace: opts.workspace as string | undefined,
                 replace: opts.replace as boolean | undefined,
+                global: opts.global as boolean | undefined,
             });
             process.exit(exitCode);
         });
@@ -201,6 +209,7 @@ export function createProgram(): Command {
         .command('install <github-url>')
         .description('Install skills from a GitHub URL')
         .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('-g, --global', 'Install to global ~/.coc/skills/ directory')
         .option('--replace', 'Replace existing skills', false)
         .option('--select <names>', 'Comma-separated list of skill names to install')
         .option('--no-color', 'Disable colored output')
@@ -210,6 +219,7 @@ export function createProgram(): Command {
                 workspace: opts.workspace as string | undefined,
                 replace: opts.replace as boolean | undefined,
                 select: opts.select as string | undefined,
+                global: opts.global as boolean | undefined,
             });
             process.exit(exitCode);
         });
@@ -218,11 +228,13 @@ export function createProgram(): Command {
         .command('delete <name>')
         .description('Delete an installed skill')
         .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
+        .option('-g, --global', 'Delete from global ~/.coc/skills/ directory')
         .option('--no-color', 'Disable colored output')
         .action(async (name: string, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts, resolveConfig());
             const exitCode = await executeSkillDelete(name, {
                 workspace: opts.workspace as string | undefined,
+                global: opts.global as boolean | undefined,
             });
             process.exit(exitCode);
         });

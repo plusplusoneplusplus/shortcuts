@@ -88,14 +88,16 @@ export function EnqueueDialog() {
             .catch(() => { /* ignore */ });
     }, [workspaceId]);
 
-    // Fetch skills when workspaceId changes
+    // Fetch skills when workspaceId changes (merged global + repo)
     useEffect(() => {
         setSkills([]);
         setSelectedSkills([]);
         if (!workspaceId) return;
-        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills')
+        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
             .then((data: any) => {
-                if (data?.skills && Array.isArray(data.skills)) {
+                if (data?.merged && Array.isArray(data.merged)) {
+                    setSkills(data.merged);
+                } else if (data?.skills && Array.isArray(data.skills)) {
                     setSkills(data.skills);
                 }
             })
@@ -318,6 +320,7 @@ export function EnqueueDialog() {
                     <div className="flex flex-wrap gap-1.5" data-testid="skill-chips">
                         {skills.map(s => {
                             const isActive = selectedSkills.includes(s.name);
+                            const source = (s as any).source;
                             return (
                                 <button
                                     key={s.name}
@@ -333,6 +336,7 @@ export function EnqueueDialog() {
                                 >
                                     <span>⚡</span>
                                     <span>{s.name}</span>
+                                    {source && <span className="opacity-60 text-[10px]">[{source}]</span>}
                                     {isActive && <span className="ml-0.5">✕</span>}
                                 </button>
                             );

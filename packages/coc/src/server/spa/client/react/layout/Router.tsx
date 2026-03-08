@@ -13,7 +13,8 @@ import { AdminPanel } from '../admin/AdminPanel';
 import { lazy, Suspense } from 'react';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
-import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab } from '../types/dashboard';
+const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -27,6 +28,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'admin') return 'admin';
     if (h === 'reports') return 'reports';
     if (h === 'memory') return 'memory';
+    if (h === 'skills') return 'skills';
     return null;
 }
 
@@ -289,6 +291,14 @@ export function Router() {
                     dispatch({ type: 'SET_MEMORY_SUB_TAB', tab: parts[1] as MemorySubTab });
                 }
             }
+
+            // Parse skills sub-tab deep links: #skills/:subTab
+            if (tab === 'skills') {
+                const parts = hash.split('/');
+                if (parts.length >= 2 && (parts[1] === 'installed' || parts[1] === 'bundled' || parts[1] === 'config')) {
+                    dispatch({ type: 'SET_SKILLS_SUB_TAB', tab: parts[1] as SkillsSubTab });
+                }
+            }
         };
         handleHash();
         window.addEventListener('hashchange', handleHash);
@@ -340,6 +350,12 @@ export function Router() {
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <MemoryView />
+                </Suspense>
+            );
+        case 'skills':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <SkillsView />
                 </Suspense>
             );
         case 'reports':

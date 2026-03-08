@@ -145,6 +145,7 @@ export {
 
 // Skill management
 export { registerSkillRoutes, sortSkillsByUsage } from './skill-handler';
+export { registerGlobalSkillRoutes } from './global-skill-handler';
 
 // Repos (file explorer)
 export * from './repos';

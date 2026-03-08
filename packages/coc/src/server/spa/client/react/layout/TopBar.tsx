@@ -15,6 +15,7 @@ export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Repos', tab: 'repos' },
     { label: 'Processes', tab: 'processes' },
     { label: 'Wiki', tab: 'wiki' },
+    { label: 'Skills', tab: 'skills' },
     { label: 'Memory', tab: 'memory' },
 ];
 

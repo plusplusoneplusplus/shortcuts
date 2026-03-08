@@ -136,6 +136,18 @@ describe('DataWiper', () => {
             expect(summary.preservedFiles).toContain(path.join(dataDir, 'config.yaml'));
         });
 
+        it('should list preserved skills directory', async () => {
+            const skillsDir = path.join(dataDir, 'skills');
+            fs.mkdirSync(skillsDir, { recursive: true });
+            fs.mkdirSync(path.join(skillsDir, 'my-skill'));
+            fs.writeFileSync(path.join(skillsDir, 'my-skill', 'SKILL.md'), '# Test');
+
+            const wiper = new DataWiper(dataDir, store);
+            const summary = await wiper.getDryRunSummary();
+
+            expect(summary.preservedFiles).toContain(skillsDir);
+        });
+
         it('should count blob files in blobs/ directory', async () => {
             const blobsDir = path.join(dataDir, 'blobs');
             fs.mkdirSync(blobsDir, { recursive: true });

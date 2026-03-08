@@ -2,11 +2,12 @@
  * Canonical type definitions for all React code.
  */
 
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'admin' | 'memory';
+export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'admin' | 'memory' | 'skills';
 export type RepoSubTab = 'info' | 'workflows' | 'tasks' | 'schedules' | 'templates' | 'git' | 'wiki' | 'copilot' | 'workflow' | 'explorer' | 'activity';
 export type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
 export type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
 export type MemorySubTab = 'entries' | 'config' | 'files';
+export type SkillsSubTab = 'installed' | 'bundled' | 'config';
 
 /** Tool call status for the SPA client (timestamps are ISO strings) */
 export interface ClientToolCall {
