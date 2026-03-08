@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Button } from '../../shared';
 import type { TaskCommentCategory } from '../../../task-comments-types';
+import { ALL_CATEGORIES, CATEGORY_INFO } from '../../../task-comments-types';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
 
@@ -50,12 +51,15 @@ export interface InlineCommentPopupProps {
 
 export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineCommentPopupProps) {
     const [text, setText] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<TaskCommentCategory>('general');
     const [clampedPos, setClampedPos] = useState(position);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const popupRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useBreakpoint();
 
     useEffect(() => {
+        setText('');
+        setSelectedCategory('general');
         textareaRef.current?.focus();
 
         if (popupRef.current) {
@@ -97,7 +101,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
     const handleSubmit = () => {
         const trimmed = text.trim();
         if (!trimmed) return;
-        onSubmit(trimmed, 'general');
+        onSubmit(trimmed, selectedCategory);
     };
 
     const popupContent = (
@@ -112,6 +116,31 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
                 rows={3}
                 data-testid="comment-textarea"
             />
+
+            {/* Category picker */}
+            <div className="flex flex-wrap gap-1" data-testid="category-picker">
+                {ALL_CATEGORIES.map(cat => {
+                    const info = CATEGORY_INFO[cat];
+                    const isSelected = cat === selectedCategory;
+                    return (
+                        <button
+                            key={cat}
+                            type="button"
+                            title={info.label}
+                            data-testid={`category-chip-${cat}`}
+                            className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] leading-tight transition-colors ${
+                                isSelected
+                                    ? 'bg-[#0078d4] text-white'
+                                    : 'text-[#848484] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'
+                            }`}
+                            onClick={() => setSelectedCategory(cat)}
+                        >
+                            <span>{info.icon}</span>
+                            <span>{info.label}</span>
+                        </button>
+                    );
+                })}
+            </div>
 
             {/* Actions */}
             <div className="flex justify-end gap-1">

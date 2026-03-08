@@ -163,4 +163,90 @@ describe('InlineCommentPopup', () => {
         const submitBtn = screen.getByText(/Submit/);
         expect(submitBtn.closest('button')?.disabled).toBe(true);
     });
+
+    it('renders category picker with all 6 categories', () => {
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+
+        expect(screen.getByTestId('category-picker')).toBeTruthy();
+        expect(screen.getByTestId('category-chip-bug')).toBeTruthy();
+        expect(screen.getByTestId('category-chip-question')).toBeTruthy();
+        expect(screen.getByTestId('category-chip-suggestion')).toBeTruthy();
+        expect(screen.getByTestId('category-chip-praise')).toBeTruthy();
+        expect(screen.getByTestId('category-chip-nitpick')).toBeTruthy();
+        expect(screen.getByTestId('category-chip-general')).toBeTruthy();
+    });
+
+    it('defaults to general category selected', () => {
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+
+        const generalChip = screen.getByTestId('category-chip-general');
+        expect(generalChip.className).toContain('bg-[#0078d4]');
+    });
+
+    it('submits with selected category', () => {
+        const onSubmit = vi.fn();
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={onSubmit}
+                onCancel={vi.fn()}
+            />
+        );
+
+        // Select 'bug' category
+        fireEvent.click(screen.getByTestId('category-chip-bug'));
+
+        // Type and submit
+        const textarea = screen.getByTestId('comment-textarea');
+        fireEvent.change(textarea, { target: { value: 'Found a bug' } });
+        fireEvent.click(screen.getByText(/Submit/));
+
+        expect(onSubmit).toHaveBeenCalledWith('Found a bug', 'bug');
+    });
+
+    it('highlights only the selected category chip', () => {
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+
+        // Click suggestion
+        fireEvent.click(screen.getByTestId('category-chip-suggestion'));
+
+        const suggestionChip = screen.getByTestId('category-chip-suggestion');
+        const generalChip = screen.getByTestId('category-chip-general');
+
+        expect(suggestionChip.className).toContain('bg-[#0078d4]');
+        expect(generalChip.className).not.toContain('bg-[#0078d4]');
+    });
+
+    it('category chips show icon and label', () => {
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+
+        const bugChip = screen.getByTestId('category-chip-bug');
+        expect(bugChip.textContent).toContain('🐛');
+        expect(bugChip.textContent).toContain('Bug');
+        expect(bugChip.getAttribute('title')).toBe('Bug');
+    });
 });
