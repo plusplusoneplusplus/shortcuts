@@ -352,3 +352,141 @@ describe('POST /api/memory/aggregate-tool-calls', () => {
         expect(typeof body.consolidatedCount).toBe('number');
     });
 });
+
+// ── Observation browsing routes ───────────────────────────────────────────────
+
+/**
+ * Helper to seed pipeline-core memory observation files at a given level.
+ * Writes .md files with YAML frontmatter directly to the raw/ directory.
+ */
+function seedObservation(
+    storageDir: string,
+    level: 'system' | 'git-remote' | 'repo',
+    hash: string | undefined,
+    pipeline: string,
+    timestamp: string,
+    content: string,
+): void {
+    let rawDir: string;
+    if (level === 'system') rawDir = path.join(storageDir, 'system', 'raw');
+    else if (level === 'git-remote') rawDir = path.join(storageDir, 'git-remotes', hash!, 'raw');
+    else rawDir = path.join(storageDir, 'repos', hash!, 'raw');
+
+    fs.mkdirSync(rawDir, { recursive: true });
+    const ts = timestamp.replace(/:/g, '-');
+    const filename = `${ts}-${pipeline}.md`;
+    const fileContent = `---\npipeline: ${pipeline}\ntimestamp: ${timestamp}\n---\n\n${content}\n`;
+    fs.writeFileSync(path.join(rawDir, filename), fileContent, 'utf-8');
+}
+
+describe('GET /api/memory/observations/levels', () => {
+    it('returns overview with global, repos, and gitRemotes', async () => {
+        const storageDir = path.join(tmpDir, 'obs-storage');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        seedObservation(storageDir, 'system', undefined, 'review', '2026-01-01T00:00:00.000Z', 'global obs');
+        seedObservation(storageDir, 'repo', 'repohash1', 'analyze', '2026-02-01T00:00:00.000Z', 'repo obs');
+        seedObservation(storageDir, 'git-remote', 'remotehash1', 'scan', '2026-03-01T00:00:00.000Z', 'remote obs');
+
+        const { status, body } = await apiGet('/api/memory/observations/levels');
+        expect(status).toBe(200);
+        expect(body.global.rawCount).toBe(1);
+        expect(body.repos).toHaveLength(1);
+        expect(body.repos[0].hash).toBe('repohash1');
+        expect(body.repos[0].rawCount).toBe(1);
+        expect(body.gitRemotes).toHaveLength(1);
+        expect(body.gitRemotes[0].hash).toBe('remotehash1');
+        expect(body.gitRemotes[0].rawCount).toBe(1);
+    });
+
+    it('returns empty arrays when no observations exist', async () => {
+        const storageDir = path.join(tmpDir, 'obs-empty');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status, body } = await apiGet('/api/memory/observations/levels');
+        expect(status).toBe(200);
+        expect(body.global.rawCount).toBe(0);
+        expect(body.repos).toEqual([]);
+        expect(body.gitRemotes).toEqual([]);
+    });
+});
+
+describe('GET /api/memory/observations', () => {
+    it('lists files at system level', async () => {
+        const storageDir = path.join(tmpDir, 'obs-list');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedObservation(storageDir, 'system', undefined, 'p1', '2026-01-01T00:00:00.000Z', 'obs1');
+        seedObservation(storageDir, 'system', undefined, 'p2', '2026-02-01T00:00:00.000Z', 'obs2');
+
+        const { status, body } = await apiGet('/api/memory/observations?level=system');
+        expect(status).toBe(200);
+        expect(body.files).toHaveLength(2);
+        expect(body.level).toBe('system');
+    });
+
+    it('lists files at git-remote level', async () => {
+        const storageDir = path.join(tmpDir, 'obs-list-remote');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedObservation(storageDir, 'git-remote', 'rhash', 'scan', '2026-01-01T00:00:00.000Z', 'remote obs');
+
+        const { status, body } = await apiGet('/api/memory/observations?level=git-remote&hash=rhash');
+        expect(status).toBe(200);
+        expect(body.files).toHaveLength(1);
+        expect(body.level).toBe('git-remote');
+    });
+
+    it('returns 400 for invalid level', async () => {
+        const storageDir = path.join(tmpDir, 'obs-bad-level');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status } = await apiGet('/api/memory/observations?level=invalid');
+        expect(status).toBe(400);
+    });
+});
+
+describe('GET /api/memory/observations/:filename', () => {
+    it('reads a single observation file', async () => {
+        const storageDir = path.join(tmpDir, 'obs-single');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedObservation(storageDir, 'system', undefined, 'review', '2026-05-01T00:00:00.000Z', 'found an issue');
+
+        // First get the filename
+        const { body: listBody } = await apiGet('/api/memory/observations?level=system');
+        const filename = listBody.files[0];
+
+        const { status, body } = await apiGet(`/api/memory/observations/${encodeURIComponent(filename)}?level=system`);
+        expect(status).toBe(200);
+        expect(body.metadata.pipeline).toBe('review');
+        expect(body.content).toBe('found an issue');
+    });
+
+    it('reads consolidated memory', async () => {
+        const storageDir = path.join(tmpDir, 'obs-consolidated');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        // Write a consolidated.md
+        const consolidatedDir = path.join(storageDir, 'system');
+        fs.mkdirSync(consolidatedDir, { recursive: true });
+        fs.writeFileSync(path.join(consolidatedDir, 'consolidated.md'), '# Facts\n- Fact 1', 'utf-8');
+
+        const { status, body } = await apiGet('/api/memory/observations/consolidated?level=system');
+        expect(status).toBe(200);
+        expect(body.content).toContain('Fact 1');
+    });
+
+    it('returns 404 for non-existent file', async () => {
+        const storageDir = path.join(tmpDir, 'obs-404');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status } = await apiGet('/api/memory/observations/nonexistent.md?level=system');
+        expect(status).toBe(404);
+    });
+
+    it('returns 400 for invalid level', async () => {
+        const storageDir = path.join(tmpDir, 'obs-bad');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status } = await apiGet('/api/memory/observations/file.md?level=invalid');
+        expect(status).toBe(400);
+    });
+});

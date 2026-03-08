@@ -20,6 +20,7 @@ import {
     MemoryIndex,
     MemoryStats,
     RepoInfo,
+    GitRemoteInfo,
 } from './types';
 
 /** Compute a stable 16-char hex hash for a repository root path. */
@@ -35,12 +36,14 @@ export class FileMemoryStore implements MemoryStore {
     private readonly dataDir: string;
     private readonly systemDir: string;
     private readonly reposDir: string;
+    private readonly gitRemotesDir: string;
     private writeQueue: Promise<void>;
 
     constructor(options?: MemoryStoreOptions) {
         this.dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
         this.systemDir = path.join(this.dataDir, 'system');
         this.reposDir = path.join(this.dataDir, 'repos');
+        this.gitRemotesDir = path.join(this.dataDir, 'git-remotes');
         this.writeQueue = Promise.resolve();
     }
 
@@ -65,6 +68,10 @@ export class FileMemoryStore implements MemoryStore {
         return path.join(this.reposDir, repoHash);
     }
 
+    getGitRemoteDir(remoteHash: string): string {
+        return path.join(this.gitRemotesDir, remoteHash);
+    }
+
     computeRepoHash(repoPath: string): string {
         return computeRepoHash(repoPath);
     }
@@ -78,6 +85,9 @@ export class FileMemoryStore implements MemoryStore {
         }
         if ((level === 'repo' || level === 'both') && repoHash) {
             await fs.mkdir(path.join(this.reposDir, repoHash, 'raw'), { recursive: true });
+        }
+        if (level === 'git-remote' && repoHash) {
+            await fs.mkdir(path.join(this.gitRemotesDir, repoHash, 'raw'), { recursive: true });
         }
     }
 
@@ -136,6 +146,9 @@ export class FileMemoryStore implements MemoryStore {
         if (level === 'repo' && repoHash) {
             return path.join(this.reposDir, repoHash, 'raw');
         }
+        if (level === 'git-remote' && repoHash) {
+            return path.join(this.gitRemotesDir, repoHash, 'raw');
+        }
         return path.join(this.systemDir, 'raw');
     }
 
@@ -163,6 +176,9 @@ export class FileMemoryStore implements MemoryStore {
             if ((level === 'repo' || level === 'both') && repoHash) {
                 await writeTo(path.join(this.reposDir, repoHash, 'raw'));
             }
+            if (level === 'git-remote' && repoHash) {
+                await writeTo(path.join(this.gitRemotesDir, repoHash, 'raw'));
+            }
         });
 
         return filename;
@@ -189,6 +205,9 @@ export class FileMemoryStore implements MemoryStore {
         if ((level === 'repo' || level === 'both') && repoHash) {
             results.push(...await readDir(path.join(this.reposDir, repoHash, 'raw')));
         }
+        if (level === 'git-remote' && repoHash) {
+            results.push(...await readDir(path.join(this.gitRemotesDir, repoHash, 'raw')));
+        }
 
         // Deduplicate (both level may share filenames) and sort newest first
         const unique = [...new Set(results)];
@@ -205,6 +224,9 @@ export class FileMemoryStore implements MemoryStore {
         const dirs: string[] = [];
         if (level === 'repo' || level === 'both') {
             if (repoHash) dirs.push(path.join(this.reposDir, repoHash, 'raw'));
+        }
+        if (level === 'git-remote') {
+            if (repoHash) dirs.push(path.join(this.gitRemotesDir, repoHash, 'raw'));
         }
         if (level === 'system' || level === 'both') {
             dirs.push(path.join(this.systemDir, 'raw'));
@@ -248,6 +270,11 @@ export class FileMemoryStore implements MemoryStore {
                     deleted = true;
                 }
             }
+            if (level === 'git-remote' && repoHash) {
+                if (await tryDelete(path.join(this.gitRemotesDir, repoHash, 'raw'))) {
+                    deleted = true;
+                }
+            }
         });
         return deleted;
     }
@@ -263,11 +290,18 @@ export class FileMemoryStore implements MemoryStore {
 
     // --- Consolidated memory ---
 
+    /** Resolve the base directory for a given level + hash. */
+    private levelDir(level: MemoryLevel, hash?: string): string {
+        if (level === 'git-remote' && hash) return this.getGitRemoteDir(hash);
+        if (level === 'repo' && hash) return this.getRepoDir(hash);
+        return this.getSystemDir();
+    }
+
     async readConsolidated(
         level: MemoryLevel,
         repoHash?: string,
     ): Promise<string | null> {
-        const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+        const dir = this.levelDir(level, repoHash);
         const filePath = path.join(dir, 'consolidated.md');
         try {
             return await fs.readFile(filePath, 'utf-8');
@@ -282,7 +316,7 @@ export class FileMemoryStore implements MemoryStore {
         repoHash?: string,
     ): Promise<void> {
         return this.enqueueWrite(async () => {
-            const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+            const dir = this.levelDir(level, repoHash);
             const filePath = path.join(dir, 'consolidated.md');
             await this.atomicWrite(filePath, content);
         });
@@ -294,7 +328,7 @@ export class FileMemoryStore implements MemoryStore {
         level: MemoryLevel,
         repoHash: string | undefined,
     ): Promise<MemoryIndex> {
-        const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+        const dir = this.levelDir(level, repoHash);
         const filePath = path.join(dir, 'index.json');
         try {
             const data = await fs.readFile(filePath, 'utf-8');
@@ -312,7 +346,7 @@ export class FileMemoryStore implements MemoryStore {
         return this.enqueueWrite(async () => {
             const existing = await this.readIndex(level, repoHash);
             const merged: MemoryIndex = { ...existing, ...updates };
-            const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+            const dir = this.levelDir(level, repoHash);
             const filePath = path.join(dir, 'index.json');
             await this.atomicWrite(filePath, JSON.stringify(merged, null, 2));
         });
@@ -344,6 +378,41 @@ export class FileMemoryStore implements MemoryStore {
         });
     }
 
+    // --- Git remote info ---
+
+    async getGitRemoteInfo(remoteHash: string): Promise<GitRemoteInfo | null> {
+        const dir = this.getGitRemoteDir(remoteHash);
+        const filePath = path.join(dir, 'remote-info.json');
+        try {
+            const data = await fs.readFile(filePath, 'utf-8');
+            return JSON.parse(data) as GitRemoteInfo;
+        } catch {
+            return null;
+        }
+    }
+
+    async updateGitRemoteInfo(remoteHash: string, info: Partial<GitRemoteInfo>): Promise<void> {
+        return this.enqueueWrite(async () => {
+            const existing = await this.getGitRemoteInfo(remoteHash);
+            const merged: GitRemoteInfo = {
+                remoteUrl: '', name: '', lastAccessed: new Date().toISOString(),
+                ...existing, ...info,
+            };
+            const dir = this.getGitRemoteDir(remoteHash);
+            const filePath = path.join(dir, 'remote-info.json');
+            await this.atomicWrite(filePath, JSON.stringify(merged, null, 2));
+        });
+    }
+
+    async listGitRemotes(): Promise<string[]> {
+        try {
+            const entries = await fs.readdir(this.gitRemotesDir, { withFileTypes: true });
+            return entries.filter(e => e.isDirectory()).map(e => e.name);
+        } catch {
+            return [];
+        }
+    }
+
     // --- Management ---
 
     async clear(
@@ -352,7 +421,7 @@ export class FileMemoryStore implements MemoryStore {
         rawOnly?: boolean,
     ): Promise<void> {
         return this.enqueueWrite(async () => {
-            const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+            const dir = this.levelDir(level, repoHash);
             if (rawOnly) {
                 const rawDir = path.join(dir, 'raw');
                 try {
@@ -375,7 +444,7 @@ export class FileMemoryStore implements MemoryStore {
         level: MemoryLevel,
         repoHash?: string,
     ): Promise<MemoryStats> {
-        const dir = level === 'system' ? this.getSystemDir() : this.getRepoDir(repoHash!);
+        const dir = this.levelDir(level, repoHash);
         const rawDir = path.join(dir, 'raw');
 
         let rawCount = 0;

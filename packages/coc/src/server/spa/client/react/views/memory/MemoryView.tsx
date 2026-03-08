@@ -10,9 +10,11 @@ import { cn } from '../../shared/cn';
 import type { MemorySubTab } from '../../types/dashboard';
 import { MemoryEntriesPanel } from './MemoryEntriesPanel';
 import { MemoryConfigPanel } from './MemoryConfigPanel';
+import { MemoryFilesPanel } from './MemoryFilesPanel';
 
 const SUB_TABS: { id: MemorySubTab; label: string }[] = [
     { id: 'entries', label: 'Entries' },
+    { id: 'files', label: 'Files' },
     { id: 'config', label: 'Config' },
 ];
 
@@ -49,6 +51,7 @@ export function MemoryView() {
             {/* Sub-tab content */}
             <div className="flex-1 overflow-auto">
                 {activeSubTab === 'entries' && <MemoryEntriesPanel />}
+                {activeSubTab === 'files' && <MemoryFilesPanel />}
                 {activeSubTab === 'config' && <MemoryConfigPanel />}
             </div>
         </div>

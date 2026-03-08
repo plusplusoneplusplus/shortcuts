@@ -309,4 +309,102 @@ describe('FileMemoryStore', () => {
             expect(defaultStore.getSystemDir()).toBe(path.join(expectedBase, 'system'));
         });
     });
+
+    // --- git-remote level ---
+
+    describe('git-remote level', () => {
+        it('getGitRemoteDir returns correct path', () => {
+            expect(store.getGitRemoteDir('abc123')).toBe(path.join(tmpDir, 'git-remotes', 'abc123'));
+        });
+
+        it('ensureStorageLayout creates git-remotes/<hash>/raw/ directory', async () => {
+            await store.ensureStorageLayout('git-remote', 'remotehash1');
+            const stat = await fs.stat(path.join(tmpDir, 'git-remotes', 'remotehash1', 'raw'));
+            expect(stat.isDirectory()).toBe(true);
+        });
+
+        it('writeRaw / readRaw roundtrips for git-remote level', async () => {
+            const meta: RawObservationMetadata = {
+                pipeline: 'review',
+                timestamp: '2026-03-01T10:00:00.000Z',
+                repo: 'org/shared-repo',
+            };
+            const hash = 'remotehash1';
+            const filename = await store.writeRaw('git-remote', hash, meta, 'remote observation');
+            const obs = await store.readRaw('git-remote', hash, filename);
+            expect(obs).toBeDefined();
+            expect(obs!.metadata.pipeline).toBe('review');
+            expect(obs!.content).toBe('remote observation');
+        });
+
+        it('git-remote files are isolated from system and repo levels', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-01-01T00:00:00.000Z' };
+            await store.writeRaw('git-remote', 'rhash', meta, 'remote only');
+
+            const sysList = await store.listRaw('system', undefined);
+            const repoList = await store.listRaw('repo', 'rhash');
+            const remoteList = await store.listRaw('git-remote', 'rhash');
+            expect(sysList).toEqual([]);
+            expect(repoList).toEqual([]);
+            expect(remoteList).toHaveLength(1);
+        });
+
+        it('deleteRaw removes file at git-remote level', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-02-01T00:00:00.000Z' };
+            const filename = await store.writeRaw('git-remote', 'rhash', meta, 'to delete');
+            const deleted = await store.deleteRaw('git-remote', 'rhash', filename);
+            expect(deleted).toBe(true);
+            expect(await store.listRaw('git-remote', 'rhash')).toEqual([]);
+        });
+
+        it('consolidated roundtrips for git-remote level', async () => {
+            await store.writeConsolidated('git-remote', '# Remote facts', 'rhash');
+            const content = await store.readConsolidated('git-remote', 'rhash');
+            expect(content).toBe('# Remote facts');
+        });
+
+        it('getStats works for git-remote level', async () => {
+            const meta: RawObservationMetadata = { pipeline: 'p', timestamp: '2026-01-01T00:00:00.000Z' };
+            await store.writeRaw('git-remote', 'rhash', meta, 'obs');
+            const stats = await store.getStats('git-remote', 'rhash');
+            expect(stats.rawCount).toBe(1);
+            expect(stats.consolidatedExists).toBe(false);
+        });
+
+        it('listGitRemotes returns remote hash directories', async () => {
+            await store.writeRaw('git-remote', 'remote1', { pipeline: 'p', timestamp: '2026-01-01T00:00:00.000Z' }, 'a');
+            await store.writeRaw('git-remote', 'remote2', { pipeline: 'p', timestamp: '2026-02-01T00:00:00.000Z' }, 'b');
+            const remotes = await store.listGitRemotes();
+            expect(remotes.sort()).toEqual(['remote1', 'remote2']);
+        });
+
+        it('listGitRemotes returns empty array when no remotes exist', async () => {
+            const remotes = await store.listGitRemotes();
+            expect(remotes).toEqual([]);
+        });
+
+        it('getGitRemoteInfo / updateGitRemoteInfo roundtrips', async () => {
+            await store.updateGitRemoteInfo('rhash', {
+                remoteUrl: 'https://github.com/org/repo',
+                name: 'org/repo',
+            });
+            const info = await store.getGitRemoteInfo('rhash');
+            expect(info).not.toBeNull();
+            expect(info!.remoteUrl).toBe('https://github.com/org/repo');
+            expect(info!.name).toBe('org/repo');
+            expect(info!.lastAccessed).toBeDefined();
+        });
+
+        it('getGitRemoteInfo returns null for unregistered remote', async () => {
+            const info = await store.getGitRemoteInfo('nonexistent');
+            expect(info).toBeNull();
+        });
+
+        it('clear removes git-remote directory', async () => {
+            await store.writeRaw('git-remote', 'rhash', { pipeline: 'p', timestamp: '2026-01-01T00:00:00.000Z' }, 'obs');
+            await store.clear('git-remote', 'rhash');
+            const list = await store.listRaw('git-remote', 'rhash');
+            expect(list).toEqual([]);
+        });
+    });
 });

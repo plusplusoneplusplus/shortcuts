@@ -82,6 +82,19 @@ export interface RepoInfo {
     lastAccessed: string;
 }
 
+/**
+ * Maps 1:1 to `remote-info.json` inside each `git-remotes/<hash>/` directory.
+ * Identifies a tracked git remote.
+ */
+export interface GitRemoteInfo {
+    /** Normalised remote URL (e.g. "https://github.com/owner/repo") */
+    remoteUrl: string;
+    /** Human-readable name derived from URL (e.g. "owner/repo") */
+    name: string;
+    /** ISO 8601 timestamp of last memory access for this remote */
+    lastAccessed: string;
+}
+
 // ---------------------------------------------------------------------------
 // Configuration types
 // ---------------------------------------------------------------------------
@@ -89,11 +102,12 @@ export interface RepoInfo {
 /**
  * String-literal union for the two memory isolation levels plus both.
  *
- * - `'repo'`   — per-repository memory under `repos/<hash>/`
- * - `'system'` — global memory under `system/`
- * - `'both'`   — operate on both levels
+ * - `'repo'`       — per-repository memory under `repos/<hash>/`
+ * - `'system'`     — global memory under `system/`
+ * - `'git-remote'` — per-git-remote memory under `git-remotes/<hash>/`
+ * - `'both'`       — operate on both system and repo levels
  */
-export type MemoryLevel = 'repo' | 'system' | 'both';
+export type MemoryLevel = 'repo' | 'system' | 'git-remote' | 'both';
 
 /**
  * Schema for the `memory` field in pipeline YAML.
@@ -217,6 +231,17 @@ export interface MemoryStore {
     /** Compute a stable hash for a repository root path. Pure function (no I/O). */
     computeRepoHash(repoPath: string): string;
 
+    // --- Git remote info ---
+
+    /** Get git remote info for a remote hash. Returns null if not registered. */
+    getGitRemoteInfo(remoteHash: string): Promise<GitRemoteInfo | null>;
+
+    /** Create or update git remote info for a remote hash (partial merge). */
+    updateGitRemoteInfo(remoteHash: string, info: Partial<GitRemoteInfo>): Promise<void>;
+
+    /** List all git remote hashes that have memory stored. */
+    listGitRemotes(): Promise<string[]>;
+
     // --- Management ---
 
     /** Clear memory at the given level. If rawOnly=true, keeps consolidated.md and index.json. */
@@ -235,4 +260,7 @@ export interface MemoryStore {
 
     /** Get the absolute path to a repo's memory directory. */
     getRepoDir(repoHash: string): string;
+
+    /** Get the absolute path to a git remote's memory directory. */
+    getGitRemoteDir(remoteHash: string): string;
 }

@@ -9,6 +9,7 @@ export type {
     ConsolidatedMemory,
     MemoryIndex,
     RepoInfo,
+    GitRemoteInfo,
     MemoryLevel,
     MemoryConfig,
     MemoryStoreOptions,
