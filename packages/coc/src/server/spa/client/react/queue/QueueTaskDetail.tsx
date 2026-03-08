@@ -277,7 +277,7 @@ export function QueueTaskDetail({ onBack }: { onBack?: () => void } = {}) {
     useEffect(() => {
         if (!selectedTaskId || loading) return;
         const el = document.getElementById('queue-task-conversation');
-        if (el) el.scrollTop = el.scrollHeight;
+        if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     }, [selectedTaskId, loading]);
 
     // Track scroll position for scroll-to-bottom button.

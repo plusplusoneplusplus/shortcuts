@@ -50,6 +50,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
     const lastRefreshVersionRef = useRef(0);
+    const isInitialLoadRef = useRef(true);
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const { isMobile } = useBreakpoint();
@@ -108,6 +109,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
 
     // Load task + conversation on mount / taskId change
     useEffect(() => {
+        isInitialLoadRef.current = true;
         const loadId = ++loadCounterRef.current;
         setLoading(true);
         setError(null);
@@ -263,8 +265,14 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     useEffect(() => {
         if (!loading && turns.length > 0 && conversationContainerRef.current) {
             const el = conversationContainerRef.current;
-            const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-            if (dist < 100) el.scrollTop = el.scrollHeight;
+            if (isInitialLoadRef.current) {
+                // Force scroll to bottom when a task is first selected
+                isInitialLoadRef.current = false;
+                requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+            } else {
+                const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+                if (dist < 100) el.scrollTop = el.scrollHeight;
+            }
         }
     }, [turns, loading]);
 

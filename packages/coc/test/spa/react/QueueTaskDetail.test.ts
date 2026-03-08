@@ -284,6 +284,14 @@ describe('QueueTaskDetail', () => {
             // Must NOT include the near-bottom guard from the streaming effect
             expect(taskSelectSection).not.toContain('distFromBottom < 100');
         });
+
+        it('uses requestAnimationFrame for reliable scroll timing', () => {
+            const taskSelectSection = source.substring(
+                source.indexOf('Scroll to bottom when a new task is selected'),
+                source.indexOf('[selectedTaskId, loading]') + 30,
+            );
+            expect(taskSelectSection).toContain('requestAnimationFrame');
+        });
     });
 
     describe('hoverable file paths', () => {
