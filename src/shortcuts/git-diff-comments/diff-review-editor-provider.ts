@@ -627,6 +627,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 }
                 break;
 
+            case 'aiResolveComment':
+                if (message.commentId) {
+                    await this.handleAIResolveComment(message.commentId, relativeFilePath, gitContext, oldContent, newContent, panel);
+                }
+                break;
+
             case 'reopenComment':
                 if (message.commentId) {
                     await this.commentsManager.reopenComment(message.commentId);
@@ -857,6 +863,74 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     vscode.env.clipboard.writeText(result.clarification!);
                 }
             });
+        }
+    }
+
+    /**
+     * Handle AI resolve comment request from the webview.
+     * Sends the comment + code context to AI, adds AI response as a new comment,
+     * and resolves the original comment.
+     */
+    private async handleAIResolveComment(
+        commentId: string,
+        filePath: string,
+        gitContext: DiffGitContext,
+        oldContent: string,
+        newContent: string,
+        panel: vscode.WebviewPanel
+    ): Promise<void> {
+        const comment = this.commentsManager.getComment(commentId);
+        if (!comment) {
+            vscode.window.showErrorMessage('Comment not found.');
+            return;
+        }
+
+        const workspaceRoot = gitContext.repositoryRoot;
+
+        // Build clarification context from the comment
+        const startLine = comment.selection.newStartLine ?? comment.selection.oldStartLine ?? 1;
+        const endLine = comment.selection.newEndLine ?? comment.selection.oldEndLine ?? startLine;
+
+        const clarificationContext: DiffClarificationContext = {
+            selectedText: comment.selectedText,
+            selectionRange: { startLine, endLine },
+            side: comment.selection.side,
+            filePath,
+            surroundingContent: '',
+            instructionType: 'custom',
+            customInstruction: `Please resolve this code review comment by providing a fix or explanation.\n\nComment: "${comment.comment}"\n\nCode under review:`
+        };
+
+        const result = await handleDiffAIClarification(clarificationContext, workspaceRoot, this.aiProcessManager);
+
+        if (result.success && result.clarification) {
+            // Add AI response as a comment on the same selection ('both' uses newContent, matching handleAskAI)
+            const content = comment.selection.side === 'old' ? oldContent : newContent;
+            await this.commentsManager.addComment(
+                filePath,
+                comment.selection,
+                comment.selectedText,
+                `🤖 **AI Resolution:**\n\n${result.clarification}`,
+                gitContext,
+                content,
+                undefined,
+                undefined,
+                'ai-suggestion'
+            );
+
+            // Resolve the original comment
+            await this.commentsManager.resolveComment(commentId);
+
+            vscode.window.showInformationMessage(
+                'AI resolved the comment.',
+                'Copy to Clipboard'
+            ).then(action => {
+                if (action === 'Copy to Clipboard') {
+                    vscode.env.clipboard.writeText(result.clarification!);
+                }
+            });
+        } else {
+            vscode.window.showErrorMessage(result.error || 'AI failed to resolve the comment.');
         }
     }
 

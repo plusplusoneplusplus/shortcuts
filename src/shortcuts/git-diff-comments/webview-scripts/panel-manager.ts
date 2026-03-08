@@ -9,7 +9,7 @@
 import { AICommandMode, AskAIContext, DiffComment, DiffSide, PromptFileInfo, SelectionState, SerializedAICommand, SerializedAIMenuConfig, SerializedPredefinedComment, SkillInfo } from './types';
 import { endInteraction, getState, setCommentPanelOpen, setEditingCommentId, startInteraction } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
-import { requestPromptFiles, requestSkills, sendAddComment, sendAskAI, sendAskAIInteractive, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
+import { requestPromptFiles, requestSkills, sendAddComment, sendAIResolveComment, sendAskAI, sendAskAIInteractive, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
 import {
     calculateBubbleDimensions,
     DEFAULT_RESIZE_CONSTRAINTS,
@@ -547,6 +547,12 @@ function renderCommentBubbleContent(comment: DiffComment): string {
         ? '<button class="bubble-action-btn" data-action="resolve" title="Resolve">✅</button>'
         : '<button class="bubble-action-btn" data-action="reopen" title="Reopen">🔄</button>';
 
+    // AI Resolve button: only for open user comments when AI is enabled
+    const state = getState();
+    const aiResolveBtn = comment.status === 'open' && (!comment.type || comment.type === 'user') && state.settings.askAIEnabled
+        ? '<button class="bubble-action-btn" data-action="aiResolve" title="AI Resolve">🤖</button>'
+        : '';
+
     // Line range info
     const startLine = comment.selection.newStartLine ?? comment.selection.oldStartLine ?? 0;
     const endLine = comment.selection.newEndLine ?? comment.selection.oldEndLine ?? startLine;
@@ -569,6 +575,7 @@ function renderCommentBubbleContent(comment: DiffComment): string {
         <span class="status ${comment.status}">${statusLabel}</span>
         ${typeBadge}</div>
         <div class="bubble-actions">
+        ${aiResolveBtn}
         ${resolveBtn}
         <button class="bubble-action-btn" data-action="edit" title="Edit">✏️</button>
         <button class="bubble-action-btn" data-action="delete" title="Delete">🗑️</button>
@@ -602,6 +609,10 @@ function setupBubbleActions(bubble: HTMLElement, comment: DiffComment): void {
             switch (action) {
                 case 'resolve':
                     sendResolveComment(comment.id);
+                    closeActiveCommentBubble();
+                    break;
+                case 'aiResolve':
+                    sendAIResolveComment(comment.id);
                     closeActiveCommentBubble();
                     break;
                 case 'reopen':
@@ -830,6 +841,20 @@ function createCommentElement(comment: DiffComment): HTMLElement {
     
     // Resolve/Reopen button
     if (comment.status === 'open') {
+        // AI Resolve button: only for open user comments when AI is enabled
+        const state = getState();
+        if ((!comment.type || comment.type === 'user') && state.settings.askAIEnabled) {
+            const aiResolveBtn = document.createElement('button');
+            aiResolveBtn.className = 'bubble-action-btn';
+            aiResolveBtn.title = 'AI Resolve';
+            aiResolveBtn.textContent = '🤖';
+            aiResolveBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sendAIResolveComment(comment.id);
+            });
+            headerActions.appendChild(aiResolveBtn);
+        }
+
         const resolveBtn = document.createElement('button');
         resolveBtn.className = 'bubble-action-btn';
         resolveBtn.title = 'Resolve';

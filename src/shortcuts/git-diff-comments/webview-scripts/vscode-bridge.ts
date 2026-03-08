@@ -148,6 +148,16 @@ export function sendResolveComment(commentId: string): void {
 }
 
 /**
+ * Send AI resolve comment request - asks AI to resolve the comment
+ */
+export function sendAIResolveComment(commentId: string): void {
+    postMessage({
+        type: 'aiResolveComment',
+        commentId
+    });
+}
+
+/**
  * Send reopen comment request
  */
 export function sendReopenComment(commentId: string): void {

@@ -338,7 +338,7 @@ export interface DiffAskAIContext {
  */
 export interface DiffWebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'askAIInteractive' | 'saveContent' | 'contentModified' | 'pinTab' | 'requestPromptFiles' | 'requestSkills';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'askAIInteractive' | 'aiResolveComment' | 'saveContent' | 'contentModified' | 'pinTab' | 'requestPromptFiles' | 'requestSkills';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
