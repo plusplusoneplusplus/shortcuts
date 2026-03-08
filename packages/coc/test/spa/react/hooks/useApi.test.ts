@@ -29,8 +29,8 @@ describe('useApi — fetchApi', () => {
     });
 
     it('forwards options to fetch() only when provided', () => {
-        // When options are provided, fetch is called with two args
-        expect(source).toMatch(/options \? await fetch\(url, options\) : await fetch\(url\)/);
+        // Options are passed to fetch (empty object when not provided)
+        expect(source).toMatch(/fetch\(url,\s*options\s*\?\?\s*\{\}\)/);
     });
 
     it('throws on non-ok responses', () => {

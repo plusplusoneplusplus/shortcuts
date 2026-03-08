@@ -215,9 +215,8 @@ describe('MarkdownReviewEditor', () => {
             expect(document.querySelector('#task-preview-body')).toBeTruthy();
         });
 
-        expect(fetchSpy).toHaveBeenCalledWith(
-            expect.stringContaining('/files/preview?')
-        );
+        expect(fetchSpy).toHaveBeenNthCalledWith(1, expect.stringContaining('/tasks/content?'), expect.anything());
+        expect(fetchSpy).toHaveBeenNthCalledWith(2, expect.stringContaining('/files/preview?'), expect.anything());
     });
 
     // ── Context menu AI submenu tests ──

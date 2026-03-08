@@ -164,7 +164,8 @@ describe('enable last disabled server', () => {
 describe('PUT failure', () => {
     it('reverts toggle and shows error on PUT failure', async () => {
         mockFetchApi
-            .mockResolvedValueOnce(twoServers) // GET
+            .mockResolvedValueOnce(twoServers) // GET mcp-config
+            .mockResolvedValueOnce({ disabledSkills: [] }) // GET skills-config
             .mockRejectedValueOnce(new Error('Network error')); // PUT fails
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
