@@ -26,7 +26,7 @@ import * as fs from 'fs';
 // ============================================================================
 
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TASK_TYPES: Set<string> = new Set(['chat', 'run-workflow', 'run-script']);
+const VALID_TASK_TYPES: Set<string> = new Set(['chat', 'run-workflow', 'run-script', 'custom']);
 
 /** Human-readable labels for task types, used when auto-generating display names. */
 const TYPE_LABELS: Record<string, string> = {
@@ -155,7 +155,7 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
 
     // Ensure chat payloads carry kind:'chat' and a valid mode so downstream
     // isChatPayload() guards match (e.g. extractPrompt, toAgentMode).
-    if (taskSpec.type === 'chat') {
+    if (taskSpec.type === 'chat' || taskSpec.type === 'custom') {
         if (!payload.kind) payload.kind = 'chat';
         if (!payload.mode) payload.mode = 'autopilot';
     }
@@ -164,6 +164,11 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
     if (typeof taskSpec.prompt === 'string' && taskSpec.prompt.trim()
         && !payload.prompt) {
         payload.prompt = taskSpec.prompt.trim();
+    }
+
+    // Promote nested data.prompt into payload when not already present (used by custom tasks)
+    if (!payload.prompt && payload.data && typeof (payload.data as any).prompt === 'string') {
+        payload.prompt = (payload.data as any).prompt;
     }
 
     // Promote top-level workingDirectory into payload when not already present

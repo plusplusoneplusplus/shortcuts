@@ -40,7 +40,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
     const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
     const [resolvedPath, setResolvedPath] = useState(taskPath);
-    const [prompt, setPrompt] = useState('');
+    const [prompt, setPrompt] = useState(`Update the document at "${taskPath}" `);
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
@@ -66,13 +66,18 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 ? toForwardSlashes(taskBase + '/' + taskPath)
                 : taskPath;
             setResolvedPath(full);
+            setPrompt(prev => {
+                // Only auto-update the prompt if user hasn't edited it
+                const oldDefault = `Update the document at "${taskPath}" `;
+                const curDefault = prev.startsWith('Update the document at "') && prev.endsWith('" ');
+                if (prev === '' || prev === oldDefault || curDefault) {
+                    return `Update the document at "${full}" `;
+                }
+                return prev;
+            });
         });
         return () => { cancelled = true; };
     }, [selectedWsId, taskPath, state.workspaces]);
-
-    useEffect(() => {
-        setPrompt(`Update the document at "${resolvedPath}" `);
-    }, [resolvedPath]);
 
     const handleSubmit = useCallback(async () => {
         if (!prompt.trim()) return;

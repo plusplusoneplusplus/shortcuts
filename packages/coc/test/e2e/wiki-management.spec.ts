@@ -251,6 +251,7 @@ test.describe('Delete wiki via REST API', () => {
             expect(res.status).toBe(200);
 
             // Reload to see updated state
+            await page.reload();
             await page.goto(serverUrl + '#wiki');
 
             // No wiki cards should remain
