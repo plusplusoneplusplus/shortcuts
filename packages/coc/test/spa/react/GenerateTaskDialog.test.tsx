@@ -69,6 +69,7 @@ beforeEach(() => {
     mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn());
     mockUsePreferences.mockReturnValue({
         model: '',
+        models: { task: '', ask: '', plan: '' },
         setModel: mockPersistModel,
         depth: '',
         setDepth: mockPersistDepth,
@@ -459,9 +460,12 @@ describe('GenerateTaskDialog', () => {
     it('restores saved model from preferences on mount', async () => {
         mockUsePreferences.mockReturnValue({
             model: 'gpt-4',
+            models: { task: 'gpt-4', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
             loaded: true,
         });
 
@@ -532,16 +536,19 @@ describe('GenerateTaskDialog', () => {
         const select = document.getElementById('gen-task-model') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: 'claude-3' } });
 
-        expect(mockPersistModel).toHaveBeenCalledWith('claude-3');
+        expect(mockPersistModel).toHaveBeenCalledWith('task', 'claude-3');
         expect(select.value).toBe('claude-3');
     });
 
     it('persists empty string when user selects Default model', async () => {
         mockUsePreferences.mockReturnValue({
             model: 'gpt-4',
+            models: { task: 'gpt-4', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
             loaded: true,
         });
 
@@ -579,7 +586,7 @@ describe('GenerateTaskDialog', () => {
         const select = document.getElementById('gen-task-model') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: '' } });
 
-        expect(mockPersistModel).toHaveBeenCalledWith('');
+        expect(mockPersistModel).toHaveBeenCalledWith('task', '');
         expect(select.value).toBe('');
     });
 
@@ -588,9 +595,12 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
         mockUsePreferences.mockReturnValue({
             model: 'claude-3',
+            models: { task: 'claude-3', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
             loaded: true,
         });
 
@@ -640,9 +650,12 @@ describe('GenerateTaskDialog', () => {
     it('does not override user-selected model when preferences load later', async () => {
         mockUsePreferences.mockReturnValue({
             model: '',
+            models: { task: '', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
             loaded: true,
         });
 
@@ -686,9 +699,12 @@ describe('GenerateTaskDialog', () => {
         // Simulate preferences loading with a different saved model
         mockUsePreferences.mockReturnValue({
             model: 'claude-3',
+            models: { task: 'claude-3', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
             loaded: true,
         });
 
@@ -766,9 +782,12 @@ describe('GenerateTaskDialog', () => {
     it('restores saved depth from preferences on mount', async () => {
         mockUsePreferences.mockReturnValue({
             model: '',
+            models: { task: '', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: 'normal',
             setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
             loaded: true,
         });
 
@@ -796,9 +815,12 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
         mockUsePreferences.mockReturnValue({
             model: '',
+            models: { task: '', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: 'normal',
             setDepth: mockPersistDepth,
+            effort: '',
+            setEffort: mockPersistEffort,
             loaded: true,
         });
 
@@ -1100,6 +1122,7 @@ describe('GenerateTaskDialog', () => {
     it('initializes effort level from saved preference', async () => {
         mockUsePreferences.mockReturnValue({
             model: '',
+            models: { task: '', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
@@ -1120,6 +1143,7 @@ describe('GenerateTaskDialog', () => {
     it('defaults to medium when no saved effort preference', async () => {
         mockUsePreferences.mockReturnValue({
             model: '',
+            models: { task: '', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
@@ -1137,6 +1161,7 @@ describe('GenerateTaskDialog', () => {
     it('initializes effort level from low saved preference', async () => {
         mockUsePreferences.mockReturnValue({
             model: '',
+            models: { task: '', ask: '', plan: '' },
             setModel: mockPersistModel,
             depth: '',
             setDepth: mockPersistDepth,
