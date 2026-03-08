@@ -322,6 +322,7 @@ export {
     SendMessageOptions,
     SDKInvocationResult,
     SDKAvailabilityResult,
+    AgentMode,
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,

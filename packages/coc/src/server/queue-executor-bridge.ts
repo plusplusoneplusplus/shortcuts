@@ -22,7 +22,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { RunWorkflowPayload, RunScriptPayload, ChatPayload } from '@plusplusoneplusplus/coc-server';
+import type { RunWorkflowPayload, RunScriptPayload, ChatPayload, ChatMode } from '@plusplusoneplusplus/coc-server';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
@@ -35,7 +35,7 @@ import {
     hasReplicationContext,
     saveImagesToTempFiles,
 } from '@plusplusoneplusplus/coc-server';
-import type { AIProcess, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
     approveAllPermissions,
     applyDeepModePrefix,
@@ -84,9 +84,20 @@ import { resolveTaskRoot } from './task-root-resolver';
 /** Statuses that represent a terminal (non-overwritable) process state. */
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
-/** Prompt prefix prepended to read-only chat messages to instruct the AI not to modify files. */
+/** @deprecated No longer injected — kept only so legacy persisted turns can still be stripped in queue-handler. */
 export const READONLY_PROMPT_PREFIX =
     'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code that\'s tracked by the git. Special files like task plan markdown files are exempt from this rule. If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
+
+/** Map CoC ChatMode to SDK AgentMode for protocol-level enforcement. */
+const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
+    ask: 'interactive',
+    plan: 'plan',
+    autopilot: 'autopilot',
+};
+
+function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
+    return chatMode ? CHAT_MODE_TO_AGENT_MODE[chatMode] : undefined;
+}
 
 // ============================================================================
 // Types
@@ -516,6 +527,7 @@ export class CLITaskExecutor implements TaskExecutor {
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void {
         const logger = getLogger();
         const rawContent = turns.find(t => t.role === 'user')?.content ?? '';
+        // Legacy: strip readonly prefix from turns persisted before SDK mode migration
         const firstUserContent = rawContent.startsWith(READONLY_PROMPT_PREFIX)
             ? rawContent.slice(READONLY_PROMPT_PREFIX.length)
             : rawContent;
@@ -579,8 +591,10 @@ export class CLITaskExecutor implements TaskExecutor {
             const followUpMessage = (this.followUpSuggestions.enabled && isFirstTurn)
                 ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : message;
+            const agentMode = toAgentMode(process.metadata?.mode as ChatMode | undefined);
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, followUpMessage, {
                 workingDirectory,
+                mode: agentMode,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
                 tools: suggestTools.length > 0 ? suggestTools : undefined,
@@ -758,14 +772,6 @@ export class CLITaskExecutor implements TaskExecutor {
             // Resolve comments: the prompt is the template
             if (hasResolveCommentsContext(task.payload)) {
                 return prompt;
-            }
-
-            // Mode-based prompt prefixing
-            if (payload.mode === 'ask') {
-                return READONLY_PROMPT_PREFIX + prompt;
-            }
-            if (payload.mode === 'plan') {
-                return 'IMPORTANT: You are in plan mode. Propose changes and explain what needs to be done, but do NOT apply any modifications to files.\n\n' + prompt;
             }
 
             // Context files: resolve file-path-based prompts
@@ -1139,8 +1145,12 @@ export class CLITaskExecutor implements TaskExecutor {
                     this.checkThrottleAndFlush(processId);
             };
 
+            const chatMode = isChatPayload(task.payload) ? (task.payload as unknown as ChatPayload).mode : undefined;
+            const agentMode = toAgentMode(chatMode as ChatMode | undefined);
+
             const result = await this.aiService.sendMessage({
                 prompt,
+                mode: agentMode,
                 model: task.config.model,
                 workingDirectory,
                 timeoutMs,

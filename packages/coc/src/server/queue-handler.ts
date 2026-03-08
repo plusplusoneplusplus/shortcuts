@@ -154,7 +154,7 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
     const payload = taskSpec.payload || {};
 
     // Ensure chat payloads carry kind:'chat' and a valid mode so downstream
-    // isChatPayload() guards match (e.g. extractPrompt applies READONLY_PROMPT_PREFIX).
+    // isChatPayload() guards match (e.g. extractPrompt, toAgentMode).
     if (taskSpec.type === 'chat') {
         if (!payload.kind) payload.kind = 'chat';
         if (!payload.mode) payload.mode = 'autopilot';
@@ -295,6 +295,7 @@ async function enrichChatTasks(
                 ? lastTurnTs
                 : (task.completedAt as number) ?? (task.createdAt as number) ?? 0;
             const rawFirstContent = firstUserTurn?.content ?? '';
+            // Legacy: strip readonly prefix from turns persisted before SDK mode migration
             const firstContent = rawFirstContent.startsWith(READONLY_PROMPT_PREFIX)
                 ? rawFirstContent.slice(READONLY_PROMPT_PREFIX.length)
                 : rawFirstContent;

@@ -175,7 +175,8 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.type).toBe('queue-chat');
             expect(addedProcess.status).toBe('running');
             expect(addedProcess.fullPrompt).toContain('Explain this code');
-            expect(addedProcess.fullPrompt).toContain(READONLY_PROMPT_PREFIX);
+            // Prompt should NOT contain the old prefix — mode is now SDK-level
+            expect(addedProcess.fullPrompt).not.toContain(READONLY_PROMPT_PREFIX);
 
             // Verify process was marked completed
             expect(store.updateProcess).toHaveBeenCalledWith('queue_task-1', expect.objectContaining({
@@ -383,7 +384,7 @@ describe('CLITaskExecutor', () => {
     // ========================================================================
 
     describe('chat tasks with readonly flag', () => {
-        it('should prepend read-only prompt prefix for chat tasks with readonly=true', async () => {
+        it('should pass mode=interactive to sendMessage for ask-mode chat tasks', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -400,14 +401,16 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: expect.stringContaining(READONLY_PROMPT_PREFIX),
-            }));
-            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
                 prompt: expect.stringContaining('Explain the architecture'),
+                mode: 'interactive',
+            }));
+            // Prompt should NOT contain the old prefix
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.not.stringContaining(READONLY_PROMPT_PREFIX),
             }));
         });
 
-        it('should not prepend read-only prefix for regular chat tasks', async () => {
+        it('should pass mode=autopilot to sendMessage for autopilot chat tasks', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -425,6 +428,33 @@ describe('CLITaskExecutor', () => {
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
                 prompt: expect.not.stringContaining(READONLY_PROMPT_PREFIX),
+                mode: 'autopilot',
+            }));
+        });
+
+        it('should pass mode=plan to sendMessage for plan-mode chat tasks', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const task: QueuedTask = {
+                id: 'plan-chat-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, mode: 'plan', prompt: 'Plan the refactoring' },
+                config: {},
+                displayName: 'Plan Chat',
+            };
+
+            await executor.execute(task);
+
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining('Plan the refactoring'),
+                mode: 'plan',
+            }));
+            // Prompt should NOT contain the old plan prefix
+            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.not.stringContaining('IMPORTANT: You are in plan mode'),
             }));
         });
 
@@ -511,6 +541,38 @@ describe('CLITaskExecutor', () => {
 
             // Should fail without crashing
             expect(result.success).toBe(false);
+        });
+
+        it('should pass mode to sendFollowUp based on process metadata', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            // Pre-create a process with an SDK session and mode='ask' in metadata
+            const proc = createCompletedProcessWithSession('proc-fu-mode', 'sess-fu-mode');
+            (proc as any).metadata = { mode: 'ask' };
+            await store.addProcess(proc);
+
+            const task: QueuedTask = {
+                id: 'followup-mode-test',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat',
+                    processId: 'proc-fu-mode',
+                    prompt: 'Follow up question',
+                } as any,
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockSendFollowUp).toHaveBeenCalledWith(
+                'sess-fu-mode',
+                expect.any(String),
+                expect.objectContaining({ mode: 'interactive' }),
+            );
         });
 
         it('should re-activate parent task and return it to history on success', async () => {
