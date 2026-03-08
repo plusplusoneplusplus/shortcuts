@@ -354,6 +354,20 @@ describe('Tasks Handler', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=..%2F..%2Fetc%2Fpasswd`);
             expect(res.status).toBe(403);
         });
+
+        it('should return content for files in the absolute task root', async () => {
+            const srv = await startServer();
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir });
+            fs.mkdirSync(taskRoot.absolutePath, { recursive: true });
+            const markdown = '# Task Root File\n\nContent from task root.';
+            fs.writeFileSync(path.join(taskRoot.absolutePath, 'root-task.md'), markdown, 'utf-8');
+
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=root-task.md`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.content).toBe(markdown);
+        });
     });
 
     // ========================================================================
@@ -378,7 +392,7 @@ describe('Tasks Handler', () => {
             const body = JSON.parse(res.body);
 
             expect(body.enabled).toBe(true);
-            expect(body.folderPath).toBe('.vscode/tasks');
+            expect(path.isAbsolute(body.folderPath)).toBe(true);
             expect(body.showArchived).toBe(false);
             expect(body.showFuture).toBe(false);
             expect(body.sortBy).toBe('name');
@@ -393,6 +407,91 @@ describe('Tasks Handler', () => {
             expect(body.discovery.defaultScope.maxCommits).toBe(50);
             expect(body.discovery.showRelatedInTree).toBe(true);
             expect(body.discovery.groupByCategory).toBe(true);
+        });
+
+        it('should return taskRootPath as an absolute path', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/settings`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+
+            expect(body.taskRootPath).toBeDefined();
+            expect(typeof body.taskRootPath).toBe('string');
+            expect(path.isAbsolute(body.taskRootPath)).toBe(true);
+            expect(body.taskRootPath).toContain('repos');
+            expect(body.taskRootPath).toMatch(/tasks$/);
+        });
+
+        it('should return taskRootPath matching folderPath', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/settings`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+
+            expect(body.taskRootPath).toBe(body.folderPath);
+        });
+
+        it('should return different taskRootPath for different workspaces', async () => {
+            const srv = await startServer();
+            const workspace2 = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-workspace2-'));
+            try {
+                const wsId1 = await registerWorkspace(srv, workspaceDir);
+                const wsId2 = 'test-ws-2-' + Date.now();
+                const regRes = await postJSON(`${srv.url}/api/workspaces`, {
+                    id: wsId2,
+                    name: 'Test Workspace 2',
+                    rootPath: workspace2,
+                });
+                expect(regRes.status).toBe(201);
+
+                const res1 = await request(`${srv.url}/api/workspaces/${wsId1}/tasks/settings`);
+                const res2 = await request(`${srv.url}/api/workspaces/${wsId2}/tasks/settings`);
+                const body1 = JSON.parse(res1.body);
+                const body2 = JSON.parse(res2.body);
+
+                expect(body1.taskRootPath).not.toBe(body2.taskRootPath);
+            } finally {
+                fs.rmSync(workspace2, { recursive: true, force: true });
+            }
+        });
+    });
+
+    // ========================================================================
+    // GET /api/workspaces/:id/files/preview — File preview
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/files/preview — Preview', () => {
+        it('should accept file paths under the task root directory', async () => {
+            const srv = await startServer();
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir });
+            fs.mkdirSync(taskRoot.absolutePath, { recursive: true });
+            fs.writeFileSync(path.join(taskRoot.absolutePath, 'test-preview.md'), '# Preview Test', 'utf-8');
+
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const filePath = encodeURIComponent(path.join(taskRoot.absolutePath, 'test-preview.md'));
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/preview?path=${filePath}`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.type).toBe('file');
+            expect(body.lines).toContain('# Preview Test');
+        });
+
+        it('should reject paths outside workspace and task root', async () => {
+            const srv = await startServer();
+            const evilDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evil-'));
+            fs.writeFileSync(path.join(evilDir, 'secret.txt'), 'secret', 'utf-8');
+            try {
+                const wsId = await registerWorkspace(srv, workspaceDir);
+                const filePath = encodeURIComponent(path.join(evilDir, 'secret.txt'));
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/preview?path=${filePath}`);
+                expect(res.status).toBe(403);
+            } finally {
+                fs.rmSync(evilDir, { recursive: true, force: true });
+            }
         });
     });
 

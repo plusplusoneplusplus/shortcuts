@@ -97,10 +97,11 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 return sendError(res, 400, 'Missing required query parameter: path');
             }
 
-            // Resolve and validate path is within workspace or a trusted read-only directory
+            // Resolve and validate path is within workspace, a trusted read-only directory, or the task root
             const resolvedPath = path.resolve(filePath);
             const wsRoot = path.resolve(ws.rootPath);
-            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath)) {
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 
@@ -225,9 +226,10 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 ? path.resolve(ws.rootPath, folderParam)
                 : resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
 
-            // Path-traversal guard (also allow trusted read-only directories)
+            // Path-traversal guard (also allow trusted read-only directories and task root)
             const resolvedPath = path.resolve(tasksFolder, filePath);
-            if (!isWithinDirectory(resolvedPath, tasksFolder) && !isWithinTrustedReadOnlyDir(resolvedPath)) {
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            if (!isWithinDirectory(resolvedPath, tasksFolder) && !isWithinTrustedReadOnlyDir(resolvedPath) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
             }
 
@@ -261,7 +263,12 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 return sendError(res, 404, 'Workspace not found');
             }
 
-            sendJSON(res, 200, DEFAULT_SETTINGS);
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            sendJSON(res, 200, {
+                ...DEFAULT_SETTINGS,
+                folderPath: taskRoot.absolutePath,
+                taskRootPath: taskRoot.absolutePath,
+            });
         },
     });
 
