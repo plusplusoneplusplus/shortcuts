@@ -11,7 +11,6 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 
 // ============================================================================
 // Types
@@ -35,16 +34,16 @@ export class TaskWatcher {
     }
 
     /**
-     * Start watching a workspace's `.vscode/tasks/` directory.
+     * Start watching the given tasks directory for a workspace.
      * No-ops gracefully if the directory does not exist.
+     * @param workspaceId Unique workspace identifier
+     * @param tasksDir Absolute path to the tasks directory to watch
      */
-    watchWorkspace(workspaceId: string, rootPath: string): void {
+    watchWorkspace(workspaceId: string, tasksDir: string): void {
         // Don't double-watch the same workspace
         if (this.watchers.has(workspaceId)) {
             return;
         }
-
-        const tasksDir = path.join(rootPath, '.vscode', 'tasks');
 
         try {
             // Check directory exists before watching

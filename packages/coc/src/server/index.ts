@@ -18,6 +18,7 @@ import { registerApiRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
+import { resolveTaskRoot } from './task-root-resolver';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
 import { registerAdminRoutes } from './admin-handler';
@@ -225,8 +226,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerFreshChatTerminalRoutes(routes);
     // Queue routes now receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store);
-    registerTaskRoutes(routes, store);
-    registerTaskWriteRoutes(routes, store);
+    registerTaskRoutes(routes, store, dataDir);
+    registerTaskWriteRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
         wsServer.broadcastProcessEvent({
@@ -235,7 +236,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             timestamp: Date.now(),
         });
     }, bridge, resolvedAiService);
-    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService);
+    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService, dataDir);
     // Template read routes
     registerTemplateRoutes(routes, store);
     // Template write routes with WebSocket broadcast
@@ -470,7 +471,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Watch tasks and workflows directories for already-registered workspaces (handles server restart)
     const existingWorkspaces = await store.getWorkspaces();
     for (const ws of existingWorkspaces) {
-        taskWatcher.watchWorkspace(ws.id, ws.rootPath);
+        taskWatcher.watchWorkspace(ws.id, resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath);
         pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
         templateWatcher.watchWorkspace(ws.id, ws.rootPath);
         // Register repo ID so bridge.getBridgeByRepoId() works for pre-existing workspaces
@@ -483,7 +484,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     store.registerWorkspace = async (workspace: any) => {
         await originalRegister(workspace);
-        taskWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+        taskWatcher.watchWorkspace(workspace.id, resolveTaskRoot({ dataDir, rootPath: workspace.rootPath }).absolutePath);
         pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         bridge.registerRepoId(computeRepoId(workspace.rootPath), workspace.rootPath);

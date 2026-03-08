@@ -36,6 +36,7 @@ import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plu
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import { resolveTaskRoot } from './task-root-resolver';
 
 // ============================================================================
 // Workspace resolution helper
@@ -74,7 +75,7 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
  * Register task generation API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueExecutorBridge, aiService: CopilotSDKService): void {
+export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueExecutorBridge, aiService: CopilotSDKService, dataDir: string): void {
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/tasks/generate — AI task generation
@@ -103,7 +104,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             }
 
             // Resolve target folder (handle auto-folder sentinel)
-            const tasksBase = path.resolve(ws.rootPath, '.vscode/tasks');
+            const tasksBase = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
             const isAutoFolder = targetFolder === AUTO_FOLDER_SENTINEL;
             const resolvedTarget = (isAutoFolder || !targetFolder)
                 ? tasksBase

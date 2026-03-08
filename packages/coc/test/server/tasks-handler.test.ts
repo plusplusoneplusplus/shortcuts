@@ -15,6 +15,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 
 // ============================================================================
 // Helpers
@@ -105,9 +106,11 @@ describe('Tasks Handler', () => {
         return id;
     }
 
-    /** Create task files in the workspace's .vscode/tasks directory. */
-    function createTaskFiles(files: Record<string, string>, folder = '.vscode/tasks'): void {
-        const tasksDir = path.join(workspaceDir, folder);
+    /** Create task files in the resolver-determined tasks directory, or in a custom workspace-relative folder. */
+    function createTaskFiles(files: Record<string, string>, workspaceRelativeFolder?: string): void {
+        const tasksDir = workspaceRelativeFolder
+            ? path.join(workspaceDir, workspaceRelativeFolder)
+            : resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
         for (const [filePath, content] of Object.entries(files)) {
             const fullPath = path.join(tasksDir, filePath);
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -470,7 +473,7 @@ describe('Tasks Handler', () => {
             expect(data.updated).toBe(true);
 
             // Verify file on disk
-            const filePath = path.join(workspaceDir, '.vscode/tasks', 'test.md');
+            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'test.md');
             const actual = fs.readFileSync(filePath, 'utf-8');
             expect(actual).toBe(newContent);
         });
@@ -486,7 +489,7 @@ describe('Tasks Handler', () => {
             });
             expect(res.status).toBe(200);
 
-            const filePath = path.join(workspaceDir, '.vscode/tasks/feature/sub', 'task.plan.md');
+            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'feature/sub', 'task.plan.md');
             expect(fs.readFileSync(filePath, 'utf-8')).toBe(newContent);
         });
 
@@ -500,7 +503,7 @@ describe('Tasks Handler', () => {
             });
             expect(res.status).toBe(200);
 
-            const filePath = path.join(workspaceDir, '.vscode/tasks', 'test.md');
+            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'test.md');
             expect(fs.readFileSync(filePath, 'utf-8')).toBe('');
         });
     });

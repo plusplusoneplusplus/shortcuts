@@ -18,11 +18,11 @@ import { TaskWatcher } from '../../src/server/task-watcher';
 // Helpers
 // ============================================================================
 
-function createTmpWorkspace(): string {
+function createTmpWorkspace(): { root: string; tasksDir: string } {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-'));
     const tasksDir = path.join(root, '.vscode', 'tasks');
     fs.mkdirSync(tasksDir, { recursive: true });
-    return root;
+    return { root, tasksDir };
 }
 
 function wait(ms: number): Promise<void> {
@@ -58,19 +58,18 @@ describe('TaskWatcher', () => {
     // ------------------------------------------------------------------
 
     it('should fire callback when a .md file is created in .vscode/tasks/', async () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root);
+        watcher.watchWorkspace('ws1', tasksDir);
 
         // Let the watcher fully register (macOS FSEvents can be slow)
         await wait(200);
 
         // Create a file
-        const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.writeFileSync(path.join(tasksDir, 'test.md'), '# Task');
 
         // Wait for debounce (300ms) + generous margin for CI
@@ -80,16 +79,15 @@ describe('TaskWatcher', () => {
     });
 
     it('should fire callback when a file is modified', async () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
 
-        const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.writeFileSync(path.join(tasksDir, 'existing.md'), '# Initial');
 
         const callback = vi.fn();
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root);
+        watcher.watchWorkspace('ws1', tasksDir);
 
         // Wait a bit for watcher to stabilize
         await wait(100);
@@ -103,16 +101,15 @@ describe('TaskWatcher', () => {
     });
 
     it('should fire callback when a file is deleted', async () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
 
-        const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.writeFileSync(path.join(tasksDir, 'to-delete.md'), '# Delete me');
 
         const callback = vi.fn();
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root);
+        watcher.watchWorkspace('ws1', tasksDir);
 
         await wait(100);
 
@@ -129,15 +126,13 @@ describe('TaskWatcher', () => {
     // ------------------------------------------------------------------
 
     it('should debounce multiple rapid events into a single callback', async () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root);
-
-        const tasksDir = path.join(root, '.vscode', 'tasks');
+        watcher.watchWorkspace('ws1', tasksDir);
 
         // Rapid-fire 10 writes within 100ms
         for (let i = 0; i < 10; i++) {
@@ -157,18 +152,17 @@ describe('TaskWatcher', () => {
     // ------------------------------------------------------------------
 
     it('should stop firing callbacks after unwatchWorkspace', async () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root);
+        watcher.watchWorkspace('ws1', tasksDir);
 
         // Unwatch immediately
         watcher.unwatchWorkspace('ws1');
 
-        const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.writeFileSync(path.join(tasksDir, 'after-unwatch.md'), '# After');
 
         await wait(600);
@@ -177,7 +171,7 @@ describe('TaskWatcher', () => {
     });
 
     it('should report isWatching correctly', () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
         const callback = vi.fn();
 
@@ -186,7 +180,7 @@ describe('TaskWatcher', () => {
 
         expect(watcher.isWatching('ws1')).toBe(false);
 
-        watcher.watchWorkspace('ws1', root);
+        watcher.watchWorkspace('ws1', tasksDir);
         expect(watcher.isWatching('ws1')).toBe(true);
 
         watcher.unwatchWorkspace('ws1');
@@ -198,15 +192,15 @@ describe('TaskWatcher', () => {
     // ------------------------------------------------------------------
 
     it('should stop all watchers on closeAll', async () => {
-        const root1 = createTmpWorkspace();
-        const root2 = createTmpWorkspace();
+        const { root: root1, tasksDir: tasksDir1 } = createTmpWorkspace();
+        const { root: root2, tasksDir: tasksDir2 } = createTmpWorkspace();
         cleanupDirs.push(root1, root2);
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root1);
-        watcher.watchWorkspace('ws2', root2);
+        watcher.watchWorkspace('ws1', tasksDir1);
+        watcher.watchWorkspace('ws2', tasksDir2);
 
         expect(watcher.isWatching('ws1')).toBe(true);
         expect(watcher.isWatching('ws2')).toBe(true);
@@ -217,8 +211,8 @@ describe('TaskWatcher', () => {
         expect(watcher.isWatching('ws2')).toBe(false);
 
         // Write after closeAll should not trigger callback
-        fs.writeFileSync(path.join(root1, '.vscode', 'tasks', 'post.md'), '# After');
-        fs.writeFileSync(path.join(root2, '.vscode', 'tasks', 'post.md'), '# After');
+        fs.writeFileSync(path.join(tasksDir1, 'post.md'), '# After');
+        fs.writeFileSync(path.join(tasksDir2, 'post.md'), '# After');
 
         await wait(600);
 
@@ -232,24 +226,26 @@ describe('TaskWatcher', () => {
     it('should not throw when watching a workspace without .vscode/tasks/', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-nodir-'));
         cleanupDirs.push(root);
+        const tasksDir = path.join(root, '.vscode', 'tasks');
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
 
-        // Should not throw
-        expect(() => watcher.watchWorkspace('ws-nodir', root)).not.toThrow();
+        // Should not throw — tasksDir does not exist
+        expect(() => watcher.watchWorkspace('ws-nodir', tasksDir)).not.toThrow();
         expect(watcher.isWatching('ws-nodir')).toBe(false);
     });
 
     it('should not fire callbacks for a non-existent directory', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'taskwatcher-nodir2-'));
         cleanupDirs.push(root);
+        const tasksDir = path.join(root, '.vscode', 'tasks');
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws-nodir', root);
+        watcher.watchWorkspace('ws-nodir', tasksDir);
 
         await wait(600);
 
@@ -261,19 +257,18 @@ describe('TaskWatcher', () => {
     // ------------------------------------------------------------------
 
     it('should not double-watch the same workspace', async () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
 
-        watcher.watchWorkspace('ws1', root);
-        watcher.watchWorkspace('ws1', root); // second call should be no-op
+        watcher.watchWorkspace('ws1', tasksDir);
+        watcher.watchWorkspace('ws1', tasksDir); // second call should be no-op
 
         await wait(200);
 
-        const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.writeFileSync(path.join(tasksDir, 'dup.md'), '# Dup');
 
         await wait(1200);
@@ -287,18 +282,17 @@ describe('TaskWatcher', () => {
     // ------------------------------------------------------------------
 
     it('should handle directory deletion gracefully during watch', async () => {
-        const root = createTmpWorkspace();
+        const { root, tasksDir } = createTmpWorkspace();
         cleanupDirs.push(root);
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root);
+        watcher.watchWorkspace('ws1', tasksDir);
 
         await wait(100);
 
         // Delete the watched directory
-        const tasksDir = path.join(root, '.vscode', 'tasks');
         fs.rmSync(tasksDir, { recursive: true, force: true });
 
         // Should not crash — wait for any error events to propagate
@@ -314,15 +308,15 @@ describe('TaskWatcher', () => {
     // ------------------------------------------------------------------
 
     it('should track multiple workspaces independently', async () => {
-        const root1 = createTmpWorkspace();
-        const root2 = createTmpWorkspace();
+        const { root: root1, tasksDir: tasksDir1 } = createTmpWorkspace();
+        const { root: root2, tasksDir: tasksDir2 } = createTmpWorkspace();
         cleanupDirs.push(root1, root2);
         const callback = vi.fn();
 
         const watcher = new TaskWatcher(callback);
         cleanupWatchers.push(watcher);
-        watcher.watchWorkspace('ws1', root1);
-        watcher.watchWorkspace('ws2', root2);
+        watcher.watchWorkspace('ws1', tasksDir1);
+        watcher.watchWorkspace('ws2', tasksDir2);
 
         // Give FSEvents/inotify time to fully register and settle
         // (macOS FSEvents may fire for the initial directory creation)
@@ -330,7 +324,7 @@ describe('TaskWatcher', () => {
         callback.mockClear();
 
         // Write to ws1 only
-        fs.writeFileSync(path.join(root1, '.vscode', 'tasks', 'ws1-task.md'), '# WS1');
+        fs.writeFileSync(path.join(tasksDir1, 'ws1-task.md'), '# WS1');
 
         await wait(800);
 

@@ -69,11 +69,13 @@ import {
 import { replicateCommit } from '@plusplusoneplusplus/pipeline-core/templates';
 import type { ReplicateResult, ReplicateProgressCallback } from '@plusplusoneplusplus/pipeline-core/templates';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { ImageBlobStore } from './image-blob-store';
 import { OutputFileManager } from './output-file-manager';
+import { resolveTaskRoot } from './task-root-resolver';
 
 // ============================================================================
 // Constants
@@ -1195,7 +1197,8 @@ export class CLITaskExecutor implements TaskExecutor {
         const tg = payload.context!.taskGeneration!;
         const workingDirectory = payload.workingDirectory || this.defaultWorkingDirectory || '';
 
-        const tasksBase = path.resolve(workingDirectory, '.vscode/tasks');
+        const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
+        const tasksBase = resolveTaskRoot({ dataDir: effectiveDataDir, rootPath: workingDirectory }).absolutePath;
         const isAutoFolder = tg.targetFolder === AUTO_FOLDER_SENTINEL;
         const resolvedTarget = (isAutoFolder || !tg.targetFolder)
             ? tasksBase

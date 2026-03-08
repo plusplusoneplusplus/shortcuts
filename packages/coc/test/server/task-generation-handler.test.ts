@@ -34,6 +34,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 
 // ============================================================================
 // Helpers
@@ -222,7 +223,7 @@ describe('Task Generation Handler', () => {
                 targetFolder: 'my-feature',
             });
 
-            const expectedDir = path.join(workspaceDir, '.vscode/tasks/my-feature');
+            const expectedDir = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'my-feature');
             expect(fs.existsSync(expectedDir)).toBe(true);
         });
 
@@ -266,7 +267,7 @@ describe('Task Generation Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             // Create feature context files
-            const featureDir = path.join(workspaceDir, '.vscode/tasks');
+            const featureDir = resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
             fs.mkdirSync(featureDir, { recursive: true });
             fs.writeFileSync(path.join(featureDir, 'plan.md'), '# Plan\nBuild auth');
 

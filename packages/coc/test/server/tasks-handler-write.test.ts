@@ -15,6 +15,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 
 // ============================================================================
 // Helpers
@@ -106,17 +107,17 @@ describe('Tasks Handler Write', () => {
         return id;
     }
 
-    function createTaskFiles(files: Record<string, string>, folder = '.vscode/tasks'): void {
-        const tasksDir = path.join(workspaceDir, folder);
+    function createTaskFiles(files: Record<string, string>): void {
+        const dir = resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
         for (const [filePath, content] of Object.entries(files)) {
-            const fullPath = path.join(tasksDir, filePath);
+            const fullPath = path.join(dir, filePath);
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
             fs.writeFileSync(fullPath, content, 'utf-8');
         }
     }
 
     function tasksDir(): string {
-        return path.join(workspaceDir, '.vscode', 'tasks');
+        return resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
     }
 
     // ========================================================================
@@ -958,8 +959,8 @@ describe('Tasks Handler Write', () => {
             fs.rmSync(workspace2Dir, { recursive: true, force: true });
         });
 
-        function createTaskFilesIn(wsDir: string, files: Record<string, string>, folder = '.vscode/tasks'): void {
-            const dir = path.join(wsDir, folder);
+        function createTaskFilesIn(wsDir: string, files: Record<string, string>): void {
+            const dir = resolveTaskRoot({ dataDir, rootPath: wsDir }).absolutePath;
             for (const [filePath, content] of Object.entries(files)) {
                 const fullPath = path.join(dir, filePath);
                 fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -968,7 +969,7 @@ describe('Tasks Handler Write', () => {
         }
 
         function tasksDirOf(wsDir: string): string {
-            return path.join(wsDir, '.vscode', 'tasks');
+            return resolveTaskRoot({ dataDir, rootPath: wsDir }).absolutePath;
         }
 
         async function registerWorkspaceWithName(srv: ExecutionServer, rootPath: string, name: string): Promise<string> {

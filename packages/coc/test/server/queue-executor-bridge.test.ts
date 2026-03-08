@@ -1953,8 +1953,8 @@ describe('CLITaskExecutor', () => {
             const process = await store.getProcess(processId);
             // Enriched prompt should differ from the raw user text
             expect(process?.fullPrompt).toContain('Create a new test file');
-            // Should have output location directive (uses OS path separator)
-            expect(process?.fullPrompt).toMatch(/[.\\/]vscode[.\\/]tasks/);
+            // Should have output location directive (uses resolver-determined path)
+            expect(process?.fullPrompt).toMatch(/repos[/\\][0-9a-f]+[/\\]tasks/);
             // Conversation turn updated
             expect(process?.conversationTurns?.[0]?.content).toBe(process?.fullPrompt);
         });

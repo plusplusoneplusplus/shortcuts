@@ -22,6 +22,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { ProcessSummary, ServerMessage } from '@plusplusoneplusplus/coc-server';
 import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
+import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 
 // ============================================================================
 // Helpers
@@ -783,9 +784,9 @@ describe('WebSocket Server', () => {
             // which broadcasts via wsServer. We'll do this via the workspace registration
             // flow that sets up the task watcher.
 
-            // Create a temp workspace dir with tasks
+            // Create a temp workspace dir
             const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-tasks-bc-'));
-            const tasksDir = path.join(tmpRoot, '.vscode', 'tasks');
+            const tasksDir = resolveTaskRoot({ dataDir, rootPath: tmpRoot }).absolutePath;
             fs.mkdirSync(tasksDir, { recursive: true });
 
             // Register workspace — this triggers taskWatcher.watchWorkspace
