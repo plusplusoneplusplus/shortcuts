@@ -420,6 +420,33 @@ describe('FileProcessStore', () => {
         expect(ws!.remoteUrl).toBeUndefined();
     });
 
+    it('should update disabledSkills via updateWorkspace', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({
+            id: 'ws-disabled-skills', name: 'Skills Test', rootPath: '/path',
+        });
+
+        const updated = await store.updateWorkspace('ws-disabled-skills', {
+            disabledSkills: ['impl', 'draft'],
+        });
+        expect(updated).toBeDefined();
+        expect(updated!.disabledSkills).toEqual(['impl', 'draft']);
+
+        const workspaces = await store.getWorkspaces();
+        expect(workspaces.find(w => w.id === 'ws-disabled-skills')!.disabledSkills)
+            .toEqual(['impl', 'draft']);
+    });
+
+    it('should clear disabledSkills with empty array via updateWorkspace', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.registerWorkspace({
+            id: 'ws-clear-skills', name: 'Clear Skills', rootPath: '/path',
+        });
+        await store.updateWorkspace('ws-clear-skills', { disabledSkills: ['impl'] });
+        const updated = await store.updateWorkspace('ws-clear-skills', { disabledSkills: [] });
+        expect(updated!.disabledSkills).toEqual([]);
+    });
+
     // --- Wiki registration ---
     it('should register and retrieve wikis', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });

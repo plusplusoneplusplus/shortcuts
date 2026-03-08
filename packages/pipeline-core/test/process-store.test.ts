@@ -68,6 +68,25 @@ describe('WorkspaceInfo', () => {
         };
         expect(ws.enabledMcpServers).toBeUndefined();
     });
+
+    it('should accept disabledSkills as an array of skill names', () => {
+        const ws: WorkspaceInfo = {
+            id: 'abc123',
+            name: 'my-project',
+            rootPath: '/home/user/my-project',
+            disabledSkills: ['impl', 'draft'],
+        };
+        expect(ws.disabledSkills).toEqual(['impl', 'draft']);
+    });
+
+    it('should default disabledSkills to undefined (all skills enabled)', () => {
+        const ws: WorkspaceInfo = {
+            id: 'abc123',
+            name: 'my-project',
+            rootPath: '/home/user/my-project',
+        };
+        expect(ws.disabledSkills).toBeUndefined();
+    });
 });
 
 describe('ProcessFilter', () => {

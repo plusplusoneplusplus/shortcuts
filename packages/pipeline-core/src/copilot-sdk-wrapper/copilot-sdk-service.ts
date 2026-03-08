@@ -145,6 +145,10 @@ interface ISessionOptions {
     onPermissionRequest?: PermissionHandler;
     /** Custom tools to register on the session */
     tools?: any[];
+    /** Directories containing additional skills */
+    skillDirectories?: string[];
+    /** Deny-list of skill names to disable */
+    disabledSkills?: string[];
 }
 
 /**
@@ -554,6 +558,14 @@ export class CopilotSDKService {
             }
             if (options.excludedTools) {
                 sessionOptions.excludedTools = options.excludedTools;
+            }
+
+            // Skill directories and disabled skills
+            if (options.skillDirectories && options.skillDirectories.length > 0) {
+                sessionOptions.skillDirectories = options.skillDirectories;
+            }
+            if (options.disabledSkills && options.disabledSkills.length > 0) {
+                sessionOptions.disabledSkills = options.disabledSkills;
             }
 
             // Load and merge MCP server configurations

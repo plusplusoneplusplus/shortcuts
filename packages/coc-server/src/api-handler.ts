@@ -375,6 +375,56 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // GET /api/workspaces/:id/skills-config — Get workspace skill list and disabled skills
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/skills-config$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+            const disabledSkills: string[] = ws.disabledSkills ?? [];
+            sendJSON(res, 200, { disabledSkills });
+        },
+    });
+
+    // PUT /api/workspaces/:id/skills-config — Save workspace disabled skills list
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/workspaces\/([^/]+)\/skills-config$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+            if (!Object.prototype.hasOwnProperty.call(body, 'disabledSkills')) {
+                return handleAPIError(res, missingFields(['disabledSkills']));
+            }
+            if (!Array.isArray(body.disabledSkills)) {
+                return handleAPIError(res, badRequest('`disabledSkills` must be an array of strings'));
+            }
+            if (body.disabledSkills.some((e: any) => typeof e !== 'string')) {
+                return handleAPIError(res, badRequest('`disabledSkills` items must be strings'));
+            }
+            const updated = await store.updateWorkspace(id, { disabledSkills: body.disabledSkills });
+            if (!updated) {
+                return handleAPIError(res, notFound('Workspace'));
+            }
+            sendJSON(res, 200, { workspace: updated });
+        },
+    });
+
     // GET /api/workspaces/:id/git/commits — List commits with pagination
     routes.push({
         method: 'GET',

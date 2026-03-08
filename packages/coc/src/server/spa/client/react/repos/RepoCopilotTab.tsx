@@ -96,6 +96,8 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
     const [skillDetail, setSkillDetail] = useState<SkillDetail | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
+    const [skillToggleSaving, setSkillToggleSaving] = useState(false);
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true);
@@ -113,6 +115,13 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     }, [workspaceId]);
 
     useEffect(() => { fetchSkills(); }, [fetchSkills]);
+
+    // Fetch disabled skills config
+    useEffect(() => {
+        fetchApi(`/workspaces/${workspaceId}/skills-config`)
+            .then((data) => setDisabledSkills(data.disabledSkills ?? []))
+            .catch(() => {});
+    }, [workspaceId]);
 
     const handleExpandSkill = useCallback(async (name: string) => {
         if (expandedSkill === name) {
@@ -152,6 +161,29 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
             addToast(err?.message ?? 'Failed to delete skill', 'error');
         }
         setDeleteConfirm(null);
+    };
+
+    const isSkillEnabled = (name: string) => !disabledSkills.includes(name);
+
+    const handleSkillToggle = async (skillName: string, enabled: boolean) => {
+        const nextDisabled = enabled
+            ? disabledSkills.filter(n => n !== skillName)
+            : [...disabledSkills, skillName];
+        const prevDisabled = disabledSkills;
+        setDisabledSkills(nextDisabled); // optimistic update
+        setSkillToggleSaving(true);
+        try {
+            await fetchApi(`/workspaces/${workspaceId}/skills-config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ disabledSkills: nextDisabled }),
+            });
+        } catch (e: any) {
+            setDisabledSkills(prevDisabled); // revert on error
+            addToast(e?.message ?? 'Failed to save skill config', 'error');
+        } finally {
+            setSkillToggleSaving(false);
+        }
     };
 
     return (
@@ -223,7 +255,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                         {skills.map(skill => (
                             <li
                                 key={skill.name}
-                                className="skill-item flex flex-col rounded border border-[#e0e0e0] dark:border-[#3c3c3c] hover:border-[#0078d4]/40 group"
+                                className={`skill-item flex flex-col rounded border border-[#e0e0e0] dark:border-[#3c3c3c] hover:border-[#0078d4]/40 group${!isSkillEnabled(skill.name) ? ' opacity-60' : ''}`}
                                 data-testid={`skill-item-${skill.name}`}
                             >
                                 <div
@@ -243,7 +275,18 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                                             <div className="text-xs text-[#616161] dark:text-[#999999] mt-0.5 truncate">{skill.description}</div>
                                         )}
                                     </div>
-                                    <div className="flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                    <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                        <label className="relative inline-flex items-center cursor-pointer" title={isSkillEnabled(skill.name) ? 'Enabled' : 'Disabled'}>
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={isSkillEnabled(skill.name)}
+                                                disabled={skillToggleSaving || skillsLoading}
+                                                onChange={(e) => handleSkillToggle(skill.name, e.target.checked)}
+                                                data-testid={`skill-toggle-${skill.name}`}
+                                            />
+                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                        </label>
                                         {deleteConfirm === skill.name ? (
                                             <span className="flex items-center gap-1 text-xs">
                                                 <span className="text-[#616161] dark:text-[#999]">Delete?</span>

@@ -74,6 +74,12 @@ export interface WorkspaceInfo {
      * - `string[]` — only the named servers are active; others are suppressed.
      */
     enabledMcpServers?: string[] | null;
+    /**
+     * Per-workspace skill deny-list.
+     * - `undefined` — all installed skills are enabled (default).
+     * - `string[]` — skills whose name matches an entry are disabled.
+     */
+    disabledSkills?: string[];
 }
 
 /**

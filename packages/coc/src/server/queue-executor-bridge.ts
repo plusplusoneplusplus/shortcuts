@@ -65,6 +65,7 @@ import {
     TaskQueueManager,
     toNativePath,
     ToolCallCapture,
+    DEFAULT_SKILLS_SETTINGS,
 } from '@plusplusoneplusplus/pipeline-core';
 import { replicateCommit } from '@plusplusoneplusplus/pipeline-core/templates';
 import type { ReplicateResult, ReplicateProgressCallback } from '@plusplusoneplusplus/pipeline-core/templates';
@@ -1077,6 +1078,9 @@ export class CLITaskExecutor implements TaskExecutor {
             const workingDirectory = this.getWorkingDirectory(task);
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
 
+            // Resolve per-workspace skill configuration
+            const { skillDirectories, disabledSkills } = await this.resolveSkillConfig(task, workingDirectory);
+
             // Capture read-only tool calls for the memory cache.
             // Create capture handler defensively — errors must not break task execution.
             let captureHandler: ((event: ToolEvent) => void) | undefined;
@@ -1157,6 +1161,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 keepAlive: true,
                 attachments,
                 tools: options?.tools,
+                skillDirectories,
+                disabledSkills,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
@@ -1495,6 +1501,49 @@ export class CLITaskExecutor implements TaskExecutor {
             return task.payload.workingDirectory || task.payload.folderPath || this.defaultWorkingDirectory;
         }
         return this.defaultWorkingDirectory;
+    }
+
+    /**
+     * Resolve per-workspace skill configuration for the SDK session.
+     * Returns `skillDirectories` (the `.github/skills/` path if it exists)
+     * and `disabledSkills` from the workspace config.
+     */
+    private async resolveSkillConfig(
+        task: QueuedTask,
+        workingDirectory?: string,
+    ): Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }> {
+        const payload = task.payload as any;
+        const wsId: string | undefined = payload?.workspaceId;
+        let disabledSkills: string[] | undefined;
+
+        // Resolve disabled skills from workspace config
+        if (wsId) {
+            try {
+                const workspaces = await this.store.getWorkspaces();
+                const ws = workspaces.find(w => w.id === wsId);
+                if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
+                    disabledSkills = ws.disabledSkills;
+                }
+            } catch {
+                // Non-fatal: continue without workspace config
+            }
+        }
+
+        // Resolve skill directories from workspace root
+        let skillDirectories: string[] | undefined;
+        const root = workingDirectory;
+        if (root) {
+            const skillsDir = path.join(root, DEFAULT_SKILLS_SETTINGS.installPath);
+            try {
+                if (fs.existsSync(skillsDir)) {
+                    skillDirectories = [skillsDir];
+                }
+            } catch {
+                // Non-fatal: skip if path is inaccessible
+            }
+        }
+
+        return { skillDirectories, disabledSkills };
     }
 
     /**

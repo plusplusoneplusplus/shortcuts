@@ -302,6 +302,17 @@ export interface SendMessageOptions {
     loadDefaultMcpConfig?: boolean;
 
     /**
+     * Directories containing additional skills to load into the session.
+     * Each directory should contain subdirectories representing individual skills.
+     */
+    skillDirectories?: string[];
+    /**
+     * Deny-list of skill names to disable. Skills loaded from `skillDirectories`
+     * whose name matches an entry in this list will not be available in the session.
+     */
+    disabledSkills?: string[];
+
+    /**
      * Handler for permission requests from the Copilot CLI.
      * Without a handler, all permission requests are denied by default.
      */
