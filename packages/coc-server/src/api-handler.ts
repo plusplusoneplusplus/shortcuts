@@ -1886,13 +1886,14 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
-    // Register skill management routes
-    registerSkillRoutes(routes, store, dataDir);
-
-    // Register global skill management routes
+    // Register global skill routes first so /skills/all is matched
+    // before the catch-all /skills/:name pattern in repo skill routes
     if (dataDir) {
         registerGlobalSkillRoutes(routes, store, dataDir);
     }
+
+    // Register repo skill management routes
+    registerSkillRoutes(routes, store, dataDir);
 }
 
 // ============================================================================

@@ -375,7 +375,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const skillName = decodeURIComponent(match![2]);
 
             // Reject route-collision names
-            if (skillName === 'bundled' || skillName === 'scan' || skillName === 'install') {
+            if (skillName === 'bundled' || skillName === 'scan' || skillName === 'install' || skillName === 'all') {
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
@@ -412,7 +412,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const skillName = decodeURIComponent(match![2]);
 
             // Reject route-collision names
-            if (skillName === 'bundled' || skillName === 'scan' || skillName === 'install') {
+            if (skillName === 'bundled' || skillName === 'scan' || skillName === 'install' || skillName === 'all') {
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
