@@ -214,6 +214,12 @@ export function Router() {
                         dispatch({ type: 'SET_SELECTED_WORKFLOW', name: null });
                         dispatch({ type: 'SET_WORKFLOW_RUN_PROCESS', processId: null });
                     }
+                    // Schedule deep-link handling: #repos/{id}/schedules/{scheduleId}
+                    if (parts[2] === 'schedules' && parts[3]) {
+                        dispatch({ type: 'SET_SELECTED_SCHEDULE', id: decodeURIComponent(parts[3]) });
+                    } else if (parts[2] === 'schedules') {
+                        dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
+                    }
                     // Activity deep-link handling — select queue task when task ID present
                     if (parts[2] === 'activity' && parts[3]) {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]) });

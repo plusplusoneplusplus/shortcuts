@@ -8,6 +8,7 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { formatRelativeTime } from '../utils/format';
 import { fetchWorkflows } from './workflow-api';
+import { useApp } from '../context/AppContext';
 import type { PipelineInfo } from './repoGrouping';
 
 /** Try to reverse-parse a cron expression into a simple interval. */
@@ -124,9 +125,10 @@ interface RunRecord {
 }
 
 export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
+    const { state, dispatch } = useApp();
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(state.selectedScheduleId);
     const [history, setHistory] = useState<RunRecord[]>([]);
     const [showCreate, setShowCreate] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -168,6 +170,8 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
             setEditingId(null);
         }
         setSelectedId(scheduleId);
+        dispatch({ type: 'SET_SELECTED_SCHEDULE', id: scheduleId });
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/schedules/' + encodeURIComponent(scheduleId);
     };
 
     // Fetch history whenever selectedId changes
@@ -187,9 +191,12 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     // Auto-select first schedule when schedules load and nothing is selected
     useEffect(() => {
         if (selectedId === null && schedules.length > 0) {
-            setSelectedId(schedules[0].id);
+            const id = schedules[0].id;
+            setSelectedId(id);
+            dispatch({ type: 'SET_SELECTED_SCHEDULE', id });
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/schedules/' + encodeURIComponent(id);
         }
-    }, [schedules, selectedId]);
+    }, [schedules, selectedId, workspaceId, dispatch]);
 
     const handlePauseResume = async (schedule: Schedule) => {
         const newStatus = schedule.status === 'active' ? 'paused' : 'active';
@@ -220,6 +227,8 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
         if (selectedId === scheduleId) {
             // Deleted the selected schedule — will auto-select first remaining via useEffect
             setSelectedId(null);
+            dispatch({ type: 'SET_SELECTED_SCHEDULE', id: null });
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/schedules';
         }
         fetchSchedules();
     };
