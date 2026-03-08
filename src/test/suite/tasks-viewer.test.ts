@@ -1078,10 +1078,10 @@ suite('Tasks Viewer Tests', () => {
             const item = new TaskItem(task);
 
             assert.ok(item.command);
-            assert.strictEqual(item.command.command, 'vscode.openWith');
+            assert.strictEqual(item.command.command, 'tasksViewer.openTaskItem');
             assert.ok(item.command.arguments);
-            assert.strictEqual(item.command.arguments.length, 2);
-            assert.strictEqual(item.command.arguments[1], 'reviewEditorView');
+            assert.strictEqual(item.command.arguments.length, 1);
+            assert.strictEqual(item.command.arguments[0], '/path/to/task.md');
         });
 
         test('should set tooltip to file path', () => {
@@ -2514,9 +2514,9 @@ suite('Tasks Viewer Tests', () => {
             const item = new TaskDocumentItem(doc);
 
             assert.ok(item.command);
-            assert.strictEqual(item.command.command, 'vscode.openWith');
+            assert.strictEqual(item.command.command, 'tasksViewer.openTaskItem');
             assert.ok(item.command.arguments);
-            assert.strictEqual(item.command.arguments[1], 'reviewEditorView');
+            assert.strictEqual(item.command.arguments[0], '/path/task1.plan.md');
         });
     });
 

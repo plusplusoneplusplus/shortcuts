@@ -42,6 +42,7 @@ export class TasksCommands {
         const disposables: vscode.Disposable[] = [];
 
         disposables.push(
+            vscode.commands.registerCommand('tasksViewer.openTaskItem', (filePath: string) => this.openTaskItem(filePath)),
             vscode.commands.registerCommand('tasksViewer.create', () => this.createTask()),
             vscode.commands.registerCommand('tasksViewer.createFeature', () => this.createFeature()),
             vscode.commands.registerCommand('tasksViewer.createSubfolder', (item: TaskFolderItem) => this.createSubfolder(item)),
@@ -74,7 +75,36 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.markAsDone', (item: TaskItem | TaskDocumentItem) => this.setTaskStatus(item, 'done'))
         );
 
+        // On mobile, re-tapping an already-selected task item doesn't re-fire the
+        // TreeItem command. Listen for selection changes to ensure the file opens.
+        if (this.tasksTreeView) {
+            disposables.push(
+                this.tasksTreeView.onDidChangeSelection(async (e) => {
+                    if (e.selection.length === 1) {
+                        const item = e.selection[0];
+                        if (item instanceof TaskItem || item instanceof TaskDocumentItem) {
+                            await this.openTaskItem(item.filePath);
+                        }
+                    }
+                })
+            );
+        }
+
         return disposables;
+    }
+
+    /**
+     * Open a task file in the Markdown Review Editor
+     */
+    private async openTaskItem(filePath: string): Promise<void> {
+        if (!filePath) {
+            return;
+        }
+        await vscode.commands.executeCommand(
+            'vscode.openWith',
+            vscode.Uri.file(filePath),
+            'reviewEditorView'
+        );
     }
 
     /**

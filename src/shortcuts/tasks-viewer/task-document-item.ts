@@ -39,9 +39,9 @@ export class TaskDocumentItem extends vscode.TreeItem {
 
         // Click to open in Markdown Review Editor
         this.command = {
-            command: 'vscode.openWith',
+            command: 'tasksViewer.openTaskItem',
             title: 'Open Document',
-            arguments: [vscode.Uri.file(document.filePath), 'reviewEditorView']
+            arguments: [document.filePath]
         };
     }
 
