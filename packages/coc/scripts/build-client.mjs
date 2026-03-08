@@ -24,10 +24,21 @@ async function buildTailwindBundle(inputPath, outputPath) {
         autoprefixer(),
     ]).process(source, { from: inputPath, to: outputPath });
 
-    await mkdir(dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, result.css, 'utf-8');
+    // Preserve any CSS that esbuild already extracted (e.g. Monaco editor styles)
+    // by prepending it to the Tailwind output instead of overwriting.
+    let existingCss = '';
+    try {
+        existingCss = await readFile(outputPath, 'utf-8');
+    } catch { /* file may not exist yet */ }
 
-    const sizeKb = (Buffer.byteLength(result.css, 'utf-8') / 1024).toFixed(1);
+    const merged = existingCss
+        ? `${existingCss}\n/* --- Tailwind --- */\n${result.css}`
+        : result.css;
+
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, merged, 'utf-8');
+
+    const sizeKb = (Buffer.byteLength(merged, 'utf-8') / 1024).toFixed(1);
     console.log(`\n  ${outputPath}  ${sizeKb}kb\n`);
 }
 

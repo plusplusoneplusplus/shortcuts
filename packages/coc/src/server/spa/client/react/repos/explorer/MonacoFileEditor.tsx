@@ -4,7 +4,7 @@
  * Provides syntax highlighting, theme syncing, and Ctrl+S save keybinding.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { useTheme } from '../../layout/ThemeProvider';
@@ -116,11 +116,31 @@ export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFi
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+
+    // Measure the wrapper element and track resizes so Monaco gets explicit
+    // pixel dimensions instead of relying on CSS 100% (which causes runaway
+    // scrollHeight in flex/overflow containers).
+    useEffect(() => {
+        const el = wrapperRef.current;
+        if (!el) return;
+        const update = () => {
+            const { width, height } = el.getBoundingClientRect();
+            setDimensions(prev =>
+                prev && prev.width === Math.round(width) && prev.height === Math.round(height)
+                    ? prev
+                    : { width: Math.round(width), height: Math.round(height) },
+            );
+        };
+        update();
+        const ro = new ResizeObserver(update);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
 
-        // Ctrl+S / Cmd+S keybinding for save
         if (onSave) {
             editor.addAction({
                 id: 'file-save',
@@ -135,28 +155,22 @@ export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFi
         onChange(newValue ?? '');
     }, [onChange]);
 
-    // Hide the internal IME textarea Monaco injects for input handling
-    useEffect(() => {
-        const el = wrapperRef.current;
-        if (!el) return;
-        const ta = el.querySelector<HTMLTextAreaElement>('textarea.ime-text-area');
-        if (ta) {
-            ta.style.display = 'none';
-        }
-    });
-
     const monacoTheme = resolveIsDark(theme) ? 'vs-dark' : 'vs';
 
     return (
-        <div ref={wrapperRef} className="h-full w-full" data-testid="monaco-editor-wrapper">
-            <Editor
-                value={value}
-                language={language ?? 'plaintext'}
-                theme={monacoTheme}
-                onChange={handleChange}
-                onMount={handleMount}
-                options={EXPLORER_EDITOR_OPTIONS}
-            />
+        <div ref={wrapperRef} className="h-full w-full overflow-hidden" data-testid="monaco-editor-wrapper">
+            {dimensions && (
+                <Editor
+                    width={dimensions.width}
+                    height={dimensions.height}
+                    value={value}
+                    language={language ?? 'plaintext'}
+                    theme={monacoTheme}
+                    onChange={handleChange}
+                    onMount={handleMount}
+                    options={EXPLORER_EDITOR_OPTIONS}
+                />
+            )}
         </div>
     );
 }

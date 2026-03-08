@@ -383,7 +383,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'templates' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'templates' || activeSubTab === 'explorer' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab repo={repo} />}
                         {activeSubTab === 'activity' && <RepoActivityTab workspaceId={ws.id} />}

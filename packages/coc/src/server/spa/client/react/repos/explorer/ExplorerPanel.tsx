@@ -63,13 +63,19 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         return () => { cancelled = true; };
     }, [workspaceId]);
 
-    // Deep-link: read hash on mount to restore selected path
+    // Deep-link: read hash on mount to restore selected path and open file preview
     useEffect(() => {
         const hash = location.hash.replace(/^#/, '');
         const parts = hash.split('/');
         // #repos/:id/explorer/:path
         if (parts[0] === 'repos' && parts[2] === 'explorer' && parts[3]) {
-            setSelectedPath(decodeURIComponent(parts.slice(3).join('/')));
+            const decoded = decodeURIComponent(parts.slice(3).join('/'));
+            setSelectedPath(decoded);
+            const segments = decoded.split('/').filter(Boolean);
+            const lastName = segments[segments.length - 1] ?? '';
+            if (lastName.includes('.')) {
+                setPreviewFile({ path: decoded, name: lastName });
+            }
         }
     }, []);
 
@@ -321,7 +327,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             />
 
             {/* Right main — preview pane */}
-            <main className="flex-1 min-h-0 flex items-center justify-center bg-white dark:bg-[#1e1e1e] overflow-hidden" data-testid="explorer-preview-pane">
+            <main className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile ? '' : ' flex items-center justify-center'}`} data-testid="explorer-preview-pane">
                 {previewFile
                     ? <PreviewPane
                         repoId={workspaceId}
