@@ -326,7 +326,21 @@ if (result.success) {
 }
 ```
 
-### Example 4: Batch Comment Operations
+### Example 4: AI Resolve Comment
+
+The `aiResolveComment` webview message triggers AI-powered comment resolution. The flow:
+1. Webview sends `{ type: 'aiResolveComment', commentId }` to the extension
+2. Extension fetches the comment, builds a `DiffClarificationContext` with the comment text and code
+3. Sends to `handleDiffAIClarification` with `instructionType: 'custom'`
+4. On success: adds AI response as `ai-suggestion` comment, resolves the original comment
+5. Only available for open user comments (not AI-generated comments)
+
+```typescript
+// The AI resolve button is shown for open user comments when askAIEnabled is true
+const isEligible = comment.status === 'open' && (!comment.type || comment.type === 'user');
+```
+
+### Example 5: Batch Comment Operations
 
 ```typescript
 import { DiffCommentsManager } from '../git-diff-comments';
