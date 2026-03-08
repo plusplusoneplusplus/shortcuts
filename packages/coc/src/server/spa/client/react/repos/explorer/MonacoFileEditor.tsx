@@ -4,7 +4,7 @@
  * Provides syntax highlighting, theme syncing, and Ctrl+S save keybinding.
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { useTheme } from '../../layout/ThemeProvider';
@@ -90,9 +90,32 @@ function resolveIsDark(theme: 'auto' | 'dark' | 'light'): boolean {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+/** Monaco editor options tuned for an explorer preview: no chrome, no margins. */
+export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstructionOptions = {
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    fontSize: 13,
+    wordWrap: 'on',
+    automaticLayout: true,
+    readOnly: false,
+    padding: { top: 0, bottom: 0 },
+    glyphMargin: false,
+    folding: false,
+    lineDecorationsWidth: 0,
+    lineNumbersMinChars: 3,
+    overviewRulerLanes: 0,
+    overviewRulerBorder: false,
+    hideCursorInOverviewRuler: true,
+    scrollbar: {
+        verticalScrollbarSize: 8,
+        horizontalScrollbarSize: 8,
+    },
+};
+
 export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
 
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
@@ -112,24 +135,27 @@ export function MonacoFileEditor({ value, language, onChange, onSave }: MonacoFi
         onChange(newValue ?? '');
     }, [onChange]);
 
+    // Hide the internal IME textarea Monaco injects for input handling
+    useEffect(() => {
+        const el = wrapperRef.current;
+        if (!el) return;
+        const ta = el.querySelector<HTMLTextAreaElement>('textarea.ime-text-area');
+        if (ta) {
+            ta.style.display = 'none';
+        }
+    });
+
     const monacoTheme = resolveIsDark(theme) ? 'vs-dark' : 'vs';
 
     return (
-        <div className="h-full w-full" data-testid="monaco-editor-wrapper">
+        <div ref={wrapperRef} className="h-full w-full" data-testid="monaco-editor-wrapper">
             <Editor
                 value={value}
                 language={language ?? 'plaintext'}
                 theme={monacoTheme}
                 onChange={handleChange}
                 onMount={handleMount}
-                options={{
-                    minimap: { enabled: true },
-                    scrollBeyondLastLine: false,
-                    fontSize: 13,
-                    wordWrap: 'on',
-                    automaticLayout: true,
-                    readOnly: false,
-                }}
+                options={EXPLORER_EDITOR_OPTIONS}
             />
         </div>
     );

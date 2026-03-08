@@ -1,9 +1,9 @@
 /**
- * Tests for MonacoFileEditor helper: getMonacoLanguage
+ * Tests for MonacoFileEditor helpers: getMonacoLanguage, EXPLORER_EDITOR_OPTIONS
  */
 
 import { describe, expect, it } from 'vitest';
-import { getMonacoLanguage } from '../../../../../src/server/spa/client/react/repos/explorer/MonacoFileEditor';
+import { getMonacoLanguage, EXPLORER_EDITOR_OPTIONS } from '../../../../../src/server/spa/client/react/repos/explorer/MonacoFileEditor';
 
 describe('getMonacoLanguage', () => {
     it('maps TypeScript extensions', () => {
@@ -99,5 +99,34 @@ describe('getMonacoLanguage', () => {
 
     it('maps Makefile', () => {
         expect(getMonacoLanguage('Makefile')).toBe('makefile');
+    });
+});
+
+describe('EXPLORER_EDITOR_OPTIONS', () => {
+    it('disables minimap to remove right margin', () => {
+        expect(EXPLORER_EDITOR_OPTIONS.minimap).toEqual({ enabled: false });
+    });
+
+    it('sets zero top and bottom padding', () => {
+        expect(EXPLORER_EDITOR_OPTIONS.padding).toEqual({ top: 0, bottom: 0 });
+    });
+
+    it('disables glyph margin, folding, and line decorations to minimize left margin', () => {
+        expect(EXPLORER_EDITOR_OPTIONS.glyphMargin).toBe(false);
+        expect(EXPLORER_EDITOR_OPTIONS.folding).toBe(false);
+        expect(EXPLORER_EDITOR_OPTIONS.lineDecorationsWidth).toBe(0);
+    });
+
+    it('disables overview ruler to remove right-side chrome', () => {
+        expect(EXPLORER_EDITOR_OPTIONS.overviewRulerLanes).toBe(0);
+        expect(EXPLORER_EDITOR_OPTIONS.overviewRulerBorder).toBe(false);
+        expect(EXPLORER_EDITOR_OPTIONS.hideCursorInOverviewRuler).toBe(true);
+    });
+
+    it('uses slim scrollbar sizes', () => {
+        expect(EXPLORER_EDITOR_OPTIONS.scrollbar).toEqual({
+            verticalScrollbarSize: 8,
+            horizontalScrollbarSize: 8,
+        });
     });
 });
