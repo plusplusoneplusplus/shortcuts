@@ -13,7 +13,6 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
@@ -41,14 +40,6 @@ const MAX_PERSISTED_HISTORY_DEFAULT = 100;
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/** Compute a deterministic 16-char hex repo ID from a root path. */
-export function computeRepoId(rootPath: string): string {
-    return crypto.createHash('sha256')
-        .update(path.resolve(rootPath))
-        .digest('hex')
-        .substring(0, 16);
-}
 
 /** Get the per-repo queue file path using a workspace ID. */
 export function getRepoQueueFilePath(dataDir: string, workspaceId: string): string {
@@ -126,62 +117,6 @@ export function atomicWriteJson(filePath: string, state: PersistedQueueState): v
     }
 }
 
-/**
- * Migrate a legacy single-file `queue.json` (v1) into per-repo files (v3).
- * Idempotent: if no `queue.json` exists, or it isn't v1, this is a no-op.
- * Renames the old file to `queue.json.migrated` so it runs only once.
- */
-export function migrateQueueFromOldFormat(dataDir: string, maxPersistedHistory = MAX_PERSISTED_HISTORY_DEFAULT): void {
-    const oldPath = path.join(dataDir, 'queue.json');
-    if (!fs.existsSync(oldPath)) { return; }
-
-    try {
-        const raw = fs.readFileSync(oldPath, 'utf-8');
-        const oldState = JSON.parse(raw);
-
-        if (oldState.version !== 1) { return; }
-
-        const tasksByRepo = new Map<string, { pending: QueuedTask[]; history: QueuedTask[] }>();
-
-        const oldPending: QueuedTask[] = Array.isArray(oldState.pending) ? oldState.pending : [];
-        const oldHistory: QueuedTask[] = Array.isArray(oldState.history) ? oldState.history : [];
-
-        for (const task of oldPending) {
-            const rootPath = getTaskRepoPath(task);
-            const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
-            entry.pending.push(task);
-            tasksByRepo.set(rootPath, entry);
-        }
-        for (const task of oldHistory) {
-            const rootPath = getTaskRepoPath(task);
-            const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
-            entry.history.push(task);
-            tasksByRepo.set(rootPath, entry);
-        }
-
-        for (const [rootPath, { pending, history }] of tasksByRepo) {
-            const newState: PersistedQueueState = {
-                version: CURRENT_VERSION,
-                savedAt: new Date().toISOString(),
-                repoRootPath: rootPath,
-                repoId: computeRepoId(rootPath),
-                pending,
-                history: history.slice(0, maxPersistedHistory),
-                isPaused: false,
-            };
-            atomicWriteJson(getRepoQueueFilePath(dataDir, computeRepoId(rootPath)), newState);
-        }
-
-        fs.renameSync(oldPath, oldPath + '.migrated');
-
-        process.stderr.write(
-            `[QueuePersistence] Migrated queue.json to ${tasksByRepo.size} per-repo file(s)\n`
-        );
-    } catch (err) {
-        process.stderr.write(`[QueuePersistence] Migration failed: ${err}\n`);
-    }
-}
-
 // ============================================================================
 // QueuePersistence
 // ============================================================================
@@ -191,8 +126,8 @@ export interface QueuePersistenceOptions {
     restartPolicy?: RestartPolicy;
     /** Maximum number of history entries to persist per repo (default: 100). */
     maxPersistedHistory?: number;
-    /** Resolve a rootPath to a workspace ID. Falls back to computeRepoId if not provided. */
-    resolveWorkspaceId?: (rootPath: string) => string;
+    /** Resolve a rootPath to a workspace ID. Required. */
+    resolveWorkspaceId: (rootPath: string) => string;
 }
 
 export class QueuePersistence {
@@ -214,15 +149,12 @@ export class QueuePersistence {
         this.queuesDir = path.join(dataDir, 'queues');
         this.restartPolicy = options?.restartPolicy ?? 'fail';
         this.maxPersistedHistory = options?.maxPersistedHistory ?? MAX_PERSISTED_HISTORY_DEFAULT;
-        this.resolveWorkspaceId = options?.resolveWorkspaceId ?? computeRepoId;
+        this.resolveWorkspaceId = options?.resolveWorkspaceId ?? (() => { throw new Error('resolveWorkspaceId is required'); });
 
         // Ensure queues directory exists
         if (!fs.existsSync(this.queuesDir)) {
             fs.mkdirSync(this.queuesDir, { recursive: true });
         }
-
-        // Run migration if old format exists (idempotent)
-        migrateQueueFromOldFormat(this.dataDir, this.maxPersistedHistory);
 
         this.changeListener = () => {
             this.dirty = true;

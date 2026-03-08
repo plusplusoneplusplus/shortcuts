@@ -21,7 +21,7 @@ import type {
 } from '@plusplusoneplusplus/coc-server';
 import { validateExportPayload } from '@plusplusoneplusplus/coc-server';
 import { readPreferences, writePreferences } from './preferences-handler';
-import { computeRepoId, getRepoQueueFilePath } from './queue-persistence';
+import { getRepoQueueFilePath } from './queue-persistence';
 
 // ============================================================================
 // Public API
@@ -215,7 +215,8 @@ function writeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
     for (const snap of snapshots) {
         const rootPath = snap.repoRootPath;
         if (!rootPath) { continue; }
-        const repoId = snap.repoId || computeRepoId(rootPath);
+        const repoId = snap.repoId;
+        if (!repoId) { continue; }
         const filePath = getRepoQueueFilePath(dataDir, repoId);
         try {
             const dir = path.dirname(filePath);
@@ -253,7 +254,8 @@ function mergeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
     for (const snap of snapshots) {
         const rootPath = snap.repoRootPath;
         if (!rootPath) { continue; }
-        const repoId = snap.repoId || computeRepoId(rootPath);
+        const repoId = snap.repoId;
+        if (!repoId) { continue; }
         const filePath = getRepoQueueFilePath(dataDir, repoId);
         try {
             // Read existing state (if any)

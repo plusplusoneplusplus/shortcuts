@@ -5,7 +5,7 @@
  * location to the new `~/.coc/repos/<repoId>/tasks/` directory.
  * Also remaps comment file hashes from old-prefix to new-prefix paths.
  *
- * Follows the pattern established by queue-persistence.ts migrateQueueFromOldFormat().
+ * Uses the same one-time copy-and-remap pattern as other server data migrations.
  */
 
 import * as crypto from 'crypto';

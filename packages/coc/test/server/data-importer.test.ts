@@ -182,7 +182,7 @@ describe('importData', () => {
                 queueHistory: [
                     {
                         repoRootPath: '/projects/frontend',
-                        repoId: 'abc123',
+                        repoId: 'ws-frontend',
                         pending: [{ id: 'q1', type: 'pipeline', status: 'queued' } as any],
                         history: [{ id: 'q0', type: 'pipeline', status: 'completed' } as any],
                     },
@@ -193,7 +193,7 @@ describe('importData', () => {
 
             expect(result.importedQueueFiles).toBe(1);
 
-            const filePath = getRepoQueueFilePath(dataDir, 'abc123');
+            const filePath = getRepoQueueFilePath(dataDir, 'ws-frontend');
             expect(fs.existsSync(filePath)).toBe(true);
 
             const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -370,12 +370,13 @@ describe('importData', () => {
 
         it('merges queue files — deduplicates by task ID', async () => {
             const rootPath = '/projects/frontend';
+            const repoId = 'ws-frontend';
             // Write existing queue file
-            const existingFilePath = getRepoQueueFilePath(dataDir, 'abc123');
+            const existingFilePath = getRepoQueueFilePath(dataDir, repoId);
             writeJSON(existingFilePath, {
                 version: 3,
                 repoRootPath: rootPath,
-                repoId: 'abc123',
+                repoId,
                 pending: [{ id: 'existing-q1', type: 'pipeline', status: 'queued' }],
                 history: [{ id: 'existing-h1', type: 'pipeline', status: 'completed' }],
                 isPaused: false,
@@ -384,7 +385,7 @@ describe('importData', () => {
             const payload = buildPayload({
                 queueHistory: [{
                     repoRootPath: rootPath,
-                    repoId: 'abc123',
+                    repoId,
                     pending: [
                         { id: 'existing-q1', type: 'pipeline', status: 'queued' } as any,
                         { id: 'new-q1', type: 'pipeline', status: 'queued' } as any,
@@ -409,7 +410,7 @@ describe('importData', () => {
             const payload = buildPayload({
                 queueHistory: [{
                     repoRootPath: '/projects/new-repo',
-                    repoId: 'newrepo',
+                    repoId: 'ws-newrepo',
                     pending: [{ id: 'q1', type: 'pipeline', status: 'queued' } as any],
                     history: [],
                 }],
@@ -418,7 +419,7 @@ describe('importData', () => {
             const result = await importData(payload, baseOptions({ mode: 'merge' }));
 
             expect(result.importedQueueFiles).toBe(1);
-            const filePath = getRepoQueueFilePath(dataDir, 'newrepo');
+            const filePath = getRepoQueueFilePath(dataDir, 'ws-newrepo');
             expect(fs.existsSync(filePath)).toBe(true);
         });
 
@@ -519,7 +520,7 @@ describe('importData', () => {
             const payload = buildPayload({
                 queueHistory: [{
                     repoRootPath: '',
-                    repoId: '',
+                    repoId: 'ws-missing-root',
                     pending: [],
                     history: [],
                 }],
@@ -527,6 +528,21 @@ describe('importData', () => {
 
             const result = await importData(payload, baseOptions());
             expect(result.importedQueueFiles).toBe(0);
+        });
+
+        it('skips queue snapshots without repoId instead of deriving one', async () => {
+            const payload = buildPayload({
+                queueHistory: [{
+                    repoRootPath: '/projects/missing-id',
+                    pending: [{ id: 'q1', type: 'pipeline', status: 'queued' } as any],
+                    history: [],
+                } as any],
+            });
+
+            const result = await importData(payload, baseOptions());
+
+            expect(result.importedQueueFiles).toBe(0);
+            expect(fs.existsSync(getRepoQueueFilePath(dataDir, 'ws-missing-id'))).toBe(false);
         });
 
         it('handles replace mode with no optional callbacks', async () => {

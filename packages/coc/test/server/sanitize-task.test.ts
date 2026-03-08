@@ -16,7 +16,6 @@ import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
 import {
     sanitizeTaskForPersistence,
     QueuePersistence,
-    computeRepoId,
     getRepoQueueFilePath,
 } from '../../src/server/queue-persistence';
 import { ImageBlobStore } from '../../src/server/image-blob-store';
@@ -68,6 +67,19 @@ function makeTask(
         payload,
         config: {},
     } as QueuedTask;
+}
+
+function workspaceId(rootPath: string): string {
+    return rootPath
+        .replace(/^[\\/]+/, '')
+        .replace(/[^A-Za-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function createQueuePersistence(queueManager: TaskQueueManager, queueDataDir: string): QueuePersistence {
+    return new QueuePersistence(queueManager, queueDataDir, {
+        resolveWorkspaceId: workspaceId,
+    });
 }
 
 const SAMPLE_IMAGES = [
@@ -250,7 +262,7 @@ describe('QueuePersistence save with images', () => {
     }
 
     it('persists task with images: images externalized, metadata present', async () => {
-        persistence = new QueuePersistence(queueManager, dataDir);
+        persistence = createQueuePersistence(queueManager, dataDir);
         const rootPath = '/repo/images-test';
 
         queueManager.enqueue({
@@ -264,7 +276,7 @@ describe('QueuePersistence save with images', () => {
         // ImageBlobStore uses real fs.promises I/O that fake timers can't flush
         await (persistence as any).save();
 
-        const filePath = getRepoQueueFilePath(dataDir, computeRepoId(rootPath));
+        const filePath = getRepoQueueFilePath(dataDir, workspaceId(rootPath));
         const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
         expect(state.pending).toHaveLength(1);
@@ -275,7 +287,7 @@ describe('QueuePersistence save with images', () => {
     });
 
     it('persists task without images: payload unchanged', async () => {
-        persistence = new QueuePersistence(queueManager, dataDir);
+        persistence = createQueuePersistence(queueManager, dataDir);
         const rootPath = '/repo/no-images-test';
 
         queueManager.enqueue({
@@ -287,7 +299,7 @@ describe('QueuePersistence save with images', () => {
 
         await flushSave();
 
-        const filePath = getRepoQueueFilePath(dataDir, computeRepoId(rootPath));
+        const filePath = getRepoQueueFilePath(dataDir, workspaceId(rootPath));
         const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
         expect(state.pending).toHaveLength(1);
@@ -298,7 +310,7 @@ describe('QueuePersistence save with images', () => {
     });
 
     it('creates blob file after save', async () => {
-        persistence = new QueuePersistence(queueManager, dataDir);
+        persistence = createQueuePersistence(queueManager, dataDir);
         const rootPath = '/repo/blob-test';
 
         queueManager.enqueue({
@@ -317,7 +329,7 @@ describe('QueuePersistence save with images', () => {
     });
 
     it('does not mutate in-memory task during save', async () => {
-        persistence = new QueuePersistence(queueManager, dataDir);
+        persistence = createQueuePersistence(queueManager, dataDir);
         const rootPath = '/repo/mutation-test';
 
         queueManager.enqueue({
@@ -430,7 +442,7 @@ describe('Round-trip with image externalization', () => {
     }
 
     it('restored task has imagesFilePath and imagesCount but no inline images', async () => {
-        persistence = new QueuePersistence(queueManager, dataDir);
+        persistence = createQueuePersistence(queueManager, dataDir);
         const rootPath = '/repo/roundtrip-images';
 
         queueManager.enqueue({
@@ -446,7 +458,7 @@ describe('Round-trip with image externalization', () => {
 
         // Restore into a new instance
         const qm2 = createManager();
-        const p2 = new QueuePersistence(qm2, dataDir);
+        const p2 = createQueuePersistence(qm2, dataDir);
         p2.restore();
 
         const queued = qm2.getQueued();
@@ -465,7 +477,7 @@ describe('Round-trip with image externalization', () => {
     });
 
     it('restored task without images has no externalization metadata', async () => {
-        persistence = new QueuePersistence(queueManager, dataDir);
+        persistence = createQueuePersistence(queueManager, dataDir);
         const rootPath = '/repo/roundtrip-no-images';
 
         queueManager.enqueue({
@@ -480,7 +492,7 @@ describe('Round-trip with image externalization', () => {
         persistence = undefined!;
 
         const qm2 = createManager();
-        const p2 = new QueuePersistence(qm2, dataDir);
+        const p2 = createQueuePersistence(qm2, dataDir);
         p2.restore();
 
         const queued = qm2.getQueued();

@@ -1,8 +1,8 @@
 /**
  * QueuePersistence per-repo storage tests.
  *
- * Covers: per-repo save/restore, migration from old format, empty-file cleanup,
- * multi-repo persistence, and edge cases.
+ * Covers: per-repo save/restore, empty-file cleanup, multi-repo persistence,
+ * and edge cases.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TaskQueueManager, type TaskQueueManagerOptions } from '@plusplusoneplusplus/pipeline-core';
-import { QueuePersistence, computeRepoId, getRepoQueueFilePath } from '../../src/server/queue-persistence';
+import { QueuePersistence, getRepoQueueFilePath } from '../../src/server/queue-persistence';
 
 // ============================================================================
 // Helpers
@@ -19,6 +19,8 @@ import { QueuePersistence, computeRepoId, getRepoQueueFilePath } from '../../src
 let dataDir: string;
 let queueManager: TaskQueueManager;
 let persistence: QueuePersistence;
+
+const wsIdFor = (rootPath: string) => `ws-${rootPath.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}`;
 
 function createManager(options: Partial<TaskQueueManagerOptions> = {}): TaskQueueManager {
     return new TaskQueueManager({
@@ -37,39 +39,13 @@ async function flushSave(): Promise<void> {
     await vi.advanceTimersByTimeAsync(400);
 }
 
-/** Create a minimal v1 (old format) state for migration tests. */
-function makeOldState(tasks: Array<{ id: string; status: string; workingDirectory?: string }>) {
-    return {
-        version: 1,
-        savedAt: new Date().toISOString(),
-        pending: tasks.filter(t => t.status === 'queued' || t.status === 'running').map(t => ({
-            id: t.id,
-            type: 'chat',
-            priority: 'normal',
-            status: t.status,
-            createdAt: Date.now(),
-            payload: { kind: 'chat', mode: 'autopilot', prompt: 'migrated task', workingDirectory: t.workingDirectory },
-            config: {},
-        })),
-        history: tasks.filter(t => t.status === 'completed' || t.status === 'failed').map(t => ({
-            id: t.id,
-            type: 'chat',
-            priority: 'normal',
-            status: t.status,
-            createdAt: Date.now(),
-            payload: { kind: 'chat', mode: 'autopilot', prompt: 'migrated task', workingDirectory: t.workingDirectory },
-            config: {},
-        })),
-    };
-}
-
 /** Create a v3 (current format) state for restore tests. */
 function makeRepoState(rootPath: string, pending: unknown[] = [], history: unknown[] = [], isPaused: boolean = false) {
     return {
         version: 3,
         savedAt: new Date().toISOString(),
         repoRootPath: rootPath,
-        repoId: computeRepoId(rootPath),
+        repoId: wsIdFor(rootPath),
         pending,
         history,
         isPaused,
@@ -113,24 +89,6 @@ afterEach(() => {
 // Helper function tests
 // ============================================================================
 
-describe('computeRepoId', () => {
-    it('returns 16 hex characters', () => {
-        const id = computeRepoId('/path/to/repo');
-        expect(id).toMatch(/^[0-9a-f]{16}$/);
-    });
-
-    it('is deterministic', () => {
-        const a = computeRepoId('/some/path');
-        const b = computeRepoId('/some/path');
-        expect(a).toBe(b);
-    });
-
-    it('produces different IDs for different paths', () => {
-        const a = computeRepoId('/repo/one');
-        const b = computeRepoId('/repo/two');
-        expect(a).not.toBe(b);
-    });
-});
 
 describe('getRepoQueueFilePath', () => {
     it('returns path under queues/ directory using workspace ID directly', () => {
@@ -146,13 +104,13 @@ describe('getRepoQueueFilePath', () => {
 describe('QueuePersistence', () => {
     describe('constructor', () => {
         it('creates queues/ directory on instantiation', () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             expect(fs.existsSync(path.join(dataDir, 'queues'))).toBe(true);
         });
 
         it('is idempotent if queues/ already exists', () => {
             fs.mkdirSync(path.join(dataDir, 'queues'), { recursive: true });
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             expect(fs.existsSync(path.join(dataDir, 'queues'))).toBe(true);
         });
     });
@@ -163,7 +121,7 @@ describe('QueuePersistence', () => {
 
     describe('save — single repo', () => {
         it('saves queue state to per-repo file', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -174,7 +132,7 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const repoId = computeRepoId('/path/to/repo1');
+            const repoId = wsIdFor('/path/to/repo1');
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
             expect(fs.existsSync(filePath)).toBe(true);
 
@@ -186,7 +144,7 @@ describe('QueuePersistence', () => {
         });
 
         it('uses process.cwd() for tasks without workingDirectory', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -197,7 +155,7 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const repoId = computeRepoId(process.cwd());
+            const repoId = wsIdFor(process.cwd());
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
             expect(fs.existsSync(filePath)).toBe(true);
 
@@ -212,7 +170,7 @@ describe('QueuePersistence', () => {
 
     describe('save — multi repo', () => {
         it('saves separate files for different repos', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -242,7 +200,7 @@ describe('QueuePersistence', () => {
         });
 
         it('groups tasks from same repo in one file', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -283,13 +241,13 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
             ]);
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(
                 path.join(queuesDir, `repo-${repoId}.json`),
                 JSON.stringify(state),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             expect(queueManager.getQueued()).toHaveLength(1);
@@ -303,14 +261,14 @@ describe('QueuePersistence', () => {
                 const state = makeRepoState(rootPath, [
                     makeTask(`t-${rootPath}`, 'queued', rootPath),
                 ]);
-                const repoId = computeRepoId(rootPath);
+                const repoId = wsIdFor(rootPath);
                 fs.writeFileSync(
                     path.join(queuesDir, `repo-${repoId}.json`),
                     JSON.stringify(state),
                 );
             }
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             expect(queueManager.getQueued()).toHaveLength(2);
@@ -324,13 +282,13 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [
                 makeTask('t-run', 'running', rootPath),
             ]);
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(
                 path.join(queuesDir, `repo-${repoId}.json`),
                 JSON.stringify(state),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             // running task should be in history as failed, not in queued
@@ -349,13 +307,13 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [], [
                 makeTask('t-done', 'completed', rootPath),
             ]);
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(
                 path.join(queuesDir, `repo-${repoId}.json`),
                 JSON.stringify(state),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             expect(queueManager.getQueued()).toHaveLength(0);
@@ -368,7 +326,7 @@ describe('QueuePersistence', () => {
 
             fs.writeFileSync(path.join(queuesDir, 'repo-badfile12345678.json'), 'not json');
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             // Should not throw
             persistence.restore();
             expect(queueManager.getQueued()).toHaveLength(0);
@@ -381,7 +339,7 @@ describe('QueuePersistence', () => {
             const state = { version: 999, savedAt: '', repoRootPath: '/x', repoId: 'abc', pending: [], history: [] };
             fs.writeFileSync(path.join(queuesDir, 'repo-1234567890abcdef.json'), JSON.stringify(state));
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
             expect(queueManager.getQueued()).toHaveLength(0);
         });
@@ -389,7 +347,7 @@ describe('QueuePersistence', () => {
         it('does nothing when queues/ directory is missing', () => {
             // Don't create the queues dir manually; constructor will create it
             // but it won't have any files
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
             expect(queueManager.getQueued()).toHaveLength(0);
         });
@@ -401,11 +359,11 @@ describe('QueuePersistence', () => {
 
     describe('cleanup', () => {
         it('deletes queue file for repos no longer present', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             // Manually create a repo file that has no corresponding tasks
             const orphanPath = '/orphan/repo';
-            const repoId = computeRepoId(orphanPath);
+            const repoId = wsIdFor(orphanPath);
             const orphanFile = path.join(dataDir, 'queues', `repo-${repoId}.json`);
             fs.writeFileSync(orphanFile, JSON.stringify(makeRepoState(orphanPath, [makeTask('t1', 'queued', orphanPath)])));
 
@@ -423,105 +381,11 @@ describe('QueuePersistence', () => {
             expect(fs.existsSync(orphanFile)).toBe(false);
 
             // The active repo file should exist
-            const activeRepoId = computeRepoId('/active/repo');
+            const activeRepoId = wsIdFor('/active/repo');
             expect(fs.existsSync(path.join(dataDir, 'queues', `repo-${activeRepoId}.json`))).toBe(true);
         });
     });
 
-    // ========================================================================
-    // Migration from old format
-    // ========================================================================
-
-    describe('migration from old queue.json', () => {
-        it('migrates old queue.json to per-repo files', () => {
-            const oldState = makeOldState([
-                { id: 't1', status: 'queued', workingDirectory: '/repo/one' },
-                { id: 't2', status: 'queued', workingDirectory: '/repo/two' },
-            ]);
-            fs.writeFileSync(path.join(dataDir, 'queue.json'), JSON.stringify(oldState));
-
-            persistence = new QueuePersistence(queueManager, dataDir);
-
-            // Old file should be archived
-            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(false);
-            expect(fs.existsSync(path.join(dataDir, 'queue.json.migrated'))).toBe(true);
-
-            // New per-repo files should exist
-            const queuesDir = path.join(dataDir, 'queues');
-            const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
-            expect(files).toHaveLength(2);
-
-            // Verify each file's content
-            for (const file of files) {
-                const state = JSON.parse(fs.readFileSync(path.join(queuesDir, file), 'utf-8'));
-                expect(state.version).toBe(3);
-                expect(state.repoRootPath).toBeTruthy();
-                expect(state.repoId).toBeTruthy();
-            }
-        });
-
-        it('handles old tasks with no workingDirectory', () => {
-            const oldState = makeOldState([
-                { id: 't1', status: 'queued' }, // no workingDirectory
-            ]);
-            fs.writeFileSync(path.join(dataDir, 'queue.json'), JSON.stringify(oldState));
-
-            persistence = new QueuePersistence(queueManager, dataDir);
-
-            // Should fall back to process.cwd()
-            const repoId = computeRepoId(process.cwd());
-            const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
-            expect(fs.existsSync(filePath)).toBe(true);
-        });
-
-        it('separates pending and history from old format', () => {
-            const oldState = makeOldState([
-                { id: 't1', status: 'queued', workingDirectory: '/repo/a' },
-                { id: 't2', status: 'completed', workingDirectory: '/repo/a' },
-            ]);
-            fs.writeFileSync(path.join(dataDir, 'queue.json'), JSON.stringify(oldState));
-
-            persistence = new QueuePersistence(queueManager, dataDir);
-
-            const repoId = computeRepoId('/repo/a');
-            const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
-            const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            expect(state.pending).toHaveLength(1);
-            expect(state.pending[0].id).toBe('t1');
-            expect(state.history).toHaveLength(1);
-            expect(state.history[0].id).toBe('t2');
-        });
-
-        it('skips migration if no old file exists', () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
-
-            // No files created (only directory)
-            const queuesDir = path.join(dataDir, 'queues');
-            const files = fs.readdirSync(queuesDir);
-            expect(files).toHaveLength(0);
-        });
-
-        it('skips migration if old file has non-v1 version', () => {
-            const state = { version: 99, savedAt: '', pending: [], history: [] };
-            fs.writeFileSync(path.join(dataDir, 'queue.json'), JSON.stringify(state));
-
-            persistence = new QueuePersistence(queueManager, dataDir);
-
-            // Old file should NOT be renamed
-            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(true);
-            expect(fs.existsSync(path.join(dataDir, 'queue.json.migrated'))).toBe(false);
-        });
-
-        it('handles corrupt old file gracefully', () => {
-            fs.writeFileSync(path.join(dataDir, 'queue.json'), 'not valid json');
-
-            // Should not throw
-            persistence = new QueuePersistence(queueManager, dataDir);
-
-            // Old file should still exist (migration failed)
-            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(true);
-        });
-    });
 
     // ========================================================================
     // Dispose
@@ -529,7 +393,7 @@ describe('QueuePersistence', () => {
 
     describe('dispose', () => {
         it('flushes dirty state on dispose', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -543,7 +407,7 @@ describe('QueuePersistence', () => {
             persistence = undefined!;
             await vi.advanceTimersByTimeAsync(0);
 
-            const repoId = computeRepoId('/dispose/repo');
+            const repoId = wsIdFor('/dispose/repo');
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
             expect(fs.existsSync(filePath)).toBe(true);
         });
@@ -555,7 +419,7 @@ describe('QueuePersistence', () => {
 
     describe('round-trip', () => {
         it('saves and restores a single task across persistence instances', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -571,7 +435,7 @@ describe('QueuePersistence', () => {
 
             // Create fresh manager + persistence
             const qm2 = createManager();
-            const p2 = new QueuePersistence(qm2, dataDir);
+            const p2 = new QueuePersistence(qm2, dataDir, { resolveWorkspaceId: wsIdFor });
             p2.restore();
 
             const queued = qm2.getQueued();
@@ -583,7 +447,7 @@ describe('QueuePersistence', () => {
         });
 
         it('saves and restores tasks for multiple repos across instances', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -605,7 +469,7 @@ describe('QueuePersistence', () => {
             persistence = undefined!;
 
             const qm2 = createManager();
-            const p2 = new QueuePersistence(qm2, dataDir);
+            const p2 = new QueuePersistence(qm2, dataDir, { resolveWorkspaceId: wsIdFor });
             p2.restore();
 
             const queued = qm2.getQueued();
@@ -623,7 +487,7 @@ describe('QueuePersistence', () => {
 
     describe('per-repo pause state', () => {
         it('saves isPaused: true when repo is paused', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -632,7 +496,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            const repoId = computeRepoId('/paused/repo');
+            const repoId = wsIdFor('/paused/repo');
             queueManager.pauseRepo(repoId);
 
             await flushSave();
@@ -643,7 +507,7 @@ describe('QueuePersistence', () => {
         });
 
         it('saves isPaused: false when repo is not paused', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -654,14 +518,14 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const repoId = computeRepoId('/active/repo');
+            const repoId = wsIdFor('/active/repo');
             const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(false);
         });
 
         it('persists per-repo pause state independently for different repos', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -676,7 +540,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            const alphaId = computeRepoId('/repo/alpha');
+            const alphaId = wsIdFor('/repo/alpha');
             queueManager.pauseRepo(alphaId);
 
             await flushSave();
@@ -685,7 +549,7 @@ describe('QueuePersistence', () => {
             const alphaState = JSON.parse(fs.readFileSync(alphaFile, 'utf-8'));
             expect(alphaState.isPaused).toBe(true);
 
-            const betaId = computeRepoId('/repo/beta');
+            const betaId = wsIdFor('/repo/beta');
             const betaFile = path.join(dataDir, 'queues', `repo-${betaId}.json`);
             const betaState = JSON.parse(fs.readFileSync(betaFile, 'utf-8'));
             expect(betaState.isPaused).toBe(false);
@@ -699,13 +563,13 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
             ], [], true);  // isPaused = true
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(
                 path.join(queuesDir, `repo-${repoId}.json`),
                 JSON.stringify(state),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             expect(queueManager.isRepoPaused(repoId)).toBe(true);
@@ -719,13 +583,13 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
             ], [], false);  // isPaused = false
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(
                 path.join(queuesDir, `repo-${repoId}.json`),
                 JSON.stringify(state),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             expect(queueManager.isRepoPaused(repoId)).toBe(false);
@@ -737,7 +601,7 @@ describe('QueuePersistence', () => {
 
             // Repo A paused
             const rootA = '/multi/repoA';
-            const repoAId = computeRepoId(rootA);
+            const repoAId = wsIdFor(rootA);
             fs.writeFileSync(
                 path.join(queuesDir, `repo-${repoAId}.json`),
                 JSON.stringify(makeRepoState(rootA, [makeTask('t1', 'queued', rootA)], [], true)),
@@ -745,13 +609,13 @@ describe('QueuePersistence', () => {
 
             // Repo B active
             const rootB = '/multi/repoB';
-            const repoBId = computeRepoId(rootB);
+            const repoBId = wsIdFor(rootB);
             fs.writeFileSync(
                 path.join(queuesDir, `repo-${repoBId}.json`),
                 JSON.stringify(makeRepoState(rootB, [makeTask('t2', 'queued', rootB)], [], false)),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             expect(queueManager.isRepoPaused(repoAId)).toBe(true);
@@ -764,7 +628,7 @@ describe('QueuePersistence', () => {
 
             // Write a v2 file (no isPaused field)
             const rootPath = '/v2/repo';
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             const v2State = {
                 version: 2,
                 savedAt: new Date().toISOString(),
@@ -778,7 +642,7 @@ describe('QueuePersistence', () => {
                 JSON.stringify(v2State),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             // Should restore the task and NOT pause the repo
@@ -791,7 +655,7 @@ describe('QueuePersistence', () => {
             fs.mkdirSync(queuesDir, { recursive: true });
 
             const rootPath = '/future/repo';
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             const futureState = {
                 version: 999,
                 savedAt: new Date().toISOString(),
@@ -806,7 +670,7 @@ describe('QueuePersistence', () => {
                 JSON.stringify(futureState),
             );
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             // Should skip the file — no tasks restored
@@ -814,7 +678,7 @@ describe('QueuePersistence', () => {
         });
 
         it('round-trip: save paused state and restore across instances', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -824,7 +688,7 @@ describe('QueuePersistence', () => {
                 displayName: 'Paused Task',
             });
 
-            const repoId = computeRepoId('/roundtrip/paused');
+            const repoId = wsIdFor('/roundtrip/paused');
             queueManager.pauseRepo(repoId);
 
             await flushSave();
@@ -833,7 +697,7 @@ describe('QueuePersistence', () => {
 
             // Create fresh manager + persistence
             const qm2 = createManager();
-            const p2 = new QueuePersistence(qm2, dataDir);
+            const p2 = new QueuePersistence(qm2, dataDir, { resolveWorkspaceId: wsIdFor });
             p2.restore();
 
             expect(qm2.getQueued()).toHaveLength(1);
@@ -849,7 +713,7 @@ describe('QueuePersistence', () => {
 
     describe('per-repo pause state persistence', () => {
         it('persists per-repo paused state to separate files', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             // Enqueue tasks for two different repos
             queueManager.enqueue({
@@ -866,7 +730,7 @@ describe('QueuePersistence', () => {
             });
 
             // Pause only repo-A
-            const repoAId = computeRepoId('/pause/repo-A');
+            const repoAId = wsIdFor('/pause/repo-A');
             queueManager.pauseRepo(repoAId);
 
             await flushSave();
@@ -877,7 +741,7 @@ describe('QueuePersistence', () => {
             expect(repoAState.isPaused).toBe(true);
 
             // Verify repo-B file has isPaused: false
-            const repoBId = computeRepoId('/pause/repo-B');
+            const repoBId = wsIdFor('/pause/repo-B');
             const repoBFile = path.join(dataDir, 'queues', `repo-${repoBId}.json`);
             const repoBState = JSON.parse(fs.readFileSync(repoBFile, 'utf-8'));
             expect(repoBState.isPaused).toBe(false);
@@ -891,8 +755,8 @@ describe('QueuePersistence', () => {
             const repoAPath = '/restore/repo-A';
             const repoBPath = '/restore/repo-B';
 
-            const repoAId = computeRepoId(repoAPath);
-            const repoBId = computeRepoId(repoBPath);
+            const repoAId = wsIdFor(repoAPath);
+            const repoBId = wsIdFor(repoBPath);
 
             const stateA = makeRepoState(repoAPath, [makeTask('t1', 'queued', repoAPath)], [], true);
             fs.writeFileSync(
@@ -911,11 +775,11 @@ describe('QueuePersistence', () => {
                 getTaskRepoId: (task) => {
                     const payload = task.payload as Record<string, unknown>;
                     const rootPath = (payload?.workingDirectory as string) || process.cwd();
-                    return computeRepoId(rootPath);
+                    return wsIdFor(rootPath);
                 },
             });
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             // Verify repo-A is paused
@@ -926,7 +790,7 @@ describe('QueuePersistence', () => {
         });
 
         it('handles mixed paused/resumed repos', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             // Enqueue tasks for three repos
             queueManager.enqueue({
@@ -949,8 +813,8 @@ describe('QueuePersistence', () => {
             });
 
             // Pause repo-1 and repo-3, leave repo-2 active
-            const repo1Id = computeRepoId('/mixed/repo-1');
-            const repo3Id = computeRepoId('/mixed/repo-3');
+            const repo1Id = wsIdFor('/mixed/repo-1');
+            const repo3Id = wsIdFor('/mixed/repo-3');
             queueManager.pauseRepo(repo1Id);
             queueManager.pauseRepo(repo3Id);
 
@@ -961,12 +825,12 @@ describe('QueuePersistence', () => {
             persistence = undefined!;
 
             const qm2 = createManager();
-            const p2 = new QueuePersistence(qm2, dataDir);
+            const p2 = new QueuePersistence(qm2, dataDir, { resolveWorkspaceId: wsIdFor });
             p2.restore();
 
             // Verify pause states
             expect(qm2.isRepoPaused(repo1Id)).toBe(true);
-            expect(qm2.isRepoPaused(computeRepoId('/mixed/repo-2'))).toBe(false);
+            expect(qm2.isRepoPaused(wsIdFor('/mixed/repo-2'))).toBe(false);
             expect(qm2.isRepoPaused(repo3Id)).toBe(true);
 
             p2.dispose();
@@ -977,7 +841,7 @@ describe('QueuePersistence', () => {
             fs.mkdirSync(queuesDir, { recursive: true });
 
             const rootPath = '/migrate/repo';
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
 
             // Create v2 state without isPaused field
             const v2State = {
@@ -1000,11 +864,11 @@ describe('QueuePersistence', () => {
                 getTaskRepoId: (task) => {
                     const payload = task.payload as Record<string, unknown>;
                     const rootPath = (payload?.workingDirectory as string) || process.cwd();
-                    return computeRepoId(rootPath);
+                    return wsIdFor(rootPath);
                 },
             });
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             // Verify repo is NOT paused (default behavior)
@@ -1016,7 +880,7 @@ describe('QueuePersistence', () => {
             fs.mkdirSync(queuesDir, { recursive: true });
 
             const rootPath = '/graceful/repo';
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
 
             // Create state with version 3 but missing isPaused (edge case)
             const state = makeRepoState(rootPath, [makeTask('t1', 'queued', rootPath)]);
@@ -1032,11 +896,11 @@ describe('QueuePersistence', () => {
                 getTaskRepoId: (task) => {
                     const payload = task.payload as Record<string, unknown>;
                     const rootPath = (payload?.workingDirectory as string) || process.cwd();
-                    return computeRepoId(rootPath);
+                    return wsIdFor(rootPath);
                 },
             });
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             // Should default to unpaused
@@ -1050,7 +914,7 @@ describe('QueuePersistence', () => {
 
     describe('G1: paused-but-empty repo file preservation', () => {
         it('keeps the file when repo is paused but queue is empty', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             // Enqueue then complete a task (so history is non-empty initially)
             queueManager.enqueue({
@@ -1060,19 +924,19 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            const repoId = computeRepoId('/g1/repo');
+            const repoId = wsIdFor('/g1/repo');
             queueManager.pauseRepo(repoId);
 
             await flushSave();
 
-            const filePath = getRepoQueueFilePath(dataDir, computeRepoId('/g1/repo'));
+            const filePath = getRepoQueueFilePath(dataDir, wsIdFor('/g1/repo'));
             expect(fs.existsSync(filePath)).toBe(true);
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(true);
         });
 
         it('round-trip: paused+empty repos survive restart', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
 
             queueManager.enqueue({
                 type: 'chat',
@@ -1081,7 +945,7 @@ describe('QueuePersistence', () => {
                 config: {},
             });
 
-            const repoId = computeRepoId('/g1/roundtrip');
+            const repoId = wsIdFor('/g1/roundtrip');
             queueManager.pauseRepo(repoId);
             await flushSave();
             persistence.dispose();
@@ -1089,7 +953,7 @@ describe('QueuePersistence', () => {
 
             // Second instance
             const qm2 = createManager();
-            const p2 = new QueuePersistence(qm2, dataDir);
+            const p2 = new QueuePersistence(qm2, dataDir, { resolveWorkspaceId: wsIdFor });
             p2.restore();
 
             expect(qm2.isRepoPaused(repoId)).toBe(true);
@@ -1110,10 +974,10 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'running', rootPath),
             ]);
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
 
-            persistence = new QueuePersistence(queueManager, dataDir);
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
 
             expect(queueManager.getQueued()).toHaveLength(0);
@@ -1129,10 +993,10 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'running', rootPath),
             ]);
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
 
-            persistence = new QueuePersistence(queueManager, dataDir, { restartPolicy: 'requeue' });
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor, restartPolicy: 'requeue' });
             persistence.restore();
 
             const queued = queueManager.getQueued();
@@ -1147,10 +1011,10 @@ describe('QueuePersistence', () => {
             const rootPath = '/g2/retriable';
             const task = { ...makeTask('t1', 'running', rootPath), retryCount: 0, config: { retryAttempts: 2 } };
             const state = makeRepoState(rootPath, [task]);
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
 
-            persistence = new QueuePersistence(queueManager, dataDir, { restartPolicy: 'requeue-if-retriable' });
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor, restartPolicy: 'requeue-if-retriable' });
             persistence.restore();
 
             expect(queueManager.getQueued()).toHaveLength(1);
@@ -1163,10 +1027,10 @@ describe('QueuePersistence', () => {
             const rootPath = '/g2/no-retries';
             const task = { ...makeTask('t1', 'running', rootPath), retryCount: 2, config: { retryAttempts: 2 } };
             const state = makeRepoState(rootPath, [task]);
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsIdFor(rootPath);
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
 
-            persistence = new QueuePersistence(queueManager, dataDir, { restartPolicy: 'requeue-if-retriable' });
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor, restartPolicy: 'requeue-if-retriable' });
             persistence.restore();
 
             expect(queueManager.getQueued()).toHaveLength(0);
@@ -1180,7 +1044,7 @@ describe('QueuePersistence', () => {
 
     describe('G6: maxPersistedHistory option', () => {
         it('truncates history to configured limit on save', async () => {
-            persistence = new QueuePersistence(queueManager, dataDir, { maxPersistedHistory: 5 });
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor, maxPersistedHistory: 5 });
 
             // Fill history with 10 completed tasks
             const histTasks = Array.from({ length: 10 }, (_, i) => ({
@@ -1205,7 +1069,7 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const filePath = getRepoQueueFilePath(dataDir, computeRepoId('/g6/repo'));
+            const filePath = getRepoQueueFilePath(dataDir, wsIdFor('/g6/repo'));
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.history.length).toBeLessThanOrEqual(5);
         });

@@ -19,7 +19,6 @@ import {
     getRepoQueueFilePath,
     sanitizeTaskForPersistence,
     atomicWriteJson,
-    migrateQueueFromOldFormat,
 } from './queue-persistence';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline-core';
 
@@ -78,9 +77,6 @@ export class MultiRepoQueuePersistence {
         if (!fs.existsSync(this.queuesDir)) {
             fs.mkdirSync(this.queuesDir, { recursive: true });
         }
-
-        // G3: migrate legacy queue.json before reading per-repo files
-        migrateQueueFromOldFormat(this.dataDir, this.maxPersistedHistory);
 
         const files = fs.readdirSync(this.queuesDir)
             .filter(f => f.startsWith('repo-') && f.endsWith('.json'));

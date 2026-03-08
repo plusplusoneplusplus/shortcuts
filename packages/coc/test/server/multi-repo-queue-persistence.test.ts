@@ -20,7 +20,7 @@ import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
 // SDK mock — needed because createQueueExecutorBridge → CLITaskExecutor → getCopilotSDKService
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
-import { computeRepoId, getRepoQueueFilePath } from '../../src/server/queue-persistence';
+import { getRepoQueueFilePath } from '../../src/server/queue-persistence';
 
 const sdkMocks = createMockSDKService();
 
@@ -207,7 +207,7 @@ describe('MultiRepoQueuePersistence', () => {
                 version: 2,
                 savedAt: new Date().toISOString(),
                 repoRootPath: rootPath,
-                repoId: computeRepoId(rootPath),
+                repoId: wsId(rootPath),
                 pending: [makeTask('t1', 'queued', rootPath)],
                 history: [],
                 // no isPaused field (v2)
@@ -220,7 +220,7 @@ describe('MultiRepoQueuePersistence', () => {
 
             const qm = registry.getQueueForRepo(rootPath);
             expect(qm.getQueued()).toHaveLength(1);
-            expect(qm.isRepoPaused(computeRepoId(rootPath))).toBe(false);
+            expect(qm.isRepoPaused(wsId(rootPath))).toBe(false);
         });
 
         it('marks running tasks as failed', () => {
@@ -544,6 +544,7 @@ describe('MultiRepoQueuePersistence', () => {
             const created2 = createBridge();
             const bridge2 = created2.bridge;
             const registry2 = created2.registry;
+            bridge2.registerRepoId(wsId(rootPath), rootPath);
 
             const persistence2 = new MultiRepoQueuePersistence(bridge2, dataDir);
             persistence2.restore();
@@ -660,7 +661,7 @@ describe('MultiRepoQueuePersistence', () => {
     // G3: Migration of legacy queue.json
     // --------------------------------------------------------------------
 
-    describe('G3: migrate legacy queue.json on restore', () => {
+    describe('G3: legacy queue.json handling', () => {
         function makeLegacyV1State(tasks: Array<{ id: string; status: string; workingDirectory?: string }>) {
             return {
                 version: 1,
@@ -676,7 +677,7 @@ describe('MultiRepoQueuePersistence', () => {
             };
         }
 
-        it('migrates legacy queue.json to per-repo files on restore', () => {
+        it('ignores legacy queue.json instead of migrating it', () => {
             const v1State = makeLegacyV1State([
                 { id: 't1', status: 'queued', workingDirectory: '/legacy/repo' },
             ]);
@@ -685,13 +686,10 @@ describe('MultiRepoQueuePersistence', () => {
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
             persistence.restore();
 
-            // Legacy file should be renamed
-            expect(fs.existsSync(path.join(dataDir, 'queue.json.migrated'))).toBe(true);
-            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(false);
+            expect(fs.existsSync(path.join(dataDir, 'queue.json'))).toBe(true);
+            expect(fs.existsSync(path.join(dataDir, 'queue.json.migrated'))).toBe(false);
 
-            // Per-repo file should exist and have the task
-            const qm = registry.getQueueForRepo('/legacy/repo');
-            expect(qm.getQueued()).toHaveLength(1);
+            expect(registry.hasRepo('/legacy/repo')).toBe(false);
         });
 
         it('skips migration if no legacy file exists', () => {

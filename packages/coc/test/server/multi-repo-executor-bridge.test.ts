@@ -23,7 +23,6 @@ import {
 // SDK mock — needed because createQueueExecutorBridge → CLITaskExecutor → getCopilotSDKService
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
-import { computeRepoId } from '../../src/server/queue-persistence';
 
 const sdkMocks = createMockSDKService();
 
@@ -49,6 +48,10 @@ function createBridge(options?: { maxConcurrency?: number; autoStart?: boolean }
         ...options,
     });
     return { registry, store, bridge };
+}
+
+function repoId(id: string): string {
+    return `ws-${id}`;
 }
 
 // ============================================================================
@@ -132,12 +135,12 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('returns the correct bridge after registerRepoId + getOrCreateBridge', () => {
             const { bridge } = createBridge();
             const rootPath = '/repo/registered';
-            const repoId = computeRepoId(rootPath);
+            const workspaceId = repoId('registered');
 
-            bridge.registerRepoId(repoId, rootPath);
+            bridge.registerRepoId(workspaceId, rootPath);
             const created = bridge.getOrCreateBridge(rootPath);
 
-            expect(bridge.getBridgeByRepoId(repoId)).toBe(created);
+            expect(bridge.getBridgeByRepoId(workspaceId)).toBe(created);
 
             bridge.dispose();
         });
@@ -153,14 +156,14 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('registerRepoId before getOrCreateBridge allows later lookup', () => {
             const { bridge } = createBridge();
             const rootPath = '/repo/pre-registered';
-            const repoId = computeRepoId(rootPath);
+            const workspaceId = repoId('pre-registered');
 
             // Register first, create bridge later
-            bridge.registerRepoId(repoId, rootPath);
-            expect(bridge.getBridgeByRepoId(repoId)).toBeUndefined(); // no bridge yet
+            bridge.registerRepoId(workspaceId, rootPath);
+            expect(bridge.getBridgeByRepoId(workspaceId)).toBeUndefined(); // no bridge yet
 
             const created = bridge.getOrCreateBridge(rootPath);
-            expect(bridge.getBridgeByRepoId(repoId)).toBe(created);
+            expect(bridge.getBridgeByRepoId(workspaceId)).toBe(created);
 
             bridge.dispose();
         });
@@ -175,12 +178,12 @@ describe('MultiRepoQueueExecutorBridge', () => {
             const { bridge } = createBridge();
             const rootPath = '/repo/auto';
             const resolvedPath = require('path').resolve(rootPath);
-            const repoId = computeRepoId(resolvedPath);
+            const workspaceId = repoId('auto');
 
             bridge.getOrCreateBridge(rootPath);
 
             // No auto-registration: getBridgeByRepoId returns undefined
-            expect(bridge.getBridgeByRepoId(repoId)).toBeUndefined();
+            expect(bridge.getBridgeByRepoId(workspaceId)).toBeUndefined();
 
             bridge.dispose();
         });
@@ -188,13 +191,12 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('getOrCreateBridge picks up repoId when registerRepoId was called first', () => {
             const { bridge } = createBridge();
             const rootPath = '/repo/auto';
-            const resolvedPath = require('path').resolve(rootPath);
-            const repoId = computeRepoId(resolvedPath);
+            const workspaceId = repoId('auto');
 
-            bridge.registerRepoId(repoId, rootPath);
+            bridge.registerRepoId(workspaceId, rootPath);
             const created = bridge.getOrCreateBridge(rootPath);
 
-            expect(bridge.getBridgeByRepoId(repoId)).toBe(created);
+            expect(bridge.getBridgeByRepoId(workspaceId)).toBe(created);
 
             bridge.dispose();
         });
@@ -274,10 +276,10 @@ describe('MultiRepoQueueExecutorBridge', () => {
             const { bridge, registry } = createBridge();
             const rootPath = '/repo/schedule-test';
             const resolvedPath = require('path').resolve(rootPath);
-            const repoId = computeRepoId(resolvedPath);
+            const workspaceId = repoId('schedule-test');
 
             // Register repoId first, then create the bridge
-            bridge.registerRepoId(repoId, rootPath);
+            bridge.registerRepoId(workspaceId, rootPath);
             bridge.getOrCreateBridge(rootPath);
 
             const facade = bridge.createAggregateFacade();
@@ -287,14 +289,14 @@ describe('MultiRepoQueueExecutorBridge', () => {
                 type: 'custom',
                 priority: 'normal',
                 payload: { prompt: 'hello' },
-                repoId,
+                repoId: workspaceId,
             } as any);
 
             // The task must appear in the queue for the correct repo, not a phantom queue
             expect(facade.getTask(taskId)).toBeDefined();
 
             // The registry must NOT have created a phantom repo keyed by the raw hex repoId
-            expect(registry.hasRepo(repoId)).toBe(false);
+            expect(registry.hasRepo(workspaceId)).toBe(false);
 
             // The real repo must still exist
             expect(registry.hasRepo(resolvedPath)).toBe(true);

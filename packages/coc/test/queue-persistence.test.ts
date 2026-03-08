@@ -10,7 +10,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import type { QueuedTask, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
-import { QueuePersistence, computeRepoId, getRepoQueueFilePath } from '../src/server/queue-persistence';
+import { QueuePersistence } from '../src/server/queue-persistence';
 
 // ============================================================================
 // Helpers
@@ -45,14 +45,29 @@ function readAnyRepoQueueFile(dir: string): any {
     return JSON.parse(fs.readFileSync(path.join(queuesDir, files[0]), 'utf-8'));
 }
 
-/** Write old v1 format queue.json for migration-based restore tests. */
-function writeOldQueueFile(dir: string, data: any): void {
-    const filePath = path.join(dir, 'queue.json');
+/** Write a per-repo queue file for restore tests. */
+function writeRepoQueueFile(dir: string, rootPath: string, data: any): void {
+    const queuesDir = path.join(dir, 'queues');
+    fs.mkdirSync(queuesDir, { recursive: true });
+    const filePath = path.join(queuesDir, `repo-${workspaceId(rootPath)}.json`);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
 
 function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function workspaceId(rootPath: string): string {
+    return rootPath
+        .replace(/^[\\/]+/, '')
+        .replace(/[^A-Za-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function createPersistence(queueManager: TaskQueueManager, dataDir: string): QueuePersistence {
+    return new QueuePersistence(queueManager, dataDir, {
+        resolveWorkspaceId: workspaceId,
+    });
 }
 
 // ============================================================================
@@ -82,7 +97,7 @@ describe('QueuePersistence', () => {
 
     describe('serialization round-trip', () => {
         it('saves queue state with correct structure after debounce', async () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             queueManager.enqueue(createTestInput({ priority: 'high', displayName: 'high-task' }));
             queueManager.enqueue(createTestInput({ priority: 'low', displayName: 'low-task' }));
@@ -119,9 +134,12 @@ describe('QueuePersistence', () => {
 
     describe('restore pending tasks', () => {
         it('re-enqueues persisted queued tasks', () => {
-            writeOldQueueFile(dataDir, {
-                version: 1,
+            const rootPath = '/restore/repo';
+            writeRepoQueueFile(dataDir, rootPath, {
+                version: 3,
                 savedAt: new Date().toISOString(),
+                repoRootPath: rootPath,
+                repoId: workspaceId(rootPath),
                 pending: [
                     { id: 'old-1', type: 'follow-prompt', priority: 'high', status: 'queued', createdAt: 1000, payload: { promptFilePath: '/a.md' }, config: { timeoutMs: 30000 }, displayName: 'Task A' },
                     { id: 'old-2', type: 'custom', priority: 'low', status: 'queued', createdAt: 2000, payload: { data: { x: 1 } }, config: {}, displayName: 'Task B' },
@@ -129,7 +147,7 @@ describe('QueuePersistence', () => {
                 history: [],
             });
 
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
             persistence.restore();
 
             const queued = queueManager.getQueued();
@@ -153,16 +171,19 @@ describe('QueuePersistence', () => {
 
     describe('running tasks marked as failed on restore', () => {
         it('marks previously-running tasks as failed with restart error', () => {
-            writeOldQueueFile(dataDir, {
-                version: 1,
+            const rootPath = '/running/repo';
+            writeRepoQueueFile(dataDir, rootPath, {
+                version: 3,
                 savedAt: new Date().toISOString(),
+                repoRootPath: rootPath,
+                repoId: workspaceId(rootPath),
                 pending: [
                     { id: 'run-1', type: 'ai-clarification', priority: 'normal', status: 'running', createdAt: 1000, startedAt: 1500, payload: { prompt: 'hello' }, config: {}, displayName: 'Running Task' },
                 ],
                 history: [],
             });
 
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
             persistence.restore();
 
             const history = queueManager.getHistory();
@@ -182,6 +203,7 @@ describe('QueuePersistence', () => {
 
     describe('history restoration', () => {
         it('restores history with mixed statuses', () => {
+            const rootPath = '/history/repo';
             const historyItems = [
                 { id: 'h1', type: 'custom', priority: 'normal', status: 'completed', createdAt: 100, completedAt: 200, payload: { data: {} }, config: {}, displayName: 'completed-1' },
                 { id: 'h2', type: 'custom', priority: 'normal', status: 'failed', createdAt: 300, completedAt: 400, error: 'boom', payload: { data: {} }, config: {}, displayName: 'failed-1' },
@@ -190,14 +212,16 @@ describe('QueuePersistence', () => {
                 { id: 'h5', type: 'custom', priority: 'low', status: 'failed', createdAt: 900, completedAt: 1000, error: 'err', payload: { data: {} }, config: {}, displayName: 'failed-2' },
             ];
 
-            writeOldQueueFile(dataDir, {
-                version: 1,
+            writeRepoQueueFile(dataDir, rootPath, {
+                version: 3,
                 savedAt: new Date().toISOString(),
+                repoRootPath: rootPath,
+                repoId: workspaceId(rootPath),
                 pending: [],
                 history: historyItems,
             });
 
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
             persistence.restore();
 
             const history = queueManager.getHistory();
@@ -214,7 +238,7 @@ describe('QueuePersistence', () => {
 
     describe('debounce coalescing', () => {
         it('coalesces rapid changes into single write', async () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
             const queuesDir = path.join(dataDir, 'queues');
 
             // Enqueue 10 tasks rapidly
@@ -250,7 +274,7 @@ describe('QueuePersistence', () => {
 
     describe('empty state / no file', () => {
         it('handles missing queue.json gracefully', () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             // Should not throw
             expect(() => persistence.restore()).not.toThrow();
@@ -270,7 +294,7 @@ describe('QueuePersistence', () => {
             const filePath = path.join(dataDir, 'queue.json');
             fs.writeFileSync(filePath, '{ not valid json !!!', 'utf-8');
 
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             expect(() => persistence.restore()).not.toThrow();
             expect(queueManager.getQueued()).toHaveLength(0);
@@ -280,14 +304,16 @@ describe('QueuePersistence', () => {
         });
 
         it('handles unknown version gracefully', () => {
-            writeOldQueueFile(dataDir, {
+            writeRepoQueueFile(dataDir, '/unknown/repo', {
                 version: 99,
                 savedAt: new Date().toISOString(),
+                repoRootPath: '/unknown/repo',
+                repoId: workspaceId('/unknown/repo'),
                 pending: [{ id: 'x', type: 'custom', priority: 'normal', status: 'queued', createdAt: 1000, payload: { data: {} }, config: {} }],
                 history: [],
             });
 
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             expect(() => persistence.restore()).not.toThrow();
             expect(queueManager.getQueued()).toHaveLength(0);
@@ -302,7 +328,7 @@ describe('QueuePersistence', () => {
 
     describe('dispose flushes pending write', () => {
         it('writes immediately on dispose before debounce fires', async () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             queueManager.enqueue(createTestInput({ displayName: 'flush-me' }));
 
@@ -324,7 +350,7 @@ describe('QueuePersistence', () => {
 
     describe('atomic write safety', () => {
         it('leaves no .tmp file after save', async () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             queueManager.enqueue(createTestInput());
 
@@ -346,7 +372,7 @@ describe('QueuePersistence', () => {
 
     describe('running tasks included in pending', () => {
         it('saves running tasks into pending array', async () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             const id = queueManager.enqueue(createTestInput({ displayName: 'will-run' }));
             queueManager.markStarted(id);
@@ -366,7 +392,7 @@ describe('QueuePersistence', () => {
 
     describe('history limit', () => {
         it('limits persisted history to 100 entries', async () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             // Create 110 history entries via normal flow
             for (let i = 0; i < 100; i++) {
@@ -390,7 +416,7 @@ describe('QueuePersistence', () => {
 
     describe('listener cleanup', () => {
         it('removes change listener on dispose', async () => {
-            const persistence = new QueuePersistence(queueManager, dataDir);
+            const persistence = createPersistence(queueManager, dataDir);
 
             persistence.dispose();
 

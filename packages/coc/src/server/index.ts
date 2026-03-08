@@ -41,7 +41,6 @@ import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent
 import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
-import { computeRepoId } from './queue-persistence';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { defaultIsExclusive } from './queue-executor-bridge';
 import { SchedulePersistence } from './schedule-persistence';
@@ -472,49 +471,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Watch tasks and workflows directories for already-registered workspaces (handles server restart)
     const existingWorkspaces = await store.getWorkspaces();
-
-    // Migrate hash-based storage paths to workspace-ID-based paths
-    for (const ws of existingWorkspaces) {
-        const oldRepoId = computeRepoId(ws.rootPath);
-        const newRepoId = ws.id;
-        if (oldRepoId === newRepoId) continue;
-
-        // Migrate repos/ folder
-        const oldRepoDir = path.join(dataDir, 'repos', oldRepoId);
-        const newRepoDir = path.join(dataDir, 'repos', newRepoId);
-        if (fs.existsSync(oldRepoDir) && !fs.existsSync(newRepoDir)) {
-            try {
-                fs.renameSync(oldRepoDir, newRepoDir);
-                process.stderr.write(`[Migration] repos/${oldRepoId} → repos/${newRepoId}\n`);
-            } catch (err) {
-                process.stderr.write(`[Migration] Failed to rename repos dir: ${err}\n`);
-            }
-        }
-
-        // Migrate queue file
-        const oldQueueFile = path.join(dataDir, 'queues', `repo-${oldRepoId}.json`);
-        const newQueueFile = path.join(dataDir, 'queues', `repo-${newRepoId}.json`);
-        if (fs.existsSync(oldQueueFile) && !fs.existsSync(newQueueFile)) {
-            try {
-                fs.renameSync(oldQueueFile, newQueueFile);
-                process.stderr.write(`[Migration] queues/repo-${oldRepoId}.json → repo-${newRepoId}.json\n`);
-            } catch (err) {
-                process.stderr.write(`[Migration] Failed to rename queue file: ${err}\n`);
-            }
-        }
-
-        // Migrate schedule file
-        const oldSchedFile = path.join(dataDir, 'schedules', `repo-${oldRepoId}.json`);
-        const newSchedFile = path.join(dataDir, 'schedules', `repo-${newRepoId}.json`);
-        if (fs.existsSync(oldSchedFile) && !fs.existsSync(newSchedFile)) {
-            try {
-                fs.renameSync(oldSchedFile, newSchedFile);
-                process.stderr.write(`[Migration] schedules/repo-${oldRepoId}.json → repo-${newRepoId}.json\n`);
-            } catch (err) {
-                process.stderr.write(`[Migration] Failed to rename schedule file: ${err}\n`);
-            }
-        }
-    }
 
     for (const ws of existingWorkspaces) {
         if (isMigrationNeeded(ws.rootPath, ws.id, dataDir)) {
