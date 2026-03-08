@@ -20,6 +20,12 @@ import * as path from 'path';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/pipeline-core';
+import {
+    DEFAULT_AI_COMMANDS,
+    type AICommand,
+    buildPromptFromContext,
+    type PromptContext,
+} from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 
@@ -375,7 +381,7 @@ const askAiPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/([0-9a-f]{64})\/(
  *   PATCH  /api/diff-comments/:wsId/:key/:id           — update comment
  *   DELETE /api/diff-comments/:wsId/:key/:id           — delete comment
  *   POST   /api/diff-comments/:wsId/:key/:id/replies   — add reply
- *   POST   /api/diff-comments/:wsId/:key/:id/ask-ai    — AI clarification (501 stub)
+ *   POST   /api/diff-comments/:wsId/:key/:id/ask-ai    — AI clarification
  *
  * @param routes - Shared route table
  * @param dataDir - Directory for comment storage (e.g. ~/.coc)
@@ -616,14 +622,111 @@ export function registerDiffCommentsRoutes(
     });
 
     // ------------------------------------------------------------------
-    // POST /api/diff-comments/:wsId/:key/:id/ask-ai — AI clarification (stub)
-    // AI integration is deferred to a later commit.
+    // POST /api/diff-comments/:wsId/:key/:id/ask-ai — AI clarification
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
         pattern: askAiPattern,
-        handler: async (_req, res, _match) => {
-            sendError(res, 501, 'Not Implemented');
+        handler: async (req, res, match) => {
+            const [, wsId, storageKey, commentId] = match!;
+            if (!isValidWorkspaceId(wsId)) {
+                return sendError(res, 400, 'Invalid workspace ID');
+            }
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+            try {
+                const comment = await manager.getComment(wsId, storageKey, commentId);
+                if (!comment) {
+                    return sendError(res, 404, 'Comment not found');
+                }
+
+                const commandId: string | undefined = body.commandId;
+                const customQuestion: string | undefined = body.customQuestion;
+
+                let prompt: string;
+                if (commandId) {
+                    const command = DEFAULT_AI_COMMANDS.find(c => c.id === commandId);
+                    if (command) {
+                        prompt = buildDiffEnrichedPrompt(command, comment, customQuestion);
+                    } else {
+                        const question = customQuestion || body.question || 'Please explain this section and suggest improvements.';
+                        prompt = buildDiffAIPrompt(comment, question);
+                    }
+                } else {
+                    const question = body.question || 'Please explain this section and suggest improvements.';
+                    prompt = buildDiffAIPrompt(comment, question);
+                }
+
+                let aiResponse: string;
+                try {
+                    const { createCLIAIInvoker } = await import('../ai-invoker');
+                    const invoker = createCLIAIInvoker({ approvePermissions: false });
+                    const result = await invoker(prompt, { timeoutMs: 60000 });
+                    if (!result.success) {
+                        return sendError(res, 502, result.error || 'AI request failed');
+                    }
+                    aiResponse = result.response || '';
+                } catch {
+                    return sendError(res, 503, 'AI service unavailable');
+                }
+
+                await manager.updateComment(wsId, storageKey, commentId, { aiResponse });
+
+                const reply = await manager.addReply(wsId, storageKey, commentId, {
+                    author: 'AI',
+                    text: aiResponse,
+                    isAI: true,
+                });
+
+                sendJSON(res, 200, { aiResponse, reply });
+            } catch {
+                sendError(res, 500, 'Failed to process AI request');
+            }
         },
     });
+}
+
+/**
+ * Build an enriched prompt using a named AI command for a diff comment.
+ */
+function buildDiffEnrichedPrompt(
+    command: AICommand,
+    comment: DiffComment,
+    customQuestion: string | undefined
+): string {
+    const promptTemplate =
+        command.isCustomInput && customQuestion ? customQuestion : command.prompt;
+
+    const context: PromptContext = {
+        selectedText: comment.selectedText,
+        filePath: comment.context.filePath,
+    };
+
+    let prompt = buildPromptFromContext(promptTemplate, context);
+    prompt += `\n\nDiff context: ${comment.context.filePath} (${comment.context.oldRef} → ${comment.context.newRef})`;
+    if (comment.comment) {
+        prompt += `\nUser comment: "${comment.comment}"`;
+    }
+    return prompt;
+}
+
+/**
+ * Build a simple AI prompt with diff-specific context.
+ */
+function buildDiffAIPrompt(comment: DiffComment, question: string): string {
+    let prompt = 'Context: The user is reviewing a git diff.\n';
+    prompt += `File: ${comment.context.filePath}\n`;
+    prompt += `Diff range: ${comment.context.oldRef} → ${comment.context.newRef}\n\n`;
+    if (comment.selectedText) {
+        prompt += 'They selected the following text from the diff:\n---\n' + comment.selectedText + '\n---\n\n';
+    }
+    if (comment.comment) {
+        prompt += 'Their comment says: "' + comment.comment + '"\n\n';
+    }
+    prompt += 'Question: ' + question + '\n\nProvide a clear, actionable response.';
+    return prompt;
 }
