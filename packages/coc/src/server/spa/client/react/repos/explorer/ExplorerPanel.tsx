@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Spinner } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
+import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { FileTree } from './FileTree';
 import { PreviewPane } from './PreviewPane';
 import { SearchBar } from './SearchBar';
@@ -17,6 +18,13 @@ export interface ExplorerPanelProps {
 }
 
 export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
+    const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
+        initialWidth: 320,
+        minWidth: 160,
+        maxWidth: 600,
+        storageKey: 'explorer-sidebar-width',
+    });
+
     const [rootEntries, setRootEntries] = useState<TreeEntry[]>([]);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -202,9 +210,14 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     }
 
     return (
-        <div className="flex flex-col lg:flex-row h-full overflow-hidden" data-testid="explorer-panel">
+        <div className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
             {/* Left aside — file tree */}
-            <aside className="w-full flex-1 min-h-0 lg:flex-none lg:w-80 border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col">
+            <aside
+                className="w-full flex-1 min-h-0 lg:flex-none border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col"
+                style={{ width: undefined }}
+                data-testid="explorer-sidebar"
+            >
+                <style>{`@media (min-width: 1024px) { [data-testid="explorer-sidebar"] { width: ${sidebarWidth}px !important; } }`}</style>
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Files</span>
                     <button
@@ -240,6 +253,18 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     filterQuery={searchQuery}
                 />
             </aside>
+
+            {/* Resize handle */}
+            <div
+                className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                data-testid="explorer-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+                tabIndex={0}
+            />
 
             {/* Right main — preview pane */}
             <main className="flex-1 min-h-0 flex items-center justify-center bg-white dark:bg-[#1e1e1e] overflow-hidden" data-testid="explorer-preview-pane">

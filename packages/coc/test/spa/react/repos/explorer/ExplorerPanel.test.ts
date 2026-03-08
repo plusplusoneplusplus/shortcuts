@@ -91,13 +91,10 @@ describe('ExplorerPanel', () => {
 
         it('has left aside for file tree', () => {
             expect(source).toContain('<aside');
-            expect(source).toContain('lg:w-80');
         });
 
         it('aside uses mobile-friendly flex sizing for scrollability', () => {
-            // flex-1 min-h-0 lets the aside shrink inside flex-col on mobile,
-            // enabling overflow-y-auto in FileTree to activate
-            expect(source).toContain('flex-1 min-h-0 lg:flex-none lg:w-80');
+            expect(source).toContain('flex-1 min-h-0 lg:flex-none');
         });
 
         it('main preview pane has min-h-0 for mobile scroll support', () => {
@@ -119,6 +116,27 @@ describe('ExplorerPanel', () => {
 
         it('has main pane background colors', () => {
             expect(source).toContain('bg-white dark:bg-[#1e1e1e]');
+        });
+
+        it('has a resizable split handle between panels', () => {
+            expect(source).toContain('data-testid="explorer-resize-handle"');
+            expect(source).toContain('cursor-col-resize');
+        });
+
+        it('uses useResizablePanel hook for dynamic sidebar width', () => {
+            expect(source).toContain("import { useResizablePanel } from '../../hooks/useResizablePanel'");
+            expect(source).toContain('useResizablePanel(');
+            expect(source).toContain('sidebarWidth');
+        });
+
+        it('resize handle has proper accessibility attributes', () => {
+            expect(source).toContain('role="separator"');
+            expect(source).toContain('aria-orientation="vertical"');
+            expect(source).toContain('aria-label="Resize sidebar"');
+        });
+
+        it('disables text selection while dragging', () => {
+            expect(source).toContain('select-none');
         });
     });
 
