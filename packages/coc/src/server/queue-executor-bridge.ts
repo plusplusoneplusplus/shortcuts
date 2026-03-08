@@ -772,6 +772,11 @@ export class CLITaskExecutor implements TaskExecutor {
             return `Run workflow: ${path.basename(task.payload.workflowPath)}`;
         }
 
+        if (isRunScriptPayload(task.payload)) {
+            const payload = task.payload as unknown as RunScriptPayload;
+            return `Run script: \`${payload.script}\``;
+        }
+
         if (isChatPayload(task.payload)) {
             const payload = task.payload as unknown as ChatPayload;
             const prompt = payload.prompt || task.displayName || 'Chat message';
@@ -906,11 +911,12 @@ export class CLITaskExecutor implements TaskExecutor {
     private async executeRunScript(task: QueuedTask): Promise<unknown> {
         const payload = task.payload as unknown as RunScriptPayload;
         const startTime = Date.now();
+        const cwd = this.getWorkingDirectory(task) || undefined;
 
         return new Promise((resolve, reject) => {
             const child = spawn(payload.script, [], {
                 shell: true,
-                cwd: payload.workingDirectory,
+                cwd,
             });
 
             let stdout = '';
@@ -937,14 +943,33 @@ export class CLITaskExecutor implements TaskExecutor {
             child.on('close', (exitCode) => {
                 if (timer) clearTimeout(timer);
                 const durationMs = Date.now() - startTime;
+                const success = !timedOut && exitCode === 0;
+                const response = this.formatScriptResponse(payload.script, cwd, success, stdout, stderr, exitCode, timedOut, durationMs);
                 resolve({
-                    success: !timedOut && exitCode === 0,
+                    success,
+                    response,
                     result: { stdout, stderr, exitCode: timedOut ? null : exitCode },
                     durationMs,
                     timedOut,
                 });
             });
         });
+    }
+
+    private formatScriptResponse(
+        script: string, cwd: string | undefined, success: boolean,
+        stdout: string, stderr: string, exitCode: number | null,
+        timedOut: boolean, durationMs: number,
+    ): string {
+        const parts: string[] = [];
+        const status = timedOut ? '⏱️ Timed out' : success ? '✅ Success' : `❌ Failed (exit code ${exitCode})`;
+        parts.push(`**Script:** \`${script}\``);
+        if (cwd) parts.push(`**Working directory:** \`${cwd}\``);
+        parts.push(`**Status:** ${status}`);
+        parts.push(`**Duration:** ${durationMs}ms`);
+        if (stdout.trim()) parts.push(`\n**stdout:**\n\`\`\`\n${stdout.trim()}\n\`\`\``);
+        if (stderr.trim()) parts.push(`\n**stderr:**\n\`\`\`\n${stderr.trim()}\n\`\`\``);
+        return parts.join('\n');
     }
 
     private async executeReplicateTemplate(task: QueuedTask): Promise<unknown> {

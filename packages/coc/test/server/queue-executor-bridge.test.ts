@@ -7225,6 +7225,9 @@ describe('CLITaskExecutor — run-script tasks', () => {
         expect(inner.result.stderr).toBe('');
         expect(inner.result.exitCode).toBe(0);
         expect(inner.timedOut).toBe(false);
+        // Response should surface stdout for UI display
+        expect(inner.response).toContain('hello');
+        expect(inner.response).toContain('✅ Success');
     });
 
     it('non-zero exit — success false, correct exitCode', async () => {
@@ -7247,6 +7250,9 @@ describe('CLITaskExecutor — run-script tasks', () => {
         expect(inner.success).toBe(false);
         expect(inner.result.exitCode).toBe(1);
         expect(inner.result.stderr).toBe('error output');
+        // Response should surface stderr and failure status
+        expect(inner.response).toContain('error output');
+        expect(inner.response).toContain('❌ Failed');
     });
 
     it('timeout — kills process, timedOut true, exitCode null', async () => {
@@ -7266,7 +7272,91 @@ describe('CLITaskExecutor — run-script tasks', () => {
         expect(inner.timedOut).toBe(true);
         expect(inner.success).toBe(false);
         expect(inner.result.exitCode).toBeNull();
+        // Response should indicate timeout
+        expect(inner.response).toContain('Timed out');
     }, 2000);
+
+    it('uses resolved working directory (fallback to defaultWorkingDirectory)', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store, { workingDirectory: '/repo/root' });
+        const task = makeRunScriptTask({
+            id: 'rs-cwd-1',
+            payload: { kind: 'run-script', script: 'ls', workingDirectory: '' },
+        });
+
+        const resultPromise = executor.execute(task);
+        setImmediate(() => child.emit('close', 0));
+        await resultPromise;
+
+        // Should fall back to defaultWorkingDirectory, not pass empty string
+        expect(mockSpawn).toHaveBeenCalledWith('ls', [], expect.objectContaining({
+            shell: true,
+            cwd: '/repo/root',
+        }));
+    });
+
+    it('uses explicit working directory when provided', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store, { workingDirectory: '/repo/root' });
+        const task = makeRunScriptTask({
+            id: 'rs-cwd-2',
+            payload: { kind: 'run-script', script: 'ls', workingDirectory: '/custom/dir' },
+        });
+
+        const resultPromise = executor.execute(task);
+        setImmediate(() => child.emit('close', 0));
+        await resultPromise;
+
+        expect(mockSpawn).toHaveBeenCalledWith('ls', [], expect.objectContaining({
+            cwd: '/custom/dir',
+        }));
+    });
+
+    it('response is stored as assistant turn content', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store);
+        const task = makeRunScriptTask({ id: 'rs-turn-1' });
+
+        const resultPromise = executor.execute(task);
+        setImmediate(() => {
+            child.stdout.emit('data', Buffer.from('output line\n'));
+            child.emit('close', 0);
+        });
+
+        await resultPromise;
+
+        // Verify the assistant turn has the script response, not empty string
+        const process = await store.getProcess(`queue_rs-turn-1`);
+        const assistantTurn = process?.conversationTurns?.find(t => t.role === 'assistant');
+        expect(assistantTurn?.content).toContain('output line');
+        expect(assistantTurn?.content).toContain('✅ Success');
+    });
+
+    it('extractPrompt shows the actual script command', async () => {
+        const child = makeFakeChild();
+        mockSpawn.mockReturnValue(child);
+
+        const executor = new CLITaskExecutor(store);
+        const task = makeRunScriptTask({
+            id: 'rs-prompt-1',
+            payload: { kind: 'run-script', script: 'git pull --rebase' },
+        });
+
+        const resultPromise = executor.execute(task);
+        setImmediate(() => child.emit('close', 0));
+        await resultPromise;
+
+        // Verify the user turn shows the script command
+        const process = await store.getProcess(`queue_rs-prompt-1`);
+        const userTurn = process?.conversationTurns?.find(t => t.role === 'user');
+        expect(userTurn?.content).toContain('git pull --rebase');
+    });
 
     it('spawn error — executor returns failed result', async () => {
         const child = makeFakeChild();
