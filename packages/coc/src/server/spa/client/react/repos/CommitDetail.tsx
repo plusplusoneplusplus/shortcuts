@@ -13,8 +13,10 @@ import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { DiffMiniMap } from './DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
+import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
+import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
 import type { GitCommitItem } from './CommitList';
 
@@ -37,6 +39,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     const [diffError, setDiffError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
+    const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
+    const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
@@ -80,8 +84,10 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         [],
     );
 
-    const handleCommentClick = useCallback((_comment: DiffComment) => {
-        setSidebarOpen(true);
+    const handleCommentClick = useCallback((comment: DiffComment, event: React.MouseEvent) => {
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        setPopoverPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
+        setActivePopoverComment(comment);
     }, []);
 
     const handlePopupSubmit = useCallback(
@@ -215,6 +221,19 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                     position={popupState.position}
                     onSubmit={handlePopupSubmit}
                     onCancel={() => setPopupState(null)}
+                />
+            )}
+
+            {activePopoverComment && popoverPos && (
+                <CommentPopover
+                    comment={activePopoverComment}
+                    position={popoverPos}
+                    onClose={() => setActivePopoverComment(null)}
+                    onResolve={(id) => { void resolveComment(id); }}
+                    onUnresolve={(id) => { void unresolveComment(id); }}
+                    onDelete={(id) => { void deleteComment(id); setActivePopoverComment(null); }}
+                    onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
+                    onAskAI={() => {}}
                 />
             )}
         </div>

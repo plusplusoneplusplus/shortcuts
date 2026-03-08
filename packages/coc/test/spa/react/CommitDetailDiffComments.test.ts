@@ -61,7 +61,12 @@ vi.mock('../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
             }, 'Add Comment'),
             React.createElement('button', {
                 'data-testid': 'trigger-comment-click',
-                onClick: () => onCommentClick?.({ id: 'c1', context: {}, selection: {}, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' }),
+                onClick: (e: any) => {
+                    Object.defineProperty(e, 'currentTarget', {
+                        value: { getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 100, right: 200, width: 100, height: 20 }) },
+                    });
+                    onCommentClick?.({ id: 'c1', context: {}, selection: {}, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' }, e);
+                },
             }, 'View Comment'),
         ),
     HunkNavButtons: () => null,
@@ -218,12 +223,12 @@ describe('CommitDetail — sidebar flow', () => {
         expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
     });
 
-    it('clicking a comment via onCommentClick opens sidebar', async () => {
+    it('clicking a comment via onCommentClick opens popover', async () => {
         await renderDetail({ filePath: 'src/foo.ts' });
-        expect(screen.queryByTestId('comment-sidebar')).toBeNull();
+        expect(screen.queryByTestId('comment-popover')).toBeNull();
         const trigger = await screen.findByTestId('trigger-comment-click');
         await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
+        expect(screen.getByTestId('comment-popover')).toBeTruthy();
     });
 
     it('comment count passed to UnifiedDiffViewer', async () => {

@@ -398,7 +398,7 @@ describe('UnifiedDiffViewer — comment badges and highlights', () => {
         expect(lineDiv.querySelector('[data-testid="comment-badge"]')).toBeNull();
     });
 
-    it('badge click fires onCommentClick with first comment', async () => {
+    it('badge click fires onCommentClick with first comment and event', async () => {
         const onCommentClick = vi.fn();
         const c = makeComment({ diffLineStart: 6, diffLineEnd: 6 });
         const { container } = render(
@@ -412,7 +412,7 @@ describe('UnifiedDiffViewer — comment badges and highlights', () => {
         const badge = container.querySelector<HTMLElement>('[data-testid="comment-badge"]')!;
         await act(async () => { fireEvent.click(badge); });
         expect(onCommentClick).toHaveBeenCalledOnce();
-        expect(onCommentClick).toHaveBeenCalledWith(c);
+        expect(onCommentClick).toHaveBeenCalledWith(c, expect.objectContaining({ type: 'click' }));
     });
 
     it('badge has bg-yellow-400 class for open comment', () => {

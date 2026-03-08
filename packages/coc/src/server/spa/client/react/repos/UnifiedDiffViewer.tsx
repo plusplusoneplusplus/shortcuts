@@ -24,7 +24,7 @@ export interface UnifiedDiffViewerProps {
         selectedText: string,
         position: { top: number; left: number }
     ) => void;
-    onCommentClick?: (comment: DiffComment) => void;
+    onCommentClick?: (comment: DiffComment, event: React.MouseEvent) => void;
 }
 
 type LineType = 'added' | 'removed' | 'hunk-header' | 'meta' | 'context';
@@ -396,7 +396,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                                         return (
                                             <button
                                                 className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${getBadgeClass(lc)} leading-none`}
-                                                onClick={e => { e.stopPropagation(); onCommentClick?.(lc[0]); }}
+                                                onClick={e => { e.stopPropagation(); onCommentClick?.(lc[0], e); }}
                                                 title={`${lc.length} comment${lc.length > 1 ? 's' : ''}`}
                                                 data-testid="comment-badge"
                                             >
@@ -440,7 +440,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                                     return (
                                         <button
                                             className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${getBadgeClass(lc)} leading-none`}
-                                            onClick={e => { e.stopPropagation(); onCommentClick?.(lc[0]); }}
+                                            onClick={e => { e.stopPropagation(); onCommentClick?.(lc[0], e); }}
                                             title={`${lc.length} comment${lc.length > 1 ? 's' : ''}`}
                                             data-testid="comment-badge"
                                         >

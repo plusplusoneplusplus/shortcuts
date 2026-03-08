@@ -41,7 +41,13 @@ vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () =>
             >Add Comment</button>
             <button
                 data-testid="trigger-comment-click"
-                onClick={() => onCommentClick?.({ id: 'c1', context: {}, selection: {}, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' })}
+                onClick={(e) => {
+                    // Simulate getBoundingClientRect on currentTarget for popover positioning
+                    Object.defineProperty(e, 'currentTarget', {
+                        value: { getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 100, right: 200, width: 100, height: 20 }) },
+                    });
+                    onCommentClick?.({ id: 'c1', context: {}, selection: {}, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' }, e);
+                }}
             >Click Comment</button>
         </div>
     ),
@@ -155,13 +161,32 @@ describe('CommitDetail — comment integration', () => {
         expect(mockAddComment).not.toHaveBeenCalled();
     });
 
-    // 6. onCommentClick opens sidebar
-    it('onCommentClick opens sidebar if closed', async () => {
+    // 6. onCommentClick opens popover (not sidebar)
+    it('onCommentClick opens popover at badge position', async () => {
         await renderDetail({ filePath: 'src/foo.ts' });
-        expect(screen.queryByTestId('comment-sidebar')).toBeNull();
+        expect(screen.queryByTestId('comment-popover')).toBeNull();
         const trigger = await screen.findByTestId('trigger-comment-click');
         await act(async () => { fireEvent.click(trigger); });
-        expect(screen.getByTestId('comment-sidebar')).toBeTruthy();
+        expect(screen.getByTestId('comment-popover')).toBeTruthy();
+    });
+
+    // 6b. Popover close clears popover
+    it('popover closes when onClose fires', async () => {
+        await renderDetail({ filePath: 'src/foo.ts' });
+        const trigger = await screen.findByTestId('trigger-comment-click');
+        await act(async () => { fireEvent.click(trigger); });
+        expect(screen.getByTestId('comment-popover')).toBeTruthy();
+        const closeBtn = screen.getByTestId('popover-close');
+        await act(async () => { fireEvent.click(closeBtn); });
+        expect(screen.queryByTestId('comment-popover')).toBeNull();
+    });
+
+    // 6c. Popover shows comment body text
+    it('popover shows comment body text', async () => {
+        await renderDetail({ filePath: 'src/foo.ts' });
+        const trigger = await screen.findByTestId('trigger-comment-click');
+        await act(async () => { fireEvent.click(trigger); });
+        expect(screen.getByTestId('popover-comment-body').textContent).toBe('test');
     });
 
     // 7. Comments are passed to UnifiedDiffViewer
