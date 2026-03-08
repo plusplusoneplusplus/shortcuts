@@ -112,7 +112,7 @@ export async function seedQueueTask(
     overrides: QueueTaskOverrides = {},
 ): Promise<Record<string, unknown>> {
     const taskSpec = {
-        type: overrides.type ?? 'ai-clarification',
+        type: overrides.type ?? 'chat',
         priority: overrides.priority ?? 'normal',
         displayName: overrides.displayName,
         payload: overrides.payload ?? { prompt: 'Test task prompt' },
@@ -138,7 +138,7 @@ export async function seedQueueTasks(
     tasks: QueueTaskOverrides[],
 ): Promise<Record<string, unknown>[]> {
     const taskSpecs = tasks.map((t) => ({
-        type: t.type ?? 'ai-clarification',
+        type: t.type ?? 'chat',
         priority: t.priority ?? 'normal',
         displayName: t.displayName,
         payload: t.payload ?? { prompt: 'Bulk task prompt' },

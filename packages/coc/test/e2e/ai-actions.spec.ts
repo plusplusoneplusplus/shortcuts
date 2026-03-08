@@ -160,7 +160,7 @@ test.describe('AI Actions (007)', () => {
             // Verify the POST payload
             const queueResponse = await queueResponsePromise;
             const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
-            expect(reqBody.type).toBe('follow-prompt');
+            expect(reqBody.type).toBe('chat');
             expect(reqBody.displayName).toContain('review');
 
             // Overlay should be removed

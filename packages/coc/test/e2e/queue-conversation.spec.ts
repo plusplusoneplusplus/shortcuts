@@ -66,7 +66,7 @@ async function waitForStreamingToComplete(page: Page): Promise<void> {
 test.describe('Queue Task Conversation – Basic Rendering', () => {
     test('displays initial user message in conversation', async ({ page, serverUrl, mockAI }) => {
         const task = await seedAndWaitForTask(serverUrl, {
-            type: 'ai-clarification',
+            type: 'chat',
             payload: { prompt: 'Analyze this file' },
         });
         const taskId = task.id as string;

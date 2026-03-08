@@ -69,7 +69,7 @@ test.describe('Mock AI: Basic Conversation Rendering', () => {
         });
 
         const task = await seedQueueTask(serverUrl, {
-            type: 'ai-clarification',
+            type: 'chat',
             payload: { prompt: 'What is the meaning of life?' },
         });
 

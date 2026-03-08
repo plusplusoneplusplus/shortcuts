@@ -34,7 +34,7 @@ async function waitForTaskStatus(
 test.describe('Queue Mock AI Integration', () => {
     test('mock AI executes queue task successfully', async ({ serverUrl, mockAI }) => {
         const task = await seedQueueTask(serverUrl, {
-            type: 'ai-clarification',
+            type: 'chat',
             payload: { prompt: 'What is the meaning of life?' },
         });
 
