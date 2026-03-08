@@ -39,7 +39,7 @@ export {
 
 // Bundled Pipeline Read-only Provider
 export {
-    BUNDLED_PIPELINE_SCHEME,
+    BUNDLED_WORKFLOW_SCHEME as BUNDLED_PIPELINE_SCHEME,
     BundledPipelineContentProvider,
     createBundledPipelineUri,
     registerBundledPipelineProvider

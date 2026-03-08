@@ -86,9 +86,9 @@ describe('Pipeline Index Exports', () => {
         });
     });
 
-    describe('Executor removed (use workflow engine)', () => {
-        it('no longer exports executePipeline (replaced by compileToWorkflow + executeWorkflow)', () => {
-            expect((PipelineCore as any).executePipeline).toBeUndefined();
+    describe('Executor exports', () => {
+        it('exports executePipeline', () => {
+            expect(typeof (PipelineCore as any).executePipeline).toBe('function');
         });
     });
 
