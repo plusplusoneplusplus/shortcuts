@@ -46,10 +46,15 @@ export function safeRmSync(dir: string, maxRetries = 5): void {
 }
 
 // Import from compiled dist — Playwright doesn't transpile source TS
-const { createExecutionServer } = require('../../../dist/server/index');
+const { createExecutionServer, resolveTaskRoot } = require('../../../dist/server/index');
 const { FileProcessStore } = require('@plusplusoneplusplus/pipeline-core');
 
 type ExecutionServer = Awaited<ReturnType<typeof createExecutionServer>>;
+
+/** Resolve the repo-scoped task root path from dataDir + repoDir. */
+export function getTaskRoot(dataDir: string, repoDir: string): string {
+    return resolveTaskRoot({ dataDir, rootPath: repoDir }).absolutePath;
+}
 
 /** Internal context that groups resources with a shared lifecycle. */
 interface ServerContext {
@@ -62,6 +67,8 @@ export interface ServerFixture {
     server: ExecutionServer;
     serverUrl: string;
     mockAI: E2EMockAIControls;
+    /** Server data directory (e.g. ~/.coc in production, temp dir in tests) */
+    dataDir: string;
 }
 
 /**
@@ -159,6 +166,10 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
 
     serverUrl: async ({ server }, use) => {
         await use(server.url);
+    },
+
+    dataDir: async ({ _context }, use) => {
+        await use(_context.tmpDir);
     },
 
     mockAI: async ({ _context }, use) => {

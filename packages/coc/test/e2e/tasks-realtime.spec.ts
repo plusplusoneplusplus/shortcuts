@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect, safeRmSync } from './fixtures/server-fixture';
+import { test, expect, safeRmSync, getTaskRoot } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -44,10 +44,11 @@ async function navigateToTasksTab(
 // ================================================================
 
 test.describe('Tasks real-time: API create (015)', () => {
-    test('15.1 API-created task appears without page refresh', async ({ page, serverUrl }) => {
+    test('15.1 API-created task appears without page refresh', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rt-tasks-create-'));
         const repoDir = createRepoFixture(tmpDir);
         createTasksFixture(repoDir);
+        const taskRoot = getTaskRoot(dataDir, repoDir);
 
         try {
             await navigateToTasksTab(page, serverUrl, repoDir, 'ws-rt-create');
@@ -65,7 +66,7 @@ test.describe('Tasks real-time: API create (015)', () => {
             });
 
             // Verify file was created on disk
-            const taskFile = path.join(repoDir, '.vscode', 'tasks', 'api-created-task.md');
+            const taskFile = path.join(taskRoot, 'api-created-task.md');
             expect(fs.existsSync(taskFile)).toBe(true);
         } finally {
             safeRmSync(tmpDir);
@@ -78,10 +79,11 @@ test.describe('Tasks real-time: API create (015)', () => {
 // ================================================================
 
 test.describe('Tasks real-time: API delete (015)', () => {
-    test('15.2 API-deleted task disappears without page refresh', async ({ page, serverUrl }) => {
+    test('15.2 API-deleted task disappears without page refresh', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rt-tasks-delete-'));
         const repoDir = createRepoFixture(tmpDir);
         createTasksFixture(repoDir);
+        const taskRoot = getTaskRoot(dataDir, repoDir);
 
         try {
             await navigateToTasksTab(page, serverUrl, repoDir, 'ws-rt-delete');
@@ -92,7 +94,7 @@ test.describe('Tasks real-time: API delete (015)', () => {
             });
 
             // Verify task-a exists on disk
-            const taskFile = path.join(repoDir, '.vscode', 'tasks', 'task-a.md');
+            const taskFile = path.join(taskRoot, 'task-a.md');
             expect(fs.existsSync(taskFile)).toBe(true);
 
             // DELETE task-a via REST API (triggers file deletion → TaskWatcher → WS broadcast)

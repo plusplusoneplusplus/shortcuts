@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect, safeRmSync } from './fixtures/server-fixture';
+import { test, expect, safeRmSync, getTaskRoot } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -19,8 +19,9 @@ async function setupRepoWithTasks(
     page: import('@playwright/test').Page,
     serverUrl: string,
     tmpDir: string,
+    dataDir: string,
     wsId = 'ws-crud',
-): Promise<string> {
+): Promise<{ repoDir: string; taskRoot: string }> {
     const repoDir = createRepoFixture(tmpDir);
     createTasksFixture(repoDir);
 
@@ -41,15 +42,15 @@ async function setupRepoWithTasks(
     // Wait for task tree to render
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
-    return repoDir;
+    return { repoDir, taskRoot: getTaskRoot(dataDir, repoDir) };
 }
 
 test.describe('Task CRUD (010)', () => {
 
-    test('10.1 create new task via toolbar', async ({ page, serverUrl }) => {
+    test('10.1 create new task via toolbar', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Click "+ New Task" toolbar button
             await page.click('#repo-tasks-new-btn');
@@ -68,17 +69,17 @@ test.describe('Task CRUD (010)', () => {
             await expect(page.locator('.miller-file-row', { hasText: 'my-new-task' })).toBeVisible({ timeout: 10000 });
 
             // Verify file was created on disk
-            const taskFile = path.join(repoDir, '.vscode', 'tasks', 'my-new-task.md');
+            const taskFile = path.join(taskRoot, 'my-new-task.md');
             expect(fs.existsSync(taskFile)).toBe(true);
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('10.2 create task with docType', async ({ page, serverUrl }) => {
+    test('10.2 create task with docType', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Click "+ New Task" toolbar button
             await page.click('#repo-tasks-new-btn');
@@ -95,17 +96,17 @@ test.describe('Task CRUD (010)', () => {
             await expect(page.locator('.miller-file-row', { hasText: 'release-notes' })).toBeVisible({ timeout: 10000 });
 
             // Verify file created as name.plan.md on disk
-            const taskFile = path.join(repoDir, '.vscode', 'tasks', 'release-notes.plan.md');
+            const taskFile = path.join(taskRoot, 'release-notes.plan.md');
             expect(fs.existsSync(taskFile)).toBe(true);
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('10.3 create new folder via toolbar', async ({ page, serverUrl }) => {
+    test('10.3 create new folder via toolbar', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Click "+ New Folder" toolbar button
             await page.click('#repo-tasks-folder-btn');
@@ -122,7 +123,7 @@ test.describe('Task CRUD (010)', () => {
             await expect(page.locator('[data-testid="task-tree-item-sprint-42"]')).toBeVisible({ timeout: 10000 });
 
             // Verify directory was created on disk
-            const folderPath = path.join(repoDir, '.vscode', 'tasks', 'sprint-42');
+            const folderPath = path.join(taskRoot, 'sprint-42');
             expect(fs.existsSync(folderPath)).toBe(true);
             expect(fs.statSync(folderPath).isDirectory()).toBe(true);
         } finally {
@@ -130,10 +131,10 @@ test.describe('Task CRUD (010)', () => {
         }
     });
 
-    test('10.4 rename task via context menu', async ({ page, serverUrl }) => {
+    test('10.4 rename task via context menu', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Right-click on task-a file row
             const taskRow = page.locator('[data-testid="task-tree-item-task-a"]');
@@ -160,20 +161,20 @@ test.describe('Task CRUD (010)', () => {
             await expect(page.locator('.miller-file-row', { hasText: 'task-alpha' })).toBeVisible({ timeout: 10000 });
 
             // Old file should be gone, new file should exist
-            expect(fs.existsSync(path.join(repoDir, '.vscode', 'tasks', 'task-a.md'))).toBe(false);
-            expect(fs.existsSync(path.join(repoDir, '.vscode', 'tasks', 'task-alpha.md'))).toBe(true);
+            expect(fs.existsSync(path.join(taskRoot, 'task-a.md'))).toBe(false);
+            expect(fs.existsSync(path.join(taskRoot, 'task-alpha.md'))).toBe(true);
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('10.5 delete task via context menu', async ({ page, serverUrl }) => {
+    test('10.5 delete task via context menu', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Verify task-b exists before deletion
-            const taskFile = path.join(repoDir, '.vscode', 'tasks', 'task-b.md');
+            const taskFile = path.join(taskRoot, 'task-b.md');
             expect(fs.existsSync(taskFile)).toBe(true);
 
             // Right-click on task-b file row
@@ -201,13 +202,13 @@ test.describe('Task CRUD (010)', () => {
         }
     });
 
-    test('10.6 delete folder via context menu', async ({ page, serverUrl }) => {
+    test('10.6 delete folder via context menu', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Verify backlog folder exists
-            const folderPath = path.join(repoDir, '.vscode', 'tasks', 'backlog');
+            const folderPath = path.join(taskRoot, 'backlog');
             expect(fs.existsSync(folderPath)).toBe(true);
 
             // Right-click on "backlog" folder row

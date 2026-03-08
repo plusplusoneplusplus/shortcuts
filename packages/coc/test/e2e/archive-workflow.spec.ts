@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect, safeRmSync } from './fixtures/server-fixture';
+import { test, expect, safeRmSync, getTaskRoot } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -19,8 +19,9 @@ async function setupRepoWithTasks(
     page: import('@playwright/test').Page,
     serverUrl: string,
     tmpDir: string,
+    dataDir: string,
     wsId = 'ws-archive',
-): Promise<string> {
+): Promise<{ repoDir: string; taskRoot: string }> {
     const repoDir = createRepoFixture(tmpDir);
     createTasksFixture(repoDir);
 
@@ -41,18 +42,18 @@ async function setupRepoWithTasks(
     // Wait for task tree to render
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
-    return repoDir;
+    return { repoDir, taskRoot: getTaskRoot(dataDir, repoDir) };
 }
 
 test.describe('Archive Workflow (012)', () => {
 
-    test('12.1 archive task via context menu', async ({ page, serverUrl }) => {
+    test('12.1 archive task via context menu', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-archive-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Verify task-a exists on disk at root level
-            const origFile = path.join(repoDir, '.vscode', 'tasks', 'task-a.md');
+            const origFile = path.join(taskRoot, 'task-a.md');
             expect(fs.existsSync(origFile)).toBe(true);
 
             // Right-click on task-a file row
@@ -72,17 +73,17 @@ test.describe('Archive Workflow (012)', () => {
 
             // File should be moved to archive/ on disk
             expect(fs.existsSync(origFile)).toBe(false);
-            const archivedFile = path.join(repoDir, '.vscode', 'tasks', 'archive', 'task-a.md');
+            const archivedFile = path.join(taskRoot, 'archive', 'task-a.md');
             expect(fs.existsSync(archivedFile)).toBe(true);
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('12.2 archive folder shown with special styling', async ({ page, serverUrl }) => {
+    test('12.2 archive folder shown with special styling', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-archive-'));
         try {
-            await setupRepoWithTasks(page, serverUrl, tmpDir);
+            await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // The archive folder should be visible in the task tree
             const archiveRow = page.locator('[data-testid="task-tree-item-archive"]');
@@ -95,13 +96,13 @@ test.describe('Archive Workflow (012)', () => {
         }
     });
 
-    test('12.3 unarchive task via context menu', async ({ page, serverUrl }) => {
+    test('12.3 unarchive task via context menu', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-archive-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // Verify old.md exists in archive/ on disk
-            const archivedFile = path.join(repoDir, '.vscode', 'tasks', 'archive', 'old.md');
+            const archivedFile = path.join(taskRoot, 'archive', 'old.md');
             expect(fs.existsSync(archivedFile)).toBe(true);
 
             // Navigate into archive folder by clicking it
@@ -129,7 +130,7 @@ test.describe('Archive Workflow (012)', () => {
 
             // File should be moved back to root tasks folder on disk
             expect(fs.existsSync(archivedFile)).toBe(false);
-            const restoredFile = path.join(repoDir, '.vscode', 'tasks', 'old.md');
+            const restoredFile = path.join(taskRoot, 'old.md');
             expect(fs.existsSync(restoredFile)).toBe(true);
         } finally {
             safeRmSync(tmpDir);

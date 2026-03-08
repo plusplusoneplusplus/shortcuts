@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { test, expect, safeRmSync } from './fixtures/server-fixture';
+import { test, expect, safeRmSync, getTaskRoot } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
@@ -19,8 +19,9 @@ async function setupRepoWithTasks(
     page: import('@playwright/test').Page,
     serverUrl: string,
     tmpDir: string,
+    dataDir: string,
     wsId = 'ws-docgroup',
-): Promise<string> {
+): Promise<{ repoDir: string; taskRoot: string }> {
     const repoDir = createRepoFixture(tmpDir);
     createTasksFixture(repoDir);
 
@@ -41,15 +42,15 @@ async function setupRepoWithTasks(
     // Wait for task tree to render
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
-    return repoDir;
+    return { repoDir, taskRoot: getTaskRoot(dataDir, repoDir) };
 }
 
 test.describe('Document Groups (013)', () => {
 
-    test('13.1 grouped docs shown under shared base name', async ({ page, serverUrl }) => {
+    test('13.1 grouped docs shown under shared base name', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-docgroup-'));
         try {
-            await setupRepoWithTasks(page, serverUrl, tmpDir);
+            await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // The fixture creates feature.plan.md and feature.spec.md.
             // With groupRelatedDocuments: true, they appear as one grouped row "feature"
@@ -63,10 +64,10 @@ test.describe('Document Groups (013)', () => {
         }
     });
 
-    test('13.2 group docs display correct doc type suffixes', async ({ page, serverUrl }) => {
+    test('13.2 group docs display correct doc type suffixes', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-docgroup-'));
         try {
-            await setupRepoWithTasks(page, serverUrl, tmpDir);
+            await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
 
             // With grouping, feature.plan+feature.spec appear as one "feature" row
             // Group uses first doc's status (feature.plan has in-progress)
@@ -82,11 +83,11 @@ test.describe('Document Groups (013)', () => {
         }
     });
 
-    test('13.3 rename group renames all files atomically', async ({ page, serverUrl }) => {
+    test('13.3 rename group renames all files atomically', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-docgroup-'));
         try {
-            const repoDir = await setupRepoWithTasks(page, serverUrl, tmpDir);
-            const tasksDir = path.join(repoDir, '.vscode', 'tasks');
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
+            const tasksDir = taskRoot;
 
             // Verify both original files exist on disk
             expect(fs.existsSync(path.join(tasksDir, 'feature.plan.md'))).toBe(true);
