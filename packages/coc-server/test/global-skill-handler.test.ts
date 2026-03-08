@@ -293,6 +293,43 @@ describe('registerGlobalSkillRoutes', () => {
             expect(statusCode).toBe(200);
             expect(body).toHaveProperty('installed');
         });
+
+        it('replaces existing skills when replace is true', async () => {
+            // First install
+            await dispatchRoute(
+                routes, 'POST', '/api/skills/install',
+                { source: 'bundled', replace: true }
+            );
+
+            // Second install with replace: true should succeed and overwrite
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'POST', '/api/skills/install',
+                { source: 'bundled', replace: true }
+            );
+            expect(statusCode).toBe(200);
+            expect(body).toHaveProperty('installed');
+            expect(body.skipped).toBe(0);
+        });
+
+        it('skips existing skills when replace is false', async () => {
+            // First install
+            const first = await dispatchRoute(
+                routes, 'POST', '/api/skills/install',
+                { source: 'bundled', replace: true }
+            );
+            const installedCount = first.body.installed;
+
+            // Second install with replace: false should skip all
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'POST', '/api/skills/install',
+                { source: 'bundled', replace: false }
+            );
+            expect(statusCode).toBe(200);
+            if (installedCount > 0) {
+                expect(body.skipped).toBeGreaterThan(0);
+                expect(body.installed).toBe(0);
+            }
+        });
     });
 
     // -----------------------------------------------------------------------

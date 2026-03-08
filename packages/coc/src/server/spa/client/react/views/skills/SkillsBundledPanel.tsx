@@ -51,7 +51,7 @@ export function SkillsBundledPanel() {
             await fetchApi('/skills/install', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'bundled', skills: names, replace: false }),
+                body: JSON.stringify({ source: 'bundled', skills: names, replace: true }),
             });
             setSelectedBundled(new Set());
             loadBundled();
@@ -68,7 +68,7 @@ export function SkillsBundledPanel() {
             await fetchApi('/skills/install', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'bundled', replace: false }),
+                body: JSON.stringify({ source: 'bundled', replace: true }),
             });
             loadBundled();
         } catch {
@@ -103,7 +103,7 @@ export function SkillsBundledPanel() {
             await fetchApi('/skills/install', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: githubUrl, skillsToInstall: scanResult.skills, replace: false }),
+                body: JSON.stringify({ url: githubUrl, skillsToInstall: scanResult.skills, replace: true }),
             });
             setScanResult(null);
             setGithubUrl('');
@@ -156,7 +156,7 @@ export function SkillsBundledPanel() {
                                     type="checkbox"
                                     checked={selectedBundled.has(skill.name)}
                                     onChange={() => toggleBundled(skill.name)}
-                                    disabled={skill.alreadyExists}
+                                    disabled={false}
                                     className="accent-[#0078d4]"
                                 />
                                 <div className="flex-1 min-w-0">
