@@ -64,7 +64,7 @@ async function navigateToPipeline(
     await page.click('button[data-subtab="workflows"]');
     await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
 
-    const pipelineItems = page.locator('.repo-pipeline-item');
+    const pipelineItems = page.locator('.repo-workflow-item');
     await expect(pipelineItems).toHaveCount(1, { timeout: 10_000 });
     await pipelineItems.first().click();
 }

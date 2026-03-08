@@ -78,7 +78,7 @@ export function ReposView() {
             const enriched: RepoData[] = await Promise.all(
                 workspaces.map(async (ws: any) => {
                     const [pipelinesRes, tasksRes] = await Promise.all([
-                        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/pipelines`).catch(() => null),
+                        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/workflows`).catch(() => null),
                         fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks`).catch(() => null),
                     ]);
 
@@ -174,7 +174,7 @@ export function ReposView() {
         try {
             const updated = await fetchWorkflows(wsId);
             setRepos(prev => prev.map(r =>
-                r.workspace.id === wsId ? { ...r, pipelines: updated } : r
+                r.workspace.id === wsId ? { ...r, workflows: updated } : r
             ));
         } catch { /* fire-and-forget */ }
     }, []);

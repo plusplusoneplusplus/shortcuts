@@ -403,7 +403,7 @@ test.describe('Sub-tab Navigation', () => {
 
         const subContent = page.locator('#repo-sub-tab-content');
         await expect(subContent).toBeVisible();
-        await expect(subContent.locator('.repo-pipeline-list, .empty-state')).toHaveCount(1);
+        await expect(subContent.locator('.repo-workflow-list, .empty-state')).toHaveCount(1);
     });
 
     test('switch to Tasks tab', async ({ page, serverUrl }) => {
@@ -630,16 +630,16 @@ test.describe('Workflows Tab Content', () => {
             await page.click('button[data-subtab="workflows"]');
             await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
 
-            const pipelineList = page.locator('.repo-pipeline-list');
+            const pipelineList = page.locator('.repo-workflow-list');
             await expect(pipelineList).toBeVisible({ timeout: 10000 });
 
-            const pipelineItems = page.locator('.repo-pipeline-item');
+            const pipelineItems = page.locator('.repo-workflow-item');
             await expect(pipelineItems).toHaveCount(1);
 
-            await expect(page.locator('.pipeline-name').first()).toContainText('p1');
+            await expect(page.locator('.workflow-name').first()).toContainText('p1');
 
-            await expect(pipelineItems.first().locator('.repo-pipeline-actions .action-btn')).toBeVisible();
-            await expect(pipelineItems.first().locator('.repo-pipeline-actions .action-btn')).toContainText('View');
+            await expect(pipelineItems.first().locator('.repo-workflow-actions .action-btn')).toBeVisible();
+            await expect(pipelineItems.first().locator('.repo-workflow-actions .action-btn')).toContainText('View');
         } finally {
             safeRmSync(tmpDir);
         }
@@ -657,7 +657,7 @@ test.describe('Workflows Tab Content', () => {
         await page.click('button[data-subtab="workflows"]');
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
 
-        await expect(page.locator('.repo-pipeline-list')).toHaveCount(0);
+        await expect(page.locator('.repo-workflow-list')).toHaveCount(0);
 
         const subContent = page.locator('#repo-sub-tab-content');
         const emptyState = subContent.locator('.empty-state');
