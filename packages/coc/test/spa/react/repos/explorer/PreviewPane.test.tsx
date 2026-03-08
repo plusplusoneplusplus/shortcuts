@@ -113,7 +113,7 @@ describe('PreviewPane', () => {
         expect(screen.getByText(/Binary file/)).toBeInTheDocument();
     });
 
-    it('shows "(empty file)" for empty content', async () => {
+    it('renders Monaco editor for empty text files', async () => {
         mockFetchApi.mockResolvedValue({
             content: '',
             encoding: 'utf-8',
@@ -122,11 +122,11 @@ describe('PreviewPane', () => {
 
         render(<PreviewPane repoId="r1" filePath="empty.txt" fileName="empty.txt" />);
 
-        await waitFor(() => expect(screen.getByTestId('preview-empty')).toBeInTheDocument());
-        expect(screen.getByText('(empty file)')).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+        expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-value')).toBe('');
     });
 
-    it('truncates content exceeding 512 KB and shows banner', async () => {
+    it('truncates content exceeding 512 KB and still renders Monaco', async () => {
         const largeContent = 'x'.repeat(600 * 1024); // 600 KB
         mockFetchApi.mockResolvedValue({
             content: largeContent,
@@ -136,8 +136,10 @@ describe('PreviewPane', () => {
 
         render(<PreviewPane repoId="r1" filePath="large.txt" fileName="large.txt" />);
 
-        await waitFor(() => expect(screen.getByTestId('preview-truncated-banner')).toBeInTheDocument());
-        expect(screen.getByText(/File too large to preview/)).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+        // Content is truncated to 512 KB
+        const editorValue = screen.getByTestId('mock-monaco-editor').getAttribute('data-value');
+        expect(editorValue!.length).toBe(512 * 1024);
     });
 
     it('shows error state with Retry button on fetch failure', async () => {
@@ -212,7 +214,7 @@ describe('PreviewPane', () => {
         );
     });
 
-    it('renders path header with breadcrumb segments', async () => {
+    it('does not render a path header — Monaco is the only content', async () => {
         mockFetchApi.mockResolvedValue({
             content: 'test',
             encoding: 'utf-8',
@@ -221,14 +223,11 @@ describe('PreviewPane', () => {
 
         render(<PreviewPane repoId="r1" filePath="src/components/App.tsx" fileName="App.tsx" />);
 
-        await waitFor(() => expect(screen.getByTestId('preview-header')).toBeInTheDocument());
-        const header = screen.getByTestId('preview-header');
-        expect(header.textContent).toContain('src');
-        expect(header.textContent).toContain('components');
-        expect(header.textContent).toContain('App.tsx');
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+        expect(screen.queryByTestId('preview-header')).not.toBeInTheDocument();
     });
 
-    it('close button calls onClose', async () => {
+    it('close button calls onClose via floating toolbar', async () => {
         mockFetchApi.mockResolvedValue({
             content: 'test',
             encoding: 'utf-8',
@@ -256,7 +255,7 @@ describe('PreviewPane', () => {
 
         render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" />);
 
-        await waitFor(() => expect(screen.getByTestId('preview-header')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
         expect(screen.queryByTestId('preview-close-btn')).not.toBeInTheDocument();
     });
 
@@ -283,7 +282,7 @@ describe('PreviewPane', () => {
             textarea.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
-        // Should now show dirty indicator and save button
+        // Should now show dirty indicator and save button in floating toolbar
         expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument();
         expect(screen.getByTestId('save-btn')).toBeInTheDocument();
     });
@@ -321,5 +320,24 @@ describe('PreviewPane', () => {
         );
         expect(saveCalls.length).toBe(1);
         expect(saveCalls[0][0]).toBe('/repos/r1/blob?path=a.ts');
+    });
+
+    it('floating toolbar is present when content is loaded', async () => {
+        mockFetchApi.mockResolvedValue({
+            content: 'hello',
+            encoding: 'utf-8',
+            mimeType: 'text/plain',
+        });
+
+        const onClose = vi.fn();
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" onClose={onClose} />);
+
+        await waitFor(() => expect(screen.getByTestId('preview-toolbar')).toBeInTheDocument());
+    });
+
+    it('no floating toolbar during loading state', () => {
+        mockFetchApi.mockReturnValue(new Promise(() => {}));
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" onClose={() => {}} />);
+        expect(screen.queryByTestId('preview-toolbar')).not.toBeInTheDocument();
     });
 });
