@@ -233,7 +233,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 : resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const resolvedPath = path.resolve(tasksFolder, filePath);
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
-            if (!isWithinDirectory(resolvedPath, tasksFolder) && !isWithinTrustedReadOnlyDir(resolvedPath) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
+            if (!isWithinDirectory(resolvedPath, tasksFolder) && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
             }
 

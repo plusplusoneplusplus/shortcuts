@@ -342,7 +342,8 @@ describe('Tasks Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=../../etc/passwd`);
+            // Use enough ../ levels to escape the data directory entirely
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=../../../../../../etc/passwd`);
             expect(res.status).toBe(403);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('outside');
@@ -352,8 +353,18 @@ describe('Tasks Handler', () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=..%2F..%2Fetc%2Fpasswd`);
+            // Use enough ../ levels to escape the data directory entirely
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd`);
             expect(res.status).toBe(403);
+        });
+
+        it('should return 404 (not 403) for traversal within the data directory', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+
+            // ../../etc/passwd resolves inside dataDir, so access is allowed but file doesn't exist
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=..%2F..%2Fetc%2Fpasswd`);
+            expect(res.status).toBe(404);
         });
 
         it('should return content for files in the absolute task root', async () => {
@@ -365,6 +376,22 @@ describe('Tasks Handler', () => {
 
             await registerWorkspace(srv, workspaceDir);
             const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=root-task.md`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.content).toBe(markdown);
+        });
+
+        it('should accept file paths under the data directory (~/.coc)', async () => {
+            const srv = await startServer();
+            // Create a file in the dataDir but outside the normal task root for this workspace
+            const otherRepoDir = path.join(dataDir, 'repos', 'other-repo-hash', 'tasks', 'coc');
+            fs.mkdirSync(otherRepoDir, { recursive: true });
+            const markdown = '# Plan from another repo path';
+            fs.writeFileSync(path.join(otherRepoDir, 'plan.md'), markdown, 'utf-8');
+
+            await registerWorkspace(srv, workspaceDir);
+            const filePath = encodeURIComponent(path.join(otherRepoDir, 'plan.md'));
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=${filePath}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.content).toBe(markdown);
