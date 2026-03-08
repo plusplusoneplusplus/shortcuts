@@ -472,8 +472,52 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Watch tasks and workflows directories for already-registered workspaces (handles server restart)
     const existingWorkspaces = await store.getWorkspaces();
+
+    // Migrate hash-based storage paths to workspace-ID-based paths
     for (const ws of existingWorkspaces) {
-        if (isMigrationNeeded(ws.rootPath, dataDir)) {
+        const oldRepoId = computeRepoId(ws.rootPath);
+        const newRepoId = ws.id;
+        if (oldRepoId === newRepoId) continue;
+
+        // Migrate repos/ folder
+        const oldRepoDir = path.join(dataDir, 'repos', oldRepoId);
+        const newRepoDir = path.join(dataDir, 'repos', newRepoId);
+        if (fs.existsSync(oldRepoDir) && !fs.existsSync(newRepoDir)) {
+            try {
+                fs.renameSync(oldRepoDir, newRepoDir);
+                process.stderr.write(`[Migration] repos/${oldRepoId} → repos/${newRepoId}\n`);
+            } catch (err) {
+                process.stderr.write(`[Migration] Failed to rename repos dir: ${err}\n`);
+            }
+        }
+
+        // Migrate queue file
+        const oldQueueFile = path.join(dataDir, 'queues', `repo-${oldRepoId}.json`);
+        const newQueueFile = path.join(dataDir, 'queues', `repo-${newRepoId}.json`);
+        if (fs.existsSync(oldQueueFile) && !fs.existsSync(newQueueFile)) {
+            try {
+                fs.renameSync(oldQueueFile, newQueueFile);
+                process.stderr.write(`[Migration] queues/repo-${oldRepoId}.json → repo-${newRepoId}.json\n`);
+            } catch (err) {
+                process.stderr.write(`[Migration] Failed to rename queue file: ${err}\n`);
+            }
+        }
+
+        // Migrate schedule file
+        const oldSchedFile = path.join(dataDir, 'schedules', `repo-${oldRepoId}.json`);
+        const newSchedFile = path.join(dataDir, 'schedules', `repo-${newRepoId}.json`);
+        if (fs.existsSync(oldSchedFile) && !fs.existsSync(newSchedFile)) {
+            try {
+                fs.renameSync(oldSchedFile, newSchedFile);
+                process.stderr.write(`[Migration] schedules/repo-${oldRepoId}.json → repo-${newRepoId}.json\n`);
+            } catch (err) {
+                process.stderr.write(`[Migration] Failed to rename schedule file: ${err}\n`);
+            }
+        }
+    }
+
+    for (const ws of existingWorkspaces) {
+        if (isMigrationNeeded(ws.rootPath, ws.id, dataDir)) {
             const migResult = await migrateTasksToRepoScoped({
                 workspaceRoot: ws.rootPath, workspaceId: ws.id, dataDir,
             });
@@ -481,11 +525,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 process.stderr.write(`[TaskMigration] ${migResult.fileCount} files: ${ws.rootPath}\n`);
             }
         }
-        taskWatcher.watchWorkspace(ws.id, resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath);
+        taskWatcher.watchWorkspace(ws.id, resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath);
         pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
         templateWatcher.watchWorkspace(ws.id, ws.rootPath);
-        // Register repo ID so bridge.getBridgeByRepoId() works for pre-existing workspaces
-        bridge.registerRepoId(computeRepoId(ws.rootPath), ws.rootPath);
+        // Register workspace ID so bridge.getBridgeByRepoId() works for pre-existing workspaces
+        bridge.registerRepoId(ws.id, ws.rootPath);
     }
 
     // Intercept workspace registration/removal to manage task watchers
@@ -494,7 +538,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     store.registerWorkspace = async (workspace: any) => {
         await originalRegister(workspace);
-        if (isMigrationNeeded(workspace.rootPath, dataDir)) {
+        if (isMigrationNeeded(workspace.rootPath, workspace.id, dataDir)) {
             const migResult = await migrateTasksToRepoScoped({
                 workspaceRoot: workspace.rootPath, workspaceId: workspace.id, dataDir,
             });
@@ -502,10 +546,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 process.stderr.write(`[TaskMigration] ${migResult.fileCount} files: ${workspace.rootPath}\n`);
             }
         }
-        taskWatcher.watchWorkspace(workspace.id, resolveTaskRoot({ dataDir, rootPath: workspace.rootPath }).absolutePath);
+        taskWatcher.watchWorkspace(workspace.id, resolveTaskRoot({ dataDir, rootPath: workspace.rootPath, workspaceId: workspace.id }).absolutePath);
         pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
-        bridge.registerRepoId(computeRepoId(workspace.rootPath), workspace.rootPath);
+        bridge.registerRepoId(workspace.id, workspace.rootPath);
     };
 
     store.removeWorkspace = async (id: string) => {

@@ -264,7 +264,7 @@ describe('QueuePersistence save with images', () => {
         // ImageBlobStore uses real fs.promises I/O that fake timers can't flush
         await (persistence as any).save();
 
-        const filePath = getRepoQueueFilePath(dataDir, rootPath);
+        const filePath = getRepoQueueFilePath(dataDir, computeRepoId(rootPath));
         const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
         expect(state.pending).toHaveLength(1);
@@ -287,7 +287,7 @@ describe('QueuePersistence save with images', () => {
 
         await flushSave();
 
-        const filePath = getRepoQueueFilePath(dataDir, rootPath);
+        const filePath = getRepoQueueFilePath(dataDir, computeRepoId(rootPath));
         const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
         expect(state.pending).toHaveLength(1);
@@ -373,6 +373,7 @@ describe('MultiRepoQueuePersistence save with images', () => {
         persistence.restore();
 
         const rootPath = '/repo/multi-img';
+        bridge.registerRepoId('test-multi-img', rootPath);
         bridge.getOrCreateBridge(rootPath);
         const qm = registry.getQueueForRepo(rootPath);
         qm.enqueue({
@@ -384,7 +385,7 @@ describe('MultiRepoQueuePersistence save with images', () => {
 
         await persistence.save(rootPath);
 
-        const filePath = getRepoQueueFilePath(dataDir, rootPath);
+        const filePath = getRepoQueueFilePath(dataDir, 'test-multi-img');
         const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
         expect(state.pending).toHaveLength(1);

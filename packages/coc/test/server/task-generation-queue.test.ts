@@ -193,6 +193,7 @@ describe('CLITaskExecutor — task-generation', () => {
 
     function makeTaskGenerationTask(overrides: Record<string, any> = {}): QueuedTask {
         const workDir = overrides.workingDirectory || os.tmpdir();
+        const wsId = overrides.workspaceId || 'test-ws';
         return {
             id: 'tg-1',
             type: 'chat',
@@ -204,6 +205,7 @@ describe('CLITaskExecutor — task-generation', () => {
                 mode: 'autopilot',
                 prompt: overrides.prompt || 'Build a user auth module',
                 workingDirectory: workDir,
+                workspaceId: wsId,
                 context: {
                     taskGeneration: {
                         targetFolder: overrides.targetFolder,
@@ -212,7 +214,6 @@ describe('CLITaskExecutor — task-generation', () => {
                         mode: overrides.mode,
                     },
                 },
-                ...(overrides.workspaceId && { workspaceId: overrides.workspaceId }),
                 ...(overrides.model && { model: overrides.model }),
             } as unknown as Record<string, unknown>,
             config: { timeoutMs: 30000 },

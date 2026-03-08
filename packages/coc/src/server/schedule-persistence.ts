@@ -12,7 +12,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { computeRepoId } from './queue-persistence';
 import type { ScheduleEntry, ScheduleRunRecord } from './schedule-manager';
 
 // ============================================================================

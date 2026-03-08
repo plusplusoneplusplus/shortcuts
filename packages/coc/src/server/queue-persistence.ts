@@ -50,10 +50,9 @@ export function computeRepoId(rootPath: string): string {
         .substring(0, 16);
 }
 
-/** Get the per-repo queue file path. */
-export function getRepoQueueFilePath(dataDir: string, rootPath: string): string {
-    const repoId = computeRepoId(rootPath);
-    return path.join(dataDir, 'queues', `repo-${repoId}.json`);
+/** Get the per-repo queue file path using a workspace ID. */
+export function getRepoQueueFilePath(dataDir: string, workspaceId: string): string {
+    return path.join(dataDir, 'queues', `repo-${workspaceId}.json`);
 }
 
 /**
@@ -170,7 +169,7 @@ export function migrateQueueFromOldFormat(dataDir: string, maxPersistedHistory =
                 history: history.slice(0, maxPersistedHistory),
                 isPaused: false,
             };
-            atomicWriteJson(getRepoQueueFilePath(dataDir, rootPath), newState);
+            atomicWriteJson(getRepoQueueFilePath(dataDir, computeRepoId(rootPath)), newState);
         }
 
         fs.renameSync(oldPath, oldPath + '.migrated');
@@ -192,6 +191,8 @@ export interface QueuePersistenceOptions {
     restartPolicy?: RestartPolicy;
     /** Maximum number of history entries to persist per repo (default: 100). */
     maxPersistedHistory?: number;
+    /** Resolve a rootPath to a workspace ID. Falls back to computeRepoId if not provided. */
+    resolveWorkspaceId?: (rootPath: string) => string;
 }
 
 export class QueuePersistence {
@@ -205,6 +206,7 @@ export class QueuePersistence {
     private readonly changeListener: (event: QueueChangeEvent) => void;
     /** Maps repoId → rootPath for paused-but-empty repos. */
     private readonly repoRootByRepoId = new Map<string, string>();
+    private readonly resolveWorkspaceId: (rootPath: string) => string;
 
     constructor(queueManager: TaskQueueManager, dataDir: string, options?: QueuePersistenceOptions) {
         this.queueManager = queueManager;
@@ -212,6 +214,7 @@ export class QueuePersistence {
         this.queuesDir = path.join(dataDir, 'queues');
         this.restartPolicy = options?.restartPolicy ?? 'fail';
         this.maxPersistedHistory = options?.maxPersistedHistory ?? MAX_PERSISTED_HISTORY_DEFAULT;
+        this.resolveWorkspaceId = options?.resolveWorkspaceId ?? computeRepoId;
 
         // Ensure queues directory exists
         if (!fs.existsSync(this.queuesDir)) {
@@ -407,7 +410,7 @@ export class QueuePersistence {
 
         for (const task of [...queued, ...running]) {
             const rootPath = getTaskRepoPath(task);
-            const repoId = computeRepoId(rootPath);
+            const repoId = this.resolveWorkspaceId(rootPath);
             this.repoRootByRepoId.set(repoId, rootPath);
             const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
             entry.pending.push(task);
@@ -416,7 +419,7 @@ export class QueuePersistence {
 
         for (const task of history) {
             const rootPath = getTaskRepoPath(task);
-            const repoId = computeRepoId(rootPath);
+            const repoId = this.resolveWorkspaceId(rootPath);
             this.repoRootByRepoId.set(repoId, rootPath);
             const entry = tasksByRepo.get(rootPath) || { pending: [], history: [] };
             entry.history.push(task);
@@ -433,7 +436,7 @@ export class QueuePersistence {
 
         // Write a file for each repo with tasks (or non-default state)
         for (const [rootPath, { pending, history: hist }] of tasksByRepo) {
-            const repoId = computeRepoId(rootPath);
+            const repoId = this.resolveWorkspaceId(rootPath);
             const sanitizedPending = await this.sanitizeTasks(pending);
             const sanitizedHist = await this.sanitizeTasks(hist);
             const state: PersistedQueueState = {
@@ -445,7 +448,7 @@ export class QueuePersistence {
                 history: sanitizedHist.slice(0, this.maxPersistedHistory),
                 isPaused: this.queueManager.isRepoPaused(repoId),
             };
-            const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(this.dataDir, repoId);
             atomicWriteJson(filePath, state);
         }
 
@@ -463,7 +466,7 @@ export class QueuePersistence {
         // Build set of active repo file basenames
         const activeFiles = new Set<string>();
         for (const rootPath of activeRepos.keys()) {
-            const repoId = computeRepoId(rootPath);
+            const repoId = this.resolveWorkspaceId(rootPath);
             activeFiles.add(`repo-${repoId}.json`);
         }
 

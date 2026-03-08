@@ -452,7 +452,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             const workspaces = await store.getWorkspaces();
             const ws = workspaces.find((w: any) => w.id === wsId.trim());
             if (!ws?.rootPath) return undefined;
-            const { absolutePath } = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            const { absolutePath } = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             return absolutePath;
         } catch {
             return undefined;

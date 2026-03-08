@@ -75,10 +75,12 @@ describe('Tasks Handler Write', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
+    let wsId: string;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-write-test-'));
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-write-ws-'));
+        wsId = 'test-ws-' + Date.now();
     });
 
     afterEach(async () => {
@@ -97,18 +99,17 @@ describe('Tasks Handler Write', () => {
     }
 
     async function registerWorkspace(srv: ExecutionServer, rootPath: string): Promise<string> {
-        const id = 'test-ws-' + Date.now();
         const res = await jsonRequest(`${srv.url}/api/workspaces`, 'POST', {
-            id,
+            id: wsId,
             name: 'Test Workspace',
             rootPath,
         });
         expect(res.status).toBe(201);
-        return id;
+        return wsId;
     }
 
     function createTaskFiles(files: Record<string, string>): void {
-        const dir = resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
+        const dir = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath;
         for (const [filePath, content] of Object.entries(files)) {
             const fullPath = path.join(dir, filePath);
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -117,7 +118,7 @@ describe('Tasks Handler Write', () => {
     }
 
     function tasksDir(): string {
-        return resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
+        return resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath;
     }
 
     // ========================================================================
@@ -959,8 +960,8 @@ describe('Tasks Handler Write', () => {
             fs.rmSync(workspace2Dir, { recursive: true, force: true });
         });
 
-        function createTaskFilesIn(wsDir: string, files: Record<string, string>): void {
-            const dir = resolveTaskRoot({ dataDir, rootPath: wsDir }).absolutePath;
+        function createTaskFilesIn(wsDir: string, wsIdParam: string, files: Record<string, string>): void {
+            const dir = resolveTaskRoot({ dataDir, rootPath: wsDir, workspaceId: wsIdParam }).absolutePath;
             for (const [filePath, content] of Object.entries(files)) {
                 const fullPath = path.join(dir, filePath);
                 fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -968,8 +969,8 @@ describe('Tasks Handler Write', () => {
             }
         }
 
-        function tasksDirOf(wsDir: string): string {
-            return resolveTaskRoot({ dataDir, rootPath: wsDir }).absolutePath;
+        function tasksDirOf(wsDir: string, wsIdParam: string): string {
+            return resolveTaskRoot({ dataDir, rootPath: wsDir, workspaceId: wsIdParam }).absolutePath;
         }
 
         async function registerWorkspaceWithName(srv: ExecutionServer, rootPath: string, name: string): Promise<string> {
@@ -988,8 +989,8 @@ describe('Tasks Handler Write', () => {
             const wsId1 = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
             const wsId2 = await registerWorkspaceWithName(srv, workspace2Dir, 'Workspace 2');
 
-            createTaskFilesIn(workspaceDir, { 'task.md': '# My Task' });
-            createTaskFilesIn(workspace2Dir, { 'existing.md': '# Existing' });
+            createTaskFilesIn(workspaceDir, wsId1, { 'task.md': '# My Task' });
+            createTaskFilesIn(workspace2Dir, wsId2, { 'existing.md': '# Existing' });
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
                 sourcePath: 'task.md',
@@ -1001,11 +1002,11 @@ describe('Tasks Handler Write', () => {
             expect(body.name).toBe('task.md');
 
             // Source should be gone from workspace 1
-            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir), 'task.md'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir, wsId1), 'task.md'))).toBe(false);
             // File should exist in workspace 2
-            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir), 'task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir, wsId2), 'task.md'))).toBe(true);
             // Existing file in workspace 2 should be untouched
-            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir), 'existing.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir, wsId2), 'existing.md'))).toBe(true);
         });
 
         it('should move a folder to another workspace', async () => {
@@ -1013,11 +1014,11 @@ describe('Tasks Handler Write', () => {
             const wsId1 = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
             const wsId2 = await registerWorkspaceWithName(srv, workspace2Dir, 'Workspace 2');
 
-            createTaskFilesIn(workspaceDir, {
+            createTaskFilesIn(workspaceDir, wsId1, {
                 'feature/task1.md': '# Task 1',
                 'feature/task2.md': '# Task 2',
             });
-            createTaskFilesIn(workspace2Dir, { 'placeholder.md': '# P' });
+            createTaskFilesIn(workspace2Dir, wsId2, { 'placeholder.md': '# P' });
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
                 sourcePath: 'feature',
@@ -1029,10 +1030,10 @@ describe('Tasks Handler Write', () => {
             expect(body.name).toBe('feature');
 
             // Source folder gone from workspace 1
-            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir), 'feature'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir, wsId1), 'feature'))).toBe(false);
             // Folder and contents in workspace 2
-            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir), 'feature', 'task1.md'))).toBe(true);
-            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir), 'feature', 'task2.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir, wsId2), 'feature', 'task1.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir, wsId2), 'feature', 'task2.md'))).toBe(true);
         });
 
         it('should handle name collision in destination workspace', async () => {
@@ -1040,8 +1041,8 @@ describe('Tasks Handler Write', () => {
             const wsId1 = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
             const wsId2 = await registerWorkspaceWithName(srv, workspace2Dir, 'Workspace 2');
 
-            createTaskFilesIn(workspaceDir, { 'task.md': '# From WS1' });
-            createTaskFilesIn(workspace2Dir, { 'task.md': '# Already in WS2' });
+            createTaskFilesIn(workspaceDir, wsId1, { 'task.md': '# From WS1' });
+            createTaskFilesIn(workspace2Dir, wsId2, { 'task.md': '# Already in WS2' });
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
                 sourcePath: 'task.md',
@@ -1055,16 +1056,16 @@ describe('Tasks Handler Write', () => {
             expect(body.name).not.toBe('task.md');
 
             // Original in workspace 2 should still exist
-            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir), 'task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir, wsId2), 'task.md'))).toBe(true);
             // Source should be gone from workspace 1
-            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir), 'task.md'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir, wsId1), 'task.md'))).toBe(false);
         });
 
         it('should return 404 for non-existent destination workspace', async () => {
             const srv = await startServer();
             const wsId1 = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
 
-            createTaskFilesIn(workspaceDir, { 'task.md': '# Task' });
+            createTaskFilesIn(workspaceDir, wsId1, { 'task.md': '# Task' });
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
                 sourcePath: 'task.md',
@@ -1081,7 +1082,7 @@ describe('Tasks Handler Write', () => {
             const wsId1 = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
             const wsId2 = await registerWorkspaceWithName(srv, workspace2Dir, 'Workspace 2');
 
-            createTaskFilesIn(workspaceDir, { 'task.md': '# Task' });
+            createTaskFilesIn(workspaceDir, wsId1, { 'task.md': '# Task' });
             // workspace2Dir has no tasks folder at all
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
@@ -1090,7 +1091,7 @@ describe('Tasks Handler Write', () => {
                 destinationWorkspaceId: wsId2,
             });
             expect(res.status).toBe(200);
-            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir), 'task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir, wsId2), 'task.md'))).toBe(true);
         });
 
         it('should move into a subfolder in destination workspace', async () => {
@@ -1098,8 +1099,8 @@ describe('Tasks Handler Write', () => {
             const wsId1 = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
             const wsId2 = await registerWorkspaceWithName(srv, workspace2Dir, 'Workspace 2');
 
-            createTaskFilesIn(workspaceDir, { 'task.md': '# Task' });
-            createTaskFilesIn(workspace2Dir, { 'target/placeholder.md': '# P' });
+            createTaskFilesIn(workspaceDir, wsId1, { 'task.md': '# Task' });
+            createTaskFilesIn(workspace2Dir, wsId2, { 'target/placeholder.md': '# P' });
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
                 sourcePath: 'task.md',
@@ -1107,8 +1108,8 @@ describe('Tasks Handler Write', () => {
                 destinationWorkspaceId: wsId2,
             });
             expect(res.status).toBe(200);
-            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir), 'target', 'task.md'))).toBe(true);
-            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir), 'task.md'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDirOf(workspace2Dir, wsId2), 'target', 'task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir, wsId1), 'task.md'))).toBe(false);
         });
 
         it('should return 403 for path traversal in cross-workspace destination', async () => {
@@ -1116,8 +1117,8 @@ describe('Tasks Handler Write', () => {
             const wsId1 = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
             const wsId2 = await registerWorkspaceWithName(srv, workspace2Dir, 'Workspace 2');
 
-            createTaskFilesIn(workspaceDir, { 'task.md': '# Task' });
-            createTaskFilesIn(workspace2Dir, { 'placeholder.md': '# P' });
+            createTaskFilesIn(workspaceDir, wsId1, { 'task.md': '# Task' });
+            createTaskFilesIn(workspace2Dir, wsId2, { 'placeholder.md': '# P' });
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId1}/tasks/move`, 'POST', {
                 sourcePath: 'task.md',
@@ -1129,21 +1130,21 @@ describe('Tasks Handler Write', () => {
 
         it('should fall back to same-workspace behavior when destinationWorkspaceId equals source workspace', async () => {
             const srv = await startServer();
-            const wsId = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
+            const localWsId = await registerWorkspaceWithName(srv, workspaceDir, 'Workspace 1');
 
-            createTaskFilesIn(workspaceDir, {
+            createTaskFilesIn(workspaceDir, localWsId, {
                 'source/task.md': '# Task',
                 'dest/placeholder.md': '# P',
             });
 
-            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/move`, 'POST', {
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${localWsId}/tasks/move`, 'POST', {
                 sourcePath: 'source/task.md',
                 destinationFolder: 'dest',
-                destinationWorkspaceId: wsId,
+                destinationWorkspaceId: localWsId,
             });
             expect(res.status).toBe(200);
-            expect(fs.existsSync(path.join(tasksDir(), 'dest', 'task.md'))).toBe(true);
-            expect(fs.existsSync(path.join(tasksDir(), 'source', 'task.md'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir, localWsId), 'dest', 'task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDirOf(workspaceDir, localWsId), 'source', 'task.md'))).toBe(false);
         });
     });
 });

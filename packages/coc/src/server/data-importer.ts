@@ -215,7 +215,8 @@ function writeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
     for (const snap of snapshots) {
         const rootPath = snap.repoRootPath;
         if (!rootPath) { continue; }
-        const filePath = getRepoQueueFilePath(dataDir, rootPath);
+        const repoId = snap.repoId || computeRepoId(rootPath);
+        const filePath = getRepoQueueFilePath(dataDir, repoId);
         try {
             const dir = path.dirname(filePath);
             if (!fs.existsSync(dir)) {
@@ -225,7 +226,7 @@ function writeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: rootPath,
-                repoId: snap.repoId || computeRepoId(rootPath),
+                repoId,
                 pending: snap.pending,
                 history: snap.history,
                 isPaused: snap.isPaused ?? false,
@@ -252,7 +253,8 @@ function mergeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
     for (const snap of snapshots) {
         const rootPath = snap.repoRootPath;
         if (!rootPath) { continue; }
-        const filePath = getRepoQueueFilePath(dataDir, rootPath);
+        const repoId = snap.repoId || computeRepoId(rootPath);
+        const filePath = getRepoQueueFilePath(dataDir, repoId);
         try {
             // Read existing state (if any)
             let existingPending: any[] = [];
@@ -292,7 +294,7 @@ function mergeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: rootPath,
-                repoId: snap.repoId || computeRepoId(rootPath),
+                repoId,
                 pending: mergedPending,
                 history: mergedHistory,
                 isPaused: existingIsPaused || (snap.isPaused ?? false),

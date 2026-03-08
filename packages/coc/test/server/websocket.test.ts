@@ -786,7 +786,7 @@ describe('WebSocket Server', () => {
 
             // Create a temp workspace dir
             const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-tasks-bc-'));
-            const tasksDir = resolveTaskRoot({ dataDir, rootPath: tmpRoot }).absolutePath;
+            const tasksDir = resolveTaskRoot({ dataDir, rootPath: tmpRoot, workspaceId: 'ws-a' }).absolutePath;
             fs.mkdirSync(tasksDir, { recursive: true });
 
             // Register workspace — this triggers taskWatcher.watchWorkspace

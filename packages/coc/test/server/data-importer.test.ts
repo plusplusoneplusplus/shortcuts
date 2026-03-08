@@ -193,7 +193,7 @@ describe('importData', () => {
 
             expect(result.importedQueueFiles).toBe(1);
 
-            const filePath = getRepoQueueFilePath(dataDir, '/projects/frontend');
+            const filePath = getRepoQueueFilePath(dataDir, 'abc123');
             expect(fs.existsSync(filePath)).toBe(true);
 
             const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -371,7 +371,7 @@ describe('importData', () => {
         it('merges queue files — deduplicates by task ID', async () => {
             const rootPath = '/projects/frontend';
             // Write existing queue file
-            const existingFilePath = getRepoQueueFilePath(dataDir, rootPath);
+            const existingFilePath = getRepoQueueFilePath(dataDir, 'abc123');
             writeJSON(existingFilePath, {
                 version: 3,
                 repoRootPath: rootPath,
@@ -418,7 +418,7 @@ describe('importData', () => {
             const result = await importData(payload, baseOptions({ mode: 'merge' }));
 
             expect(result.importedQueueFiles).toBe(1);
-            const filePath = getRepoQueueFilePath(dataDir, '/projects/new-repo');
+            const filePath = getRepoQueueFilePath(dataDir, 'newrepo');
             expect(fs.existsSync(filePath)).toBe(true);
         });
 

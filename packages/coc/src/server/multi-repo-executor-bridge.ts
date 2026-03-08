@@ -23,7 +23,6 @@ import {
     QueueExecutorBridge,
     createQueueExecutorBridge,
 } from './queue-executor-bridge';
-import { computeRepoId } from './queue-persistence';
 
 // ============================================================================
 // Types
@@ -47,8 +46,11 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     /** normalized rootPath → { executor, bridge } */
     private readonly bridges: Map<string, RepoBridge> = new Map();
 
-    /** repoId (16-char hex) → normalized rootPath */
+    /** repoId (workspace ID) → normalized rootPath */
     private readonly repoIdToPath: Map<string, string> = new Map();
+
+    /** normalized rootPath → repoId (workspace ID) */
+    private readonly pathToRepoId: Map<string, string> = new Map();
 
     constructor(
         registry: RepoQueueRegistry,
@@ -62,7 +64,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
 
         // Forward queueChange events from the registry, augmenting with repoId
         this.registry.on('queueChange', (repoPath: string, event: QueueChangeEvent) => {
-            const repoId = computeRepoId(repoPath);
+            const repoId = this.getRepoIdForPath(repoPath);
             this.emit('queueChange', { repoPath, repoId, ...event });
         });
     }
@@ -95,8 +97,11 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
             executor.on(event, (data: any) => this.emit(event, data));
         }
 
-        // Auto-register repoId → path mapping
-        this.registerRepoId(computeRepoId(normalized), normalized);
+        // Auto-register repoId → path mapping if known
+        const existingRepoId = this.pathToRepoId.get(normalized);
+        if (existingRepoId) {
+            this.registerRepoId(existingRepoId, normalized);
+        }
 
         return bridge;
     }
@@ -119,7 +124,17 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * Safe to call multiple times with the same pair.
      */
     registerRepoId(repoId: string, rootPath: string): void {
-        this.repoIdToPath.set(repoId, path.resolve(rootPath));
+        const resolved = path.resolve(rootPath);
+        this.repoIdToPath.set(repoId, resolved);
+        this.pathToRepoId.set(resolved, repoId);
+    }
+
+    /**
+     * Look up the repoId (workspace ID) for a given root path.
+     * Returns the registered workspace ID, or falls back to the normalized path.
+     */
+    getRepoIdForPath(rootPath: string): string {
+        return this.pathToRepoId.get(path.resolve(rootPath)) ?? path.resolve(rootPath);
     }
 
     /**
@@ -430,6 +445,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
         }
         this.bridges.clear();
         this.repoIdToPath.clear();
+        this.pathToRepoId.clear();
         this.registry.dispose();
         this.removeAllListeners();
     }

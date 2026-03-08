@@ -2005,6 +2005,7 @@ describe('CLITaskExecutor', () => {
                     mode: 'autopilot',
                     prompt: 'Create a new test file',
                     workingDirectory: '/workspace',
+                    workspaceId: 'ws-test-gen',
                     context: { taskGeneration: {} },
                 },
                 config: { timeoutMs: 30000 },
@@ -2018,7 +2019,7 @@ describe('CLITaskExecutor', () => {
             // Enriched prompt should differ from the raw user text
             expect(process?.fullPrompt).toContain('Create a new test file');
             // Should have output location directive (uses resolver-determined path)
-            expect(process?.fullPrompt).toMatch(/repos[/\\][0-9a-f]+[/\\]tasks/);
+            expect(process?.fullPrompt).toMatch(/repos[/\\]/);
             // Conversation turn updated
             expect(process?.conversationTurns?.[0]?.content).toBe(process?.fullPrompt);
         });

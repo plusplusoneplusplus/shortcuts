@@ -223,7 +223,7 @@ describe('Task Generation Handler', () => {
                 targetFolder: 'my-feature',
             });
 
-            const expectedDir = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'my-feature');
+            const expectedDir = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath, 'my-feature');
             expect(fs.existsSync(expectedDir)).toBe(true);
         });
 
@@ -267,7 +267,7 @@ describe('Task Generation Handler', () => {
             const wsId = await registerWorkspace(srv, workspaceDir);
 
             // Create feature context files
-            const featureDir = resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
+            const featureDir = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath;
             fs.mkdirSync(featureDir, { recursive: true });
             fs.writeFileSync(path.join(featureDir, 'plan.md'), '# Plan\nBuild auth');
 

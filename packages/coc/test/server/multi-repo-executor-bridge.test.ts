@@ -171,12 +171,27 @@ describe('MultiRepoQueueExecutorBridge', () => {
     // --------------------------------------------------------------------
 
     describe('auto-registration', () => {
-        it('getOrCreateBridge auto-registers repoId so getBridgeByRepoId works', () => {
+        it('getOrCreateBridge does NOT auto-register repoId without prior registerRepoId', () => {
             const { bridge } = createBridge();
             const rootPath = '/repo/auto';
             const resolvedPath = require('path').resolve(rootPath);
             const repoId = computeRepoId(resolvedPath);
 
+            bridge.getOrCreateBridge(rootPath);
+
+            // No auto-registration: getBridgeByRepoId returns undefined
+            expect(bridge.getBridgeByRepoId(repoId)).toBeUndefined();
+
+            bridge.dispose();
+        });
+
+        it('getOrCreateBridge picks up repoId when registerRepoId was called first', () => {
+            const { bridge } = createBridge();
+            const rootPath = '/repo/auto';
+            const resolvedPath = require('path').resolve(rootPath);
+            const repoId = computeRepoId(resolvedPath);
+
+            bridge.registerRepoId(repoId, rootPath);
             const created = bridge.getOrCreateBridge(rootPath);
 
             expect(bridge.getBridgeByRepoId(repoId)).toBe(created);
@@ -194,7 +209,8 @@ describe('MultiRepoQueueExecutorBridge', () => {
             const { bridge, registry } = createBridge();
             const rootPath = '/repo/events';
             const resolvedPath = require('path').resolve(rootPath);
-            const expectedRepoId = computeRepoId(resolvedPath);
+            // Without registerRepoId, getRepoIdForPath falls back to the normalized path
+            const expectedRepoId = resolvedPath;
 
             // Create the bridge (which also creates the queue in the registry)
             bridge.getOrCreateBridge(rootPath);
@@ -258,10 +274,11 @@ describe('MultiRepoQueueExecutorBridge', () => {
             const { bridge, registry } = createBridge();
             const rootPath = '/repo/schedule-test';
             const resolvedPath = require('path').resolve(rootPath);
-
-            // Pre-create the bridge so repoIdToPath is populated
-            bridge.getOrCreateBridge(rootPath);
             const repoId = computeRepoId(resolvedPath);
+
+            // Register repoId first, then create the bridge
+            bridge.registerRepoId(repoId, rootPath);
+            bridge.getOrCreateBridge(rootPath);
 
             const facade = bridge.createAggregateFacade();
 

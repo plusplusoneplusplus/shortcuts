@@ -133,10 +133,9 @@ describe('computeRepoId', () => {
 });
 
 describe('getRepoQueueFilePath', () => {
-    it('returns path under queues/ directory', () => {
-        const fp = getRepoQueueFilePath('/data', '/my/repo');
-        const repoId = computeRepoId('/my/repo');
-        expect(fp).toBe(path.join('/data', 'queues', `repo-${repoId}.json`));
+    it('returns path under queues/ directory using workspace ID directly', () => {
+        const fp = getRepoQueueFilePath('/data', 'ws-test');
+        expect(fp).toBe(path.join('/data', 'queues', 'repo-ws-test.json'));
     });
 });
 
@@ -1066,7 +1065,7 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const filePath = getRepoQueueFilePath(dataDir, '/g1/repo');
+            const filePath = getRepoQueueFilePath(dataDir, computeRepoId('/g1/repo'));
             expect(fs.existsSync(filePath)).toBe(true);
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(true);
@@ -1206,7 +1205,7 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const filePath = getRepoQueueFilePath(dataDir, '/g6/repo');
+            const filePath = getRepoQueueFilePath(dataDir, computeRepoId('/g6/repo'));
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.history.length).toBeLessThanOrEqual(5);
         });

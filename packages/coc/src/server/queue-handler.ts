@@ -14,7 +14,6 @@ import { READONLY_PROMPT_PREFIX } from './queue-executor-bridge';
 import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import { computeRepoId } from './queue-persistence';
 import { ImageBlobStore } from './image-blob-store';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import * as url from 'url';
@@ -264,7 +263,7 @@ function findTaskManager(bridge: MultiRepoQueueExecutorBridge, id: string): Task
  */
 function getManagerByRepoId(bridge: MultiRepoQueueExecutorBridge, repoId: string): TaskQueueManager | undefined {
     for (const [rootPath, m] of bridge.registry.getAllQueues()) {
-        if (computeRepoId(rootPath) === repoId) { return m; }
+        if (bridge.getRepoIdForPath(rootPath) === repoId) { return m; }
     }
     return undefined;
 }
@@ -893,7 +892,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const repos: Array<{ repoId: string; rootPath: string; isPaused: boolean; taskCount: number; queuedCount: number; runningCount: number }> = [];
 
             for (const [rootPath, m] of bridge.registry.getAllQueues()) {
-                const repoId = computeRepoId(rootPath);
+                const repoId = bridge.getRepoIdForPath(rootPath);
                 const queuedCount = m.getQueued().length;
                 const runningCount = m.getRunning().length;
                 repos.push({

@@ -16,8 +16,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
-import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
-import { computeRepoId } from '../../src/server/queue-persistence';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -70,6 +68,14 @@ function makeTaskBody(workingDirectory: string, displayName?: string): string {
     });
 }
 
+/** Register a workspace so the bridge has a repoId → rootPath mapping. */
+async function registerWorkspace(baseUrl: string, id: string, rootPath: string): Promise<void> {
+    await request(`${baseUrl}/api/workspaces`, {
+        method: 'POST',
+        body: JSON.stringify({ id, name: id, rootPath }),
+    });
+}
+
 // ============================================================================
 // Test Suite
 // ============================================================================
@@ -102,6 +108,13 @@ describe('Per-Repo Pause Integration', () => {
             const repoAPaths = '/restart/repo-A';
             const repoBPaths = '/restart/repo-B';
             const repoCPaths = '/restart/repo-C';
+            const repoAId = 'ws-restart-a';
+            const repoBId = 'ws-restart-b';
+            const repoCId = 'ws-restart-c';
+
+            await registerWorkspace(baseUrl, repoAId, repoAPaths);
+            await registerWorkspace(baseUrl, repoBId, repoBPaths);
+            await registerWorkspace(baseUrl, repoCId, repoCPaths);
 
             await request(`${baseUrl}/api/queue`, {
                 method: 'POST',
@@ -117,8 +130,6 @@ describe('Per-Repo Pause Integration', () => {
             });
 
             // Pause repo-A and repo-C
-            const repoAId = computeRepoId(repoAPaths);
-            const repoCId = computeRepoId(repoCPaths);
 
             await request(`${baseUrl}/api/queue/pause?repoId=${repoAId}`, { method: 'POST' });
             await request(`${baseUrl}/api/queue/pause?repoId=${repoCId}`, { method: 'POST' });
@@ -152,6 +163,10 @@ describe('Per-Repo Pause Integration', () => {
 
             const repoXPath = '/multi/repo-X';
             const repoYPath = '/multi/repo-Y';
+            const repoXId = 'ws-multi-x';
+
+            await registerWorkspace(baseUrl, repoXId, repoXPath);
+            await registerWorkspace(baseUrl, 'ws-multi-y', repoYPath);
 
             // Enqueue multiple tasks for each repo
             for (let i = 0; i < 3; i++) {
@@ -166,7 +181,6 @@ describe('Per-Repo Pause Integration', () => {
             }
 
             // Pause repo-X
-            const repoXId = computeRepoId(repoXPath);
             await request(`${baseUrl}/api/queue/pause?repoId=${repoXId}`, { method: 'POST' });
 
             vi.advanceTimersByTime(400);
@@ -199,6 +213,11 @@ describe('Per-Repo Pause Integration', () => {
 
             const pausedRepoPath = '/track/paused';
             const activeRepoPath = '/track/active';
+            const pausedRepoId = 'ws-track-paused';
+            const activeRepoId = 'ws-track-active';
+
+            await registerWorkspace(baseUrl, pausedRepoId, pausedRepoPath);
+            await registerWorkspace(baseUrl, activeRepoId, activeRepoPath);
 
             // Enqueue tasks
             await request(`${baseUrl}/api/queue`, {
@@ -211,14 +230,13 @@ describe('Per-Repo Pause Integration', () => {
             });
 
             // Pause one repo
-            const pausedRepoId = computeRepoId(pausedRepoPath);
             await request(`${baseUrl}/api/queue/pause?repoId=${pausedRepoId}`, { method: 'POST' });
 
             // Verify repos show only the paused repo
             const reposRes = await request(`${baseUrl}/api/queue/repos`);
             const repos = JSON.parse(reposRes.body).repos;
             expect(repos.find((r: any) => r.repoId === pausedRepoId)?.isPaused).toBe(true);
-            expect(repos.find((r: any) => r.repoId === computeRepoId(activeRepoPath))?.isPaused).toBe(false);
+            expect(repos.find((r: any) => r.repoId === activeRepoId)?.isPaused).toBe(false);
 
             await server.close();
             fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -230,6 +248,11 @@ describe('Per-Repo Pause Integration', () => {
 
             const repo1Path = '/all-paused/repo-1';
             const repo2Path = '/all-paused/repo-2';
+            const repo1Id = 'ws-all-paused-1';
+            const repo2Id = 'ws-all-paused-2';
+
+            await registerWorkspace(baseUrl, repo1Id, repo1Path);
+            await registerWorkspace(baseUrl, repo2Id, repo2Path);
 
             // Enqueue tasks
             await request(`${baseUrl}/api/queue`, {
@@ -242,8 +265,6 @@ describe('Per-Repo Pause Integration', () => {
             });
 
             // Pause both repos
-            const repo1Id = computeRepoId(repo1Path);
-            const repo2Id = computeRepoId(repo2Path);
             await request(`${baseUrl}/api/queue/pause?repoId=${repo1Id}`, { method: 'POST' });
             await request(`${baseUrl}/api/queue/pause?repoId=${repo2Id}`, { method: 'POST' });
 
@@ -262,7 +283,9 @@ describe('Per-Repo Pause Integration', () => {
             const baseUrl = server.url;
 
             const repoPath = '/resume/repo';
-            const repoId = computeRepoId(repoPath);
+            const repoId = 'ws-resume';
+
+            await registerWorkspace(baseUrl, repoId, repoPath);
 
             // Enqueue task
             await request(`${baseUrl}/api/queue`, {
@@ -298,7 +321,9 @@ describe('Per-Repo Pause Integration', () => {
             const baseUrl = server.url;
 
             const repoPath = '/api/pause-repo';
-            const repoId = computeRepoId(repoPath);
+            const repoId = 'ws-pause-repo';
+
+            await registerWorkspace(baseUrl, repoId, repoPath);
 
             // Enqueue task
             await request(`${baseUrl}/api/queue`, {
@@ -324,7 +349,9 @@ describe('Per-Repo Pause Integration', () => {
             const baseUrl = server.url;
 
             const repoPath = '/api/resume-repo';
-            const repoId = computeRepoId(repoPath);
+            const repoId = 'ws-resume-repo';
+
+            await registerWorkspace(baseUrl, repoId, repoPath);
 
             await request(`${baseUrl}/api/queue`, {
                 method: 'POST',
@@ -353,6 +380,13 @@ describe('Per-Repo Pause Integration', () => {
             const repo1Path = '/repos/repo-1';
             const repo2Path = '/repos/repo-2';
             const repo3Path = '/repos/repo-3';
+            const repo1Id = 'ws-repos-1';
+            const repo2Id = 'ws-repos-2';
+            const repo3Id = 'ws-repos-3';
+
+            await registerWorkspace(baseUrl, repo1Id, repo1Path);
+            await registerWorkspace(baseUrl, repo2Id, repo2Path);
+            await registerWorkspace(baseUrl, repo3Id, repo3Path);
 
             // Enqueue tasks
             await request(`${baseUrl}/api/queue`, { method: 'POST', body: makeTaskBody(repo1Path) });
@@ -360,7 +394,6 @@ describe('Per-Repo Pause Integration', () => {
             await request(`${baseUrl}/api/queue`, { method: 'POST', body: makeTaskBody(repo3Path) });
 
             // Pause repo-2
-            const repo2Id = computeRepoId(repo2Path);
             await request(`${baseUrl}/api/queue/pause?repoId=${repo2Id}`, { method: 'POST' });
 
             // Get repos
@@ -378,7 +411,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(path.resolve(repo2.rootPath)).toBe(path.resolve(repo2Path));
 
             // Verify others are not paused
-            const repo1 = reposBody.repos.find((r: any) => r.repoId === computeRepoId(repo1Path));
+            const repo1 = reposBody.repos.find((r: any) => r.repoId === repo1Id);
             expect(repo1.isPaused).toBe(false);
 
             await server.close();
@@ -415,6 +448,12 @@ describe('Per-Repo Pause Integration', () => {
                 '/multi/repo-4',
                 '/multi/repo-5',
             ];
+            const repoIds = ['ws-multi-1', 'ws-multi-2', 'ws-multi-3', 'ws-multi-4', 'ws-multi-5'];
+
+            // Register workspaces for all repos
+            for (let i = 0; i < repoPaths.length; i++) {
+                await registerWorkspace(baseUrl, repoIds[i], repoPaths[i]);
+            }
 
             // Enqueue tasks for all repos
             for (const repoPath of repoPaths) {
@@ -425,10 +464,8 @@ describe('Per-Repo Pause Integration', () => {
             }
 
             // Pause repo-2 and repo-4
-            const repo2Id = computeRepoId(repoPaths[1]);
-            const repo4Id = computeRepoId(repoPaths[3]);
-            await request(`${baseUrl}/api/queue/pause?repoId=${repo2Id}`, { method: 'POST' });
-            await request(`${baseUrl}/api/queue/pause?repoId=${repo4Id}`, { method: 'POST' });
+            await request(`${baseUrl}/api/queue/pause?repoId=${repoIds[1]}`, { method: 'POST' });
+            await request(`${baseUrl}/api/queue/pause?repoId=${repoIds[3]}`, { method: 'POST' });
 
             // Get repos endpoint
             const reposRes = await request(`${baseUrl}/api/queue/repos`);
@@ -439,8 +476,7 @@ describe('Per-Repo Pause Integration', () => {
             expect(repos).toHaveLength(5);
 
             for (let i = 0; i < repoPaths.length; i++) {
-                const repoId = computeRepoId(repoPaths[i]);
-                const repo = repos.find((r: any) => r.repoId === repoId);
+                const repo = repos.find((r: any) => r.repoId === repoIds[i]);
                 expect(repo).toBeDefined();
 
                 if (i === 1 || i === 3) {
@@ -460,12 +496,14 @@ describe('Per-Repo Pause Integration', () => {
 
             const repoAPath = '/toggle/repo-A';
             const repoBPath = '/toggle/repo-B';
+            const repoAId = 'ws-toggle-a';
+            const repoBId = 'ws-toggle-b';
+
+            await registerWorkspace(baseUrl, repoAId, repoAPath);
+            await registerWorkspace(baseUrl, repoBId, repoBPath);
 
             await request(`${baseUrl}/api/queue`, { method: 'POST', body: makeTaskBody(repoAPath) });
             await request(`${baseUrl}/api/queue`, { method: 'POST', body: makeTaskBody(repoBPath) });
-
-            const repoAId = computeRepoId(repoAPath);
-            const repoBId = computeRepoId(repoBPath);
 
             // Pause A, resume B (already resumed), pause B, resume A
             await request(`${baseUrl}/api/queue/pause?repoId=${repoAId}`, { method: 'POST' });
@@ -493,7 +531,7 @@ describe('Per-Repo Pause Integration', () => {
             const server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
-            const fakeRepoId = computeRepoId('/nonexistent/repo');
+            const fakeRepoId = 'nonexistent-repo';
 
             // Pause non-existent repo returns 404 (no bridge exists)
             const pauseRes = await request(`${baseUrl}/api/queue/pause?repoId=${fakeRepoId}`, { method: 'POST' });
@@ -519,7 +557,8 @@ describe('Per-Repo Pause Integration', () => {
             });
 
             // Pause the cwd-based repo
-            const cwdRepoId = computeRepoId(process.cwd());
+            const cwdRepoId = 'ws-cwd';
+            await registerWorkspace(baseUrl, cwdRepoId, process.cwd());
             await request(`${baseUrl}/api/queue/pause?repoId=${cwdRepoId}`, { method: 'POST' });
 
             // Verify pause state is tracked for the cwd-based repo
@@ -537,12 +576,15 @@ describe('Per-Repo Pause Integration', () => {
 
             const repo1Path = '/global/repo-1';
             const repo2Path = '/global/repo-2';
+            const repo1Id = 'ws-global-1';
+
+            await registerWorkspace(baseUrl, repo1Id, repo1Path);
+            await registerWorkspace(baseUrl, 'ws-global-2', repo2Path);
 
             await request(`${baseUrl}/api/queue`, { method: 'POST', body: makeTaskBody(repo1Path) });
             await request(`${baseUrl}/api/queue`, { method: 'POST', body: makeTaskBody(repo2Path) });
 
             // Pause repo-1 only
-            const repo1Id = computeRepoId(repo1Path);
             await request(`${baseUrl}/api/queue/pause?repoId=${repo1Id}`, { method: 'POST' });
 
             // Global pause (no repoId param)

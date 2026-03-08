@@ -14,7 +14,6 @@ import * as os from 'os';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
-import { computeRepoId } from '../../src/server/queue-persistence';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
@@ -123,7 +122,10 @@ describe('Per-Repo WebSocket Events', () => {
 
     it('should emit queue-updated with correct repoId when a task is enqueued for repo A', async () => {
         const repoA = path.resolve('/tmp/test-repo-ws-a');
-        const expectedRepoId = computeRepoId(repoA);
+        const expectedRepoId = 'ws-repo-a';
+
+        // Register workspace so bridge maps repoId correctly
+        await postJSON(`${baseUrl}/api/workspaces`, { id: expectedRepoId, name: expectedRepoId, rootPath: repoA });
 
         // Connect WS first (before pause, to capture all events)
         const parsed = new URL(baseUrl);
@@ -167,7 +169,11 @@ describe('Per-Repo WebSocket Events', () => {
     it('should NOT emit queue-updated with repoId matching repo B when task is enqueued for repo A', async () => {
         const repoA = path.resolve('/tmp/test-repo-ws-a2');
         const repoB = path.resolve('/tmp/test-repo-ws-b2');
-        const repoBId = computeRepoId(repoB);
+        const repoBId = 'ws-repo-b2';
+
+        // Register workspace for repoB so its repoId is predictable
+        await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-repo-a2', name: 'ws-repo-a2', rootPath: repoA });
+        await postJSON(`${baseUrl}/api/workspaces`, { id: repoBId, name: repoBId, rootPath: repoB });
 
         await postJSON(`${baseUrl}/api/queue/pause`, {});
 

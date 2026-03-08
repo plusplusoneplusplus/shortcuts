@@ -8,7 +8,6 @@ import {
     migrateTasksToRepoScoped,
     migrateCommentHashes,
 } from '../../src/server/task-migration';
-import { computeRepoId } from '../../src/server/queue-persistence';
 
 describe('task-migration', () => {
     let tmpDir: string;
@@ -35,9 +34,10 @@ describe('task-migration', () => {
         }
     }
 
+    const workspaceId = 'ws-1';
+
     function targetTasksDir(): string {
-        const repoId = computeRepoId(workspaceRoot);
-        return path.join(dataDir, 'repos', repoId, 'tasks');
+        return path.join(dataDir, 'repos', workspaceId, 'tasks');
     }
 
     // ── isMigrationNeeded ───────────────────────────────────────
@@ -45,11 +45,11 @@ describe('task-migration', () => {
     describe('isMigrationNeeded', () => {
         it('returns true when source exists and target is empty', () => {
             createLegacyTasks({ 'a.md': 'hello' });
-            expect(isMigrationNeeded(workspaceRoot, dataDir)).toBe(true);
+            expect(isMigrationNeeded(workspaceRoot, workspaceId, dataDir)).toBe(true);
         });
 
         it('returns false when source does not exist', () => {
-            expect(isMigrationNeeded(workspaceRoot, dataDir)).toBe(false);
+            expect(isMigrationNeeded(workspaceRoot, workspaceId, dataDir)).toBe(false);
         });
 
         it('returns false when target already has files', () => {
@@ -57,7 +57,7 @@ describe('task-migration', () => {
             const target = targetTasksDir();
             fs.mkdirSync(target, { recursive: true });
             fs.writeFileSync(path.join(target, 'existing.md'), 'data');
-            expect(isMigrationNeeded(workspaceRoot, dataDir)).toBe(false);
+            expect(isMigrationNeeded(workspaceRoot, workspaceId, dataDir)).toBe(false);
         });
 
         it('returns false when .migrated-from marker exists', () => {
@@ -65,7 +65,7 @@ describe('task-migration', () => {
             const target = targetTasksDir();
             fs.mkdirSync(target, { recursive: true });
             fs.writeFileSync(path.join(target, '.migrated-from'), '{}');
-            expect(isMigrationNeeded(workspaceRoot, dataDir)).toBe(false);
+            expect(isMigrationNeeded(workspaceRoot, workspaceId, dataDir)).toBe(false);
         });
     });
 

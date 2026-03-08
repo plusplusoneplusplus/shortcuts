@@ -16,7 +16,6 @@ import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import {
     PersistedQueueState,
     RestartPolicy,
-    computeRepoId,
     getRepoQueueFilePath,
     sanitizeTaskForPersistence,
     atomicWriteJson,
@@ -120,12 +119,12 @@ export class MultiRepoQueuePersistence {
         const running = queueManager.getRunning();
         const history = queueManager.getHistory();
 
-        const repoId = computeRepoId(rootPath);
+        const repoId = this.bridge.getRepoIdForPath(rootPath);
         const isPaused = queueManager.isRepoPaused(repoId);
 
         // G1: Only delete the file if queue is truly empty AND not paused
         if (queued.length === 0 && running.length === 0 && history.length === 0 && !isPaused) {
-            const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(this.dataDir, repoId);
             try {
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);
@@ -152,7 +151,7 @@ export class MultiRepoQueuePersistence {
             isPaused,
         };
 
-        const filePath = getRepoQueueFilePath(this.dataDir, rootPath);
+        const filePath = getRepoQueueFilePath(this.dataDir, repoId);
         atomicWriteJson(filePath, state);
     }
 

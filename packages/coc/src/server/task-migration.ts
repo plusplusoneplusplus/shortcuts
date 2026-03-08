@@ -11,7 +11,6 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { computeRepoId } from './queue-persistence';
 
 export interface MigrationResult {
     migrated: boolean;
@@ -36,13 +35,12 @@ export interface MigrationOptions {
  * Returns true if the legacy `.vscode/tasks` directory exists and the
  * repo-scoped target does NOT yet contain files (or has no `.migrated-from` marker).
  */
-export function isMigrationNeeded(workspaceRoot: string, dataDir: string): boolean {
+export function isMigrationNeeded(workspaceRoot: string, workspaceId: string, dataDir: string): boolean {
     const sourcePath = path.join(workspaceRoot, '.vscode', 'tasks');
     if (!fs.existsSync(sourcePath)) {
         return false;
     }
-    const repoId = computeRepoId(workspaceRoot);
-    const targetPath = path.join(dataDir, 'repos', repoId, 'tasks');
+    const targetPath = path.join(dataDir, 'repos', workspaceId, 'tasks');
     if (fs.existsSync(path.join(targetPath, '.migrated-from'))) {
         return false;
     }
@@ -78,7 +76,7 @@ function listFilesRecursive(dir: string, base: string = dir): string[] {
 export async function migrateTasksToRepoScoped(options: MigrationOptions): Promise<MigrationResult> {
     const { workspaceRoot, workspaceId, dataDir, dryRun = false, force = false } = options;
     const sourcePath = path.join(workspaceRoot, '.vscode', 'tasks');
-    const repoId = computeRepoId(workspaceRoot);
+    const repoId = workspaceId;
     const targetPath = path.join(dataDir, 'repos', repoId, 'tasks');
 
     const result: MigrationResult = {

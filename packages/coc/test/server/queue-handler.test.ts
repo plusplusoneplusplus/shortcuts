@@ -698,14 +698,17 @@ describe('Queue Handler', () => {
         it('should filter queued tasks by explicit repoId', async () => {
             const srv = await startServer();
 
+            // Register workspaces so bridge maps repoId → rootPath
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-alpha', name: 'alpha', rootPath: '/repo/alpha' });
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-beta', name: 'beta', rootPath: '/repo/beta' });
+
             // Pause to prevent execution, then route tasks via workingDirectory
             await postJSON(`${srv.url}/api/queue/pause`, {});
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
 
-            const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
-            const res = await request(`${srv.url}/api/queue?repoId=${repoIdAlpha}`);
+            const res = await request(`${srv.url}/api/queue?repoId=ws-alpha`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.queued).toHaveLength(2);
@@ -761,13 +764,15 @@ describe('Queue Handler', () => {
         it('should return per-repo stats when filtering by repoId', async () => {
             const srv = await startServer();
 
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-alpha', name: 'alpha', rootPath: '/repo/alpha' });
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-beta', name: 'beta', rootPath: '/repo/beta' });
+
             await postJSON(`${srv.url}/api/queue/pause`, {});
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'C', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
 
-            const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
-            const res = await request(`${srv.url}/api/queue?repoId=${repoIdAlpha}`);
+            const res = await request(`${srv.url}/api/queue?repoId=ws-alpha`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             // Filtered results
@@ -1044,6 +1049,9 @@ describe('Queue Handler', () => {
         it('should pause a specific repo', async () => {
             const srv = await startServer();
 
+            // Register workspace so bridge maps repoId → rootPath
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-myrepo', name: 'myrepo', rootPath: '/my/repo' });
+
             // Pause queue first to prevent auto-execution
             await postJSON(`${srv.url}/api/queue/pause`, {});
 
@@ -1054,7 +1062,7 @@ describe('Queue Handler', () => {
 
             // Resume globally first, then pause specific repo
             await postJSON(`${srv.url}/api/queue/resume`, {});
-            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/my/repo')).digest('hex').substring(0, 16);
+            const repoId = 'ws-myrepo';
             const res = await postJSON(`${srv.url}/api/queue/pause?repoId=${repoId}`, {});
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
@@ -1066,13 +1074,16 @@ describe('Queue Handler', () => {
         it('should resume a specific repo', async () => {
             const srv = await startServer();
 
+            // Register workspace so bridge maps repoId → rootPath
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-myrepo', name: 'myrepo', rootPath: '/my/repo' });
+
             // Pause queue first to prevent auto-execution, then enqueue to create bridge
             await postJSON(`${srv.url}/api/queue/pause`, {});
             await postJSON(`${srv.url}/api/queue`, makeTask({
                 payload: { data: { prompt: 'test' }, workingDirectory: '/my/repo' },
             }));
 
-            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/my/repo')).digest('hex').substring(0, 16);
+            const repoId = 'ws-myrepo';
 
             // Resume globally, then pause+resume specific repo
             await postJSON(`${srv.url}/api/queue/resume`, {});
@@ -1088,6 +1099,9 @@ describe('Queue Handler', () => {
         it('should include isPaused in per-repo stats', async () => {
             const srv = await startServer();
 
+            // Register workspace so bridge maps repoId → rootPath
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-testrepo', name: 'testrepo', rootPath: '/test/repo' });
+
             // Pause queue to prevent execution
             await postJSON(`${srv.url}/api/queue/pause`, {});
 
@@ -1096,7 +1110,7 @@ describe('Queue Handler', () => {
                 payload: { data: { prompt: 'test' }, workingDirectory: '/test/repo' },
             }));
 
-            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/test/repo')).digest('hex').substring(0, 16);
+            const repoId = 'ws-testrepo';
             // Stats should show isPaused from the per-repo manager
             const statsRes = await request(`${srv.url}/api/queue/stats?repoId=${repoId}`);
             const stats = JSON.parse(statsRes.body).stats;
@@ -1105,6 +1119,10 @@ describe('Queue Handler', () => {
 
         it('GET /api/queue/repos should list repos with pause states', async () => {
             const srv = await startServer();
+
+            // Register workspaces so bridge maps repoId → rootPath
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-one', name: 'one', rootPath: '/repo/one' });
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-two', name: 'two', rootPath: '/repo/two' });
 
             // Pause queue to prevent auto-execution
             await postJSON(`${srv.url}/api/queue/pause`, {});
@@ -1117,23 +1135,19 @@ describe('Queue Handler', () => {
                 payload: { data: { prompt: 'b' }, workingDirectory: '/repo/two' },
             }));
 
-            // repoId is computed from path.resolve(workingDirectory)
-            const repoOneId = require('crypto').createHash('sha256').update(require('path').resolve('/repo/one')).digest('hex').substring(0, 16);
-
             const res = await request(`${srv.url}/api/queue/repos`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.repos).toBeDefined();
             expect(body.repos.length).toBeGreaterThanOrEqual(2);
 
-            const repoOne = body.repos.find((r: any) => r.repoId === repoOneId);
+            const repoOne = body.repos.find((r: any) => r.repoId === 'ws-one');
             expect(repoOne).toBeDefined();
             // Both repos are paused because global pause was set
             expect(repoOne.isPaused).toBe(true);
             expect(repoOne.taskCount).toBeGreaterThanOrEqual(1);
 
-            const repoTwoId = require('crypto').createHash('sha256').update(require('path').resolve('/repo/two')).digest('hex').substring(0, 16);
-            const repoTwo = body.repos.find((r: any) => r.repoId === repoTwoId);
+            const repoTwo = body.repos.find((r: any) => r.repoId === 'ws-two');
             expect(repoTwo).toBeDefined();
             expect(repoTwo.isPaused).toBe(true);
         });
@@ -1275,6 +1289,10 @@ describe('Queue Handler', () => {
 
             it('should filter history by per-repo queue routing', async () => {
                 const srv = await startServer();
+                // Register workspaces so bridge maps repoId → rootPath
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-alpha', name: 'alpha', rootPath: '/repo/alpha' });
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-beta', name: 'beta', rootPath: '/repo/beta' });
+
                 await postJSON(`${srv.url}/api/queue/pause`, {});
                 const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
                 const r2 = await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
@@ -1284,8 +1302,7 @@ describe('Queue Handler', () => {
                     await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
                 }
 
-                const repoIdAlpha = require('crypto').createHash('sha256').update(require('path').resolve('/repo/alpha')).digest('hex').substring(0, 16);
-                const res = await request(`${srv.url}/api/queue/history?repoId=${repoIdAlpha}`);
+                const res = await request(`${srv.url}/api/queue/history?repoId=ws-alpha`);
                 expect(res.status).toBe(200);
                 const body = JSON.parse(res.body);
                 expect(body.history).toHaveLength(2);
@@ -1318,18 +1335,18 @@ describe('Queue Handler', () => {
 
             it('should filter history via workingDirectory-based routing', async () => {
                 const srv = await startServer();
-                // Enqueue a task with workingDirectory
+                // Register workspace for the cwd so bridge maps repoId → rootPath
                 const cwd = process.cwd();
+                await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: cwd });
+
+                // Enqueue a task with workingDirectory
                 const r = await postJSON(`${srv.url}/api/queue`, makeTask({
                     payload: { data: { prompt: 'test' }, workingDirectory: cwd },
                 }));
                 const id = JSON.parse(r.body).task.id;
                 await request(`${srv.url}/api/queue/${id}`, { method: 'DELETE' });
 
-                // Compute repoId from resolved workingDirectory path
-                const repoId = require('crypto').createHash('sha256').update(require('path').resolve(cwd)).digest('hex').substring(0, 16);
-
-                const res = await request(`${srv.url}/api/queue/history?repoId=${encodeURIComponent(repoId)}`);
+                const res = await request(`${srv.url}/api/queue/history?repoId=${encodeURIComponent('ws-cwd')}`);
                 expect(res.status).toBe(200);
                 const body = JSON.parse(res.body);
                 expect(body.history.some((t: any) => t.id === id)).toBe(true);
@@ -2435,10 +2452,12 @@ describe('Queue Handler', () => {
 
         it('should log [Queue] pause with repoId', async () => {
             const srv = await startServer();
+            // Register workspace so bridge maps repoId → rootPath
+            await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-pauselog', name: 'pauselog', rootPath: '/test/pause-log' });
             // Enqueue a task to create the bridge for this repo
             await postJSON(`${srv.url}/api/queue/pause`, {});
             await postJSON(`${srv.url}/api/queue`, makeTask({ payload: { data: { prompt: 'test' }, workingDirectory: '/test/pause-log' } }));
-            const repoId = require('crypto').createHash('sha256').update(require('path').resolve('/test/pause-log')).digest('hex').substring(0, 16);
+            const repoId = 'ws-pauselog';
             stderrSpy.mockClear();
             await request(`${srv.url}/api/queue/pause?repoId=${repoId}`, { method: 'POST' });
             const lines = stderrLines();

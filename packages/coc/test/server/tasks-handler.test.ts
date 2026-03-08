@@ -73,10 +73,12 @@ describe('Tasks Handler', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
+    let wsId: string;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-handler-test-'));
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-workspace-'));
+        wsId = 'test-ws-' + Date.now();
     });
 
     afterEach(async () => {
@@ -96,21 +98,20 @@ describe('Tasks Handler', () => {
 
     /** Register a workspace and return its ID. */
     async function registerWorkspace(srv: ExecutionServer, rootPath: string): Promise<string> {
-        const id = 'test-ws-' + Date.now();
         const res = await postJSON(`${srv.url}/api/workspaces`, {
-            id,
+            id: wsId,
             name: 'Test Workspace',
             rootPath,
         });
         expect(res.status).toBe(201);
-        return id;
+        return wsId;
     }
 
     /** Create task files in the resolver-determined tasks directory, or in a custom workspace-relative folder. */
     function createTaskFiles(files: Record<string, string>, workspaceRelativeFolder?: string): void {
         const tasksDir = workspaceRelativeFolder
             ? path.join(workspaceDir, workspaceRelativeFolder)
-            : resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath;
+            : resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath;
         for (const [filePath, content] of Object.entries(files)) {
             const fullPath = path.join(tasksDir, filePath);
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -357,12 +358,12 @@ describe('Tasks Handler', () => {
 
         it('should return content for files in the absolute task root', async () => {
             const srv = await startServer();
-            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir });
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId });
             fs.mkdirSync(taskRoot.absolutePath, { recursive: true });
             const markdown = '# Task Root File\n\nContent from task root.';
             fs.writeFileSync(path.join(taskRoot.absolutePath, 'root-task.md'), markdown, 'utf-8');
 
-            const wsId = await registerWorkspace(srv, workspaceDir);
+            await registerWorkspace(srv, workspaceDir);
             const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/content?path=root-task.md`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
@@ -467,11 +468,11 @@ describe('Tasks Handler', () => {
     describe('GET /api/workspaces/:id/files/preview — Preview', () => {
         it('should accept file paths under the task root directory', async () => {
             const srv = await startServer();
-            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir });
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId });
             fs.mkdirSync(taskRoot.absolutePath, { recursive: true });
             fs.writeFileSync(path.join(taskRoot.absolutePath, 'test-preview.md'), '# Preview Test', 'utf-8');
 
-            const wsId = await registerWorkspace(srv, workspaceDir);
+            await registerWorkspace(srv, workspaceDir);
             const filePath = encodeURIComponent(path.join(taskRoot.absolutePath, 'test-preview.md'));
             const res = await request(`${srv.url}/api/workspaces/${wsId}/files/preview?path=${filePath}`);
             expect(res.status).toBe(200);
@@ -572,7 +573,7 @@ describe('Tasks Handler', () => {
             expect(data.updated).toBe(true);
 
             // Verify file on disk
-            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'test.md');
+            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath, 'test.md');
             const actual = fs.readFileSync(filePath, 'utf-8');
             expect(actual).toBe(newContent);
         });
@@ -588,7 +589,7 @@ describe('Tasks Handler', () => {
             });
             expect(res.status).toBe(200);
 
-            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'feature/sub', 'task.plan.md');
+            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath, 'feature/sub', 'task.plan.md');
             expect(fs.readFileSync(filePath, 'utf-8')).toBe(newContent);
         });
 
@@ -602,7 +603,7 @@ describe('Tasks Handler', () => {
             });
             expect(res.status).toBe(200);
 
-            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir }).absolutePath, 'test.md');
+            const filePath = path.join(resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId }).absolutePath, 'test.md');
             expect(fs.readFileSync(filePath, 'utf-8')).toBe('');
         });
     });

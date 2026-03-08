@@ -207,7 +207,7 @@ describe('Task Comments Anchor Relocation', () => {
         fs.mkdirSync(workspaceDir, { recursive: true });
 
         // Compute the task root (where task files now live)
-        const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir });
+        const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir, workspaceId: wsId });
         taskRootDir = taskRoot.absolutePath;
         fs.mkdirSync(path.join(taskRootDir, 'docs'), { recursive: true });
 

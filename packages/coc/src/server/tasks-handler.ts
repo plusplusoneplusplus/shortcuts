@@ -100,7 +100,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             // Resolve and validate path is within workspace, a trusted read-only directory, or the task root
             const resolvedPath = path.resolve(filePath);
             const wsRoot = path.resolve(ws.rootPath);
-            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
@@ -224,11 +224,9 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 : undefined;
             const tasksFolder = folderParam
                 ? path.resolve(ws.rootPath, folderParam)
-                : resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
-
-            // Path-traversal guard (also allow trusted read-only directories and task root)
+                : resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const resolvedPath = path.resolve(tasksFolder, filePath);
-            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             if (!isWithinDirectory(resolvedPath, tasksFolder) && !isWithinTrustedReadOnlyDir(resolvedPath) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
             }
@@ -263,7 +261,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 return sendError(res, 404, 'Workspace not found');
             }
 
-            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             sendJSON(res, 200, {
                 ...DEFAULT_SETTINGS,
                 folderPath: taskRoot.absolutePath,
@@ -291,8 +289,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 : undefined;
             const resolvedFolder = folder
                 ? path.resolve(ws.rootPath, folder)
-                : resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
-            const includeArchiveFolder = parsed.query.showArchived === 'true';
+                : resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            const includeArchiveFolder= parsed.query.showArchived === 'true';
 
             const manager = new TaskManager({
                 workspaceRoot: ws.rootPath,
@@ -430,7 +428,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Missing required field: name');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
+            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
 
             if (type === 'folder') {
                 // Create folder
@@ -520,7 +518,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Missing required field: content');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
+            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const resolvedPath = resolveAndValidatePath(tasksFolder, filePath);
             if (!resolvedPath) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
@@ -568,7 +566,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Invalid JSON body');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
+            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const { path: itemPath } = body || {};
 
             if (!itemPath || typeof itemPath !== 'string') {
@@ -751,7 +749,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Missing required field: path');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
+            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const resolvedPath = resolveAndValidatePath(tasksFolder, itemPath);
             if (!resolvedPath) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
@@ -814,8 +812,8 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 destWs = found;
             }
 
-            const sourceTasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
-            const destTasksFolder = resolveTaskRoot({ dataDir, rootPath: destWs.rootPath }).absolutePath;
+            const sourceTasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            const destTasksFolder = resolveTaskRoot({ dataDir, rootPath: destWs.rootPath, workspaceId: destWs.id }).absolutePath;
 
             const resolvedSource = resolveAndValidatePath(sourceTasksFolder, sourcePath);
             if (!resolvedSource) {
@@ -934,7 +932,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 400, 'Invalid action. Must be "archive" or "unarchive"');
             }
 
-            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
+            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const archiveFolder = path.join(tasksFolder, 'archive');
             const resolvedPath = resolveAndValidatePath(tasksFolder, itemPath);
             if (!resolvedPath) {

@@ -104,7 +104,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             }
 
             // Resolve target folder (handle auto-folder sentinel)
-            const tasksBase = resolveTaskRoot({ dataDir, rootPath: ws.rootPath }).absolutePath;
+            const tasksBase = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const isAutoFolder = targetFolder === AUTO_FOLDER_SENTINEL;
             const resolvedTarget = (isAutoFolder || !targetFolder)
                 ? tasksBase

@@ -390,6 +390,10 @@ describe('Per-Repo Queue Integration', () => {
             const repoA = '/repo-persist-a';
             const repoB = '/repo-persist-b';
 
+            // Register workspaces so the bridge can persist with valid repoId filenames
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-persist-a', name: 'ws-persist-a', rootPath: repoA });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-persist-b', name: 'ws-persist-b', rootPath: repoB });
+
             // Pause queue to prevent task execution
             await postJSON(`${baseUrl}/api/queue/pause`, {});
 
@@ -932,11 +936,8 @@ describe('Per-Repo Queue Integration', () => {
             const task = JSON.parse(taskRes.body).task;
             expect(task.payload?.workingDirectory).toBe(rootPath);
 
-            // Verify the task is in the correct per-repo queue
-            const crypto = require('crypto');
-            const pathMod = require('path');
-            const repoId = crypto.createHash('sha256').update(pathMod.resolve(rootPath)).digest('hex').substring(0, 16);
-            const statsRes = await request(`${baseUrl}/api/queue/stats?repoId=${repoId}`);
+            // Verify the task is in the correct per-repo queue (use registered workspaceId)
+            const statsRes = await request(`${baseUrl}/api/queue/stats?repoId=${workspaceId}`);
             expect(statsRes.status).toBe(200);
             const stats = JSON.parse(statsRes.body).stats;
             expect(stats.queued).toBeGreaterThanOrEqual(1);
@@ -952,6 +953,12 @@ describe('Per-Repo Queue Integration', () => {
         it('should return per-repo stats with repoId filter', async () => {
             const repoA = '/repo/stats-a';
             const repoB = '/repo/stats-b';
+            const repoIdA = 'ws-stats-a';
+            const repoIdB = 'ws-stats-b';
+
+            // Register workspaces so bridge maps repoId correctly
+            await postJSON(`${baseUrl}/api/workspaces`, { id: repoIdA, name: repoIdA, rootPath: repoA });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: repoIdB, name: repoIdB, rootPath: repoB });
 
             // Pause to prevent execution
             await postJSON(`${baseUrl}/api/queue/pause`, {});
@@ -961,12 +968,7 @@ describe('Per-Repo Queue Integration', () => {
             await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Stats A2' }));
             await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Stats B1' }));
 
-            const crypto = require('crypto');
-            const pathMod = require('path');
-            const repoIdA = crypto.createHash('sha256').update(pathMod.resolve(repoA)).digest('hex').substring(0, 16);
-            const repoIdB = crypto.createHash('sha256').update(pathMod.resolve(repoB)).digest('hex').substring(0, 16);
-
-            // Per-repo stats for A
+            // Per-repo stats for A (use registered workspace ID)
             const statsA = await request(`${baseUrl}/api/queue/stats?repoId=${repoIdA}`);
             expect(statsA.status).toBe(200);
             expect(JSON.parse(statsA.body).stats.queued).toBe(2);
@@ -997,6 +999,12 @@ describe('Per-Repo Queue Integration', () => {
         it('should list repos with correct repoId, rootPath, isPaused, and taskCount', async () => {
             const repoA = '/repo/repos-a';
             const repoB = '/repo/repos-b';
+            const repoIdA = 'ws-repos-a';
+            const repoIdB = 'ws-repos-b';
+
+            // Register workspaces so bridge maps repoId correctly
+            await postJSON(`${baseUrl}/api/workspaces`, { id: repoIdA, name: repoIdA, rootPath: repoA });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: repoIdB, name: repoIdB, rootPath: repoB });
 
             // Pause globally to prevent execution
             await postJSON(`${baseUrl}/api/queue/pause`, {});
@@ -1006,10 +1014,7 @@ describe('Per-Repo Queue Integration', () => {
             await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Repos A2' }));
             await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Repos B1' }));
 
-            const crypto = require('crypto');
             const pathMod = require('path');
-            const repoIdA = crypto.createHash('sha256').update(pathMod.resolve(repoA)).digest('hex').substring(0, 16);
-            const repoIdB = crypto.createHash('sha256').update(pathMod.resolve(repoB)).digest('hex').substring(0, 16);
 
             const res = await request(`${baseUrl}/api/queue/repos`);
             expect(res.status).toBe(200);

@@ -35,6 +35,11 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
 import { MultiRepoQueueExecutorBridge } from '../../src/server/multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from '../../src/server/multi-repo-queue-persistence';
 
+/** Derive a filesystem-safe workspace ID from a test root path. */
+function wsId(rootPath: string): string {
+    return rootPath.replace(/^\/+/, '').replace(/\//g, '-');
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -63,7 +68,7 @@ function makeRepoState(
         version,
         savedAt: new Date().toISOString(),
         repoRootPath: rootPath,
-        repoId: computeRepoId(rootPath),
+        repoId: wsId(rootPath),
         pending,
         history,
         isPaused,
@@ -89,7 +94,9 @@ function writeRepoFile(rootPath: string, state: unknown): void {
     if (!fs.existsSync(queuesDir)) {
         fs.mkdirSync(queuesDir, { recursive: true });
     }
-    const filePath = getRepoQueueFilePath(dataDir, rootPath);
+    const id = wsId(rootPath);
+    bridge.registerRepoId(id, rootPath);
+    const filePath = getRepoQueueFilePath(dataDir, id);
     fs.writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8');
 }
 
@@ -242,7 +249,7 @@ describe('MultiRepoQueuePersistence', () => {
 
         it('restores pause state', () => {
             const rootPath = '/repo/paused';
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsId(rootPath);
 
             writeRepoFile(rootPath, makeRepoState(rootPath, [], [], true));
 
@@ -275,7 +282,7 @@ describe('MultiRepoQueuePersistence', () => {
 
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
-            const filePath = path.join(queuesDir, `repo-${computeRepoId('/repo/bad')}.json`);
+            const filePath = path.join(queuesDir, `repo-${wsId('/repo/bad')}.json`);
             fs.writeFileSync(filePath, 'not valid json!!!', 'utf-8');
 
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
@@ -305,19 +312,20 @@ describe('MultiRepoQueuePersistence', () => {
             persistence.restore(); // ensure queues dir exists
 
             const rootPath = '/repo/a';
+            bridge.registerRepoId(wsId(rootPath), rootPath);
             bridge.getOrCreateBridge(rootPath);
             const qm = registry.getQueueForRepo(rootPath);
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
 
             await persistence.save(rootPath);
 
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             expect(fs.existsSync(filePath)).toBe(true);
 
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.version).toBe(3);
             expect(state.repoRootPath).toBe(rootPath);
-            expect(state.repoId).toBe(computeRepoId(rootPath));
+            expect(state.repoId).toBe(wsId(rootPath));
             expect(state.pending).toHaveLength(1);
             expect(state.isPaused).toBe(false);
         });
@@ -330,7 +338,7 @@ describe('MultiRepoQueuePersistence', () => {
 
             // First, write a file
             writeRepoFile(rootPath, makeRepoState(rootPath, [makeTask('t1', 'queued')]));
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             expect(fs.existsSync(filePath)).toBe(true);
 
             // Create the bridge so it exists
@@ -348,6 +356,7 @@ describe('MultiRepoQueuePersistence', () => {
             persistence.restore();
 
             const rootPath = '/repo/big-history';
+            bridge.registerRepoId(wsId(rootPath), rootPath);
             bridge.getOrCreateBridge(rootPath);
             const qm = registry.getQueueForRepo(rootPath);
 
@@ -362,7 +371,7 @@ describe('MultiRepoQueuePersistence', () => {
 
             await persistence.save(rootPath);
 
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.history.length).toBeLessThanOrEqual(100);
         });
@@ -372,7 +381,8 @@ describe('MultiRepoQueuePersistence', () => {
             persistence.restore();
 
             const rootPath = '/repo/paused-save';
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsId(rootPath);
+            bridge.registerRepoId(repoId, rootPath);
             bridge.getOrCreateBridge(rootPath);
             const qm = registry.getQueueForRepo(rootPath);
 
@@ -381,7 +391,7 @@ describe('MultiRepoQueuePersistence', () => {
 
             await persistence.save(rootPath);
 
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(true);
         });
@@ -407,8 +417,7 @@ describe('MultiRepoQueuePersistence', () => {
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {} });
 
             // File should not be written yet (debounce)
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
-            const beforeState = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             // The on-disk file still has the old data (1 pending)
 
             // Advance past debounce
@@ -473,7 +482,7 @@ describe('MultiRepoQueuePersistence', () => {
             await vi.advanceTimersByTimeAsync(0);
 
             // Verify the file was written
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.pending.length).toBeGreaterThanOrEqual(2);
 
@@ -521,6 +530,7 @@ describe('MultiRepoQueuePersistence', () => {
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
             persistence.restore();
 
+            bridge.registerRepoId(wsId(rootPath), rootPath);
             bridge.getOrCreateBridge(rootPath);
             const qm1 = registry.getQueueForRepo(rootPath);
             qm1.enqueue({ type: 'custom', priority: 'normal', payload: { data: 'test' }, config: {} });
@@ -556,7 +566,8 @@ describe('MultiRepoQueuePersistence', () => {
             persistence.restore();
 
             const rootPath = '/g1/paused-empty';
-            const repoId = computeRepoId(rootPath);
+            const repoId = wsId(rootPath);
+            bridge.registerRepoId(repoId, rootPath);
             bridge.getOrCreateBridge(rootPath);
             const qm = registry.getQueueForRepo(rootPath);
 
@@ -565,7 +576,7 @@ describe('MultiRepoQueuePersistence', () => {
 
             await persistence.save(rootPath);
 
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             expect(fs.existsSync(filePath)).toBe(true);
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(true);
@@ -584,7 +595,7 @@ describe('MultiRepoQueuePersistence', () => {
             await persistence.save(rootPath);
 
             // File should be deleted (empty queue + not paused)
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             expect(fs.existsSync(filePath)).toBe(false);
         });
     });
@@ -702,6 +713,7 @@ describe('MultiRepoQueuePersistence', () => {
             persistence.restore();
 
             const rootPath = '/g6/history-cap';
+            bridge.registerRepoId(wsId(rootPath), rootPath);
             bridge.getOrCreateBridge(rootPath);
             const qm = registry.getQueueForRepo(rootPath);
 
@@ -716,7 +728,7 @@ describe('MultiRepoQueuePersistence', () => {
 
             await persistence.save(rootPath);
 
-            const filePath = getRepoQueueFilePath(dataDir, rootPath);
+            const filePath = getRepoQueueFilePath(dataDir, wsId(rootPath));
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.history.length).toBeLessThanOrEqual(5);
         });

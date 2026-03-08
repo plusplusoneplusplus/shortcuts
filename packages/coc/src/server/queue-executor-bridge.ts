@@ -1225,7 +1225,8 @@ export class CLITaskExecutor implements TaskExecutor {
         const workingDirectory = payload.workingDirectory || this.defaultWorkingDirectory || '';
 
         const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-        const tasksBase = resolveTaskRoot({ dataDir: effectiveDataDir, rootPath: workingDirectory }).absolutePath;
+        const wsId = payload.workspaceId || workingDirectory;
+        const tasksBase = resolveTaskRoot({ dataDir: effectiveDataDir, rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
         const isAutoFolder = tg.targetFolder === AUTO_FOLDER_SENTINEL;
         const resolvedTarget = (isAutoFolder || !tg.targetFolder)
             ? tasksBase
