@@ -6,6 +6,8 @@ export { TreeNode } from './TreeNode';
 export type { TreeNodeProps } from './TreeNode';
 export { PreviewPane } from './PreviewPane';
 export type { PreviewPaneProps } from './PreviewPane';
+export { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
+export type { MonacoFileEditorProps } from './MonacoFileEditor';
 export { SearchBar } from './SearchBar';
 export type { SearchBarProps } from './SearchBar';
 export { Breadcrumbs } from './Breadcrumbs';

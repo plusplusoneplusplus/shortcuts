@@ -346,6 +346,27 @@ export class RepoTreeService {
     }
 
     /**
+     * Write text content to a file inside a repo.
+     * @throws if repo not found, path traversal detected, or path is a directory.
+     */
+    async writeBlob(repoId: string, relativePath: string, content: string): Promise<void> {
+        const repo = await this.resolveRepo(repoId);
+        if (!repo) {
+            throw new Error(`Repo not found: ${repoId}`);
+        }
+
+        const repoRoot = repo.localPath;
+        const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
+        assertInsideRepo(repoRoot, absPath);
+
+        // Ensure parent directory exists
+        const parentDir = path.dirname(absPath);
+        await fs.promises.mkdir(parentDir, { recursive: true });
+
+        await fs.promises.writeFile(absPath, content, 'utf-8');
+    }
+
+    /**
      * Build a RepoInfo from a WorkspaceInfo.
      * Pure mapping + git HEAD resolution.
      */

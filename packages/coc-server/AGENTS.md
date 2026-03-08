@@ -52,6 +52,8 @@ packages/coc-server/
 │   ├── git-branches-api.test.ts
 │   ├── git-branch-range-api.test.ts
 │   ├── process-children-api.test.ts
+│   ├── repo-routes.test.ts
+│   ├── repo-tree-service.test.ts
 │   ├── repo-utils.test.ts
 │   ├── scaffold.test.ts
 │   ├── sse-replay.test.ts

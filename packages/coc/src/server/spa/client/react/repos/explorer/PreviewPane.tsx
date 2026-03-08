@@ -1,16 +1,15 @@
 /**
- * PreviewPane — renders file content with syntax highlighting, markdown rendering,
- * image display, and binary/empty file handling.
+ * PreviewPane — renders file content using Monaco Editor for code files,
+ * with image display, binary/empty file handling, and save support.
  *
  * Fetches blob content from the API and supports loading/error/retry states.
  * Cancels in-flight requests when the file path changes.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApi } from '../../hooks/useApi';
 import { Spinner, Button } from '../../shared';
-import { renderMarkdownToHtml } from '../../../markdown-renderer';
-import { getLanguageFromFileName, highlightLine, escapeHtml } from '../useSyntaxHighlight';
+import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
 
 export interface PreviewPaneProps {
     repoId: string;
@@ -28,13 +27,7 @@ interface BlobResponse {
     mimeType: string;
 }
 
-const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 const MAX_PREVIEW_SIZE = 512 * 1024; // 512 KB
-
-function isMarkdownFile(fileName: string): boolean {
-    const ext = fileName.split('.').pop()?.toLowerCase() || '';
-    return MARKDOWN_EXTENSIONS.has(ext);
-}
 
 function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} bytes`;
@@ -42,8 +35,15 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Breadcrumb-style path header with close button. */
-function PathHeader({ filePath, fileName, onClose }: { filePath: string; fileName: string; onClose?: () => void }) {
+/** Breadcrumb-style path header with close button and optional save controls. */
+function PathHeader({ filePath, fileName, onClose, isDirty, isSaving, onSave }: {
+    filePath: string;
+    fileName: string;
+    onClose?: () => void;
+    isDirty?: boolean;
+    isSaving?: boolean;
+    onSave?: () => void;
+}) {
     const segments = filePath.split('/');
     return (
         <div
@@ -59,7 +59,20 @@ function PathHeader({ filePath, fileName, onClose }: { filePath: string; fileNam
                         </span>
                     </span>
                 ))}
+                {isDirty && (
+                    <span className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] flex-shrink-0" title="Unsaved changes" data-testid="dirty-indicator" />
+                )}
             </div>
+            {isDirty && onSave && (
+                <button
+                    className="flex-shrink-0 text-xs px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
+                    onClick={onSave}
+                    disabled={isSaving}
+                    data-testid="save-btn"
+                >
+                    {isSaving ? 'Saving…' : 'Save'}
+                </button>
+            )}
             {onClose && (
                 <button
                     className="flex-shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm px-1 transition-colors"
@@ -78,8 +91,11 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
     const [blob, setBlob] = useState<BlobResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [editedContent, setEditedContent] = useState<string>('');
+    const [isDirty, setIsDirty] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveFlash, setSaveFlash] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
-    const markdownRef = useRef<HTMLDivElement>(null);
 
     // Fetch blob on mount or path change; cancel in-flight on change
     useEffect(() => {
@@ -90,13 +106,20 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
         setLoading(true);
         setError(null);
         setBlob(null);
+        setIsDirty(false);
+        setEditedContent('');
 
         fetchApi(
             `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
             { signal: controller.signal },
         )
             .then((data: BlobResponse) => {
-                if (!controller.signal.aborted) setBlob(data);
+                if (!controller.signal.aborted) {
+                    setBlob(data);
+                    if (data.encoding === 'utf-8') {
+                        setEditedContent(data.content);
+                    }
+                }
             })
             .catch((err: Error) => {
                 if (!controller.signal.aborted) {
@@ -117,12 +140,19 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
         setLoading(true);
         setError(null);
         setBlob(null);
+        setIsDirty(false);
+        setEditedContent('');
         fetchApi(
             `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
             { signal: controller.signal },
         )
             .then((data: BlobResponse) => {
-                if (!controller.signal.aborted) setBlob(data);
+                if (!controller.signal.aborted) {
+                    setBlob(data);
+                    if (data.encoding === 'utf-8') {
+                        setEditedContent(data.content);
+                    }
+                }
             })
             .catch((err: Error) => {
                 if (!controller.signal.aborted) {
@@ -134,15 +164,31 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
             });
     };
 
-    // Post-render hljs on markdown code blocks
-    useEffect(() => {
-        if (!blob || !markdownRef.current || !isMarkdownFile(fileName)) return;
-        const hljs = (window as Window & { hljs?: { highlightElement: (block: Element) => void } }).hljs;
-        if (!hljs) return;
-        markdownRef.current.querySelectorAll('pre code').forEach((block) => {
-            hljs.highlightElement(block);
-        });
-    }, [blob, fileName]);
+    const handleEditorChange = useCallback((value: string) => {
+        setEditedContent(value);
+        setIsDirty(true);
+    }, []);
+
+    const handleSave = useCallback(async () => {
+        setIsSaving(true);
+        try {
+            await fetchApi(
+                `/repos/${encodeURIComponent(repoId)}/blob?path=${encodeURIComponent(filePath)}`,
+                {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: editedContent }),
+                },
+            );
+            setIsDirty(false);
+            setSaveFlash(true);
+            setTimeout(() => setSaveFlash(false), 1500);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Save failed');
+        } finally {
+            setIsSaving(false);
+        }
+    }, [repoId, filePath, editedContent]);
 
     const isImage = blob?.encoding === 'base64' && blob.mimeType.startsWith('image/');
     const isBinary = blob?.encoding === 'base64' && !isImage;
@@ -154,31 +200,26 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
         return blob.content;
     }, [blob, isOversized]);
 
-    const syntaxLanguage = useMemo(
-        () => getLanguageFromFileName(fileName),
+    const monacoLanguage = useMemo(
+        () => getMonacoLanguage(fileName),
         [fileName],
     );
 
-    const markdownHtml = useMemo(() => {
-        if (!blob || blob.encoding !== 'utf-8' || !isMarkdownFile(fileName)) return null;
-        return renderMarkdownToHtml(displayContent, { stripFrontmatter: true });
-    }, [blob, displayContent, fileName]);
-
-    const lines = useMemo(
-        () => displayContent.split('\n'),
-        [displayContent],
-    );
-
-    const gutterWidth = useMemo(
-        () => String(lines.length).length + 1,
-        [lines.length],
-    );
+    // Show Monaco for text files
+    const showMonaco = blob && blob.encoding === 'utf-8' && blob.content !== '';
 
     return (
         <div className="flex flex-col h-full overflow-hidden" data-testid="preview-pane">
-            <PathHeader filePath={filePath} fileName={fileName} onClose={onClose} />
+            <PathHeader
+                filePath={filePath}
+                fileName={fileName}
+                onClose={onClose}
+                isDirty={isDirty}
+                isSaving={isSaving}
+                onSave={showMonaco ? handleSave : undefined}
+            />
 
-            <div className="flex-1 overflow-auto" data-testid="preview-body">
+            <div className="flex-1 overflow-hidden" data-testid="preview-body">
                 {loading ? (
                     <div className="flex items-center justify-center gap-2 py-8 text-xs text-[#848484]" data-testid="preview-loading">
                         <Spinner size="sm" /> Loading {fileName}…
@@ -205,43 +246,25 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
                         <span className="text-2xl">📄</span>
                         <span>Binary file — {formatFileSize(blob!.content.length)} bytes</span>
                     </div>
-                ) : markdownHtml !== null ? (
-                    <div className="px-4 py-3">
+                ) : showMonaco ? (
+                    <div className="h-full flex flex-col">
                         {isOversized && (
-                            <div className="mb-3 px-3 py-2 rounded bg-[#fff3cd] dark:bg-[#664d03] text-xs text-[#856404] dark:text-[#ffc107]" data-testid="preview-truncated-banner">
+                            <div className="px-4 py-2 bg-[#fff3cd] dark:bg-[#664d03] text-xs text-[#856404] dark:text-[#ffc107]" data-testid="preview-truncated-banner">
                                 File too large to preview (showing first 512 KB)
                             </div>
                         )}
-                        <div
-                            ref={markdownRef}
-                            className="markdown-body text-sm text-[#1e1e1e] dark:text-[#cccccc]"
-                            data-testid="preview-markdown"
-                            dangerouslySetInnerHTML={{ __html: markdownHtml }}
-                        />
-                    </div>
-                ) : blob ? (
-                    <div className="px-4 py-3">
-                        {isOversized && (
-                            <div className="mb-3 px-3 py-2 rounded bg-[#fff3cd] dark:bg-[#664d03] text-xs text-[#856404] dark:text-[#ffc107]" data-testid="preview-truncated-banner">
-                                File too large to preview (showing first 512 KB)
+                        {saveFlash && (
+                            <div className="px-4 py-1 bg-[#d4edda] dark:bg-[#155724] text-xs text-[#155724] dark:text-[#d4edda]" data-testid="save-flash">
+                                Saved
                             </div>
                         )}
-                        <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]" data-testid="preview-code">
-                            {lines.map((line, i) => (
-                                <div key={i} className="flex" data-testid="preview-code-line">
-                                    <span
-                                        className="select-none text-right px-3 py-1 text-xs font-mono text-[#848484] border-r border-[#f0f0f0] dark:border-[#2d2d2d] bg-[#fafafa] dark:bg-[#252526]"
-                                        style={{ minWidth: `${gutterWidth}ch` }}
-                                    >
-                                        {i + 1}
-                                    </span>
-                                    <span
-                                        className="flex-1 min-w-0 px-3 py-1 text-xs font-mono text-[#1e1e1e] dark:text-[#d4d4d4]"
-                                        style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
-                                        dangerouslySetInnerHTML={{ __html: highlightLine(line || ' ', syntaxLanguage) || '&nbsp;' }}
-                                    />
-                                </div>
-                            ))}
+                        <div className="flex-1" data-testid="monaco-container">
+                            <MonacoFileEditor
+                                value={isOversized ? displayContent : editedContent}
+                                language={monacoLanguage}
+                                onChange={handleEditorChange}
+                                onSave={handleSave}
+                            />
                         </div>
                     </div>
                 ) : null}

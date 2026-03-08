@@ -309,6 +309,58 @@ describe('RepoTreeService.readBlob', () => {
     });
 });
 
+describe('RepoTreeService.writeBlob', () => {
+    it('writes text content to an existing file', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'hello.ts'), 'old content');
+
+        await service.writeBlob(REPO_ID, 'hello.ts', 'new content');
+
+        const written = fs.readFileSync(path.join(repoDir, 'hello.ts'), 'utf-8');
+        expect(written).toBe('new content');
+    });
+
+    it('creates a new file if it does not exist', async () => {
+        seedDefaultRepo();
+
+        await service.writeBlob(REPO_ID, 'new-file.txt', 'brand new');
+
+        const written = fs.readFileSync(path.join(repoDir, 'new-file.txt'), 'utf-8');
+        expect(written).toBe('brand new');
+    });
+
+    it('creates parent directories if needed', async () => {
+        seedDefaultRepo();
+
+        await service.writeBlob(REPO_ID, 'deep/nested/dir/file.ts', 'content');
+
+        const written = fs.readFileSync(path.join(repoDir, 'deep', 'nested', 'dir', 'file.ts'), 'utf-8');
+        expect(written).toBe('content');
+    });
+
+    it('writes empty string content', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'file.txt'), 'non-empty');
+
+        await service.writeBlob(REPO_ID, 'file.txt', '');
+
+        const written = fs.readFileSync(path.join(repoDir, 'file.txt'), 'utf-8');
+        expect(written).toBe('');
+    });
+
+    it('throws for path traversal', async () => {
+        seedDefaultRepo();
+        await expect(service.writeBlob(REPO_ID, '../outside.txt', 'evil')).rejects.toThrow(
+            /path traversal detected/i,
+        );
+    });
+
+    it('throws for unknown repoId', async () => {
+        seedDefaultRepo();
+        await expect(service.writeBlob('nonexistent', 'a.txt', 'data')).rejects.toThrow(/repo not found/i);
+    });
+});
+
 describe('RepoTreeService.listDirectory — gitignore integration', () => {
     const gitAvailable = isGitAvailable();
 

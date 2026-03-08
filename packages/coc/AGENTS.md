@@ -135,7 +135,14 @@ src/
 │       ├── styles.ts         # CSS styles - Dark/light theme, responsive layout
 │       ├── scripts.ts        # Client JS - WebSocket connection, API calls, DOM updates
 │       ├── helpers.ts        # Template helpers
-│       └── types.ts          # Dashboard option types
+│       ├── types.ts          # Dashboard option types
+│       └── client/           # React SPA client
+│           └── react/repos/explorer/  # File explorer with Monaco Editor
+│               ├── ExplorerPanel.tsx   # Split-pane: FileTree + PreviewPane
+│               ├── PreviewPane.tsx     # Monaco editor for code, image/binary preview
+│               ├── MonacoFileEditor.tsx # Monaco wrapper with theme sync and Ctrl+S save
+│               ├── monaco-setup.ts    # Worker URL config (bundled, no CDN)
+│               └── FileTree.tsx       # Recursive file tree with search
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling
 ├── logger.ts             # Console logger - Colored output, spinners, and progress bars
 ├── output-formatter.ts   # Result formatting - Formats results as table/json/csv/markdown

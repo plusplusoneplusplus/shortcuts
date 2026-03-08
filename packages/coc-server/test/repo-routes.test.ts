@@ -240,3 +240,83 @@ describe('GET /api/repos/:repoId/blob', () => {
         expect(Buffer.from(body.content, 'base64')).toEqual(binaryContent);
     });
 });
+
+describe('PUT /api/repos/:repoId/blob', () => {
+    it('writes file content and returns success', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'hello.ts'), 'old content');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/blob?path=hello.ts`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'new content' }),
+        });
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.success).toBe(true);
+
+        // Verify file was actually written
+        const written = fs.readFileSync(path.join(repoDir, 'hello.ts'), 'utf-8');
+        expect(written).toBe('new content');
+    });
+
+    it('writes empty string content', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'file.txt'), 'non-empty');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/blob?path=file.txt`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: '' }),
+        });
+        expect(res.status).toBe(200);
+
+        const written = fs.readFileSync(path.join(repoDir, 'file.txt'), 'utf-8');
+        expect(written).toBe('');
+    });
+
+    it('returns 400 when path is missing', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/blob`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'test' }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/path/i);
+    });
+
+    it('returns 400 when content field is missing', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/blob?path=hello.ts`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/content/i);
+    });
+
+    it('returns 404 for unknown repo', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/nonexistent/blob?path=hello.ts`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'test' }),
+        });
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 400 for directory traversal', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/blob?path=../outside`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'evil' }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/directory traversal/i);
+    });
+});

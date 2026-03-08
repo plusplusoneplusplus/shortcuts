@@ -7,13 +7,14 @@
  * GET  /api/repos                      — list all repos
  * GET  /api/repos/:repoId/tree         — list directory entries
  * GET  /api/repos/:repoId/blob         — read file content
+ * PUT  /api/repos/:repoId/blob         — write file content
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';
 import type { Route } from '../types';
-import { sendJson, send400, send404, send500 } from '../router';
+import { sendJson, send400, send404, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
 
 // ============================================================================
@@ -144,6 +145,56 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('File not found'))) {
                     send404(res, `Path not found: ${err.message}`);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Write blob -----------------------------------------------------------
+
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/repos\/([^/]+)\/blob$/,
+        handler: async (req, res, match) => {
+            try {
+                const parsedUrl = url.parse(req.url ?? '', true);
+                const parsed = parseRepoRequest(res, match, parsedUrl.query, {
+                    pathRequired: true,
+                });
+                if (!parsed) return;
+
+                let body: { content?: string };
+                try {
+                    body = await readJsonBody<{ content?: string }>(req);
+                } catch {
+                    send400(res, 'Invalid JSON body');
+                    return;
+                }
+
+                if (body.content === undefined || body.content === null) {
+                    send400(res, 'Missing required field: content');
+                    return;
+                }
+
+                if (typeof body.content !== 'string') {
+                    send400(res, 'Field "content" must be a string');
+                    return;
+                }
+
+                const service = new RepoTreeService(dataDir);
+                const repo = await service.resolveRepo(parsed.repoId);
+                if (!repo) {
+                    send404(res, `Unknown repo: ${parsed.repoId}`);
+                    return;
+                }
+
+                await service.writeBlob(parsed.repoId, parsed.path, body.content);
+                sendJson(res, { success: true });
+            } catch (err) {
+                if (err instanceof Error && err.message.includes('Path traversal')) {
+                    send400(res, err.message);
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }

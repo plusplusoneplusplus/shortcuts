@@ -12,21 +12,23 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: unknown[]) => mockFetchApi(...args),
 }));
 
-vi.mock('../../../../../src/server/spa/client/markdown-renderer', () => ({
-    renderMarkdownToHtml: (content: string) => `<div class="mock-md">${content}</div>`,
-}));
-
-vi.mock('../../../../../src/server/spa/client/react/repos/useSyntaxHighlight', () => ({
-    getLanguageFromFileName: (name: string) => {
+// Mock MonacoFileEditor since Monaco requires a real DOM/worker environment
+vi.mock('../../../../../src/server/spa/client/react/repos/explorer/MonacoFileEditor', () => ({
+    MonacoFileEditor: ({ value, language, onChange, onSave }: any) => (
+        <div data-testid="mock-monaco-editor" data-language={language} data-value={value}>
+            <textarea
+                data-testid="mock-monaco-textarea"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+            />
+            {onSave && <button data-testid="mock-monaco-save" onClick={onSave}>Save</button>}
+        </div>
+    ),
+    getMonacoLanguage: (name: string) => {
         const ext = name?.split('.').pop()?.toLowerCase();
-        const map: Record<string, string> = { ts: 'typescript', js: 'javascript', py: 'python' };
-        return map[ext ?? ''] ?? null;
+        const map: Record<string, string> = { ts: 'typescript', js: 'javascript', py: 'python', md: 'markdown' };
+        return map[ext ?? ''] ?? 'plaintext';
     },
-    highlightLine: (content: string, lang: string | null) => {
-        if (!lang || content === '') return content.replace(/</g, '&lt;');
-        return `<span class="hl-${lang}">${content.replace(/</g, '&lt;')}</span>`;
-    },
-    escapeHtml: (text: string) => text.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
 }));
 
 describe('PreviewPane', () => {
@@ -41,7 +43,7 @@ describe('PreviewPane', () => {
         expect(screen.getByText(/Loading app\.ts/)).toBeInTheDocument();
     });
 
-    it('renders source code with line numbers after fetch', async () => {
+    it('renders Monaco editor for text files', async () => {
         mockFetchApi.mockResolvedValue({
             content: 'const a = 1;\nconst b = 2;',
             encoding: 'utf-8',
@@ -50,28 +52,11 @@ describe('PreviewPane', () => {
 
         render(<PreviewPane repoId="r1" filePath="src/app.ts" fileName="app.ts" />);
 
-        await waitFor(() => expect(screen.getByTestId('preview-code')).toBeInTheDocument());
-        const codeLines = screen.getAllByTestId('preview-code-line');
-        expect(codeLines).toHaveLength(2);
-        expect(codeLines[0].textContent).toContain('1');
-        expect(codeLines[0].textContent).toContain('const a = 1;');
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+        expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-language')).toBe('typescript');
     });
 
-    it('applies syntax highlighting for known extensions', async () => {
-        mockFetchApi.mockResolvedValue({
-            content: 'const x = 1;',
-            encoding: 'utf-8',
-            mimeType: 'text/plain',
-        });
-
-        render(<PreviewPane repoId="r1" filePath="src/app.ts" fileName="app.ts" />);
-
-        await waitFor(() => expect(screen.getByTestId('preview-code')).toBeInTheDocument());
-        const line = screen.getByTestId('preview-code-line');
-        expect(line.innerHTML).toContain('hl-typescript');
-    });
-
-    it('renders markdown as HTML for .md files', async () => {
+    it('renders markdown files in Monaco editor (not as rendered HTML)', async () => {
         mockFetchApi.mockResolvedValue({
             content: '# Heading\nSome text',
             encoding: 'utf-8',
@@ -80,8 +65,10 @@ describe('PreviewPane', () => {
 
         render(<PreviewPane repoId="r1" filePath="README.md" fileName="README.md" />);
 
-        await waitFor(() => expect(screen.getByTestId('preview-markdown')).toBeInTheDocument());
-        expect(screen.getByTestId('preview-markdown').innerHTML).toContain('mock-md');
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+        expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-language')).toBe('markdown');
+        // No markdown rendering — just Monaco
+        expect(screen.queryByTestId('preview-markdown')).not.toBeInTheDocument();
     });
 
     it('renders image for image/* MIME with base64 encoding', async () => {
@@ -190,7 +177,7 @@ describe('PreviewPane', () => {
 
         rerender(<PreviewPane repoId="r1" filePath="b.ts" fileName="b.ts" />);
 
-        await waitFor(() => expect(screen.getByTestId('preview-code')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
         // The first fetch was cancelled (signal aborted), second one resolved
         expect(mockFetchApi).toHaveBeenCalledTimes(2);
     });
@@ -257,5 +244,68 @@ describe('PreviewPane', () => {
 
         await waitFor(() => expect(screen.getByTestId('preview-header')).toBeInTheDocument());
         expect(screen.queryByTestId('preview-close-btn')).not.toBeInTheDocument();
+    });
+
+    it('shows dirty indicator and save button when content changes', async () => {
+        mockFetchApi.mockResolvedValue({
+            content: 'original',
+            encoding: 'utf-8',
+            mimeType: 'text/plain',
+        });
+
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" />);
+
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+
+        // Initially no dirty indicator
+        expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('save-btn')).not.toBeInTheDocument();
+
+        // Simulate edit by changing the textarea
+        await act(async () => {
+            const textarea = screen.getByTestId('mock-monaco-textarea');
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
+            nativeInputValueSetter.call(textarea, 'modified');
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        // Should now show dirty indicator and save button
+        expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument();
+        expect(screen.getByTestId('save-btn')).toBeInTheDocument();
+    });
+
+    it('saves content via PUT API call', async () => {
+        mockFetchApi.mockResolvedValue({
+            content: 'original',
+            encoding: 'utf-8',
+            mimeType: 'text/plain',
+        });
+
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" />);
+
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+
+        // Simulate edit
+        await act(async () => {
+            const textarea = screen.getByTestId('mock-monaco-textarea');
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
+            nativeInputValueSetter.call(textarea, 'modified');
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        // Mock save response
+        mockFetchApi.mockResolvedValueOnce({ success: true });
+
+        // Click save
+        await act(async () => {
+            screen.getByTestId('save-btn').click();
+        });
+
+        // Verify PUT was called
+        const saveCalls = mockFetchApi.mock.calls.filter(
+            (call: any[]) => typeof call[1] === 'object' && call[1]?.method === 'PUT'
+        );
+        expect(saveCalls.length).toBe(1);
+        expect(saveCalls[0][0]).toBe('/repos/r1/blob?path=a.ts');
     });
 });

@@ -296,6 +296,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         spaHtml: spaHtmlFactory,
         store,
         spaETag: getBundleETag,
+        staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
     });
     const server = http.createServer(handler);
 

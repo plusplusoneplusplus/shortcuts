@@ -20,10 +20,12 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@plusplusoneplusplus/coc-server": "1.0.0",
     "@plusplusoneplusplus/pipeline-core": "1.0.0",
     "commander": "^12.1.0",
     "js-yaml": "^4.1.0",
+    "monaco-editor": "^0.55.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "ws": "^8.18.0",
