@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { EventEmitter } from 'events';
 
-import { ProcessStore, ProcessFilter, WorkspaceInfo, WikiInfo, ProcessChangeCallback, ProcessOutputEvent, StorageStats } from './process-store';
+import { ProcessStore, ProcessFilter, ProcessIndexEntry, WorkspaceInfo, WikiInfo, ProcessChangeCallback, ProcessOutputEvent, StorageStats } from './process-store';
 import {
     AIProcess,
     AIProcessStatus,
@@ -52,18 +52,8 @@ function migrateProcessType(type: string | undefined): string | undefined {
     return LEGACY_PROCESS_TYPE_MAP[type] ?? type;
 }
 
-/** Lightweight index entry stored in processes/index.json */
-export interface ProcessIndexEntry {
-    id: string;
-    workspaceId: string;
-    status: string;
-    type: string;
-    startTime: string;
-    endTime?: string;
-    promptPreview: string;
-    error?: string;
-    parentProcessId?: string;
-}
+// Re-export ProcessIndexEntry from process-store for backward compatibility
+export type { ProcessIndexEntry } from './process-store';
 
 export interface FileProcessStoreOptions {
     /** Directory for data files. Default: ~/.coc/ */
@@ -193,6 +183,43 @@ export class FileProcessStore implements ProcessStore {
         }
 
         return processes;
+    }
+
+    async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {
+        await this.ensureInitialized();
+        let indexEntries = await this.readIndex();
+
+        // Apply the same filtering logic as getAllProcesses (no file I/O)
+        if (filter?.workspaceId) {
+            indexEntries = indexEntries.filter(e => e.workspaceId === filter.workspaceId);
+        }
+        if (filter?.parentProcessId) {
+            indexEntries = indexEntries.filter(e => e.parentProcessId === filter.parentProcessId);
+        }
+        if (filter?.status) {
+            const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+            indexEntries = indexEntries.filter(e => statuses.includes(e.status as AIProcessStatus));
+        }
+        if (filter?.type) {
+            indexEntries = indexEntries.filter(e => {
+                const migrated = migrateProcessType(e.type);
+                return migrated === filter.type || e.type === filter.type;
+            });
+        }
+        if (filter?.since) {
+            const sinceTime = filter.since.getTime();
+            indexEntries = indexEntries.filter(e => new Date(e.startTime).getTime() >= sinceTime);
+        }
+
+        const total = indexEntries.length;
+
+        // Apply pagination
+        if (filter?.limit !== undefined) {
+            const offset = filter.offset ?? 0;
+            indexEntries = indexEntries.slice(offset, offset + filter.limit);
+        }
+
+        return { entries: indexEntries, total };
     }
 
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
@@ -579,6 +606,10 @@ export class FileProcessStore implements ProcessStore {
             promptPreview: entry.process.promptPreview,
             error: entry.process.error,
             parentProcessId: entry.process.parentProcessId,
+            title: entry.process.title,
+            duration: entry.process.endTime && entry.process.startTime
+                ? new Date(entry.process.endTime).getTime() - new Date(entry.process.startTime).getTime()
+                : undefined,
         };
     }
 

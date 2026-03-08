@@ -1133,3 +1133,136 @@ describe('FileProcessStore - Index + Per-Process Files', () => {
         expect(jsonFiles[0]).not.toContain('..');
     });
 });
+
+describe('FileProcessStore - getProcessSummaries', () => {
+    let tmpDir: string;
+
+    beforeEach(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-summaries-'));
+    });
+
+    afterEach(async () => {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should return empty entries for empty store', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const result = await store.getProcessSummaries();
+        expect(result).toEqual({ entries: [], total: 0 });
+    });
+
+    it('should return index entries without reading process files', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('p2', { metadata: { workspaceId: 'ws1' } }));
+
+        const result = await store.getProcessSummaries();
+        expect(result.total).toBe(2);
+        expect(result.entries).toHaveLength(2);
+        expect(result.entries.map(e => e.id).sort()).toEqual(['p1', 'p2']);
+
+        // Entries should be lightweight (no heavy fields)
+        for (const entry of result.entries) {
+            expect(entry).toHaveProperty('id');
+            expect(entry).toHaveProperty('status');
+            expect(entry).toHaveProperty('startTime');
+            expect(entry).not.toHaveProperty('fullPrompt');
+            expect(entry).not.toHaveProperty('result');
+            expect(entry).not.toHaveProperty('conversationTurns');
+        }
+    });
+
+    it('should include title in index entry', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { title: 'My Title' }));
+
+        const result = await store.getProcessSummaries();
+        expect(result.entries[0].title).toBe('My Title');
+    });
+
+    it('should include duration in index entry when endTime is set', async () => {
+        const start = new Date('2026-01-01T00:00:00Z');
+        const end = new Date('2026-01-01T00:01:30Z');
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { startTime: start, endTime: end }));
+
+        const result = await store.getProcessSummaries();
+        expect(result.entries[0].duration).toBe(90000); // 1.5 minutes in ms
+    });
+
+    it('should have undefined duration when endTime is not set', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { status: 'running' as AIProcessStatus, endTime: undefined }));
+
+        const result = await store.getProcessSummaries();
+        expect(result.entries[0].duration).toBeUndefined();
+    });
+
+    it('should filter by workspaceId', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('p2', { metadata: { workspaceId: 'ws2' } }));
+
+        const result = await store.getProcessSummaries({ workspaceId: 'ws1' });
+        expect(result.total).toBe(1);
+        expect(result.entries[0].id).toBe('p1');
+    });
+
+    it('should filter by status', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { status: 'completed' as AIProcessStatus }));
+        await store.addProcess(makeProcess('p2', { status: 'running' as AIProcessStatus }));
+        await store.addProcess(makeProcess('p3', { status: 'failed' as AIProcessStatus }));
+
+        const result = await store.getProcessSummaries({ status: 'running' });
+        expect(result.total).toBe(1);
+        expect(result.entries[0].id).toBe('p2');
+    });
+
+    it('should return correct total before pagination', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        for (let i = 0; i < 10; i++) {
+            await store.addProcess(makeProcess(`p${i}`));
+        }
+
+        const result = await store.getProcessSummaries({ limit: 3, offset: 0 });
+        expect(result.total).toBe(10);
+        expect(result.entries).toHaveLength(3);
+    });
+
+    it('should apply pagination correctly', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        for (let i = 0; i < 5; i++) {
+            await store.addProcess(makeProcess(`p${i}`));
+        }
+
+        const page1 = await store.getProcessSummaries({ limit: 2, offset: 0 });
+        const page2 = await store.getProcessSummaries({ limit: 2, offset: 2 });
+        const page3 = await store.getProcessSummaries({ limit: 2, offset: 4 });
+
+        expect(page1.entries).toHaveLength(2);
+        expect(page2.entries).toHaveLength(2);
+        expect(page3.entries).toHaveLength(1);
+        expect(page1.total).toBe(5);
+        expect(page2.total).toBe(5);
+    });
+
+    it('should refresh title and duration in index on updateProcess', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const start = new Date('2026-01-01T00:00:00Z');
+        await store.addProcess(makeProcess('p1', { startTime: start }));
+
+        // Initially no title or duration
+        let result = await store.getProcessSummaries();
+        expect(result.entries[0].title).toBeUndefined();
+        expect(result.entries[0].duration).toBeUndefined();
+
+        // Update with title and endTime
+        const end = new Date('2026-01-01T00:02:00Z');
+        await store.updateProcess('p1', { title: 'AI-Generated Title', endTime: end });
+
+        result = await store.getProcessSummaries();
+        expect(result.entries[0].title).toBe('AI-Generated Title');
+        expect(result.entries[0].duration).toBe(120000); // 2 minutes
+    });
+});

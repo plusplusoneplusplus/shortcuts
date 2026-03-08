@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessFilter, ProcessIndexEntry, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
@@ -1398,6 +1398,24 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     // ------------------------------------------------------------------
     // Process endpoints
     // ------------------------------------------------------------------
+
+    // GET /api/processes/summaries — Lightweight index-only process list (no file I/O per process)
+    routes.push({
+        method: 'GET',
+        pattern: '/api/processes/summaries',
+        handler: async (req, res) => {
+            if (!store.getProcessSummaries) {
+                // Fallback for stores that don't support summaries
+                return handleAPIError(res, badRequest('Summaries not supported by this store'));
+            }
+            const filter = parseQueryParams(req.url || '/');
+            const limit = filter.limit ?? 50;
+            const offset = filter.offset ?? 0;
+            const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
+            const { entries, total } = await store.getProcessSummaries(paginatedFilter);
+            sendJSON(res, 200, { summaries: entries, total, limit, offset });
+        },
+    });
 
     // GET /api/processes — List processes with filtering + pagination
     // Supports ?sdkSessionId={id} to find a single process by SDK session ID

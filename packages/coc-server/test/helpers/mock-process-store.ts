@@ -110,6 +110,36 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             completions.set(id, { status, duration });
         }),
         emitProcessEvent: vi.fn((_id: string, _event: any) => {}),
+        getProcessSummaries: vi.fn(async (filter?: { status?: string | string[]; limit?: number; offset?: number }) => {
+            let result = Array.from(processes.values());
+            if (filter?.status) {
+                const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+                result = result.filter(p => statuses.includes(p.status));
+            }
+            const total = result.length;
+            if (filter?.limit !== undefined) {
+                const offset = filter?.offset ?? 0;
+                result = result.slice(offset, offset + filter.limit);
+            }
+            return {
+                entries: result.map(p => ({
+                    id: p.id,
+                    workspaceId: p.metadata?.workspaceId ?? '',
+                    status: p.status,
+                    type: p.type || 'clarification',
+                    startTime: p.startTime instanceof Date ? p.startTime.toISOString() : String(p.startTime),
+                    endTime: p.endTime instanceof Date ? p.endTime.toISOString() : p.endTime ? String(p.endTime) : undefined,
+                    promptPreview: p.promptPreview,
+                    error: p.error,
+                    parentProcessId: p.parentProcessId,
+                    title: p.title,
+                    duration: p.endTime && p.startTime
+                        ? new Date(p.endTime).getTime() - new Date(p.startTime).getTime()
+                        : undefined,
+                })),
+                total,
+            };
+        }),
     } as MockProcessStore;
 }
 

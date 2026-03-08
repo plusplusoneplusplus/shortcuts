@@ -137,6 +137,25 @@ export interface ProcessFilter {
 }
 
 /**
+ * Lightweight index entry for process summaries.
+ * Contains only the fields needed for list/sidebar views — no conversation data.
+ */
+export interface ProcessIndexEntry {
+    id: string;
+    workspaceId: string;
+    status: string;
+    type: string;
+    startTime: string;
+    endTime?: string;
+    promptPreview: string;
+    error?: string;
+    parentProcessId?: string;
+    title?: string;
+    /** Duration in milliseconds (computed from startTime/endTime). */
+    duration?: number;
+}
+
+/**
  * Callback type for process change notifications.
  */
 export type ProcessChangeCallback = (event: ProcessEvent) => void;
@@ -155,6 +174,12 @@ export interface ProcessStore {
     removeProcess(id: string): Promise<void>;
     /** Remove processes matching filter. Returns count of removed items. */
     clearProcesses(filter?: ProcessFilter): Promise<number>;
+
+    /**
+     * Return lightweight index entries without loading full process files.
+     * Optional — only file-backed stores support this.
+     */
+    getProcessSummaries?(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }>;
 
     /** Return all known workspaces. */
     getWorkspaces(): Promise<WorkspaceInfo[]>;
