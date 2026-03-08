@@ -31,7 +31,7 @@ test.describe('Tablet Layout', () => {
         await page.goto(serverUrl);
 
         // At tablet width (768px), TopBar tab buttons should be visible
-        for (const tab of ['repos', 'processes', 'wiki']) {
+        for (const tab of ['repos', 'processes', 'memory']) {
             const tabBtn = page.locator(`[data-tab="${tab}"]`);
             await expect(tabBtn).toBeVisible({ timeout: 10000 });
         }

@@ -33,7 +33,7 @@ export function createRepoFixture(tmpDir: string): string {
     const dirs = [
         path.join(repoDir, 'src'),
         path.join(repoDir, 'docs'),
-        path.join(repoDir, '.vscode', 'pipelines', 'p1'),
+        path.join(repoDir, '.vscode', 'workflows', 'p1'),
     ];
     for (const dir of dirs) {
         fs.mkdirSync(dir, { recursive: true });
@@ -45,7 +45,7 @@ export function createRepoFixture(tmpDir: string): string {
 
     // Pipeline for discovery endpoint
     fs.writeFileSync(
-        path.join(repoDir, '.vscode', 'pipelines', 'p1', 'pipeline.yaml'),
+        path.join(repoDir, '.vscode', 'workflows', 'p1', 'pipeline.yaml'),
         [
             'name: "test-pipeline"',
             'description: "Fixture pipeline for E2E tests"',

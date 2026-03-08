@@ -38,7 +38,7 @@ const workflowYaml = `nodes:
 /** Create a minimal repo with the workflow YAML fixture. */
 function createWorkflowFixture(tmpDir: string): string {
     const repoDir = path.join(tmpDir, 'dag-repo');
-    const pipeDir = path.join(repoDir, '.vscode', 'pipelines', 'workflow-test');
+    const pipeDir = path.join(repoDir, '.vscode', 'workflows', 'workflow-test');
     fs.mkdirSync(pipeDir, { recursive: true });
     fs.writeFileSync(path.join(pipeDir, 'pipeline.yaml'), workflowYaml);
     execSync('git init', { cwd: repoDir, stdio: 'ignore' });
