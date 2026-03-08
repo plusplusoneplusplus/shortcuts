@@ -280,6 +280,26 @@ describe('ActivityChatDetail: inline chat detail', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Scroll to bottom');
     });
 
+    it('consumes refreshVersion from QueueContext for re-click refresh', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("useQueue()");
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('queueState.refreshVersion');
+    });
+
+    it('tracks last refresh version to detect re-click', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('lastRefreshVersionRef');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('lastRefreshVersionRef.current !== queueState.refreshVersion');
+    });
+
+    it('re-fetches queue task and process data on refresh', () => {
+        // The refresh effect should fetch the queue task and process data
+        const refreshEffectStart = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('Re-fetch conversation when user re-clicks');
+        const refreshEffectEnd = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('// SSE for running tasks');
+        const refreshEffect = ACTIVITY_CHAT_DETAIL_SOURCE.substring(refreshEffectStart, refreshEffectEnd);
+        expect(refreshEffect).toContain('/queue/${encodeURIComponent(taskId)}');
+        expect(refreshEffect).toContain('/processes/${encodeURIComponent(pid)}');
+        expect(refreshEffect).toContain('queueState.refreshVersion');
+    });
+
     it('has copy-conversation button with data-testid', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="copy-conversation-btn"');
     });

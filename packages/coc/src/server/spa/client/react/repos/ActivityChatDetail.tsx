@@ -13,6 +13,7 @@ import { Button, Spinner, SuggestionChips } from '../shared';
 import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { getConversationTurns } from '../chat/chatConversationUtils';
+import { useQueue } from '../context/QueueContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
@@ -48,9 +49,11 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     const followUpEventSourceRef = useRef<EventSource | null>(null);
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
+    const lastRefreshVersionRef = useRef(0);
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const { isMobile } = useBreakpoint();
+    const { queueState } = useQueue();
 
     const processId = task?.processId ?? (taskId ? `queue_${taskId}` : null);
     const isPending = task?.status === 'queued';
@@ -161,6 +164,30 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
 
         return () => { stopStreaming(); closeFollowUpStream(); };
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Re-fetch conversation when user re-clicks the already-selected task
+    useEffect(() => {
+        const isRefresh = queueState.refreshVersion > 0 &&
+            lastRefreshVersionRef.current !== queueState.refreshVersion;
+        lastRefreshVersionRef.current = queueState.refreshVersion;
+        if (!isRefresh || !taskId) return;
+
+        (async () => {
+            try {
+                const queueData = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
+                const refreshedTask = queueData?.task ?? null;
+                setTask(refreshedTask);
+
+                const pid = refreshedTask?.processId ?? `queue_${taskId}`;
+                if (!refreshedTask?.processId && refreshedTask?.status === 'queued') return;
+
+                const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                setProcessDetails(procData?.process || null);
+                const refreshedTurns = getConversationTurns(procData, refreshedTask);
+                setTurnsAndRef(refreshedTurns);
+            } catch { /* keep current state */ }
+        })();
+    }, [taskId, queueState.refreshVersion, setTurnsAndRef]);
 
     // SSE for running tasks
     useEffect(() => {
