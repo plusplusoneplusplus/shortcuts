@@ -244,30 +244,24 @@ describe('readPreferences / writePreferences', () => {
         expect(prefs.repos?.['r']?.lastEffort).toBeUndefined();
     });
 
-    it('round-trips lastSkill through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastSkill: 'impl' } } };
+    it('round-trips lastSkills through write and read', () => {
+        const data: PreferencesFile = { repos: { 'r': { lastSkills: { task: 'impl', ask: 'go-deep' } } } };
         writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastSkill).toBe('impl');
+        expect(loaded.repos?.['r']?.lastSkills).toEqual({ task: 'impl', ask: 'go-deep' });
     });
 
-    it('handles empty lastSkill string in repos', () => {
-        writePreferences(tmpDir, { repos: { 'r': { lastSkill: '' } } });
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastSkill).toBe('');
-    });
-
-    it('round-trips lastQueueTaskSkill through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastQueueTaskSkill: 'impl' } } };
+    it('round-trips lastSkills with all three modes', () => {
+        const data: PreferencesFile = { repos: { 'r': { lastSkills: { task: 'impl', ask: 'go-deep', plan: 'speckit' } } } };
         writePreferences(tmpDir, data);
         const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastQueueTaskSkill).toBe('impl');
+        expect(loaded.repos?.['r']?.lastSkills).toEqual({ task: 'impl', ask: 'go-deep', plan: 'speckit' });
     });
 
-    it('handles empty lastQueueTaskSkill string in repos', () => {
-        writePreferences(tmpDir, { repos: { 'r': { lastQueueTaskSkill: '' } } });
+    it('handles lastSkills with empty string values', () => {
+        writePreferences(tmpDir, { repos: { 'r': { lastSkills: { task: '' } } } });
         const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastQueueTaskSkill).toBe('');
+        expect(prefs.repos?.['r']?.lastSkills).toEqual({ task: '' });
     });
 
     it('round-trips recentFollowPrompts through write and read', () => {
@@ -431,46 +425,41 @@ describe('validatePreferences', () => {
         expect(result).toEqual({ lastModel: 'gpt-5.4', lastDepth: 'deep', lastEffort: 'high' });
     });
 
-    // -- lastSkill field --
+    // -- lastSkills field --
 
-    it('accepts valid lastSkill string', () => {
-        expect(validatePreferences({ lastSkill: 'impl' })).toEqual({ lastSkill: 'impl' });
+    it('accepts valid lastSkills object with task mode', () => {
+        expect(validatePreferences({ lastSkills: { task: 'impl' } })).toEqual({ lastSkills: { task: 'impl' } });
     });
 
-    it('accepts empty lastSkill string (means "None")', () => {
-        expect(validatePreferences({ lastSkill: '' })).toEqual({ lastSkill: '' });
+    it('accepts valid lastSkills object with all three modes', () => {
+        const skills = { task: 'impl', ask: 'go-deep', plan: 'speckit' };
+        expect(validatePreferences({ lastSkills: skills })).toEqual({ lastSkills: skills });
     });
 
-    it('rejects non-string lastSkill', () => {
-        expect(validatePreferences({ lastSkill: 42 })).toEqual({});
-        expect(validatePreferences({ lastSkill: true })).toEqual({});
-        expect(validatePreferences({ lastSkill: null })).toEqual({});
+    it('accepts lastSkills with empty string values', () => {
+        expect(validatePreferences({ lastSkills: { task: '' } })).toEqual({ lastSkills: { task: '' } });
     });
 
-    it('accepts lastSkill alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.4', lastSkill: 'go-deep' });
-        expect(result).toEqual({ lastModel: 'gpt-5.4', lastSkill: 'go-deep' });
+    it('drops unknown mode keys from lastSkills', () => {
+        expect(validatePreferences({ lastSkills: { unknown: 'x' } })).toEqual({});
     });
 
-    // -- lastQueueTaskSkill field --
-
-    it('accepts valid lastQueueTaskSkill string', () => {
-        expect(validatePreferences({ lastQueueTaskSkill: 'impl' })).toEqual({ lastQueueTaskSkill: 'impl' });
+    it('rejects non-object lastSkills', () => {
+        expect(validatePreferences({ lastSkills: 'impl' })).toEqual({});
+        expect(validatePreferences({ lastSkills: 42 })).toEqual({});
+        expect(validatePreferences({ lastSkills: true })).toEqual({});
+        expect(validatePreferences({ lastSkills: null })).toEqual({});
+        expect(validatePreferences({ lastSkills: ['impl'] })).toEqual({});
     });
 
-    it('accepts empty lastQueueTaskSkill string (means "None")', () => {
-        expect(validatePreferences({ lastQueueTaskSkill: '' })).toEqual({ lastQueueTaskSkill: '' });
+    it('rejects non-string values within lastSkills', () => {
+        expect(validatePreferences({ lastSkills: { task: 42 } })).toEqual({});
+        expect(validatePreferences({ lastSkills: { ask: true } })).toEqual({});
     });
 
-    it('rejects non-string lastQueueTaskSkill', () => {
-        expect(validatePreferences({ lastQueueTaskSkill: 42 })).toEqual({});
-        expect(validatePreferences({ lastQueueTaskSkill: true })).toEqual({});
-        expect(validatePreferences({ lastQueueTaskSkill: null })).toEqual({});
-    });
-
-    it('accepts lastQueueTaskSkill alongside other fields', () => {
-        const result = validatePreferences({ lastModel: 'gpt-5.4', lastQueueTaskSkill: 'go-deep' });
-        expect(result).toEqual({ lastModel: 'gpt-5.4', lastQueueTaskSkill: 'go-deep' });
+    it('accepts lastSkills alongside other fields', () => {
+        const result = validatePreferences({ lastModel: 'gpt-5.4', lastSkills: { task: 'go-deep' } });
+        expect(result).toEqual({ lastModel: 'gpt-5.4', lastSkills: { task: 'go-deep' } });
     });
 
     // -- recentFollowPrompts field --
@@ -1216,16 +1205,17 @@ describe('Per-Repo Preferences REST API', () => {
         expect(JSON.parse(res.body)).toEqual({ lastEffort: 'high' });
     });
 
-    it('PATCH persists lastSkill', async () => {
-        const res = await patchJSON(repoUrl(repoId), { lastSkill: 'impl' });
+    it('PATCH persists lastSkills with single mode', async () => {
+        const res = await patchJSON(repoUrl(repoId), { lastSkills: { task: 'impl' } });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastSkill: 'impl' });
+        expect(JSON.parse(res.body)).toEqual({ lastSkills: { task: 'impl' } });
     });
 
-    it('PATCH persists lastQueueTaskSkill', async () => {
-        const res = await patchJSON(repoUrl(repoId), { lastQueueTaskSkill: 'impl' });
+    it('PATCH merges lastSkills modes incrementally', async () => {
+        await patchJSON(repoUrl(repoId), { lastSkills: { task: 'impl' } });
+        const res = await patchJSON(repoUrl(repoId), { lastSkills: { ask: 'go-deep' } });
         expect(res.status).toBe(200);
-        expect(JSON.parse(res.body)).toEqual({ lastQueueTaskSkill: 'impl' });
+        expect(JSON.parse(res.body)).toEqual({ lastSkills: { task: 'impl', ask: 'go-deep' } });
     });
 
     it('PATCH persists recentFollowPrompts', async () => {

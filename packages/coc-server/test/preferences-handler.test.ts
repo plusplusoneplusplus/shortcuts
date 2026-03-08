@@ -33,6 +33,32 @@ describe('validatePreferences', () => {
         expect(validatePreferences({ lastEffort: 'invalid' })).toEqual({});
     });
 
+    it('validates lastSkills as per-mode object', () => {
+        expect(validatePreferences({ lastSkills: { task: 'impl', ask: 'go-deep' } })).toEqual({
+            lastSkills: { task: 'impl', ask: 'go-deep' },
+        });
+    });
+
+    it('validates lastSkills with plan mode', () => {
+        expect(validatePreferences({ lastSkills: { plan: 'speckit' } })).toEqual({
+            lastSkills: { plan: 'speckit' },
+        });
+    });
+
+    it('drops lastSkills with unknown mode keys', () => {
+        expect(validatePreferences({ lastSkills: { unknown: 'x' } })).toEqual({});
+    });
+
+    it('drops lastSkills with non-string values', () => {
+        expect(validatePreferences({ lastSkills: { task: 42 } })).toEqual({});
+    });
+
+    it('drops lastSkills when not an object', () => {
+        expect(validatePreferences({ lastSkills: 'impl' })).toEqual({});
+        expect(validatePreferences({ lastSkills: null })).toEqual({});
+        expect(validatePreferences({ lastSkills: ['impl'] })).toEqual({});
+    });
+
     it('validates theme', () => {
         expect(validatePreferences({ theme: 'light' })).toEqual({ theme: 'light' });
         expect(validatePreferences({ theme: 'dark' })).toEqual({ theme: 'dark' });

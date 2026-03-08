@@ -86,7 +86,7 @@ describe('empty preferences', () => {
 
     it('shows "No preferences set" when all preference fields are empty strings', async () => {
         mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return Promise.resolve({ lastModel: '', lastSkill: '' });
+            if (url.includes('/preferences')) return Promise.resolve({ lastModel: '', lastSkills: {} });
             return Promise.resolve({ processes: [] });
         });
 
@@ -104,7 +104,7 @@ describe('populated preferences', () => {
                 lastModel: 'gpt-4o',
                 lastDepth: 'deep',
                 lastEffort: 'high',
-                lastSkill: 'my-skill',
+                lastSkills: { task: 'my-skill', ask: 'go-deep' },
             });
             return Promise.resolve({ processes: [] });
         });
@@ -115,6 +115,7 @@ describe('populated preferences', () => {
         expect(screen.getByText('deep')).toBeTruthy();
         expect(screen.getByText('high')).toBeTruthy();
         expect(screen.getByText('my-skill')).toBeTruthy();
+        expect(screen.getByText('go-deep')).toBeTruthy();
     });
 
     it('renders recentFollowPrompts count', async () => {

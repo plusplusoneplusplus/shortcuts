@@ -161,37 +161,39 @@ describe('usePreferences', () => {
             });
         });
 
-        // -- skill support --
+        // -- skill support (per-mode) --
 
-        it('loads skill from GET /api/workspaces/:id/preferences', async () => {
+        it('loads skills from GET /api/workspaces/:id/preferences', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ lastSkill: 'impl' }),
+                json: () => Promise.resolve({ lastSkills: { task: 'impl', ask: 'go-deep' } }),
             });
 
             const { result } = renderHook(() => usePreferences('my-repo'));
 
             await waitFor(() => {
                 expect(result.current.loaded).toBe(true);
-                expect(result.current.skill).toBe('impl');
+                expect(result.current.skills.task).toBe('impl');
+                expect(result.current.skills.ask).toBe('go-deep');
+                expect(result.current.skills.plan).toBe('');
             });
         });
 
-        it('defaults skill to empty string when API fails', async () => {
+        it('defaults skills to empty strings when API fails', async () => {
             mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
             const { result } = renderHook(() => usePreferences('my-repo'));
 
             await waitFor(() => {
                 expect(result.current.loaded).toBe(true);
-                expect(result.current.skill).toBe('');
+                expect(result.current.skills).toEqual({ task: '', ask: '', plan: '' });
             });
         });
 
-        it('setSkill updates skill state immediately', async () => {
+        it('setSkill updates skill state for the given mode immediately', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ lastSkill: 'impl' }),
+                json: () => Promise.resolve({ lastSkills: { task: 'impl' } }),
             });
             mockFetch.mockResolvedValueOnce({ ok: true });
 
@@ -202,16 +204,16 @@ describe('usePreferences', () => {
             });
 
             act(() => {
-                result.current.setSkill('go-deep');
+                result.current.setSkill('task', 'go-deep');
             });
 
-            expect(result.current.skill).toBe('go-deep');
+            expect(result.current.skills.task).toBe('go-deep');
         });
 
-        it('setSkill fires PATCH /api/workspaces/:id/preferences with lastSkill', async () => {
+        it('setSkill fires PATCH /api/workspaces/:id/preferences with lastSkills', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ lastSkill: '' }),
+                json: () => Promise.resolve({ lastSkills: {} }),
             });
             mockFetch.mockResolvedValueOnce({ ok: true });
 
@@ -222,7 +224,7 @@ describe('usePreferences', () => {
             });
 
             act(() => {
-                result.current.setSkill('impl');
+                result.current.setSkill('ask', 'impl');
             });
 
             await waitFor(() => {
@@ -231,7 +233,7 @@ describe('usePreferences', () => {
                 );
                 expect(patchCalls.length).toBe(1);
                 const body = JSON.parse(patchCalls[0][1].body);
-                expect(body.lastSkill).toBe('impl');
+                expect(body.lastSkills).toEqual({ ask: 'impl' });
             });
         });
 
@@ -279,7 +281,7 @@ describe('usePreferences', () => {
             expect(result.current.model).toBe('');
             expect(result.current.depth).toBe('');
             expect(result.current.effort).toBe('');
-            expect(result.current.skill).toBe('');
+            expect(result.current.skills).toEqual({ task: '', ask: '', plan: '' });
         });
 
         it('setModel updates local state but does not persist', async () => {

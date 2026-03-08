@@ -2,7 +2,7 @@
  * PreferencesSection — Admin panel card for viewing and editing user preferences.
  * Loads from GET /api/preferences and saves via PATCH /api/preferences.
  * Handles only global preferences: theme and reposSidebarCollapsed.
- * Per-repo preferences (lastModel, lastDepth, lastEffort, lastSkill, pinnedChats, archivedChats)
+ * Per-repo preferences (lastModel, lastDepth, lastEffort, lastSkills, pinnedChats, archivedChats)
  * are managed via /api/workspaces/:id/preferences.
  */
 
@@ -114,7 +114,7 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
                     </div>
 
                     <div className="text-xs text-[#616161] dark:text-[#999]">
-                        Per-repo preferences (model, depth, effort, skill, pinned/archived chats) are managed per workspace.
+                        Per-repo preferences (model, depth, effort, skills, pinned/archived chats) are managed per workspace.
                     </div>
                 </div>
             )}

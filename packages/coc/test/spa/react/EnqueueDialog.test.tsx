@@ -978,7 +978,7 @@ describe('EnqueueDialog', () => {
         // Submit the task
         fireEvent.click(screen.getByText('Enqueue'));
 
-        // Verify PATCH was called with lastQueueTaskSkill as JSON array on submit
+        // Verify PATCH was called with lastSkills.task as JSON array on submit
         await waitFor(() => {
             const patchCalls = fetchSpy.mock.calls.filter(
                 ([u, opts]: [string, any]) =>
@@ -987,7 +987,7 @@ describe('EnqueueDialog', () => {
             expect(patchCalls.length).toBeGreaterThanOrEqual(1);
             const lastPatch = patchCalls[patchCalls.length - 1];
             const body = JSON.parse(lastPatch[1].body);
-            expect(body.lastQueueTaskSkill).toBe('["impl"]');
+            expect(body.lastSkills).toEqual({ task: '["impl"]' });
         });
     });
 
@@ -999,7 +999,7 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ lastQueueTaskSkill: 'go-deep' }),
+                    json: () => Promise.resolve({ lastSkills: { task: 'go-deep' } }),
                 });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -1048,7 +1048,7 @@ describe('EnqueueDialog', () => {
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ lastQueueTaskSkill: 'nonexistent-skill' }),
+                    json: () => Promise.resolve({ lastSkills: { task: 'nonexistent-skill' } }),
                 });
             }
             if (typeof url === 'string' && url.includes('/skills')) {

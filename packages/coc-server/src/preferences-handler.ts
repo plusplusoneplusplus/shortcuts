@@ -17,6 +17,16 @@ import type { Route } from './types';
 // Types
 // ============================================================================
 
+/** Skill interaction mode — determines which last-used skill preference to read/write. */
+export type SkillMode = 'task' | 'ask' | 'plan';
+
+/** Per-mode last-used skill names. */
+export interface LastSkillsByMode {
+    task?: string;
+    ask?: string;
+    plan?: string;
+}
+
 /** User UI preferences persisted on disk. */
 export interface UserPreferences {
     /** Last-selected AI model in the SPA (empty string = default). */
@@ -25,8 +35,8 @@ export interface UserPreferences {
     lastDepth?: 'deep' | 'normal';
     /** Last-selected effort level in the Generate Task dialog. */
     lastEffort?: 'low' | 'medium' | 'high';
-    /** Last-selected skill name in the Enqueue AI Task dialog (empty string = none). */
-    lastSkill?: string;
+    /** Per-mode last-used skill names (task / ask / plan). */
+    lastSkills?: LastSkillsByMode;
     /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
     theme?: 'light' | 'dark' | 'auto';
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
@@ -101,8 +111,17 @@ export function validatePreferences(raw: unknown): UserPreferences {
         result.lastEffort = obj.lastEffort;
     }
 
-    if (typeof obj.lastSkill === 'string') {
-        result.lastSkill = obj.lastSkill;
+    if (typeof obj.lastSkills === 'object' && obj.lastSkills !== null && !Array.isArray(obj.lastSkills)) {
+        const raw = obj.lastSkills as Record<string, unknown>;
+        const validated: LastSkillsByMode = {};
+        for (const mode of ['task', 'ask', 'plan'] as const) {
+            if (typeof raw[mode] === 'string') {
+                validated[mode] = raw[mode] as string;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.lastSkills = validated;
+        }
     }
 
     if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {

@@ -18,6 +18,16 @@ import type { Route } from '@plusplusoneplusplus/coc-server';
 // Types
 // ============================================================================
 
+/** Skill interaction mode — determines which last-used skill preference to read/write. */
+export type SkillMode = 'task' | 'ask' | 'plan';
+
+/** Per-mode last-used skill names. */
+export interface LastSkillsByMode {
+    task?: string;
+    ask?: string;
+    plan?: string;
+}
+
 /** A recently-used prompt or skill in the Follow Prompt dialog. */
 export interface RecentFollowPromptEntry {
     type: 'prompt' | 'skill';
@@ -45,10 +55,8 @@ export interface PerRepoPreferences {
     lastDepth?: 'deep' | 'normal';
     /** Last-selected effort level in the Generate Task dialog. */
     lastEffort?: 'low' | 'medium' | 'high';
-    /** Last-selected skill name in the Enqueue AI Task dialog (empty string = none). */
-    lastSkill?: string;
-    /** Last-used skill name submitted via the Queue Task (Enqueue AI Task) dialog. Dedicated to Queue Task only. */
-    lastQueueTaskSkill?: string;
+    /** Per-mode last-used skill names (task / ask / plan). */
+    lastSkills?: LastSkillsByMode;
     /** Recently-used prompts/skills in Follow Prompt dialog (max 10, newest first). */
     recentFollowPrompts?: RecentFollowPromptEntry[];
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
@@ -127,12 +135,17 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         result.lastEffort = obj.lastEffort;
     }
 
-    if (typeof obj.lastSkill === 'string') {
-        result.lastSkill = obj.lastSkill;
-    }
-
-    if (typeof obj.lastQueueTaskSkill === 'string') {
-        result.lastQueueTaskSkill = obj.lastQueueTaskSkill;
+    if (typeof obj.lastSkills === 'object' && obj.lastSkills !== null && !Array.isArray(obj.lastSkills)) {
+        const raw = obj.lastSkills as Record<string, unknown>;
+        const validated: LastSkillsByMode = {};
+        for (const mode of ['task', 'ask', 'plan'] as const) {
+            if (typeof raw[mode] === 'string') {
+                validated[mode] = raw[mode] as string;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.lastSkills = validated;
+        }
     }
 
     if (Array.isArray(obj.recentFollowPrompts)) {
@@ -403,6 +416,12 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             const existingRepo = existing.repos?.[repoId] ?? {};
             const patch = validatePerRepoPreferences(body);
             const merged: PerRepoPreferences = { ...existingRepo, ...patch };
+
+            // Deep-merge lastSkills so that patching { lastSkills: { ask: 'x' } }
+            // preserves existing task/plan values.
+            if (patch.lastSkills && existingRepo.lastSkills) {
+                merged.lastSkills = { ...existingRepo.lastSkills, ...patch.lastSkills };
+            }
 
             // Explicitly clear pinnedChats/archivedChats when the body sends {}
             // (validatePerRepoPreferences drops empty objects so the spread would

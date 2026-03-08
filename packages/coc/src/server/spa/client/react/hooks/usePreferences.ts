@@ -1,11 +1,19 @@
 /**
- * usePreferences — fetches and persists the user's last-selected AI model, depth, and effort.
+ * usePreferences — fetches and persists the user's last-selected AI model, depth, effort, and per-mode skills.
  * When repoId is provided, uses per-repo preferences at /api/workspaces/:id/preferences.
  * When repoId is empty/undefined, returns empty defaults immediately (loaded = true).
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../utils/config';
+
+export type SkillMode = 'task' | 'ask' | 'plan';
+
+export interface LastSkillsByMode {
+    task: string;
+    ask: string;
+    plan: string;
+}
 
 export interface UsePreferencesResult {
     model: string;
@@ -14,27 +22,25 @@ export interface UsePreferencesResult {
     setDepth: (d: string) => void;
     effort: string;
     setEffort: (e: string) => void;
-    skill: string;
-    setSkill: (s: string) => void;
-    queueTaskSkill: string;
-    setQueueTaskSkill: (s: string) => void;
+    skills: LastSkillsByMode;
+    setSkill: (mode: SkillMode, s: string) => void;
     loaded: boolean;
 }
+
+const EMPTY_SKILLS: LastSkillsByMode = { task: '', ask: '', plan: '' };
 
 export function usePreferences(repoId?: string): UsePreferencesResult {
     const [model, setModelState] = useState('');
     const [depth, setDepthState] = useState('');
     const [effort, setEffortState] = useState('');
-    const [skill, setSkillState] = useState('');
-    const [queueTaskSkill, setQueueTaskSkillState] = useState('');
+    const [skills, setSkillsState] = useState<LastSkillsByMode>({ ...EMPTY_SKILLS });
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         setModelState('');
         setDepthState('');
         setEffortState('');
-        setSkillState('');
-        setQueueTaskSkillState('');
+        setSkillsState({ ...EMPTY_SKILLS });
         if (!repoId) {
             setLoaded(true);
             return;
@@ -57,11 +63,12 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                     if (typeof prefs.lastEffort === 'string') {
                         setEffortState(prefs.lastEffort);
                     }
-                    if (typeof prefs.lastSkill === 'string') {
-                        setSkillState(prefs.lastSkill);
-                    }
-                    if (typeof prefs.lastQueueTaskSkill === 'string') {
-                        setQueueTaskSkillState(prefs.lastQueueTaskSkill);
+                    if (typeof prefs.lastSkills === 'object' && prefs.lastSkills !== null) {
+                        setSkillsState({
+                            task: typeof prefs.lastSkills.task === 'string' ? prefs.lastSkills.task : '',
+                            ask: typeof prefs.lastSkills.ask === 'string' ? prefs.lastSkills.ask : '',
+                            plan: typeof prefs.lastSkills.plan === 'string' ? prefs.lastSkills.plan : '',
+                        });
                     }
                 }
             } catch {
@@ -76,7 +83,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
     const setModel = useCallback((m: string) => {
         setModelState(m);
         if (!repoId) return;
-        // Fire-and-forget persistence
         fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -87,7 +93,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
     const setDepth = useCallback((d: string) => {
         setDepthState(d);
         if (!repoId) return;
-        // Fire-and-forget persistence
         fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -98,7 +103,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
     const setEffort = useCallback((e: string) => {
         setEffortState(e);
         if (!repoId) return;
-        // Fire-and-forget persistence
         fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -106,27 +110,15 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         }).catch(() => {});
     }, [repoId]);
 
-    const setSkill = useCallback((s: string) => {
-        setSkillState(s);
+    const setSkill = useCallback((mode: SkillMode, s: string) => {
+        setSkillsState(prev => ({ ...prev, [mode]: s }));
         if (!repoId) return;
-        // Fire-and-forget persistence
         fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastSkill: s }),
+            body: JSON.stringify({ lastSkills: { [mode]: s } }),
         }).catch(() => {});
     }, [repoId]);
 
-    const setQueueTaskSkill = useCallback((s: string) => {
-        setQueueTaskSkillState(s);
-        if (!repoId) return;
-        // Fire-and-forget persistence
-        fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastQueueTaskSkill: s }),
-        }).catch(() => {});
-    }, [repoId]);
-
-    return { model, setModel, depth, setDepth, effort, setEffort, skill, setSkill, queueTaskSkill, setQueueTaskSkill, loaded };
+    return { model, setModel, depth, setDepth, effort, setEffort, skills, setSkill, loaded };
 }

@@ -42,7 +42,7 @@ export function EnqueueDialog() {
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
-    const { model: savedModel, setModel: persistModel, queueTaskSkill: savedQueueTaskSkill, setQueueTaskSkill: persistQueueTaskSkill } = usePreferences(workspaceId);
+    const { model: savedModel, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
     const [models, setModels] = useState<string[]>([]);
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
@@ -101,23 +101,25 @@ export function EnqueueDialog() {
             .catch(() => { /* ignore */ });
     }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Restore saved Queue Task skills when both preferences and skills are loaded
+    // Restore saved skills for the current dialog mode when both preferences and skills are loaded
     useEffect(() => {
-        if (savedQueueTaskSkill && skills.length > 0 && selectedSkills.length === 0) {
+        const mode = isAskMode ? 'ask' : 'task';
+        const savedSkill = savedSkills[mode];
+        if (savedSkill && skills.length > 0 && selectedSkills.length === 0) {
             try {
-                const parsed = JSON.parse(savedQueueTaskSkill);
+                const parsed = JSON.parse(savedSkill);
                 if (Array.isArray(parsed)) {
                     const valid = parsed.filter((s: string) => skills.some(sk => sk.name === s));
                     if (valid.length > 0) setSelectedSkills(valid);
                     return;
                 }
             } catch { /* not JSON, treat as single skill name */ }
-            const match = skills.find(s => s.name === savedQueueTaskSkill);
+            const match = skills.find(s => s.name === savedSkill);
             if (match) {
-                setSelectedSkills([savedQueueTaskSkill]);
+                setSelectedSkills([savedSkill]);
             }
         }
-    }, [savedQueueTaskSkill, skills]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [savedSkills, skills, isAskMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
@@ -212,7 +214,7 @@ export function EnqueueDialog() {
             }
             setPrompt('');
             setSelectedSkills([]);
-            persistQueueTaskSkill(JSON.stringify(effectiveSkills));
+            persistSkill(isAskMode ? 'ask' : 'task', JSON.stringify(effectiveSkills));
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
                 if (sk && workspaceId) {
@@ -227,7 +229,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistQueueTaskSkill, slashCommands, isAskMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt);
