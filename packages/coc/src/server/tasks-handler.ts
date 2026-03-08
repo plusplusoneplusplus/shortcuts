@@ -28,9 +28,15 @@ const TRUSTED_READ_ONLY_DIRS: string[] = [
     path.join(os.homedir(), '.copilot'),
 ];
 
-/** Return true when `target` is inside any of the trusted read-only directories. */
-function isWithinTrustedReadOnlyDir(target: string): boolean {
-    return TRUSTED_READ_ONLY_DIRS.some(dir => isWithinDirectory(target, dir));
+/** Return true when `target` is inside any of the trusted read-only directories or the server data directory. */
+function isWithinTrustedReadOnlyDir(target: string, dataDir?: string): boolean {
+    if (TRUSTED_READ_ONLY_DIRS.some(dir => isWithinDirectory(target, dir))) {
+        return true;
+    }
+    if (dataDir && isWithinDirectory(target, dataDir)) {
+        return true;
+    }
+    return false;
 }
 
 // ============================================================================
@@ -101,7 +107,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             const resolvedPath = path.resolve(filePath);
             const wsRoot = path.resolve(ws.rootPath);
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
-            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
+            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 

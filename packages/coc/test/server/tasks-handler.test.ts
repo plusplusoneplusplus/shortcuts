@@ -494,6 +494,21 @@ describe('Tasks Handler', () => {
                 fs.rmSync(evilDir, { recursive: true, force: true });
             }
         });
+
+        it('should accept file paths under the data directory (~/.coc)', async () => {
+            const srv = await startServer();
+            // Create a file in the dataDir but outside the normal task root for this workspace
+            const otherRepoDir = path.join(dataDir, 'repos', 'other-repo-hash', 'tasks', 'coc');
+            fs.mkdirSync(otherRepoDir, { recursive: true });
+            fs.writeFileSync(path.join(otherRepoDir, 'plan.md'), '# Plan from another repo path', 'utf-8');
+
+            await registerWorkspace(srv, workspaceDir);
+            const filePath = encodeURIComponent(path.join(otherRepoDir, 'plan.md'));
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/preview?path=${filePath}`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.lines).toContain('# Plan from another repo path');
+        });
     });
 
     // ========================================================================
