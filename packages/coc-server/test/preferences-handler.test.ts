@@ -59,6 +59,32 @@ describe('validatePreferences', () => {
         expect(validatePreferences({ lastSkills: ['impl'] })).toEqual({});
     });
 
+    it('validates lastModels as per-mode object', () => {
+        expect(validatePreferences({ lastModels: { task: 'gpt-4', ask: 'claude-3' } })).toEqual({
+            lastModels: { task: 'gpt-4', ask: 'claude-3' },
+        });
+    });
+
+    it('validates lastModels with plan mode', () => {
+        expect(validatePreferences({ lastModels: { plan: 'gemini' } })).toEqual({
+            lastModels: { plan: 'gemini' },
+        });
+    });
+
+    it('drops lastModels with unknown mode keys', () => {
+        expect(validatePreferences({ lastModels: { unknown: 'x' } })).toEqual({});
+    });
+
+    it('drops lastModels with non-string values', () => {
+        expect(validatePreferences({ lastModels: { task: 42 } })).toEqual({});
+    });
+
+    it('drops lastModels when not an object', () => {
+        expect(validatePreferences({ lastModels: 'gpt-4' })).toEqual({});
+        expect(validatePreferences({ lastModels: null })).toEqual({});
+        expect(validatePreferences({ lastModels: ['gpt-4'] })).toEqual({});
+    });
+
     it('validates theme', () => {
         expect(validatePreferences({ theme: 'light' })).toEqual({ theme: 'light' });
         expect(validatePreferences({ theme: 'dark' })).toEqual({ theme: 'dark' });

@@ -42,7 +42,7 @@ export function EnqueueDialog() {
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
-    const { model: savedModel, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
+    const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
     const [models, setModels] = useState<string[]>([]);
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
@@ -54,10 +54,11 @@ export function EnqueueDialog() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const slashCommands = useSlashCommands(skills);
 
-    // Sync model from preferences when loaded
+    // Sync model from preferences when loaded (mode-specific)
     useEffect(() => {
+        const savedModel = isAskMode ? savedModels.ask : savedModels.task;
         if (savedModel && !model) setModel(savedModel);
-    }, [savedModel]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [savedModels, isAskMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Seed folderPath and workspaceId from dialog initial values when dialog opens
     useEffect(() => {
@@ -123,8 +124,8 @@ export function EnqueueDialog() {
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
-        persistModel(value);
-    }, [persistModel]);
+        persistModel(isAskMode ? 'ask' : 'task', value);
+    }, [persistModel, isAskMode]);
 
     const handleSkillChange = useCallback((name: string) => {
         setSelectedSkills(prev =>

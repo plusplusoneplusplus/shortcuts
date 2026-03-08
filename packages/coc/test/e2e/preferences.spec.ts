@@ -167,7 +167,7 @@ test.describe('Preferences (007)', () => {
             // Verify preference was persisted (per-workspace endpoint)
             const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
-            expect(prefs.lastModel).toBe(modelValue);
+            expect(prefs.lastModels?.task).toBe(modelValue);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -192,7 +192,7 @@ test.describe('Preferences (007)', () => {
 
             const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
-            expect(prefs.lastModel).toBe(modelValue);
+            expect(prefs.lastModels?.task).toBe(modelValue);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -209,7 +209,7 @@ test.describe('Preferences (007)', () => {
 
             // Pre-set preference via per-workspace API
             await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
-                data: { lastModel: modelValue },
+                data: { lastModels: { task: modelValue } },
             });
 
             // Reload to pick up preference
@@ -240,7 +240,7 @@ test.describe('Preferences (007)', () => {
 
             // Pre-set preference via per-workspace API
             await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
-                data: { lastModel: modelValue },
+                data: { lastModels: { task: modelValue } },
             });
 
             // Reload to pick up preference
@@ -339,7 +339,7 @@ test.describe('Preferences (007)', () => {
             // Final value should be model1
             const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
-            expect(prefs.lastModel).toBe(model1);
+            expect(prefs.lastModels?.task).toBe(model1);
         } finally {
             safeRmSync(tmpDir);
         }

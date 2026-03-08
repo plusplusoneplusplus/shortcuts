@@ -11,6 +11,12 @@ interface RepoInfoTabProps {
     repo: RepoData;
 }
 
+interface LastModelsByMode {
+    task?: string;
+    ask?: string;
+    plan?: string;
+}
+
 interface LastSkillsByMode {
     task?: string;
     ask?: string;
@@ -19,6 +25,7 @@ interface LastSkillsByMode {
 
 interface PerRepoPreferences {
     lastModel?: string;
+    lastModels?: LastModelsByMode;
     lastDepth?: 'deep' | 'normal';
     lastEffort?: 'low' | 'medium' | 'high';
     lastSkills?: LastSkillsByMode;
@@ -122,6 +129,8 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                 ) : preferencesError ? (
                     <div className="text-xs text-red-500">{preferencesError}</div>
                 ) : !preferences || Object.keys(preferences).length === 0 || (
+                    !preferences.lastModels?.task &&
+                    !preferences.lastModels?.ask &&
                     !preferences.lastModel &&
                     !preferences.lastDepth &&
                     !preferences.lastEffort &&
@@ -131,7 +140,8 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     <div className="text-xs text-[#848484]" id="repo-preferences-empty">No preferences set</div>
                 ) : (
                     <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm" id="repo-preferences-grid">
-                        <MetaRow label="Model" value={preferences.lastModel || 'default'} />
+                        <MetaRow label="Task Model" value={preferences.lastModels?.task || preferences.lastModel || 'default'} />
+                        <MetaRow label="Ask Model" value={preferences.lastModels?.ask || preferences.lastModel || 'default'} />
                         <MetaRow label="Depth" value={preferences.lastDepth || 'default'} />
                         <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
                         <MetaRow label="Task Skill" value={preferences.lastSkills?.task || 'none'} />

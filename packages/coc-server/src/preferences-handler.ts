@@ -27,10 +27,19 @@ export interface LastSkillsByMode {
     plan?: string;
 }
 
+/** Per-mode last-used AI model names. */
+export interface LastModelsByMode {
+    task?: string;
+    ask?: string;
+    plan?: string;
+}
+
 /** User UI preferences persisted on disk. */
 export interface UserPreferences {
-    /** Last-selected AI model in the SPA (empty string = default). */
+    /** @deprecated Use lastModels instead. Kept for backward compatibility on read. */
     lastModel?: string;
+    /** Per-mode last-used AI model names (task / ask / plan). */
+    lastModels?: LastModelsByMode;
     /** Last-selected generation depth in the SPA ('deep' | 'normal'). */
     lastDepth?: 'deep' | 'normal';
     /** Last-selected effort level in the Generate Task dialog. */
@@ -101,6 +110,19 @@ export function validatePreferences(raw: unknown): UserPreferences {
 
     if (typeof obj.lastModel === 'string') {
         result.lastModel = obj.lastModel;
+    }
+
+    if (typeof obj.lastModels === 'object' && obj.lastModels !== null && !Array.isArray(obj.lastModels)) {
+        const raw = obj.lastModels as Record<string, unknown>;
+        const validated: LastModelsByMode = {};
+        for (const mode of ['task', 'ask', 'plan'] as const) {
+            if (typeof raw[mode] === 'string') {
+                validated[mode] = raw[mode] as string;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.lastModels = validated;
+        }
     }
 
     if (obj.lastDepth === 'deep' || obj.lastDepth === 'normal') {

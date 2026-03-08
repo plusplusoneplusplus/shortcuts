@@ -258,6 +258,30 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.repos?.['r']?.lastSkills).toEqual({ task: 'impl', ask: 'go-deep', plan: 'speckit' });
     });
 
+    it('round-trips lastModels through write and read', () => {
+        const data: PreferencesFile = { repos: { 'r': { lastModels: { task: 'gpt-4', ask: 'claude-3' } } } };
+        writePreferences(tmpDir, data);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded.repos?.['r']?.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
+    });
+
+    it('round-trips lastModels with all three modes', () => {
+        const data: PreferencesFile = { repos: { 'r': { lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } } } };
+        writePreferences(tmpDir, data);
+        const loaded = readPreferences(tmpDir);
+        expect(loaded.repos?.['r']?.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', plan: 'gemini' });
+    });
+
+    it('strips invalid lastModels in repos on read', () => {
+        fs.writeFileSync(
+            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            JSON.stringify({ repos: { 'r': { lastModels: 'not-an-object' } } }),
+            'utf-8'
+        );
+        const prefs = readPreferences(tmpDir);
+        expect(prefs.repos?.['r']?.lastModels).toBeUndefined();
+    });
+
     it('handles lastSkills with empty string values', () => {
         writePreferences(tmpDir, { repos: { 'r': { lastSkills: { task: '' } } } });
         const prefs = readPreferences(tmpDir);
@@ -1216,6 +1240,19 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), { lastSkills: { ask: 'go-deep' } });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({ lastSkills: { task: 'impl', ask: 'go-deep' } });
+    });
+
+    it('PATCH persists lastModels with single mode', async () => {
+        const res = await patchJSON(repoUrl(repoId), { lastModels: { task: 'gpt-4' } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).lastModels).toEqual({ task: 'gpt-4' });
+    });
+
+    it('PATCH merges lastModels modes incrementally', async () => {
+        await patchJSON(repoUrl(repoId), { lastModels: { task: 'gpt-4' } });
+        const res = await patchJSON(repoUrl(repoId), { lastModels: { ask: 'claude-3' } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
     });
 
     it('PATCH persists recentFollowPrompts', async () => {

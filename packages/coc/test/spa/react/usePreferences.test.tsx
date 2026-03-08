@@ -12,7 +12,27 @@ beforeEach(() => {
 
 describe('usePreferences', () => {
     describe('with repoId', () => {
-        it('loads model from GET /api/workspaces/:id/preferences', async () => {
+        it('loads model from GET /api/workspaces/:id/preferences (lastModels)', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ lastModels: { task: 'gpt-4', ask: 'claude-3' } }),
+            });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.models.task).toBe('gpt-4');
+                expect(result.current.models.ask).toBe('claude-3');
+                expect(result.current.models.plan).toBe('');
+                // backward compat: model returns task model
+                expect(result.current.model).toBe('gpt-4');
+            });
+
+            expect(mockFetch.mock.calls[0][0]).toContain('/workspaces/my-repo/preferences');
+        });
+
+        it('falls back to lastModel for all modes when lastModels is absent', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 json: () => Promise.resolve({ lastModel: 'gpt-4' }),
@@ -22,10 +42,10 @@ describe('usePreferences', () => {
 
             await waitFor(() => {
                 expect(result.current.loaded).toBe(true);
-                expect(result.current.model).toBe('gpt-4');
+                expect(result.current.models.task).toBe('gpt-4');
+                expect(result.current.models.ask).toBe('gpt-4');
+                expect(result.current.models.plan).toBe('gpt-4');
             });
-
-            expect(mockFetch.mock.calls[0][0]).toContain('/workspaces/my-repo/preferences');
         });
 
         it('defaults to empty string when API fails', async () => {
@@ -35,14 +55,15 @@ describe('usePreferences', () => {
 
             await waitFor(() => {
                 expect(result.current.loaded).toBe(true);
-                expect(result.current.model).toBe('');
+                expect(result.current.models.task).toBe('');
+                expect(result.current.models.ask).toBe('');
             });
         });
 
-        it('setModel updates model state immediately', async () => {
+        it('setModel updates model state for the given mode immediately', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ lastModel: 'gpt-4' }),
+                json: () => Promise.resolve({ lastModels: { task: 'gpt-4' } }),
             });
             // PATCH call
             mockFetch.mockResolvedValueOnce({ ok: true });
@@ -54,16 +75,16 @@ describe('usePreferences', () => {
             });
 
             act(() => {
-                result.current.setModel('gpt-3.5');
+                result.current.setModel('task', 'gpt-3.5');
             });
 
-            expect(result.current.model).toBe('gpt-3.5');
+            expect(result.current.models.task).toBe('gpt-3.5');
         });
 
-        it('setModel fires PATCH /api/workspaces/:id/preferences', async () => {
+        it('setModel fires PATCH /api/workspaces/:id/preferences with lastModels', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ lastModel: '' }),
+                json: () => Promise.resolve({ lastModels: { task: '' } }),
             });
             mockFetch.mockResolvedValueOnce({ ok: true });
 
@@ -74,7 +95,7 @@ describe('usePreferences', () => {
             });
 
             act(() => {
-                result.current.setModel('claude-3');
+                result.current.setModel('ask', 'claude-3');
             });
 
             await waitFor(() => {
@@ -83,7 +104,7 @@ describe('usePreferences', () => {
                 );
                 expect(patchCalls.length).toBe(1);
                 const body = JSON.parse(patchCalls[0][1].body);
-                expect(body.lastModel).toBe('claude-3');
+                expect(body.lastModels).toEqual({ ask: 'claude-3' });
             });
         });
 
@@ -239,21 +260,21 @@ describe('usePreferences', () => {
 
         it('re-fetches when repoId changes', async () => {
             mockFetch
-                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ lastModel: 'model-a' }) })
-                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ lastModel: 'model-b' }) });
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ lastModels: { task: 'model-a' } }) })
+                .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ lastModels: { task: 'model-b' } }) });
 
             const { result, rerender } = renderHook(({ id }) => usePreferences(id), {
                 initialProps: { id: 'repo-a' },
             });
 
             await waitFor(() => {
-                expect(result.current.model).toBe('model-a');
+                expect(result.current.models.task).toBe('model-a');
             });
 
             rerender({ id: 'repo-b' });
 
             await waitFor(() => {
-                expect(result.current.model).toBe('model-b');
+                expect(result.current.models.task).toBe('model-b');
             });
 
             expect(mockFetch.mock.calls[1][0]).toContain('/workspaces/repo-b/preferences');
@@ -279,6 +300,7 @@ describe('usePreferences', () => {
             });
 
             expect(result.current.model).toBe('');
+            expect(result.current.models).toEqual({ task: '', ask: '', plan: '' });
             expect(result.current.depth).toBe('');
             expect(result.current.effort).toBe('');
             expect(result.current.skills).toEqual({ task: '', ask: '', plan: '' });
@@ -292,10 +314,10 @@ describe('usePreferences', () => {
             });
 
             act(() => {
-                result.current.setModel('gpt-4');
+                result.current.setModel('task', 'gpt-4');
             });
 
-            expect(result.current.model).toBe('gpt-4');
+            expect(result.current.models.task).toBe('gpt-4');
             expect(mockFetch).not.toHaveBeenCalled();
         });
     });

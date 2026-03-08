@@ -1,5 +1,5 @@
 /**
- * usePreferences — fetches and persists the user's last-selected AI model, depth, effort, and per-mode skills.
+ * usePreferences — fetches and persists the user's per-mode AI models, depth, effort, and per-mode skills.
  * When repoId is provided, uses per-repo preferences at /api/workspaces/:id/preferences.
  * When repoId is empty/undefined, returns empty defaults immediately (loaded = true).
  */
@@ -15,9 +15,18 @@ export interface LastSkillsByMode {
     plan: string;
 }
 
+export interface LastModelsByMode {
+    task: string;
+    ask: string;
+    plan: string;
+}
+
 export interface UsePreferencesResult {
+    /** @deprecated Use models instead. Single model kept for backward compat. */
     model: string;
-    setModel: (m: string) => void;
+    /** Per-mode last-used AI models. */
+    models: LastModelsByMode;
+    setModel: (mode: SkillMode, m: string) => void;
     depth: string;
     setDepth: (d: string) => void;
     effort: string;
@@ -28,16 +37,17 @@ export interface UsePreferencesResult {
 }
 
 const EMPTY_SKILLS: LastSkillsByMode = { task: '', ask: '', plan: '' };
+const EMPTY_MODELS: LastModelsByMode = { task: '', ask: '', plan: '' };
 
 export function usePreferences(repoId?: string): UsePreferencesResult {
-    const [model, setModelState] = useState('');
+    const [models, setModelsState] = useState<LastModelsByMode>({ ...EMPTY_MODELS });
     const [depth, setDepthState] = useState('');
     const [effort, setEffortState] = useState('');
     const [skills, setSkillsState] = useState<LastSkillsByMode>({ ...EMPTY_SKILLS });
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
-        setModelState('');
+        setModelsState({ ...EMPTY_MODELS });
         setDepthState('');
         setEffortState('');
         setSkillsState({ ...EMPTY_SKILLS });
@@ -54,8 +64,20 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                 if (!res.ok) return;
                 const prefs = await res.json();
                 if (!cancelled) {
-                    if (typeof prefs.lastModel === 'string') {
-                        setModelState(prefs.lastModel);
+                    // Read per-mode models, falling back to legacy lastModel
+                    if (typeof prefs.lastModels === 'object' && prefs.lastModels !== null) {
+                        setModelsState({
+                            task: typeof prefs.lastModels.task === 'string' ? prefs.lastModels.task : '',
+                            ask: typeof prefs.lastModels.ask === 'string' ? prefs.lastModels.ask : '',
+                            plan: typeof prefs.lastModels.plan === 'string' ? prefs.lastModels.plan : '',
+                        });
+                    } else if (typeof prefs.lastModel === 'string') {
+                        // Backward compat: populate all modes from legacy single model
+                        setModelsState({
+                            task: prefs.lastModel,
+                            ask: prefs.lastModel,
+                            plan: prefs.lastModel,
+                        });
                     }
                     if (typeof prefs.lastDepth === 'string') {
                         setDepthState(prefs.lastDepth);
@@ -80,13 +102,13 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         return () => { cancelled = true; };
     }, [repoId]);
 
-    const setModel = useCallback((m: string) => {
-        setModelState(m);
+    const setModel = useCallback((mode: SkillMode, m: string) => {
+        setModelsState(prev => ({ ...prev, [mode]: m }));
         if (!repoId) return;
         fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastModel: m }),
+            body: JSON.stringify({ lastModels: { [mode]: m } }),
         }).catch(() => {});
     }, [repoId]);
 
@@ -120,5 +142,8 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         }).catch(() => {});
     }, [repoId]);
 
-    return { model, setModel, depth, setDepth, effort, setEffort, skills, setSkill, loaded };
+    // Backward compat: expose task model as the single 'model' property
+    const model = models.task;
+
+    return { model, models, setModel, depth, setDepth, effort, setEffort, skills, setSkill, loaded };
 }

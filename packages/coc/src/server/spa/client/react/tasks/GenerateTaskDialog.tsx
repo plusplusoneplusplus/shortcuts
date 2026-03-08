@@ -104,7 +104,7 @@ export function GenerateTaskDialog({
     const { isMobile } = useBreakpoint();
 
     // --- preferences (persisted model + depth + effort) ---
-    const { model: savedModel, setModel: persistModel, depth: savedDepth, setDepth: persistDepth, effort: savedEffort, setEffort: persistEffort } = usePreferences(wsId);
+    const { models: savedModels, setModel: persistModel, depth: savedDepth, setDepth: persistDepth, effort: savedEffort, setEffort: persistEffort } = usePreferences(wsId);
     const { addToast } = useGlobalToast();
 
     // --- form state ---
@@ -121,8 +121,8 @@ export function GenerateTaskDialog({
     const [effortLevel, setEffortLevel] = useState<EffortLevel>('medium');
 
     useEffect(() => {
-        if (savedModel && !model) setModel(savedModel);
-    }, [savedModel]); // eslint-disable-line react-hooks/exhaustive-deps
+        if (savedModels.task && !model) setModel(savedModels.task);
+    }, [savedModels]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (savedDepth === 'deep' || savedDepth === 'normal') setDepth(savedDepth);
@@ -422,7 +422,7 @@ export function GenerateTaskDialog({
                                     value={model}
                                     onChange={e => {
                                         setModel(e.target.value);
-                                        persistModel(e.target.value);
+                                        persistModel('task', e.target.value);
                                     }}
                                     disabled={isSubmitting || isQueued}
                                 >

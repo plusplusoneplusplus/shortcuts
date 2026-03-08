@@ -45,7 +45,8 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 
 export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: FollowPromptDialogProps) {
     const { state } = useApp();
-    const { model, setModel, loaded: prefsLoaded } = usePreferences(wsId);
+    const { models: savedModels, setModel, loaded: prefsLoaded } = usePreferences(wsId);
+    const model = savedModels.task;
     const { recentItems, trackUsage } = useRecentPrompts(wsId);
     const { addToast } = useGlobalToast();
 
@@ -246,7 +247,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                             id="fp-model"
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                             value={model}
-                            onChange={e => setModel(e.target.value)}
+                            onChange={e => setModel('task', e.target.value)}
                         >
                             <option value="">Default</option>
                             {models.map(m => <option key={m} value={m}>{m}</option>)}

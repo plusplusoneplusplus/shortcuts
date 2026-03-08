@@ -101,7 +101,7 @@ describe('populated preferences', () => {
     it('renders model, depth, effort, skill values', async () => {
         mockFetchApi.mockImplementation((url: string) => {
             if (url.includes('/preferences')) return Promise.resolve({
-                lastModel: 'gpt-4o',
+                lastModels: { task: 'gpt-4o', ask: 'claude-3' },
                 lastDepth: 'deep',
                 lastEffort: 'high',
                 lastSkills: { task: 'my-skill', ask: 'go-deep' },
@@ -112,6 +112,7 @@ describe('populated preferences', () => {
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByText('gpt-4o')).toBeTruthy());
 
+        expect(screen.getByText('claude-3')).toBeTruthy();
         expect(screen.getByText('deep')).toBeTruthy();
         expect(screen.getByText('high')).toBeTruthy();
         expect(screen.getByText('my-skill')).toBeTruthy();

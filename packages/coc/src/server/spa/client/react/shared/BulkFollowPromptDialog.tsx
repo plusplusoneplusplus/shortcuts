@@ -87,7 +87,8 @@ function collectMarkdownFiles(folder: TaskFolder): TaskFile[] {
 
 export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowPromptDialogProps) {
     const { state } = useApp();
-    const { model, setModel } = usePreferences(wsId);
+    const { models: savedModels, setModel } = usePreferences(wsId);
+    const model = savedModels.task;
     const { recentItems, trackUsage } = useRecentPrompts();
     const { addToast } = useGlobalToast();
 
@@ -238,7 +239,7 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
                         id="bfp-model"
                         className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                         value={model}
-                        onChange={e => setModel(e.target.value)}
+                        onChange={e => setModel('task', e.target.value)}
                     >
                         <option value="">Default</option>
                         {models.map(m => <option key={m} value={m}>{m}</option>)}
