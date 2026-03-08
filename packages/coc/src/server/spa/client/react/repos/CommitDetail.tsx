@@ -55,7 +55,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         : null;
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
-            resolveComment, unresolveComment, runRelocation } = useDiffComments(workspaceId, diffContext);
+            resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
+            clearAiError } = useDiffComments(workspaceId, diffContext);
 
     // Always fetch diff on mount / hash / filePath change
     useEffect(() => {
@@ -98,6 +99,24 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         },
         [popupState, addComment],
     );
+
+    const handleAskAI = useCallback(
+        (id: string, commandId: string, customQuestion?: string) => {
+            void askAI(id, { commandId, customQuestion });
+        },
+        [askAI],
+    );
+
+    const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        const dc = comment as DiffComment;
+        const lineIdx = dc.selection?.diffLineStart;
+        if (lineIdx == null) return;
+        const el = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-diff-line-index="${lineIdx}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-yellow-400');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
+    }, []);
 
     const handleCopyHash = useCallback(() => {
         copyToClipboard(commit?.hash ?? hash).then(() => {
@@ -209,8 +228,11 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                         onUnresolve={(id) => { void unresolveComment(id); }}
                         onDelete={(id) => { void deleteComment(id); }}
                         onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
-                        onAskAI={() => {}}
-                        onCommentClick={() => {}}
+                        onAskAI={handleAskAI}
+                        onCommentClick={handleSidebarCommentClick}
+                        aiLoadingIds={aiLoadingIds}
+                        aiErrors={aiErrors}
+                        onClearAiError={clearAiError}
                         data-testid="diff-comment-sidebar"
                     />
                 )}
@@ -233,7 +255,10 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                     onUnresolve={(id) => { void unresolveComment(id); }}
                     onDelete={(id) => { void deleteComment(id); setActivePopoverComment(null); }}
                     onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
-                    onAskAI={() => {}}
+                    onAskAI={handleAskAI}
+                    aiLoading={aiLoadingIds.has(activePopoverComment.id)}
+                    aiError={aiErrors.get(activePopoverComment.id) ?? null}
+                    onClearAiError={clearAiError}
                 />
             )}
         </div>

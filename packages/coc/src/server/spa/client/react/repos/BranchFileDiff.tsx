@@ -46,7 +46,8 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
     const diffContext = { repositoryId: workspaceId, filePath, oldRef: 'branch-base', newRef: 'branch-head' };
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
-            resolveComment, unresolveComment, runRelocation } = useDiffComments(workspaceId, diffContext);
+            resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
+            clearAiError } = useDiffComments(workspaceId, diffContext);
 
     const fetchDiff = useCallback(() => {
         setLoading(true);
@@ -90,8 +91,26 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
         [popupState, addComment],
     );
 
+    const handleAskAI = useCallback(
+        (id: string, commandId: string, customQuestion?: string) => {
+            void askAI(id, { commandId, customQuestion });
+        },
+        [askAI],
+    );
+
+    const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        const dc = comment as DiffComment;
+        const lineIdx = dc.selection?.diffLineStart;
+        if (lineIdx == null) return;
+        const el = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-diff-line-index="${lineIdx}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-yellow-400');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
+    }, []);
+
     return (
-        <div className="branch-file-diff flex flex-col h-full overflow-hidden" data-testid="branch-file-diff">
+        <div className="branch-file-diffflex flex-col h-full overflow-hidden" data-testid="branch-file-diff">
             {/* Header bar */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-file-diff-header">
                 <div className="flex items-center gap-2">
@@ -152,8 +171,11 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                         onUnresolve={(id) => { void unresolveComment(id); }}
                         onDelete={(id) => { void deleteComment(id); }}
                         onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
-                        onAskAI={() => {}}
-                        onCommentClick={() => {}}
+                        onAskAI={handleAskAI}
+                        onCommentClick={handleSidebarCommentClick}
+                        aiLoadingIds={aiLoadingIds}
+                        aiErrors={aiErrors}
+                        onClearAiError={clearAiError}
                         data-testid="diff-comment-sidebar"
                     />
                 )}
@@ -176,7 +198,10 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                     onUnresolve={(id) => { void unresolveComment(id); }}
                     onDelete={(id) => { void deleteComment(id); setActivePopoverComment(null); }}
                     onEdit={(id, text) => { void updateComment(id, { comment: text }); }}
-                    onAskAI={() => {}}
+                    onAskAI={handleAskAI}
+                    aiLoading={aiLoadingIds.has(activePopoverComment.id)}
+                    aiError={aiErrors.get(activePopoverComment.id) ?? null}
+                    onClearAiError={clearAiError}
                 />
             )}
         </div>
