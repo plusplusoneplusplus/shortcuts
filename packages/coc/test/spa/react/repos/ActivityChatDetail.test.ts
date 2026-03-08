@@ -97,9 +97,11 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain("useState<'ask' | 'plan' | 'autopilot'>('autopilot')");
         });
 
-        it('renders mode selector with three mode buttons', () => {
+        it('renders mode selector as a dropdown', () => {
             expect(source).toContain('data-testid="mode-selector"');
-            expect(source).toContain('data-testid={`mode-${mode}`}');
+            expect(source).toContain('data-testid="mode-dropdown"');
+            expect(source).toContain('<select');
+            expect(source).toContain('<option key={mode} value={mode}>{label}</option>');
         });
 
         it('renders all three mode labels', () => {

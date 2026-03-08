@@ -585,23 +585,17 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
                     )}
                     <ImagePreviews images={images} onRemove={removeImage} />
                     <div className="flex items-end gap-2">
-                        <div className="flex items-center gap-1 shrink-0" data-testid="mode-selector">
-                            {([['ask', '💡 Ask'], ['plan', '📋 Plan'], ['autopilot', '🤖 Autopilot']] as const).map(([mode, label]) => (
-                                <button
-                                    key={mode}
-                                    type="button"
-                                    className={cn(
-                                        'px-2 py-0.5 rounded-full text-xs font-medium transition-colors border',
-                                        selectedMode === mode
-                                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
-                                            : 'bg-transparent text-[#848484] border-[#d0d0d0] dark:border-[#3c3c3c] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:border-[#0078d4]'
-                                    )}
-                                    onClick={() => setSelectedMode(mode)}
-                                    data-testid={`mode-${mode}`}
-                                >
-                                    {label}
-                                </button>
-                            ))}
+                        <div className="shrink-0" data-testid="mode-selector">
+                            <select
+                                value={selectedMode}
+                                onChange={e => setSelectedMode(e.target.value as 'ask' | 'plan' | 'autopilot')}
+                                className="px-2 py-1 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
+                                data-testid="mode-dropdown"
+                            >
+                                {([['ask', '💡 Ask'], ['plan', '📋 Plan'], ['autopilot', '🤖 Autopilot']] as const).map(([mode, label]) => (
+                                    <option key={mode} value={mode}>{label}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="relative flex-1">
                             <textarea
