@@ -63,11 +63,6 @@ export function getTaskPromptPreview(task: any): string {
     return text.length > 60 ? text.substring(0, 57) + '…' : text;
 }
 
-/** Returns true if a task is an internal chat follow-up (hidden from the list). */
-export function isChatFollowUp(task: any): boolean {
-    return task.type === 'chat' && !!(task as any).payload?.processId;
-}
-
 export interface ActivityListPaneProps {
     running: any[];
     queued: any[];
@@ -112,7 +107,7 @@ export function ActivityListPane({
     }, [workspaceId]);
 
     const allTasks = useMemo(
-        () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history].filter((t: any) => !isChatFollowUp(t)),
+        () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
         [running, queued, history],
     );
     const availableFilters = useMemo(() => {
@@ -130,12 +125,12 @@ export function ActivityListPane({
         return opts;
     }, [allTasks]);
 
-    const filteredRunning = useMemo(() => running.filter(t => !isChatFollowUp(t) && taskMatchesFilter(t, filterType)), [running, filterType]);
+    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, filterType)), [running, filterType]);
     const filteredQueued = useMemo(
-        () => queued.filter(t => t.kind === 'pause-marker' || (!isChatFollowUp(t) && taskMatchesFilter(t, filterType))),
+        () => queued.filter(t => t.kind === 'pause-marker' || taskMatchesFilter(t, filterType)),
         [queued, filterType],
     );
-    const filteredHistory = useMemo(() => history.filter(t => !isChatFollowUp(t) && taskMatchesFilter(t, filterType)), [history, filterType]);
+    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType)), [history, filterType]);
 
     const [showHistory, setShowHistory] = useState(true);
 

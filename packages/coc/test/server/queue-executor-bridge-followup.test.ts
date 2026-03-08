@@ -246,7 +246,7 @@ describe('execute() short-circuit for chat-followup tasks', () => {
     });
 
     // 9 -----------------------------------------------------------------------
-    it('should call reActivate (not requeueFromHistory) on the parent task', async () => {
+    it('should not perform extra queue transitions while executing a requeued follow-up', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
         await store.addProcess(proc);
@@ -265,13 +265,12 @@ describe('execute() short-circuit for chat-followup tasks', () => {
             processId: 'proc-1',
             content: 'follow up',
         });
-        (task.payload as any).parentTaskId = 'parent-task-1';
 
         await executor.execute(task);
 
-        // reActivate should be called to move the parent from history → running
-        expect(mockQueueManager.reActivate).toHaveBeenCalledWith('parent-task-1');
-        // requeueFromHistory must NOT be called — it re-enqueues for execution
+        expect(mockQueueManager.reActivate).not.toHaveBeenCalled();
         expect(mockQueueManager.requeueFromHistory).not.toHaveBeenCalled();
+        expect(mockQueueManager.returnToHistory).not.toHaveBeenCalled();
+        expect(mockQueueManager.markCompleted).not.toHaveBeenCalled();
     });
 });

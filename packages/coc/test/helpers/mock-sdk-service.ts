@@ -139,6 +139,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
  * - executeFollowUp → vi.fn().mockResolvedValue(undefined)
  * - isSessionAlive → vi.fn().mockResolvedValue(true)
  * - enqueue → vi.fn().mockResolvedValue('mock-task-id')
+ * - requeueForFollowUp → vi.fn().mockResolvedValue(undefined)
  * - cancelProcess → vi.fn().mockResolvedValue(undefined)
  */
 export function createMockBridge(overrides?: Partial<QueueExecutorBridge>): QueueExecutorBridge {
@@ -146,6 +147,7 @@ export function createMockBridge(overrides?: Partial<QueueExecutorBridge>): Queu
         executeFollowUp: overrides?.executeFollowUp ?? vi.fn().mockResolvedValue(undefined),
         isSessionAlive: overrides?.isSessionAlive ?? vi.fn().mockResolvedValue(true),
         enqueue: overrides?.enqueue ?? vi.fn().mockResolvedValue('mock-task-id'),
+        requeueForFollowUp: overrides?.requeueForFollowUp ?? vi.fn().mockResolvedValue(undefined),
         cancelProcess: overrides?.cancelProcess ?? vi.fn().mockResolvedValue(undefined),
     };
 }

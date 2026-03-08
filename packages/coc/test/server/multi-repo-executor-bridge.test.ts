@@ -387,13 +387,13 @@ describe('MultiRepoQueueExecutorBridge', () => {
     });
 
     // --------------------------------------------------------------------
-    // requeueParentTask removed (regression: follow-ups re-executing parent)
+    // requeueForFollowUp
     // --------------------------------------------------------------------
 
-    describe('requeueParentTask removed', () => {
-        it('does not expose requeueParentTask method', () => {
+    describe('requeueForFollowUp', () => {
+        it('exposes requeueForFollowUp method', () => {
             const { bridge } = createBridge();
-            expect((bridge as any).requeueParentTask).toBeUndefined();
+            expect(typeof (bridge as any).requeueForFollowUp).toBe('function');
             bridge.dispose();
         });
     });

@@ -148,7 +148,7 @@ export type CreateTaskInput = Omit<
 export type TaskUpdate = Partial<
     Pick<
         QueuedTask,
-        'status' | 'startedAt' | 'completedAt' | 'processId' | 'result' | 'error' | 'retryCount' | 'priority' | 'displayName'
+        'status' | 'startedAt' | 'completedAt' | 'processId' | 'result' | 'error' | 'retryCount' | 'priority' | 'displayName' | 'payload'
     >
 >;
 

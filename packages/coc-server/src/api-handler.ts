@@ -37,6 +37,8 @@ export interface QueueExecutorBridge {
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
     findTaskByProcessId?(processId: string): { id: string; type: string } | undefined;
+    /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }
@@ -1796,24 +1798,29 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (bridge.enqueue) {
                 const snippet = messageContent.trim();
                 const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
-                // Look up the original chat task so the follow-up can re-activate it
+                // Look up the original chat task so the follow-up can reuse it
                 const parentTask = bridge.findTaskByProcessId?.(id);
-                await bridge.enqueue({
-                    type: 'chat',
-                    priority: 'normal',
-                    payload: {
-                        kind: 'chat',
-                        prompt: messageContent,
-                        processId: id,
-                        parentTaskId: parentTask?.id,
-                        attachments,
-                        imageTempDir,
-                        workingDirectory: process.workingDirectory,
-                        readonly: (process as any).payload?.readonly,
-                    },
-                    config: {},
-                    displayName,
-                });
+                if (parentTask && bridge.requeueForFollowUp) {
+                    // Reuse the parent task: update its payload and requeue from history
+                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir);
+                } else {
+                    // Fallback: create a new task (no parent found or requeueForFollowUp unavailable)
+                    await bridge.enqueue({
+                        type: 'chat',
+                        priority: 'normal',
+                        payload: {
+                            kind: 'chat',
+                            prompt: messageContent,
+                            processId: id,
+                            attachments,
+                            imageTempDir,
+                            workingDirectory: process.workingDirectory,
+                            readonly: (process as any).payload?.readonly,
+                        },
+                        config: {},
+                        displayName,
+                    });
+                }
             } else {
                 bridge.executeFollowUp(id, messageContent, attachments).catch(() => {
                     // Error handling is done inside executeFollowUp

@@ -575,7 +575,7 @@ describe('CLITaskExecutor', () => {
             );
         });
 
-        it('should re-activate parent task and return it to history on success', async () => {
+        it('should requeue a completed chat task for follow-up execution', async () => {
             const queueManager = new TaskQueueManager();
             const executor = new CLITaskExecutor(store);
             executor.setQueueManager(queueManager);
@@ -601,51 +601,27 @@ describe('CLITaskExecutor', () => {
             queueManager.markCompleted(parentId);
             expect(queueManager.getHistory()).toHaveLength(1);
 
-            const task: QueuedTask = {
-                id: 'followup-reactivate',
-                type: 'chat',
-                priority: 'normal',
-                status: 'running',
-                createdAt: Date.now(),
-                payload: {
-                    kind: 'chat',
-                    processId: 'proc-reactivate',
-                    parentTaskId: parentId,
-                    prompt: 'Follow-up question',
-                } as any,
-                config: {},
-            };
+            await executor.requeueForFollowUp(parentId, 'Follow-up question');
 
-            const result = await executor.execute(task);
-            expect(result.success).toBe(true);
-
-            // Parent task should be back in history (re-activated then re-completed)
-            expect(queueManager.getRunning()).toHaveLength(0);
-            expect(queueManager.getHistory()).toHaveLength(1);
+            expect(queueManager.getQueued()).toHaveLength(1);
+            expect(queueManager.getHistory()).toHaveLength(0);
             const parentTask = queueManager.getTask(parentId);
-            expect(parentTask?.status).toBe('completed');
-            expect(parentTask?.displayName).toMatch(/Chat \(\d+ turns?\)/);
+            expect(parentTask?.status).toBe('queued');
+            expect((parentTask?.payload as any).processId).toBe('proc-reactivate');
+            expect((parentTask?.payload as any).prompt).toBe('Follow-up question');
         });
 
-        it('should return parent task to history even on follow-up failure', async () => {
+        it('should clear follow-up payload metadata after successful execution', async () => {
             const queueManager = new TaskQueueManager();
             const executor = new CLITaskExecutor(store);
             executor.setQueueManager(queueManager);
 
-            // Process without SDK session → follow-up will fail
-            const proc = createCompletedProcessWithSession('proc-fail-reactivate', '');
-            (proc as any).sdkSessionId = undefined;
+            const proc = createCompletedProcessWithSession('proc-fail-reactivate', 'sess-fail-reactivate');
+            (proc as any).conversationTurns = [
+                { role: 'user', content: 'Hello', turnIndex: 0 },
+                { role: 'assistant', content: 'Hi!', turnIndex: 1 },
+            ];
             await store.addProcess(proc);
-
-            const parentId = queueManager.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                payload: { kind: 'chat', prompt: 'Hello' },
-                config: {},
-                displayName: 'Chat',
-            });
-            queueManager.markStarted(parentId);
-            queueManager.markCompleted(parentId);
 
             const task: QueuedTask = {
                 id: 'followup-fail-reactivate',
@@ -656,7 +632,35 @@ describe('CLITaskExecutor', () => {
                 payload: {
                     kind: 'chat',
                     processId: 'proc-fail-reactivate',
-                    parentTaskId: parentId,
+                    prompt: 'This will succeed',
+                } as any,
+                config: {},
+            };
+
+            const result = await executor.execute(task);
+            expect(result.success).toBe(true);
+            expect((task.payload as any).processId).toBeUndefined();
+            expect((task.payload as any).attachments).toBeUndefined();
+            expect((task.payload as any).imageTempDir).toBeUndefined();
+            expect(task.displayName).toMatch(/Chat \(\d+ turns?\)/);
+        });
+
+        it('should clear follow-up payload metadata after failed execution', async () => {
+            const executor = new CLITaskExecutor(store);
+
+            const proc = createCompletedProcessWithSession('proc-fail-followup', '');
+            (proc as any).sdkSessionId = undefined;
+            await store.addProcess(proc);
+
+            const task: QueuedTask = {
+                id: 'followup-fail-reactivate',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat',
+                    processId: 'proc-fail-followup',
                     prompt: 'This will fail',
                 } as any,
                 config: {},
@@ -664,14 +668,12 @@ describe('CLITaskExecutor', () => {
 
             const result = await executor.execute(task);
             expect(result.success).toBe(false);
-
-            // Parent should be back in history despite failure
-            expect(queueManager.getRunning()).toHaveLength(0);
-            expect(queueManager.getHistory()).toHaveLength(1);
-            expect(queueManager.getTask(parentId)?.status).toBe('completed');
+            expect((task.payload as any).processId).toBeUndefined();
+            expect((task.payload as any).attachments).toBeUndefined();
+            expect((task.payload as any).imageTempDir).toBeUndefined();
         });
 
-        it('should work without parentTaskId (backward compatible)', async () => {
+        it('should work without parent task metadata', async () => {
             const executor = new CLITaskExecutor(store);
 
             const proc = createCompletedProcessWithSession('proc-noparent', 'sess-noparent');

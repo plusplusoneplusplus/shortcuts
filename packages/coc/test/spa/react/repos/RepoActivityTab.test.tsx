@@ -349,12 +349,8 @@ describe('ActivityListPane: shared list component', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function ActivityListPane');
     });
 
-    it('exports isChatFollowUp helper', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('export function isChatFollowUp');
-    });
-
-    it('filters out chat follow-up tasks (payload.processId)', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("task.type === 'chat' && !!(task as any).payload?.processId");
+    it('does not export legacy isChatFollowUp helper', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).not.toContain('export function isChatFollowUp');
     });
 
     it('exports taskMatchesFilter helper', () => {
@@ -507,31 +503,22 @@ describe('RepoActivityTab: data fetching', () => {
     });
 });
 
-// ── Hidden follow-up chat tasks ────────────────────────────────────────
+// ── Reused follow-up chat tasks remain visible ─────────────────────────
 
-describe('ActivityListPane: hidden follow-up chat tasks', () => {
-    it('isChatFollowUp checks for payload.processId', () => {
-        const fn = ACTIVITY_LIST_PANE_SOURCE.substring(
-            ACTIVITY_LIST_PANE_SOURCE.indexOf('export function isChatFollowUp'),
-            ACTIVITY_LIST_PANE_SOURCE.indexOf('}', ACTIVITY_LIST_PANE_SOURCE.indexOf('export function isChatFollowUp')) + 1,
-        );
-        expect(fn).toContain("task.type === 'chat'");
-        expect(fn).toContain('payload?.processId');
+describe('ActivityListPane: reused follow-up chat tasks stay visible', () => {
+    it('does not filter running tasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('running.filter(t => taskMatchesFilter(t, filterType))');
     });
 
-    it('filters follow-ups from running tasks', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('running.filter(t => !isChatFollowUp(t)');
+    it('does not filter queued tasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("queued.filter(t => t.kind === 'pause-marker' || taskMatchesFilter(t, filterType))");
     });
 
-    it('filters follow-ups from queued tasks', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('!isChatFollowUp(t) && taskMatchesFilter');
+    it('does not filter history tasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('history.filter(t => taskMatchesFilter(t, filterType))');
     });
 
-    it('filters follow-ups from history tasks', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('history.filter(t => !isChatFollowUp(t)');
-    });
-
-    it('filters follow-ups from allTasks used for filter options', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('.filter((t: any) => !isChatFollowUp(t))');
+    it('does not filter allTasks with isChatFollowUp', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("[...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history]");
     });
 });

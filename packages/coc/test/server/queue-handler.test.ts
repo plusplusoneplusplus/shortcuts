@@ -1640,54 +1640,39 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
-    // Follow-up tasks excluded from chat history
+    // Chat history includes reused chat tasks
     // ========================================================================
 
-    describe('GET /api/queue/history?type=chat — excludes follow-up tasks', () => {
-        it('should exclude completed follow-up tasks (with parentTaskId) from chat history', async () => {
+    describe('GET /api/queue/history?type=chat — includes active chat tasks', () => {
+        it('should include queued chat tasks in chat history results', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
 
-            // Original chat task (no parentTaskId)
             await postJSON(`${srv.url}/api/queue`, makeTask({
                 type: 'chat',
-                displayName: 'Original chat',
+                displayName: 'Queued chat',
                 payload: { prompt: 'hello' },
-            }));
-            // Follow-up task (has parentTaskId)
-            await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'chat',
-                displayName: 'Follow-up',
-                payload: { prompt: 'follow up', parentTaskId: 'parent-1', processId: 'proc-1' },
             }));
 
             const res = await request(`${srv.url}/api/queue/history?type=chat`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            // Only the original chat should appear; the follow-up is excluded
             expect(body.history).toHaveLength(1);
-            expect(body.history[0].displayName).toBe('Original chat');
+            expect(body.history[0].displayName).toBe('Queued chat');
         });
 
-        it('should still show original chats when multiple follow-ups exist', async () => {
+        it('should include both completed and queued chat tasks without deduping distinct tasks', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
 
-            // Two original chat tasks
-            await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'chat', displayName: 'Chat A', payload: { prompt: 'a' },
+            const completed = await postJSON(`${srv.url}/api/queue`, makeTask({
+                type: 'chat', displayName: 'Completed chat', payload: { prompt: 'a' },
             }));
+            const completedId = JSON.parse(completed.body).task.id;
+            await request(`${srv.url}/api/queue/${completedId}`, { method: 'DELETE' });
+
             await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'chat', displayName: 'Chat B', payload: { prompt: 'b' },
-            }));
-            // Follow-ups for Chat A
-            await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'chat', displayName: 'Follow-up 1',
-                payload: { prompt: 'f1', parentTaskId: 'parent-a', processId: 'proc-a' },
-            }));
-            await postJSON(`${srv.url}/api/queue`, makeTask({
-                type: 'chat', displayName: 'Follow-up 2',
-                payload: { prompt: 'f2', parentTaskId: 'parent-a', processId: 'proc-a' },
+                type: 'chat', displayName: 'Queued chat', payload: { prompt: 'b' },
             }));
 
             const res = await request(`${srv.url}/api/queue/history?type=chat`);
@@ -1695,20 +1680,17 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.history).toHaveLength(2);
             const names = body.history.map((t: any) => t.displayName);
-            expect(names).toContain('Chat A');
-            expect(names).toContain('Chat B');
-            expect(names).not.toContain('Follow-up 1');
-            expect(names).not.toContain('Follow-up 2');
+            expect(names).toContain('Completed chat');
+            expect(names).toContain('Queued chat');
         });
 
-        it('should not affect non-chat type filter when tasks have parentTaskId', async () => {
+        it('should not affect non-chat type filter', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/queue/pause`, {});
 
-            // A run-workflow task with parentTaskId (not chat) — cancel it so it appears in history
             const r1 = await postJSON(`${srv.url}/api/queue`, makeTask({
                 type: 'run-workflow', displayName: 'Workflow child',
-                payload: { workflowPath: '/a.yaml', parentTaskId: 'parent-x' },
+                payload: { workflowPath: '/a.yaml' },
             }));
             const id1 = JSON.parse(r1.body).task.id;
             await request(`${srv.url}/api/queue/${id1}`, { method: 'DELETE' });
@@ -1716,7 +1698,6 @@ describe('Queue Handler', () => {
             const res = await request(`${srv.url}/api/queue/history?type=run-workflow`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            // Non-chat types should not be filtered by parentTaskId
             expect(body.history).toHaveLength(1);
             expect(body.history[0].displayName).toBe('Workflow child');
         });

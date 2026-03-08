@@ -211,10 +211,10 @@ describe('POST /api/processes/:id/message', () => {
             expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
         });
 
-        it('should NOT call requeueParentTask when enqueueing a follow-up', async () => {
-            const requeueSpy = vi.fn().mockReturnValue(true);
+        it('should reuse the parent task when a matching chat task exists', async () => {
+            const requeueSpy = vi.fn().mockResolvedValue(undefined);
             const bridgeWithRequeue = createMockBridge();
-            (bridgeWithRequeue as any).requeueParentTask = requeueSpy;
+            (bridgeWithRequeue as any).requeueForFollowUp = requeueSpy;
             (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-task-1', type: 'chat' });
 
             // Create a fresh server with the augmented bridge
@@ -247,8 +247,8 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            // requeueParentTask must NOT be called — it caused the parent to re-execute
-            expect(requeueSpy).not.toHaveBeenCalled();
+            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined);
+            expect((bridgeWithRequeue.enqueue as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });

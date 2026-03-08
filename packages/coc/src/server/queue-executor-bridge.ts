@@ -138,6 +138,8 @@ export interface QueueExecutorBridge {
     executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void>;
     /** Check whether the underlying SDK session for a process is still alive. */
     isSessionAlive(processId: string): Promise<boolean>;
+    /** Requeue an existing completed task for a follow-up message. */
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }
@@ -180,7 +182,7 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly followUpSuggestions: { enabled: boolean; count: number };
     /** Lazy getter for the WebSocket server to broadcast file events */
     private readonly getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
-    /** Optional queue manager for re-activating parent tasks during follow-ups */
+    /** Optional queue manager for requeueing existing chat tasks during follow-ups */
     private queueManager?: TaskQueueManager;
     /** Shared store for tool-call Q&A capture (explore cache). */
     private readonly toolCallCacheStore: FileToolCallCacheStore;
@@ -207,6 +209,33 @@ export class CLITaskExecutor implements TaskExecutor {
         this.queueManager = qm;
     }
 
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void> {
+        if (!this.queueManager) {
+            throw new Error('Queue manager is not available');
+        }
+        const task = this.queueManager.getTask(taskId);
+        if (!task) {
+            throw new Error(`Task ${taskId} not found`);
+        }
+
+        const snippet = prompt.trim();
+        const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+        this.queueManager.updateTask(taskId, {
+            displayName,
+            payload: {
+                ...task.payload,
+                prompt,
+                processId: task.processId,
+                attachments,
+                imageTempDir,
+            },
+        });
+
+        if (!this.queueManager.requeueFromHistory(taskId)) {
+            throw new Error(`Task ${taskId} is not available in history`);
+        }
+    }
+
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -221,32 +250,27 @@ export class CLITaskExecutor implements TaskExecutor {
             if (isChatFollowUp(task.payload)) {
                 const payload = task.payload as unknown as ChatPayload;
                 task.processId = payload.processId;
+                const imageTempDir = payload.imageTempDir;
                 try {
                     await this.store.updateProcess(payload.processId!, { status: 'completed' });
                 } catch {
                     // Non-fatal: process may already be cleaned up
                 }
-                // Return the parent task from queue back to history
-                if (payload.parentTaskId && this.queueManager) {
-                    this.queueManager.returnToHistory(payload.parentTaskId);
-                }
-                if (payload.imageTempDir) {
-                    cleanupTempDir(payload.imageTempDir);
+                delete (task.payload as ChatPayload).processId;
+                delete (task.payload as ChatPayload).attachments;
+                delete (task.payload as ChatPayload).imageTempDir;
+                if (imageTempDir) {
+                    cleanupTempDir(imageTempDir);
                 }
             }
             return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
         }
 
-        // ── Chat follow-up: skip ghost process creation — reuse the original process ──
+        // Reuse the existing chat task and process for follow-ups.
         if (isChatFollowUp(task.payload)) {
             const followUpPayload = task.payload as unknown as ChatPayload;
             task.processId = followUpPayload.processId;
-            const parentTaskId = followUpPayload.parentTaskId;
-
-            // Re-activate the parent chat task so it shows as "running" in the queue
-            if (parentTaskId && this.queueManager) {
-                this.queueManager.reActivate(parentTaskId);
-            }
+            const imageTempDir = followUpPayload.imageTempDir;
 
             // Rehydrate externalized images if needed
             const rawPayload = task.payload as any;
@@ -257,31 +281,30 @@ export class CLITaskExecutor implements TaskExecutor {
             try {
                 await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments);
                 const duration = Date.now() - startTime;
+                const proc = await this.store.getProcess(followUpPayload.processId!);
+                const turnCount = proc?.conversationTurns?.length ?? 0;
+                task.displayName = `Chat (${turnCount} turns)`;
+                delete (task.payload as ChatPayload).processId;
+                delete (task.payload as ChatPayload).attachments;
+                delete (task.payload as ChatPayload).imageTempDir;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
-
-                // Return parent chat task to history with updated display name
-                if (parentTaskId && this.queueManager) {
-                    const proc = await this.store.getProcess(followUpPayload.processId!);
-                    const turnCount = proc?.conversationTurns?.length ?? 0;
-                    this.queueManager.updateTask(parentTaskId, { displayName: `Chat (${turnCount} turns)` });
-                    this.queueManager.markCompleted(parentTaskId);
-                }
 
                 return { success: true, durationMs: duration };
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 const duration = Date.now() - startTime;
+                const proc = await this.store.getProcess(followUpPayload.processId!);
+                const turnCount = proc?.conversationTurns?.length ?? 0;
+                task.displayName = `Chat (${turnCount} turns)`;
+                delete (task.payload as ChatPayload).processId;
+                delete (task.payload as ChatPayload).attachments;
+                delete (task.payload as ChatPayload).imageTempDir;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} failed in ${duration}ms: ${errorMsg}`);
-
-                // Return parent chat task to history even on failure
-                if (parentTaskId && this.queueManager) {
-                    this.queueManager.markCompleted(parentTaskId);
-                }
 
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
             } finally {
-                if (followUpPayload.imageTempDir) {
-                    cleanupTempDir(followUpPayload.imageTempDir);
+                if (imageTempDir) {
+                    cleanupTempDir(imageTempDir);
                 }
             }
         }

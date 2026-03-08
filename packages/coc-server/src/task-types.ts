@@ -85,8 +85,6 @@ export interface ChatPayload {
     tools?: string[];
     /** For follow-ups: the process ID of the existing conversation. */
     processId?: string;
-    /** For follow-ups: the queue task ID to re-activate. */
-    parentTaskId?: string;
     attachments?: Attachment[];
     imageTempDir?: string;
     workspaceId?: string;

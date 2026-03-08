@@ -240,6 +240,36 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Requeue an existing task for a follow-up message.
+     * Updates the task's payload with the follow-up prompt, then moves it from history → queued.
+     */
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void> {
+        for (const manager of this.registry.getAllQueues().values()) {
+            const task = manager.getTask(taskId);
+            if (!task) continue;
+
+            const snippet = prompt.trim();
+            const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+            manager.updateTask(taskId, {
+                displayName,
+                payload: {
+                    ...task.payload,
+                    prompt,
+                    processId: task.processId,
+                    attachments,
+                    imageTempDir,
+                },
+            });
+
+            if (!manager.requeueFromHistory(taskId)) {
+                throw new Error(`Task ${taskId} is not available in history`);
+            }
+            return;
+        }
+        throw new Error(`Task ${taskId} not found in any queue`);
+    }
+
+    /**
      * Drain all per-repo executors, waiting for running tasks to finish.
      * Returns the worst-case outcome ('timeout' if any timed out).
      */
