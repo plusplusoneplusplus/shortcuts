@@ -11,6 +11,7 @@ import { Badge, Card, Button, cn } from '../shared';
 import { getApiBase } from '../utils/config';
 import { formatDuration, formatRelativeTime } from '../utils/format';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
+import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 
@@ -195,7 +196,14 @@ export function ActivityListPane({
         createDropHandler,
     } = useQueueDragDrop();
 
-    const handleTaskContextMenu = useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued') => {
+    const touchDrag = useQueueTouchDragDrop();
+
+    // Merge drag state from desktop (HTML5) and mobile (touch) hooks
+    const activeDraggedTaskId = draggedTaskId || touchDrag.draggedTaskId;
+    const activeDropTargetIndex = dropTargetIndex ?? touchDrag.dropTargetIndex;
+    const activeDropPosition = dropPosition || touchDrag.dropPosition;
+
+    const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued') => {
         e.preventDefault();
         e.stopPropagation();
         setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus });
@@ -358,6 +366,7 @@ export function ActivityListPane({
                                 return (
                                     <div key={item.id}>
                                         <div
+                                            data-queue-index={index}
                                             draggable={!isMobile}
                                             onDragStart={isMobile ? undefined : createDragStartHandler(item.id, index)}
                                             onDragEnd={isMobile ? undefined : createDragEndHandler()}
@@ -365,11 +374,12 @@ export function ActivityListPane({
                                             onDragEnter={isMobile ? undefined : createDragEnterHandler(index)}
                                             onDragLeave={isMobile ? undefined : createDragLeaveHandler(index)}
                                             onDrop={isMobile ? undefined : createDropHandler(index, handleMoveToPosition)}
+                                            onTouchStart={isMobile ? touchDrag.createTouchStartHandler(item.id, index, handleMoveToPosition) : undefined}
                                             className={cn(
                                                 !isMobile && 'cursor-grab active:cursor-grabbing',
-                                                draggedTaskId === item.id && 'opacity-40',
-                                                dropTargetIndex === index && dropPosition === 'above' && 'border-t-2 border-[#007fd4]',
-                                                dropTargetIndex === index && dropPosition === 'below' && 'border-b-2 border-[#007fd4]',
+                                                activeDraggedTaskId === item.id && 'opacity-40',
+                                                activeDropTargetIndex === index && activeDropPosition === 'above' && 'border-t-2 border-[#007fd4]',
+                                                activeDropTargetIndex === index && activeDropPosition === 'below' && 'border-b-2 border-[#007fd4]',
                                             )}
                                         >
                                             <QueueTaskItem
