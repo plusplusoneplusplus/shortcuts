@@ -71,6 +71,8 @@ export function TreeNode({
     const handleClick = () => {
         if (isDir) {
             onToggle(entry.path);
+        } else {
+            onFileOpen?.(entry);
         }
         onSelect(entry.path, isDir);
     };
@@ -89,7 +91,7 @@ export function TreeNode({
                 data-testid={`tree-node-${entry.path}`}
                 data-tree-index={treeIndex}
                 onClick={handleClick}
-                onDoubleClick={() => { if (!isDir) onFileOpen?.(entry); }}
+                onDoubleClick={() => { if (!isDir) onFileOpen?.(entry); }} /* kept for accessibility */
             >
                 {isDir && (
                     <span className={cn('text-[10px] transition-transform inline-block', isExpanded && 'rotate-90')}>▶</span>

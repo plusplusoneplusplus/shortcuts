@@ -250,7 +250,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                         fileName={previewFile.name}
                         onClose={() => setPreviewFile(null)}
                       />
-                    : <p className="text-[#848484] text-sm">Double-click a file to preview</p>}
+                    : <p className="text-[#848484] text-sm">Click a file to preview</p>}
             </main>
         </div>
     );

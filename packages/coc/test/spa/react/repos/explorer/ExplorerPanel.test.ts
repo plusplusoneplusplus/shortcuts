@@ -110,7 +110,7 @@ describe('ExplorerPanel', () => {
         });
 
         it('shows placeholder text when no file selected', () => {
-            expect(source).toContain('Double-click a file to preview');
+            expect(source).toContain('Click a file to preview');
         });
 
         it('has sidebar background colors', () => {

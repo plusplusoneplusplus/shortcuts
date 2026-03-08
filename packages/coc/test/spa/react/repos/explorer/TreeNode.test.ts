@@ -191,13 +191,18 @@ describe('TreeNode', () => {
             expect(source).toContain("scrollIntoView({ block: 'nearest' })");
         });
 
-        it('has onDoubleClick handler for file open', () => {
+        it('has onDoubleClick handler for file open (accessibility fallback)', () => {
             expect(source).toContain('onDoubleClick');
             expect(source).toContain('onFileOpen?.(entry)');
         });
 
-        it('only fires onFileOpen on double-click for files, not directories', () => {
-            expect(source).toContain('if (!isDir) onFileOpen?.(entry)');
+        it('fires onFileOpen on single-click for files, not directories', () => {
+            // handleClick opens files (non-directories) on single-click
+            expect(source).toContain('} else {');
+            expect(source).toContain('onFileOpen?.(entry)');
+            // Verify it's inside handleClick (not just in onDoubleClick)
+            const handleClickBlock = source.slice(source.indexOf('const handleClick'), source.indexOf('onSelect(entry.path, isDir)'));
+            expect(handleClickBlock).toContain('onFileOpen?.(entry)');
         });
     });
 });
