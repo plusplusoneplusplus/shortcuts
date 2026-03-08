@@ -556,25 +556,25 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                         />
                     )}
                     <ImagePreviews images={images} onRemove={removeImage} />
-                    <div className="flex items-center gap-1" data-testid="mode-selector">
-                        {([['ask', '💡 Ask'], ['plan', '📋 Plan'], ['autopilot', '🤖 Autopilot']] as const).map(([mode, label]) => (
-                            <button
-                                key={mode}
-                                type="button"
-                                className={cn(
-                                    'px-2 py-0.5 rounded-full text-xs font-medium transition-colors border',
-                                    selectedMode === mode
-                                        ? 'bg-[#0078d4] text-white border-[#0078d4]'
-                                        : 'bg-transparent text-[#848484] border-[#d0d0d0] dark:border-[#3c3c3c] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:border-[#0078d4]'
-                                )}
-                                onClick={() => setSelectedMode(mode)}
-                                data-testid={`mode-${mode}`}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
                     <div className="flex items-end gap-2">
+                        <div className="flex items-center gap-1 shrink-0" data-testid="mode-selector">
+                            {([['ask', '💡 Ask'], ['plan', '📋 Plan'], ['autopilot', '🤖 Autopilot']] as const).map(([mode, label]) => (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    className={cn(
+                                        'px-2 py-0.5 rounded-full text-xs font-medium transition-colors border',
+                                        selectedMode === mode
+                                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
+                                            : 'bg-transparent text-[#848484] border-[#d0d0d0] dark:border-[#3c3c3c] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:border-[#0078d4]'
+                                    )}
+                                    onClick={() => setSelectedMode(mode)}
+                                    data-testid={`mode-${mode}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
                         <textarea
                             rows={1}
                             value={followUpInput}
