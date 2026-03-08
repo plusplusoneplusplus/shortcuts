@@ -59,6 +59,7 @@ npm run test       # Run all tests
 - **GitHub dual strategy:** Uses `gh` CLI for authenticated API calls when available; falls back to unauthenticated GitHub REST API via native HTTP. The `gh` CLI path avoids `--jq` and shell piping for cross-platform compatibility.
 - **Conflict handling:** Callers provide an async `handleConflict(skillName)` callback that returns `true` to replace or `false` to skip.
 - **Bundled skills registry:** Hardcoded in `bundled-skills-provider.ts` (`BUNDLED_SKILLS_REGISTRY` array). Adding a new bundled skill requires updating this registry and placing files under `resources/bundled-skills/<name>/`.
+- **Known skill sources:** Predefined GitHub skill repos in `types.ts` (`KNOWN_SKILL_SOURCES` array). Shown as named options in the install QuickPick alongside built-in and custom sources. Currently includes Anthropic Skills (`https://github.com/anthropics/skills/tree/main/skills`).
 - **Default install path:** `.github/skills` relative to workspace root. Configurable via `workspaceShortcuts.skills.installPath` setting.
 
 ## Notes

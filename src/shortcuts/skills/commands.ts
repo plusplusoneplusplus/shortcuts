@@ -8,7 +8,7 @@ import { detectSource, SourceDetectionErrors } from './source-detector';
 import { scanForSkills } from './skill-scanner';
 import { installSkills } from './skill-installer';
 import { getBundledSkills, installBundledSkills } from './bundled-skills-provider';
-import { DEFAULT_SKILLS_SETTINGS, DiscoveredSkill, SkillsSettings } from './types';
+import { DEFAULT_SKILLS_SETTINGS, DiscoveredSkill, KNOWN_SKILL_SOURCES, SkillsSettings } from './types';
 import { getExtensionLogger, LogCategory, getWorkspaceRoot } from '../shared';
 
 /**
@@ -79,19 +79,26 @@ export class SkillsCommands {
         }
 
         // Show source selection
+        const sourceItems: { label: string; description: string; id: string }[] = [
+            {
+                label: '$(package) Built-in Skills',
+                description: 'Install skills bundled with this extension',
+                id: 'builtin'
+            },
+            ...KNOWN_SKILL_SOURCES.map((source, index) => ({
+                label: `$(github) ${source.label}`,
+                description: source.url,
+                id: `known:${index}`
+            })),
+            {
+                label: '$(github) GitHub or Local Path',
+                description: 'Install from GitHub repository or local directory',
+                id: 'external'
+            }
+        ];
+
         const sourceChoice = await vscode.window.showQuickPick(
-            [
-                {
-                    label: '$(package) Built-in Skills',
-                    description: 'Install skills bundled with this extension',
-                    id: 'builtin'
-                },
-                {
-                    label: '$(github) GitHub or Local Path',
-                    description: 'Install from GitHub repository or local directory',
-                    id: 'external'
-                }
-            ],
+            sourceItems,
             {
                 placeHolder: 'Select skill source',
                 title: 'Install Skills'
@@ -104,6 +111,12 @@ export class SkillsCommands {
 
         if (sourceChoice.id === 'builtin') {
             await this.installBuiltInSkillsCommand();
+        } else if (sourceChoice.id.startsWith('known:')) {
+            const index = parseInt(sourceChoice.id.split(':')[1], 10);
+            const knownSource = KNOWN_SKILL_SOURCES[index];
+            if (knownSource) {
+                await this.installFromExternalSource(knownSource.url);
+            }
         } else {
             await this.installFromExternalSource();
         }
@@ -111,8 +124,9 @@ export class SkillsCommands {
 
     /**
      * Install skills from external source (GitHub or local path)
+     * @param prefilledUrl Optional URL to skip the input prompt
      */
-    private async installFromExternalSource(): Promise<void> {
+    private async installFromExternalSource(prefilledUrl?: string): Promise<void> {
         const logger = getExtensionLogger();
         const workspaceRoot = getWorkspaceRoot();
 
@@ -122,8 +136,8 @@ export class SkillsCommands {
         }
 
         try {
-            // Step 1: Get source from user
-            const sourceInput = await vscode.window.showInputBox({
+            // Step 1: Get source from user (or use prefilled URL)
+            const sourceInput = prefilledUrl ?? await vscode.window.showInputBox({
                 prompt: 'Enter GitHub URL or local path',
                 placeHolder: 'https://github.com/owner/repo/tree/main/skills or ~/my-skills',
                 validateInput: (value) => {

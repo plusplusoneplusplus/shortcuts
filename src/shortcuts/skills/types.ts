@@ -104,3 +104,23 @@ export interface BundledSkill {
     /** Relative path within the extension's bundled-skills directory */
     relativePath: string;
 }
+
+/**
+ * A predefined GitHub skill source that appears as a named option in the install dialog
+ */
+export interface KnownSkillSource {
+    /** Display label shown in the QuickPick */
+    label: string;
+    /** GitHub URL pointing to the skills directory */
+    url: string;
+}
+
+/**
+ * Registry of known skill sources (predefined GitHub repos)
+ */
+export const KNOWN_SKILL_SOURCES: KnownSkillSource[] = [
+    {
+        label: 'Anthropic Skills',
+        url: 'https://github.com/anthropics/skills/tree/main/skills'
+    }
+];

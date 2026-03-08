@@ -797,4 +797,40 @@ suite('Skills Module Tests', () => {
             assert.ok(patternsMd.includes('Common patterns for pipelines'));
         });
     });
+
+    suite('Known Skill Sources', () => {
+        test('should have Anthropic skills as a known source', () => {
+            const { KNOWN_SKILL_SOURCES } = require('../../shortcuts/skills/types');
+            assert.ok(Array.isArray(KNOWN_SKILL_SOURCES));
+            assert.ok(KNOWN_SKILL_SOURCES.length >= 1);
+
+            const anthropic = KNOWN_SKILL_SOURCES.find((s: any) => s.label === 'Anthropic Skills');
+            assert.ok(anthropic, 'Anthropic Skills source should exist');
+            assert.strictEqual(anthropic.url, 'https://github.com/anthropics/skills/tree/main/skills');
+        });
+
+        test('should have valid GitHub URLs for all known sources', () => {
+            const { KNOWN_SKILL_SOURCES } = require('../../shortcuts/skills/types');
+            for (const source of KNOWN_SKILL_SOURCES) {
+                assert.ok(source.label, 'Each known source should have a label');
+                assert.ok(source.url, 'Each known source should have a URL');
+                assert.ok(
+                    source.url.startsWith('https://github.com/'),
+                    `URL should start with https://github.com/: ${source.url}`
+                );
+            }
+        });
+
+        test('known source URLs should be parseable by detectSource', () => {
+            const { KNOWN_SKILL_SOURCES } = require('../../shortcuts/skills/types');
+            for (const source of KNOWN_SKILL_SOURCES) {
+                const result = detectSource(source.url);
+                assert.strictEqual(result.success, true, `Should parse URL: ${source.url}`);
+                if (result.success) {
+                    assert.strictEqual(result.source.type, 'github');
+                    assert.ok(result.source.github, 'Should have github info');
+                }
+            }
+        });
+    });
 });
