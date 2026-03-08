@@ -47,6 +47,36 @@ export function getCategoryLabel(
     return detail ? `${total} ${noun} (${detail})` : `${total} ${noun}`;
 }
 
+/**
+ * Derives the status icon and an optional summary string for a tool group.
+ * Partial failure (some failed + some succeeded) → ❓ with counts.
+ */
+export interface ToolGroupStatus {
+    icon: string;
+    summary: string | null;
+}
+
+export function getToolGroupStatus(
+    statuses: (string | undefined)[]
+): ToolGroupStatus {
+    const failedCount = statuses.filter(s => s === 'failed').length;
+    const succeededCount = statuses.filter(s => s === 'completed').length;
+
+    if (failedCount > 0 && succeededCount > 0) {
+        return {
+            icon: '❓',
+            summary: `${failedCount} failed, ${succeededCount} succeeded`,
+        };
+    }
+    if (failedCount > 0) {
+        return { icon: '❌', summary: null };
+    }
+    if (succeededCount === statuses.length && statuses.length > 0) {
+        return { icon: '✅', summary: null };
+    }
+    return { icon: '🔄', summary: null };
+}
+
 interface ToolLike {
     toolName: string;
     status?: string;

@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../shared';
 import type { ToolGroupCategory } from './toolGroupUtils';
-import { getCategoryLabel } from './toolGroupUtils';
+import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
 
 export interface RenderToolCall {
     id: string;
@@ -98,9 +98,9 @@ export function ToolCallGroupView({
         [toggle]
     );
 
-    const allSucceeded = toolCalls.every(tc => tc.status === 'completed');
-    const anyFailed    = toolCalls.some(tc => tc.status === 'failed');
-    const statusIcon   = anyFailed ? '❌' : allSucceeded ? '✅' : '🔄';
+    const { icon: statusIcon, summary: statusSummary } = getToolGroupStatus(
+        toolCalls.map(tc => tc.status)
+    );
     const summaryLabel = getCategoryLabel(category, buildCounts(toolCalls.map(tc => tc.toolName)));
     const startLabel   = groupStartLabel(toolCalls);
     const duration     = groupDuration(toolCalls);
@@ -136,6 +136,12 @@ export function ToolCallGroupView({
                 <span className="tool-call-group-label font-medium text-[#0078d4] dark:text-[#3794ff] truncate min-w-0">
                     {summaryLabel}
                 </span>
+
+                {statusSummary && (
+                    <span className="tool-call-group-status text-[#c4a000] dark:text-[#e0c862] font-medium shrink-0">
+                        ({statusSummary})
+                    </span>
+                )}
 
                 {startLabel && (
                     <span className="text-[#848484] ml-auto shrink-0">{startLabel}</span>

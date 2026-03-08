@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     getToolGroupCategory,
     getCategoryLabel,
+    getToolGroupStatus,
     groupConsecutiveToolChunks,
 } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
 
@@ -53,6 +54,62 @@ describe('getCategoryLabel', () => {
 
     it('empty counts', () => {
         expect(getCategoryLabel('write', {})).toBe('0 write operations');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// getToolGroupStatus
+// ---------------------------------------------------------------------------
+
+describe('getToolGroupStatus', () => {
+    it('all succeeded → ✅ with no summary', () => {
+        const result = getToolGroupStatus(['completed', 'completed', 'completed']);
+        expect(result.icon).toBe('✅');
+        expect(result.summary).toBeNull();
+    });
+
+    it('all failed → ❌ with no summary', () => {
+        const result = getToolGroupStatus(['failed', 'failed']);
+        expect(result.icon).toBe('❌');
+        expect(result.summary).toBeNull();
+    });
+
+    it('partial failure (some failed, some succeeded) → ❓ with counts', () => {
+        const result = getToolGroupStatus(['completed', 'failed', 'completed', 'completed']);
+        expect(result.icon).toBe('❓');
+        expect(result.summary).toBe('1 failed, 3 succeeded');
+    });
+
+    it('partial failure large group', () => {
+        const statuses = Array(14).fill('completed');
+        statuses.push('failed');
+        const result = getToolGroupStatus(statuses);
+        expect(result.icon).toBe('❓');
+        expect(result.summary).toBe('1 failed, 14 succeeded');
+    });
+
+    it('still running → 🔄 with no summary', () => {
+        const result = getToolGroupStatus(['completed', 'running']);
+        expect(result.icon).toBe('🔄');
+        expect(result.summary).toBeNull();
+    });
+
+    it('empty array → 🔄 with no summary', () => {
+        const result = getToolGroupStatus([]);
+        expect(result.icon).toBe('🔄');
+        expect(result.summary).toBeNull();
+    });
+
+    it('mixed failed and running (no succeeded) → ❌', () => {
+        const result = getToolGroupStatus(['failed', 'running']);
+        expect(result.icon).toBe('❌');
+        expect(result.summary).toBeNull();
+    });
+
+    it('undefined statuses treated as non-completed/non-failed', () => {
+        const result = getToolGroupStatus([undefined, undefined]);
+        expect(result.icon).toBe('🔄');
+        expect(result.summary).toBeNull();
     });
 });
 
