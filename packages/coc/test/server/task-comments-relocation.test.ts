@@ -16,6 +16,7 @@ import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { TaskCommentsManager } from '../../src/server/task-comments-handler';
 import type { TaskComment, CommentsStorage, CommentAnchor } from '../../src/server/task-comments-handler';
 import { createAnchorData, needsRelocationCheck } from '@plusplusoneplusplus/pipeline-core';
+import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 
 // ============================================================================
 // HTTP Helpers
@@ -192,6 +193,7 @@ describe('Task Comments Anchor Relocation', () => {
     let tmpDir: string;
     let dataDir: string;
     let workspaceDir: string;
+    let taskRootDir: string;
     let server: ExecutionServer;
     let baseUrl: string;
     const wsId = 'test-ws';
@@ -202,10 +204,15 @@ describe('Task Comments Anchor Relocation', () => {
         dataDir = path.join(tmpDir, 'data');
         workspaceDir = path.join(tmpDir, 'workspace');
         fs.mkdirSync(dataDir, { recursive: true });
-        fs.mkdirSync(path.join(workspaceDir, 'docs'), { recursive: true });
+        fs.mkdirSync(workspaceDir, { recursive: true });
 
-        // Write the original file content to the workspace
-        fs.writeFileSync(path.join(workspaceDir, taskPath), ORIGINAL_CONTENT, 'utf8');
+        // Compute the task root (where task files now live)
+        const taskRoot = resolveTaskRoot({ dataDir, rootPath: workspaceDir });
+        taskRootDir = taskRoot.absolutePath;
+        fs.mkdirSync(path.join(taskRootDir, 'docs'), { recursive: true });
+
+        // Write the original file content to the task root
+        fs.writeFileSync(path.join(taskRootDir, taskPath), ORIGINAL_CONTENT, 'utf8');
 
         // Create a minimal process store mock that resolves our workspace
         const mockStore = {
@@ -250,7 +257,7 @@ describe('Task Comments Anchor Relocation', () => {
         writeCommentsFile(dataDir, wsId, taskPath, [comment]);
 
         // Shift the file content down by inserting lines before the target
-        fs.writeFileSync(path.join(workspaceDir, taskPath), SHIFTED_CONTENT, 'utf8');
+        fs.writeFileSync(path.join(taskRootDir, taskPath), SHIFTED_CONTENT, 'utf8');
 
         const resp = await getJSON(`${baseUrl}/api/comments/${wsId}/${taskPath}`);
         expect(resp.status).toBe(200);
@@ -280,7 +287,7 @@ describe('Task Comments Anchor Relocation', () => {
         writeCommentsFile(dataDir, wsId, taskPath, [comment]);
 
         // Delete the source file
-        fs.unlinkSync(path.join(workspaceDir, taskPath));
+        fs.unlinkSync(path.join(taskRootDir, taskPath));
 
         const resp = await getJSON(`${baseUrl}/api/comments/${wsId}/${taskPath}`);
         expect(resp.status).toBe(200);
@@ -312,7 +319,7 @@ describe('Task Comments Anchor Relocation', () => {
         writeCommentsFile(dataDir, wsId, taskPath, [comment]);
 
         // Replace file content with version that removes the anchored text
-        fs.writeFileSync(path.join(workspaceDir, taskPath), REMOVED_CONTENT, 'utf8');
+        fs.writeFileSync(path.join(taskRootDir, taskPath), REMOVED_CONTENT, 'utf8');
 
         const resp = await getJSON(`${baseUrl}/api/comments/${wsId}/${taskPath}`);
         expect(resp.status).toBe(200);
@@ -328,7 +335,7 @@ describe('Task Comments Anchor Relocation', () => {
         writeCommentsFile(dataDir, wsId, taskPath, [comment]);
 
         // Shift the file content
-        fs.writeFileSync(path.join(workspaceDir, taskPath), SHIFTED_CONTENT, 'utf8');
+        fs.writeFileSync(path.join(taskRootDir, taskPath), SHIFTED_CONTENT, 'utf8');
 
         // First GET triggers relocation
         const resp1 = await getJSON(`${baseUrl}/api/comments/${wsId}/${taskPath}`);
@@ -349,7 +356,7 @@ describe('Task Comments Anchor Relocation', () => {
         expect(comments2[0].selection.endLine).toBe(10);
 
         // Verify needsRelocationCheck returns false for the updated position
-        const content = fs.readFileSync(path.join(workspaceDir, taskPath), 'utf8');
+        const content = fs.readFileSync(path.join(taskRootDir, taskPath), 'utf8');
         const updatedComment = diskComments[0];
         expect(
             needsRelocationCheck(
@@ -369,7 +376,7 @@ describe('Task Comments Anchor Relocation', () => {
         writeCommentsFile(dataDir, wsId, taskPath, [anchored, unanchored]);
 
         // Shift the file content
-        fs.writeFileSync(path.join(workspaceDir, taskPath), SHIFTED_CONTENT, 'utf8');
+        fs.writeFileSync(path.join(taskRootDir, taskPath), SHIFTED_CONTENT, 'utf8');
 
         const resp = await getJSON(`${baseUrl}/api/comments/${wsId}/${taskPath}`);
         expect(resp.status).toBe(200);

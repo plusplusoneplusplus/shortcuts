@@ -29,6 +29,7 @@ import {
 import type { BaseAnchorData } from '@plusplusoneplusplus/pipeline-core';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { resolveTaskRoot } from './task-root-resolver';
 
 // ============================================================================
 // Types
@@ -175,6 +176,27 @@ export class TaskCommentsManager {
         return path.join(this.getWorkspaceDir(workspaceId), `${hash}.json`);
     }
 
+    /**
+     * Get storage file path with fallback to legacy `.vscode/tasks/`-prefixed hash.
+     * Tries the current hash first; if the file doesn't exist, tries the legacy path.
+     */
+    getStorageFileWithFallback(workspaceId: string, taskPath: string): { file: string; usedLegacy: boolean } {
+        const primary = this.getStorageFile(workspaceId, taskPath);
+        if (fs.existsSync(primary)) {
+            return { file: primary, usedLegacy: false };
+        }
+        // Fallback: try the old `.vscode/tasks/` prefix
+        const legacyPath = '.vscode/tasks/' + taskPath;
+        const legacyFile = path.join(
+            this.getWorkspaceDir(workspaceId),
+            `${this.hashFilePath(legacyPath)}.json`
+        );
+        if (fs.existsSync(legacyFile)) {
+            return { file: legacyFile, usedLegacy: true };
+        }
+        return { file: primary, usedLegacy: false };
+    }
+
     /** Ensure workspace directory exists. */
     private ensureWorkspaceDir(workspaceId: string): void {
         const dir = this.getWorkspaceDir(workspaceId);
@@ -183,9 +205,9 @@ export class TaskCommentsManager {
         }
     }
 
-    /** Read all comments for a task file. */
+    /** Read all comments for a task file, with fallback to legacy hash. */
     async getComments(workspaceId: string, taskPath: string): Promise<TaskComment[]> {
-        const file = this.getStorageFile(workspaceId, taskPath);
+        const { file } = this.getStorageFileWithFallback(workspaceId, taskPath);
         if (!fs.existsSync(file)) {
             return [];
         }
@@ -409,12 +431,29 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
     /**
      * Resolve workspace rootPath from a workspace ID via the process store.
      */
-    async function resolveWorkspacePath(wsId: string): Promise<string | undefined> {
+    async function resolveWorkspaceRootPath(wsId: string): Promise<string | undefined> {
         if (!store) return undefined;
         try {
             const workspaces = await store.getWorkspaces();
             const ws = workspaces.find((w: any) => w.id === wsId.trim());
             return ws?.rootPath;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Resolve the absolute task root path for a workspace.
+     * Returns the task root directory (e.g. ~/.coc/repos/<repoId>/tasks).
+     */
+    async function resolveTaskRootPath(wsId: string): Promise<string | undefined> {
+        if (!store) return undefined;
+        try {
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find((w: any) => w.id === wsId.trim());
+            if (!ws?.rootPath) return undefined;
+            const { absolutePath } = resolveTaskRoot({ dataDir, rootPath: ws.rootPath });
+            return absolutePath;
         } catch {
             return undefined;
         }
@@ -431,9 +470,10 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         prompt: string,
         documentContent: string,
     ): Promise<string | undefined> {
-        const rootPath = await resolveWorkspacePath(wsId) || process.cwd();
-        bridge.getOrCreateBridge(rootPath);
-        const queueManager = bridge.registry.getQueueForRepo(rootPath);
+        const wsRootPath = await resolveWorkspaceRootPath(wsId) || process.cwd();
+        bridge.getOrCreateBridge(wsRootPath);
+        const queueManager = bridge.registry.getQueueForRepo(wsRootPath);
+        const taskRoot = await resolveTaskRootPath(wsId);
         const input: CreateTaskInput = {
             type: 'chat',
             priority: 'normal',
@@ -442,7 +482,7 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                 mode: 'autopilot',
                 prompt,
                 tools: ['resolve-comments'],
-                workingDirectory: rootPath,
+                workingDirectory: taskRoot || wsRootPath,
                 context: {
                     resolveComments: {
                         documentUri: taskPath,
@@ -468,9 +508,9 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
         wsId: string,
         taskPath: string,
         comments: TaskComment[],
-        rootPath: string
+        taskRootPath: string
     ): Promise<TaskComment[]> {
-        const absolutePath = path.join(rootPath, taskPath);
+        const absolutePath = path.join(taskRootPath, taskPath);
         let content: string;
         try {
             content = await fs.promises.readFile(absolutePath, 'utf8');
@@ -606,10 +646,10 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             try {
                 let comments = await manager.getComments(wsId, taskPath);
                 if (comments.length > 0) {
-                    const rootPath = await resolveWorkspacePath(wsId);
-                    if (rootPath) {
+                    const taskRoot = await resolveTaskRootPath(wsId);
+                    if (taskRoot) {
                         comments = await relocateCommentsIfNeeded(
-                            manager, wsId, taskPath, comments, rootPath
+                            manager, wsId, taskPath, comments, taskRoot
                         );
                     }
                 }

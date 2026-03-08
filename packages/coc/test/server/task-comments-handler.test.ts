@@ -452,11 +452,130 @@ describe('TaskCommentsManager', () => {
             expect(updated!.updatedAt).not.toBe(originalUpdatedAt);
         });
     });
-});
 
-// ============================================================================
-// Integration Tests — REST API
-// ============================================================================
+    // -- Fallback Hash Lookup (Legacy Path Compatibility) --
+
+    describe('Fallback Hash Lookup', () => {
+        it('reads comments stored under legacy .vscode/tasks/ hash', async () => {
+            // Write a comment file under the legacy hash key
+            const legacyPath = '.vscode/tasks/feature/plan.md';
+            await manager.addComment('ws1', legacyPath, makeCommentData({ comment: 'Legacy comment' }));
+
+            // Read using the new task-root-relative path
+            const comments = await manager.getComments('ws1', 'feature/plan.md');
+            expect(comments).toHaveLength(1);
+            expect(comments[0].comment).toBe('Legacy comment');
+        });
+
+        it('prefers new hash over legacy hash when both exist', async () => {
+            // Manually write a file under the legacy hash key
+            const legacyPath = '.vscode/tasks/feature/plan.md';
+            const legacyHash = manager.hashFilePath(legacyPath);
+            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            fs.mkdirSync(wsDir, { recursive: true });
+            const legacyStorage = {
+                comments: [{
+                    id: 'legacy-id',
+                    filePath: legacyPath,
+                    selection: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 10 },
+                    selectedText: '# Legacy',
+                    comment: 'Legacy comment',
+                    status: 'open',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                }],
+                settings: { showResolved: true, highlightColor: '#ffeb3b' },
+            };
+            fs.writeFileSync(path.join(wsDir, `${legacyHash}.json`), JSON.stringify(legacyStorage), 'utf8');
+
+            // Also manually write a file under the new hash key
+            const newHash = manager.hashFilePath('feature/plan.md');
+            const newStorage = {
+                comments: [{
+                    id: 'new-id',
+                    filePath: 'feature/plan.md',
+                    selection: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 10 },
+                    selectedText: '# New',
+                    comment: 'New comment',
+                    status: 'open',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                }],
+                settings: { showResolved: true, highlightColor: '#ffeb3b' },
+            };
+            fs.writeFileSync(path.join(wsDir, `${newHash}.json`), JSON.stringify(newStorage), 'utf8');
+
+            // Read should get the new hash file (primary takes priority)
+            const comments = await manager.getComments('ws1', 'feature/plan.md');
+            expect(comments).toHaveLength(1);
+            expect(comments[0].comment).toBe('New comment');
+            expect(comments[0].id).toBe('new-id');
+        });
+
+        it('migrates data from legacy to new hash on write', async () => {
+            // Write under legacy hash
+            const legacyPath = '.vscode/tasks/feature/plan.md';
+            await manager.addComment('ws1', legacyPath, makeCommentData({ comment: 'To migrate' }));
+
+            // Read via new path (finds legacy), then update
+            const comments = await manager.getComments('ws1', 'feature/plan.md');
+            expect(comments).toHaveLength(1);
+            await manager.updateComment('ws1', 'feature/plan.md', comments[0].id, { comment: 'Migrated' });
+
+            // Now the new hash file should exist; verify by checking new path directly
+            const newHash = manager.hashFilePath('feature/plan.md');
+            const newFile = path.join(tmpDir, 'tasks-comments', 'ws1', `${newHash}.json`);
+            expect(fs.existsSync(newFile)).toBe(true);
+
+            // Reading should now return from the new hash file
+            const migrated = await manager.getComments('ws1', 'feature/plan.md');
+            expect(migrated).toHaveLength(1);
+            expect(migrated[0].comment).toBe('Migrated');
+        });
+
+        it('getStorageFileWithFallback returns primary for non-existent files', () => {
+            const result = manager.getStorageFileWithFallback('ws1', 'nonexistent.md');
+            expect(result.usedLegacy).toBe(false);
+            const expectedHash = manager.hashFilePath('nonexistent.md');
+            expect(result.file).toContain(expectedHash);
+        });
+
+        it('getStorageFileWithFallback detects legacy file', async () => {
+            const legacyPath = '.vscode/tasks/docs/spec.md';
+            await manager.addComment('ws1', legacyPath, makeCommentData({ comment: 'Old' }));
+
+            const result = manager.getStorageFileWithFallback('ws1', 'docs/spec.md');
+            expect(result.usedLegacy).toBe(true);
+            const legacyHash = manager.hashFilePath(legacyPath);
+            expect(result.file).toContain(legacyHash);
+        });
+
+        it('getComment works with legacy fallback', async () => {
+            const legacyPath = '.vscode/tasks/feature/task.md';
+            const created = await manager.addComment('ws1', legacyPath, makeCommentData({ comment: 'Findme' }));
+
+            const found = await manager.getComment('ws1', 'feature/task.md', created.id);
+            expect(found).not.toBeNull();
+            expect(found!.comment).toBe('Findme');
+        });
+
+        it('deleteComment works with legacy fallback and migrates', async () => {
+            const legacyPath = '.vscode/tasks/feature/task.md';
+            const c1 = await manager.addComment('ws1', legacyPath, makeCommentData({ comment: 'Keep' }));
+            await manager.addComment('ws1', legacyPath, makeCommentData({ comment: 'Remove' }));
+
+            const comments = await manager.getComments('ws1', 'feature/task.md');
+            const toDelete = comments.find(c => c.comment === 'Remove')!;
+            const deleted = await manager.deleteComment('ws1', 'feature/task.md', toDelete.id);
+            expect(deleted).toBe(true);
+
+            // Remaining comment should be accessible via new path
+            const remaining = await manager.getComments('ws1', 'feature/task.md');
+            expect(remaining).toHaveLength(1);
+            expect(remaining[0].comment).toBe('Keep');
+        });
+    });
+});
 
 describe('Task Comments REST API', () => {
     let server: ExecutionServer;
