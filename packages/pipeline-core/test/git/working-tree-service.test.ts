@@ -165,3 +165,127 @@ describe('WorkingTreeService.getFileDiff', () => {
         expect(result).toBe('');
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkingTreeService.stageFiles
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorkingTreeService.stageFiles', () => {
+    afterEach(() => {
+        mockExecAsync.mockReset();
+    });
+
+    const service = new WorkingTreeService();
+    const repoRoot = ROOT;
+
+    it('returns success with staged=0 for empty array', async () => {
+        const result = await service.stageFiles(repoRoot, []);
+        expect(result).toEqual({ success: true, staged: 0, errors: [] });
+        expect(mockExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('stages all files in a single git add command', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const files = ['src/a.ts', 'src/b.ts'];
+        const result = await service.stageFiles(repoRoot, files);
+        expect(result).toEqual({ success: true, staged: 2, errors: [] });
+        expect(mockExecAsync).toHaveBeenCalledTimes(1);
+        expect(mockExecAsync.mock.calls[0][0]).toContain('git -C');
+        expect(mockExecAsync.mock.calls[0][0]).toContain('add --');
+    });
+
+    it('falls back to individual staging on batch error', async () => {
+        // First call (batch) fails, subsequent individual calls succeed
+        mockExecAsync
+            .mockRejectedValueOnce(new Error('batch failed'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+        const files = ['src/a.ts', 'src/b.ts'];
+        const result = await service.stageFiles(repoRoot, files);
+        expect(result.success).toBe(true);
+        expect(result.staged).toBe(2);
+        expect(result.errors).toHaveLength(0);
+        // 1 batch call + 2 individual calls
+        expect(mockExecAsync).toHaveBeenCalledTimes(3);
+    });
+
+    it('collects errors from individual fallback failures', async () => {
+        mockExecAsync
+            .mockRejectedValueOnce(new Error('batch failed'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)
+            .mockRejectedValueOnce(new Error('permission denied'));
+        const files = ['src/a.ts', 'src/b.ts'];
+        const result = await service.stageFiles(repoRoot, files);
+        expect(result.success).toBe(false);
+        expect(result.staged).toBe(1);
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]).toContain('permission denied');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkingTreeService.unstageFiles
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorkingTreeService.unstageFiles', () => {
+    afterEach(() => {
+        mockExecAsync.mockReset();
+    });
+
+    const service = new WorkingTreeService();
+    const repoRoot = ROOT;
+
+    it('returns success with unstaged=0 for empty array', async () => {
+        const result = await service.unstageFiles(repoRoot, []);
+        expect(result).toEqual({ success: true, unstaged: 0, errors: [] });
+        expect(mockExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('unstages all files in a single git reset command', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const files = ['src/a.ts', 'src/b.ts'];
+        const result = await service.unstageFiles(repoRoot, files);
+        expect(result).toEqual({ success: true, unstaged: 2, errors: [] });
+        expect(mockExecAsync).toHaveBeenCalledTimes(1);
+        expect(mockExecAsync.mock.calls[0][0]).toContain('reset HEAD --');
+    });
+
+    it('falls back to individual unstaging on batch error', async () => {
+        mockExecAsync
+            .mockRejectedValueOnce(new Error('batch failed'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any)
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+        const files = ['src/a.ts', 'src/b.ts'];
+        const result = await service.unstageFiles(repoRoot, files);
+        expect(result.success).toBe(true);
+        expect(result.unstaged).toBe(2);
+        expect(result.errors).toHaveLength(0);
+    });
+
+    it('falls back to git rm --cached when reset HEAD fails', async () => {
+        // batch fails, first individual reset fails, then rm --cached succeeds
+        mockExecAsync
+            .mockRejectedValueOnce(new Error('batch failed'))
+            .mockRejectedValueOnce(new Error('reset failed'))
+            .mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+        const files = ['src/a.ts'];
+        const result = await service.unstageFiles(repoRoot, files);
+        expect(result.success).toBe(true);
+        expect(result.unstaged).toBe(1);
+        // 1 batch + 1 reset + 1 rm --cached
+        expect(mockExecAsync).toHaveBeenCalledTimes(3);
+    });
+
+    it('collects errors when all fallbacks fail', async () => {
+        mockExecAsync
+            .mockRejectedValueOnce(new Error('batch failed'))
+            .mockRejectedValueOnce(new Error('reset failed'))
+            .mockRejectedValueOnce(new Error('rm failed'));
+        const files = ['src/a.ts'];
+        const result = await service.unstageFiles(repoRoot, files);
+        expect(result.success).toBe(false);
+        expect(result.unstaged).toBe(0);
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]).toContain('rm failed');
+    });
+});

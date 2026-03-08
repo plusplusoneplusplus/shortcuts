@@ -133,7 +133,8 @@ export type ServerMessage =
     | { type: 'schedule-updated'; repoId: string; scheduleId: string; schedule?: unknown }
     | { type: 'schedule-removed'; repoId: string; scheduleId: string }
     | { type: 'schedule-triggered'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
-    | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown };
+    | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
+    | { type: 'git-changed'; workspaceId: string; trigger: string; timestamp: number };
 
 /** Client → Server message types */
 export type ClientMessage =
@@ -249,6 +250,24 @@ export class ProcessWebSocketServer {
             }
             // Only send if workspace matches
             if (client.workspaceId === eventWorkspaceId) {
+                client.send(data);
+            }
+        }
+    }
+
+    /**
+     * Broadcast a git-changed event to clients subscribed to the given workspace.
+     */
+    broadcastGitChanged(workspaceId: string, trigger: string): void {
+        const message: ServerMessage = {
+            type: 'git-changed',
+            workspaceId,
+            trigger,
+            timestamp: Date.now(),
+        };
+        const data = JSON.stringify(message);
+        for (const client of this.clients) {
+            if (!client.workspaceId || client.workspaceId === workspaceId) {
                 client.send(data);
             }
         }
@@ -374,6 +393,9 @@ export class ProcessWebSocketServer {
             return message.workspaceId;
         }
         if (message.type === 'templates-changed') {
+            return message.workspaceId;
+        }
+        if (message.type === 'git-changed') {
             return message.workspaceId;
         }
         return undefined;

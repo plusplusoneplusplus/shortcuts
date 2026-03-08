@@ -221,7 +221,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Build API routes
     const routes: Route[] = [];
-    registerApiRoutes(routes, store, bridge, dataDir);
+    registerApiRoutes(routes, store, bridge, dataDir, () => wsServer);
     registerRepoRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);

@@ -919,10 +919,27 @@ describe('ReposView — async git-info', () => {
         expect(phase1Body).not.toContain('/git-info');
     });
 
-    it('fetches git-info per-workspace in phase 2', () => {
+    it('fetches git-info via batch endpoint in phase 2', () => {
         const phase2Idx = source.indexOf('Phase 2');
         expect(phase2Idx).toBeGreaterThan(-1);
-        const phase2Body = source.substring(phase2Idx, phase2Idx + 500);
-        expect(phase2Body).toContain('/git-info');
+        const phase2Body = source.substring(phase2Idx, phase2Idx + 800);
+        expect(phase2Body).toContain('/git-info/batch');
+    });
+
+    it('uses AbortController for batch git-info requests', () => {
+        expect(source).toContain('gitInfoAbortRef');
+        expect(source).toContain('new AbortController()');
+        expect(source).toContain('signal: abortController.signal');
+    });
+
+    it('handles git-changed WebSocket events', () => {
+        expect(source).toContain("msg.type === 'git-changed'");
+        expect(source).toContain('refreshGitInfoForWorkspace');
+    });
+
+    it('has a targeted refreshGitInfoForWorkspace callback', () => {
+        expect(source).toContain('refreshGitInfoForWorkspace');
+        // Should use the per-workspace git-info endpoint for targeted refresh
+        expect(source).toContain('/git-info');
     });
 });

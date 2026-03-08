@@ -380,13 +380,13 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         setActionError(null);
         try {
             const base = `/workspaces/${encodeURIComponent(workspaceId)}/git/changes`;
-            for (const f of files) {
-                const result = await fetchApi(`${base}/stage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filePath: f.filePath }),
-                });
-                if (result.success === false) throw new Error(result.error || 'Stage failed');
+            const result = await fetchApi(`${base}/stage-batch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filePaths: files.map(f => f.filePath) }),
+            });
+            if (result.success === false) {
+                throw new Error(result.errors?.join(', ') || 'Stage failed');
             }
             await fetchChanges();
             onRefresh?.();
@@ -402,13 +402,13 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         setActionError(null);
         try {
             const base = `/workspaces/${encodeURIComponent(workspaceId)}/git/changes`;
-            for (const f of files) {
-                const result = await fetchApi(`${base}/unstage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filePath: f.filePath }),
-                });
-                if (result.success === false) throw new Error(result.error || 'Unstage failed');
+            const result = await fetchApi(`${base}/unstage-batch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filePaths: files.map(f => f.filePath) }),
+            });
+            if (result.success === false) {
+                throw new Error(result.errors?.join(', ') || 'Unstage failed');
             }
             await fetchChanges();
             onRefresh?.();

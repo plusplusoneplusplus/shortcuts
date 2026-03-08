@@ -34,6 +34,7 @@ export function ReposView() {
     const selectedRepoIdRef = useRef(state.selectedRepoId);
     selectedRepoIdRef.current = state.selectedRepoId;
     const processThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const gitInfoAbortRef = useRef<AbortController | null>(null);
 
     // Temporary hover-expand state (transient, no persistence)
     const [tempExpanded, setTempExpanded] = useState(false);
@@ -112,19 +113,29 @@ export function ReposView() {
                 dispatch({ type: 'SET_SELECTED_REPO', id: null });
             }
 
-            // Phase 2: Fetch git-info per workspace progressively
-            for (const repoData of enriched) {
-                const wsId = repoData.workspace.id;
-                fetchApi(`/workspaces/${encodeURIComponent(wsId)}/git-info`)
-                    .catch(() => null)
-                    .then((gitInfo: any) => {
-                        setRepos(prev => prev.map(r =>
-                            r.workspace.id === wsId
-                                ? { ...r, gitInfo: gitInfo || undefined, gitInfoLoading: false }
-                                : r
-                        ));
-                    });
-            }
+            // Phase 2: Fetch git-info for all workspaces in a single batch request
+            gitInfoAbortRef.current?.abort();
+            const abortController = new AbortController();
+            gitInfoAbortRef.current = abortController;
+
+            const wsIds = enriched.map(r => r.workspace.id);
+            fetchApi('/git-info/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceIds: wsIds }),
+                signal: abortController.signal,
+            }).then((data: any) => {
+                if (abortController.signal.aborted) return;
+                const results = data?.results || {};
+                setRepos(prev => prev.map(r => ({
+                    ...r,
+                    gitInfo: results[r.workspace.id] || undefined,
+                    gitInfoLoading: false,
+                })));
+            }).catch((err) => {
+                if (err.name === 'AbortError') return;
+                setRepos(prev => prev.map(r => ({ ...r, gitInfoLoading: false })));
+            });
         } catch {
             setRepos([]);
             setLoading(false);
@@ -168,11 +179,27 @@ export function ReposView() {
         } catch { /* fire-and-forget */ }
     }, []);
 
-    // WebSocket: auto-refresh on mutation events (pipelines, processes)
+    // Targeted git-info refresh for a single workspace (triggered by WebSocket)
+    const refreshGitInfoForWorkspace = useCallback((wsId: string) => {
+        fetchApi(`/workspaces/${encodeURIComponent(wsId)}/git-info`)
+            .catch(() => null)
+            .then((gitInfo: any) => {
+                setRepos(prev => prev.map(r =>
+                    r.workspace.id === wsId
+                        ? { ...r, gitInfo: gitInfo || undefined, gitInfoLoading: false }
+                        : r
+                ));
+            });
+    }, []);
+
+    // WebSocket: auto-refresh on mutation events (pipelines, processes, git)
     const { connect, disconnect } = useWebSocket({
         onMessage: useCallback((msg: any) => {
             if (msg.type === 'workflows-changed' && msg.workspaceId) {
                 refreshPipelinesForWorkspace(msg.workspaceId);
+            }
+            if (msg.type === 'git-changed' && msg.workspaceId) {
+                refreshGitInfoForWorkspace(msg.workspaceId);
             }
             // Throttle process events: at most one fetchRepos per 10 seconds
             if (msg.type === 'process-added' || msg.type === 'process-updated' || msg.type === 'process-removed') {
@@ -183,7 +210,7 @@ export function ReposView() {
                     }, 10_000);
                 }
             }
-        }, [refreshPipelinesForWorkspace, fetchRepos]),
+        }, [refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos]),
     });
 
     useEffect(() => {

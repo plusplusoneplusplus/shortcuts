@@ -11,8 +11,9 @@
  * GitPanelHeader so both can display branch/ahead/behind information.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 import { Spinner } from '../shared';
 import { CommitList } from './CommitList';
@@ -180,6 +181,21 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             .catch(err => setRefreshError(err.message || 'Refresh failed'))
             .finally(() => setRefreshing(false));
     }, [refreshing, rightPanelView, fetchCommits, fetchBranchRange]);
+
+    // WebSocket: auto-refresh on git-changed events for this workspace
+    const gitChangedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useWebSocket({
+        onMessage: useCallback((msg: any) => {
+            if (msg.type === 'git-changed' && msg.workspaceId === workspaceId) {
+                if (gitChangedDebounceRef.current) clearTimeout(gitChangedDebounceRef.current);
+                gitChangedDebounceRef.current = setTimeout(() => {
+                    gitChangedDebounceRef.current = null;
+                    refreshAll();
+                }, 500);
+            }
+        }, [workspaceId, refreshAll]),
+    });
 
     // Git action handlers
     const handleFetch = useCallback(async () => {

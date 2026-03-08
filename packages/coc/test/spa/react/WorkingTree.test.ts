@@ -155,4 +155,30 @@ describe('WorkingTree', () => {
             expect(source).toContain('data-testid="working-tree-action-error"');
         });
     });
+
+    describe('batch staging endpoints', () => {
+        it('handleStageAll uses stage-batch endpoint', () => {
+            expect(source).toContain('stage-batch');
+            expect(source).toContain("filePaths: files.map(f => f.filePath)");
+        });
+
+        it('handleUnstageAll uses unstage-batch endpoint', () => {
+            expect(source).toContain('unstage-batch');
+        });
+
+        it('handleStageAll sends a single POST request (no per-file loop)', () => {
+            // Ensure the old per-file loop pattern is gone
+            const stageAllStart = source.indexOf('handleStageAll');
+            const stageAllEnd = source.indexOf('handleUnstageAll');
+            const stageAllBody = source.substring(stageAllStart, stageAllEnd);
+            expect(stageAllBody).not.toContain('for (const f of files)');
+        });
+
+        it('handleUnstageAll sends a single POST request (no per-file loop)', () => {
+            const unstageAllStart = source.indexOf('handleUnstageAll');
+            const unstageAllEnd = source.indexOf('const staged', unstageAllStart);
+            const unstageAllBody = source.substring(unstageAllStart, unstageAllEnd);
+            expect(unstageAllBody).not.toContain('for (const f of files)');
+        });
+    });
 });

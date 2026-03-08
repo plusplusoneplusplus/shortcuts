@@ -178,6 +178,28 @@ export class WorkingTreeService {
     }
 
     /**
+     * Stage multiple files in a single git command (`git add -- <files>`).
+     * Falls back to individual staging on error.
+     */
+    async stageFiles(repoRoot: string, filePaths: string[]): Promise<{ success: boolean; staged: number; errors: string[] }> {
+        if (filePaths.length === 0) return { success: true, staged: 0, errors: [] };
+        const errors: string[] = [];
+        try {
+            const escaped = filePaths.map(f => `"${f}"`).join(' ');
+            await execGitAsync(`git -C "${repoRoot}" add -- ${escaped}`, { cwd: repoRoot });
+        } catch {
+            for (const filePath of filePaths) {
+                try {
+                    await execGitAsync(`git -C "${repoRoot}" add -- "${filePath}"`, { cwd: repoRoot });
+                } catch (e) {
+                    errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                }
+            }
+        }
+        return { success: errors.length === 0, staged: filePaths.length - errors.length, errors };
+    }
+
+    /**
      * Unstage a file (`git reset HEAD -- <file>`).
      * Falls back to `git rm --cached` for repos with no commits yet.
      */
@@ -196,6 +218,32 @@ export class WorkingTreeService {
                 return { success: false, error: errorMessage };
             }
         }
+    }
+
+    /**
+     * Unstage multiple files in a single git command (`git reset HEAD -- <files>`).
+     * Falls back to individual unstaging on error, with `git rm --cached` as last resort.
+     */
+    async unstageFiles(repoRoot: string, filePaths: string[]): Promise<{ success: boolean; unstaged: number; errors: string[] }> {
+        if (filePaths.length === 0) return { success: true, unstaged: 0, errors: [] };
+        const errors: string[] = [];
+        try {
+            const escaped = filePaths.map(f => `"${f}"`).join(' ');
+            await execGitAsync(`git -C "${repoRoot}" reset HEAD -- ${escaped}`, { cwd: repoRoot });
+        } catch {
+            for (const filePath of filePaths) {
+                try {
+                    await execGitAsync(`git -C "${repoRoot}" reset HEAD -- "${filePath}"`, { cwd: repoRoot });
+                } catch {
+                    try {
+                        await execGitAsync(`git -C "${repoRoot}" rm --cached -- "${filePath}"`, { cwd: repoRoot });
+                    } catch (e) {
+                        errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                    }
+                }
+            }
+        }
+        return { success: errors.length === 0, unstaged: filePaths.length - errors.length, errors };
     }
 
     /**

@@ -23,6 +23,7 @@ import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, inter
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
 import { gitCache } from './git-cache';
 import { registerSkillRoutes } from './skill-handler';
+import type { ProcessWebSocketServer } from './websocket';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -193,7 +194,7 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
  * Register all API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string): void {
+export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined): void {
     // ------------------------------------------------------------------
     // Workspace endpoints
     // ------------------------------------------------------------------
@@ -316,6 +317,56 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             sendJSON(res, 200, { branch, dirty, ahead, behind, isGitRepo: true, remoteUrl: remoteUrl || null });
+        },
+    });
+
+    // POST /api/git-info/batch — Fetch git-info for multiple workspaces in one round-trip
+    routes.push({
+        method: 'POST',
+        pattern: '/api/git-info/batch',
+        handler: async (req, res) => {
+            let body: any = {};
+            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const { workspaceIds } = body;
+            if (!Array.isArray(workspaceIds)) {
+                return handleAPIError(res, missingFields(['workspaceIds']));
+            }
+
+            const workspaces = await store.getWorkspaces();
+            const wsMap = new Map(workspaces.map(w => [w.id, w]));
+
+            const CONCURRENCY = 4;
+            const results: Record<string, any> = {};
+            for (let i = 0; i < workspaceIds.length; i += CONCURRENCY) {
+                const batch = workspaceIds.slice(i, i + CONCURRENCY);
+                await Promise.all(batch.map(async (wsId: string) => {
+                    const ws = wsMap.get(wsId);
+                    if (!ws) { results[wsId] = null; return; }
+
+                    try {
+                        const dirty = getBranchService().hasUncommittedChanges(ws.rootPath);
+                        const branchStatus = getBranchService().getBranchStatus(ws.rootPath, dirty);
+                        if (!branchStatus) {
+                            results[wsId] = { branch: null, dirty: false, isGitRepo: false, remoteUrl: null };
+                            return;
+                        }
+                        const branch = getGitRangeService().getCurrentBranch(ws.rootPath);
+                        const remoteUrl = detectRemoteUrl(ws.rootPath);
+                        if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+                            await store.updateWorkspace(ws.id, { remoteUrl });
+                        }
+                        results[wsId] = {
+                            branch, dirty,
+                            ahead: branchStatus.ahead, behind: branchStatus.behind,
+                            isGitRepo: true, remoteUrl: remoteUrl || null,
+                        };
+                    } catch {
+                        results[wsId] = null;
+                    }
+                }));
+            }
+
+            sendJSON(res, 200, { results });
         },
     });
 
@@ -937,6 +988,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             const result = await branchService.switchBranch(ws.rootPath, body.name, { force: body.force ?? false });
+            getWsServer?.()?.broadcastGitChanged(id, 'branch-switch');
             sendJSON(res, 200, result);
         },
     });
@@ -1010,6 +1062,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             const setUpstream = body.setUpstream === true;
             const result = await branchService.push(ws.rootPath, setUpstream);
+            getWsServer?.()?.broadcastGitChanged(id, 'push');
             sendJSON(res, 200, result);
         },
     });
@@ -1035,6 +1088,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             const rebase = body.rebase === true;
             const result = await branchService.pull(ws.rootPath, rebase);
+            getWsServer?.()?.broadcastGitChanged(id, 'pull');
             sendJSON(res, 200, result);
         },
     });
@@ -1060,6 +1114,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             const remote: string | undefined = typeof body.remote === 'string' ? body.remote : undefined;
             const result = await branchService.fetch(ws.rootPath, remote);
+            getWsServer?.()?.broadcastGitChanged(id, 'fetch');
             sendJSON(res, 200, result);
         },
     });
@@ -1088,6 +1143,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             const result = await branchService.mergeBranch(ws.rootPath, body.branch);
+            getWsServer?.()?.broadcastGitChanged(id, 'merge');
             sendJSON(res, 200, result);
         },
     });
@@ -1113,6 +1169,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             const message: string | undefined = typeof body.message === 'string' ? body.message : undefined;
             const result = await branchService.stashChanges(ws.rootPath, message);
+            getWsServer?.()?.broadcastGitChanged(id, 'stash');
             sendJSON(res, 200, result);
         },
     });
@@ -1130,6 +1187,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             const result = await branchService.popStash(ws.rootPath);
+            getWsServer?.()?.broadcastGitChanged(id, 'stash-pop');
             sendJSON(res, 200, result);
         },
     });
@@ -1170,6 +1228,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.stageFile(ws.rootPath, body.filePath);
+            getWsServer?.()?.broadcastGitChanged(id, 'stage');
             sendJSON(res, 200, result);
         },
     });
@@ -1189,6 +1248,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.unstageFile(ws.rootPath, body.filePath);
+            getWsServer?.()?.broadcastGitChanged(id, 'unstage');
             sendJSON(res, 200, result);
         },
     });
@@ -1208,6 +1268,47 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.discardChanges(ws.rootPath, body.filePath);
+            getWsServer?.()?.broadcastGitChanged(id, 'discard');
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/changes/stage-batch — Stage multiple files at once
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/stage-batch$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            let body: any = {};
+            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            if (!Array.isArray(body.filePaths)) return handleAPIError(res, missingFields(['filePaths']));
+
+            const result = await workingTreeService.stageFiles(ws.rootPath, body.filePaths);
+            getWsServer?.()?.broadcastGitChanged(id, 'stage-batch');
+            sendJSON(res, 200, result);
+        },
+    });
+
+    // POST /api/workspaces/:id/git/changes/unstage-batch — Unstage multiple files at once
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/unstage-batch$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const workspaces = await store.getWorkspaces();
+            const ws = workspaces.find(w => w.id === id);
+            if (!ws) return handleAPIError(res, notFound('Workspace'));
+
+            let body: any = {};
+            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            if (!Array.isArray(body.filePaths)) return handleAPIError(res, missingFields(['filePaths']));
+
+            const result = await workingTreeService.unstageFiles(ws.rootPath, body.filePaths);
+            getWsServer?.()?.broadcastGitChanged(id, 'unstage-batch');
             sendJSON(res, 200, result);
         },
     });
