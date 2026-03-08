@@ -94,19 +94,20 @@ src/
 │   ├── types.ts          # Server types - ExecutionServer, Route, ServeCommandOptions
 │   ├── queue-handler.ts          # Queue management API — validates 3 task types (chat, run-workflow, run-script)
 │   ├── queue-executor-bridge.ts  # Bridges queue to AI/workflow/script execution — unified chat dispatch with context-based routing
-│   ├── queue-persistence.ts      # Persistent queue state storage
-│   ├── multi-repo-executor-bridge.ts  # Multi-repo workflow execution
-│   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence
+│   ├── queue-persistence.ts      # Persistent queue state — per-workspace files under ~/.coc/queues/repo-<workspaceId>.json
+│   ├── multi-repo-executor-bridge.ts  # Multi-repo workflow execution — maintains repoId↔rootPath bidirectional maps
+│   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence — uses workspace ID for file naming
 │   ├── workflows-handler.ts      # Workflow CRUD and listing API
 │   ├── workflow-watcher.ts       # File watcher for workflow changes
-│   ├── tasks-handler.ts          # Task management API endpoints
+│   ├── tasks-handler.ts          # Task management API — task root at ~/.coc/repos/<workspaceId>/tasks/
 │   ├── task-watcher.ts           # File watcher for task changes
 │   ├── task-comments-handler.ts  # Task comment/annotation API
 │   ├── task-generation-handler.ts # AI-powered task generation
 │   ├── stale-task-detector.ts    # Detects and flags stale tasks
 │   ├── schedule-handler.ts       # Scheduled execution API
 │   ├── schedule-manager.ts       # Schedule lifecycle management
-│   ├── schedule-persistence.ts   # Persistent schedule storage
+│   ├── schedule-persistence.ts   # Persistent schedule storage — ~/.coc/schedules/repo-<workspaceId>.json
+│   ├── task-root-resolver.ts     # Resolves task root path from workspaceId (requires workspaceId in TaskRootOptions)
 │   ├── process-resume-handler.ts # Resume interrupted processes
 │   ├── prompt-handler.ts         # Prompt management API
 │   ├── prompt-utils.ts           # Prompt utilities
