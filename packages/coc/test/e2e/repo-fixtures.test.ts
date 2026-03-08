@@ -42,7 +42,7 @@ describe('repo-fixtures', () => {
 
         it('creates pipeline.yaml for pipeline discovery', () => {
             const repoDir = createRepoFixture(tmpDir);
-            const yamlPath = path.join(repoDir, '.vscode', 'pipelines', 'p1', 'pipeline.yaml');
+            const yamlPath = path.join(repoDir, '.vscode', 'workflows', 'p1', 'pipeline.yaml');
             expect(fs.existsSync(yamlPath)).toBe(true);
 
             const content = fs.readFileSync(yamlPath, 'utf-8');

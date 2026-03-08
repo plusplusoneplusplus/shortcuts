@@ -51,9 +51,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#session')).toBe('processes');
     });
 
-    it('returns null for #wiki (wiki tab hidden via SHOW_WIKI_TAB)', () => {
-        expect(SHOW_WIKI_TAB).toBe(false);
-        expect(tabFromHash('#wiki')).toBeNull();
+    it('returns "wiki" for #wiki (accessible via hash route even when tab hidden)', () => {
+        expect(tabFromHash('#wiki')).toBe('wiki');
     });
 
     it('returns "admin" for #admin', () => {
@@ -479,17 +478,16 @@ describe('parseWikiDeepLink — admin sub-tabs', () => {
 // accessible under #repos/:id/wiki. The code remains for future re-enabling.
 
 describe('wiki tab deep-link integration', () => {
-    it('tabFromHash returns null for all wiki routes when SHOW_WIKI_TAB is false', () => {
-        expect(SHOW_WIKI_TAB).toBe(false);
-        expect(tabFromHash('#wiki/my-wiki/browse')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/ask')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/graph')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/admin')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/component/comp-1')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/admin/seeds')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/admin/config')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/admin/delete')).toBeNull();
-        expect(tabFromHash('#wiki/my-wiki/admin/generate')).toBeNull();
+    it('tabFromHash returns "wiki" for wiki routes (accessible via hash even when tab hidden)', () => {
+        expect(tabFromHash('#wiki/my-wiki/browse')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/ask')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/graph')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/component/comp-1')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin/seeds')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin/config')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin/delete')).toBe('wiki');
+        expect(tabFromHash('#wiki/my-wiki/admin/generate')).toBe('wiki');
     });
 
     it('parseWikiDeepLink still parses wiki hashes correctly', () => {
@@ -582,12 +580,12 @@ describe('handleHash wiki dispatch simulation', () => {
         return dispatches;
     }
 
-    it('dispatches nothing for #wiki hashes (wiki tab hidden via SHOW_WIKI_TAB)', () => {
-        expect(SHOW_WIKI_TAB).toBe(false);
-        expect(simulateWikiHashDispatch('#wiki/w1/component/comp-1')).toHaveLength(0);
-        expect(simulateWikiHashDispatch('#wiki/w1/ask')).toHaveLength(0);
-        expect(simulateWikiHashDispatch('#wiki/w1')).toHaveLength(0);
-        expect(simulateWikiHashDispatch('#wiki/w1/admin/seeds')).toHaveLength(0);
+    it('dispatches correctly for #wiki hashes (accessible via hash route even when tab hidden)', () => {
+        expect(simulateWikiHashDispatch('#wiki/w1/component/comp-1')).toHaveLength(1);
+        expect(simulateWikiHashDispatch('#wiki/w1/ask')).toHaveLength(1);
+        expect(simulateWikiHashDispatch('#wiki/w1')).toHaveLength(1);
+        expect(simulateWikiHashDispatch('#wiki/w1/admin/seeds')).toHaveLength(1);
+        // #wiki alone has no wikiId, so no dispatch
         expect(simulateWikiHashDispatch('#wiki')).toHaveLength(0);
     });
 
