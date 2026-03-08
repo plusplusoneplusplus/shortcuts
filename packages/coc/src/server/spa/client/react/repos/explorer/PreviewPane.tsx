@@ -209,7 +209,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose }: PreviewPane
     const showMonaco = blob && blob.encoding === 'utf-8' && blob.content !== '';
 
     return (
-        <div className="flex flex-col h-full overflow-hidden" data-testid="preview-pane">
+        <div className="flex flex-col w-full h-full overflow-hidden" data-testid="preview-pane">
             <PathHeader
                 filePath={filePath}
                 fileName={fileName}

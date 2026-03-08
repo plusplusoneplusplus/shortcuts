@@ -36,6 +36,20 @@ describe('PreviewPane', () => {
         vi.clearAllMocks();
     });
 
+    it('root container has w-full so it fills the preview area', async () => {
+        mockFetchApi.mockResolvedValue({
+            content: 'hello',
+            encoding: 'utf-8',
+            mimeType: 'text/plain',
+        });
+
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" />);
+
+        await waitFor(() => expect(screen.getByTestId('preview-pane')).toBeInTheDocument());
+        const pane = screen.getByTestId('preview-pane');
+        expect(pane.className).toContain('w-full');
+    });
+
     it('renders loading spinner while fetch is pending', () => {
         mockFetchApi.mockReturnValue(new Promise(() => {})); // never resolves
         render(<PreviewPane repoId="r1" filePath="src/app.ts" fileName="app.ts" />);
