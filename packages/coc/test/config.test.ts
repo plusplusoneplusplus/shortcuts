@@ -495,6 +495,7 @@ timeout: 300
                 'persist: false',
                 'showReportIntent: true',
                 'toolCompactness: 1',
+                'groupSingleLineMessages: false',
                 'chat:',
                 '  followUpSuggestions:',
                 '    enabled: false',

@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../shared';
-import type { ToolGroupCategory } from './toolGroupUtils';
+import type { ToolGroupCategory, GroupContentItem } from './toolGroupUtils';
 import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
 
 export interface RenderToolCall {
@@ -23,6 +23,7 @@ export interface RenderToolCall {
 export interface ToolCallGroupViewProps {
     category: ToolGroupCategory;
     toolCalls: RenderToolCall[];
+    contentItems?: GroupContentItem[];
     compactness: 0 | 1 | 2;
     isStreaming?: boolean;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
@@ -76,6 +77,7 @@ function buildCounts(toolNames: string[]): Record<string, number> {
 export function ToolCallGroupView({
     category,
     toolCalls,
+    contentItems,
     compactness,
     isStreaming,
     renderToolTree,
@@ -102,6 +104,7 @@ export function ToolCallGroupView({
         toolCalls.map(tc => tc.status)
     );
     const summaryLabel = getCategoryLabel(category, buildCounts(toolCalls.map(tc => tc.toolName)));
+    const messageCount = contentItems?.length ?? 0;
     const startLabel   = groupStartLabel(toolCalls);
     const duration     = groupDuration(toolCalls);
     const isMinimal    = compactness === 2;
@@ -135,6 +138,11 @@ export function ToolCallGroupView({
 
                 <span className="tool-call-group-label font-medium text-[#0078d4] dark:text-[#3794ff] truncate min-w-0">
                     {summaryLabel}
+                    {messageCount > 0 && (
+                        <span className="text-[#848484] font-normal">
+                            {` + ${messageCount} message${messageCount > 1 ? 's' : ''}`}
+                        </span>
+                    )}
                 </span>
 
                 {statusSummary && (
@@ -165,6 +173,13 @@ export function ToolCallGroupView({
                             {renderToolTree(tc.id, 0)}
                         </React.Fragment>
                     ))}
+                    {contentItems && contentItems.length > 0 && (
+                        <div className="tool-call-group-content px-3 py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                            {contentItems.map(item => (
+                                <div key={item.key} dangerouslySetInnerHTML={{ __html: item.html }} />
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

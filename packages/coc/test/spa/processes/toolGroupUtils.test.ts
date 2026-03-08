@@ -4,6 +4,7 @@ import {
     getCategoryLabel,
     getToolGroupStatus,
     groupConsecutiveToolChunks,
+    isSingleLineHtml,
 } from '../../../src/server/spa/client/react/processes/toolGroupUtils';
 
 // ---------------------------------------------------------------------------
@@ -387,5 +388,210 @@ describe('groupConsecutiveToolChunks — grouping', () => {
         expect(result[0]).toEqual(before);
         expect(result[1].kind).toBe('tool-group');
         expect(result[2]).toEqual(after);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// isSingleLineHtml
+// ---------------------------------------------------------------------------
+
+describe('isSingleLineHtml', () => {
+    it('returns true for a single paragraph', () => {
+        expect(isSingleLineHtml('<p>Let me explore the theme config.</p>')).toBe(true);
+    });
+
+    it('returns true for plain text', () => {
+        expect(isSingleLineHtml('Hello world')).toBe(true);
+    });
+
+    it('returns true for text with inline tags', () => {
+        expect(isSingleLineHtml('<p>Check the <strong>bold</strong> text.</p>')).toBe(true);
+    });
+
+    it('returns false for multi-line text', () => {
+        expect(isSingleLineHtml('<p>Line 1</p>\n<p>Line 2</p>')).toBe(false);
+    });
+
+    it('returns false for text with embedded newlines', () => {
+        expect(isSingleLineHtml('Line one\nLine two')).toBe(false);
+    });
+
+    it('returns false for undefined', () => {
+        expect(isSingleLineHtml(undefined)).toBe(false);
+    });
+
+    it('returns false for empty string', () => {
+        expect(isSingleLineHtml('')).toBe(false);
+    });
+
+    it('returns false for whitespace-only HTML', () => {
+        expect(isSingleLineHtml('<p>  </p>')).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// groupConsecutiveToolChunks — groupSingleLineMessages
+// ---------------------------------------------------------------------------
+
+describe('groupConsecutiveToolChunks — groupSingleLineMessages', () => {
+    it('absorbs single-line content between same-category tools', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const content = makeContentChunk('c1');
+        const c3 = makeChunk('t3');
+        const c4 = makeChunk('t4');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, c2, content, c3, c4],
+            makeMap([
+                ['t1', { toolName: 'view', status: 'completed' }],
+                ['t2', { toolName: 'view', status: 'completed' }],
+                ['t3', { toolName: 'view', status: 'completed' }],
+                ['t4', { toolName: 'view', status: 'completed' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.kind).toBe('tool-group');
+        expect(g.toolIds).toHaveLength(4);
+        expect(g.contentItems).toHaveLength(1);
+        expect(g.contentItems[0].key).toBe('c1');
+    });
+
+    it('does not absorb content when option is false (default)', () => {
+        const c1 = makeChunk('t1');
+        const content = makeContentChunk('c1');
+        const c2 = makeChunk('t2');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, content, c2],
+            makeMap([
+                ['t1', { toolName: 'view' }],
+                ['t2', { toolName: 'view' }],
+            ]),
+            new Set()
+        );
+
+        expect(result).toHaveLength(3);
+    });
+
+    it('does not absorb multi-line content', () => {
+        const c1 = makeChunk('t1');
+        const multiLine = { kind: 'content' as const, key: 'ml', html: '<p>Line 1</p>\n<p>Line 2</p>' };
+        const c2 = makeChunk('t2');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, multiLine, c2],
+            makeMap([
+                ['t1', { toolName: 'view' }],
+                ['t2', { toolName: 'view' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(3);
+    });
+
+    it('does not absorb trailing content with no following tool', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const content = makeContentChunk('c1');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, c2, content],
+            makeMap([
+                ['t1', { toolName: 'view' }],
+                ['t2', { toolName: 'view' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(2);
+        expect(result[0].kind).toBe('tool-group');
+        expect(result[1]).toEqual(content);
+    });
+
+    it('does not absorb content between different category tools', () => {
+        const c1 = makeChunk('t1');
+        const content = makeContentChunk('c1');
+        const c2 = makeChunk('t2');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, content, c2],
+            makeMap([
+                ['t1', { toolName: 'view' }],
+                ['t2', { toolName: 'edit' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(3);
+    });
+
+    it('absorbs multiple single-line content chunks between tools', () => {
+        const c1 = makeChunk('t1');
+        const content1 = makeContentChunk('c1');
+        const c2 = makeChunk('t2');
+        const content2 = makeContentChunk('c2');
+        const c3 = makeChunk('t3');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, content1, c2, content2, c3],
+            makeMap([
+                ['t1', { toolName: 'view' }],
+                ['t2', { toolName: 'view' }],
+                ['t3', { toolName: 'view' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.toolIds).toHaveLength(3);
+        expect(g.contentItems).toHaveLength(2);
+    });
+
+    it('contentItems is empty when no content is absorbed', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'view', status: 'completed' }],
+                ['t2', { toolName: 'view', status: 'completed' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.contentItems).toEqual([]);
+    });
+
+    it('does not absorb content when following tool has different parentToolId', () => {
+        const c1 = makeChunk('t1', 'p1');
+        const content = makeContentChunk('c1');
+        const c2 = makeChunk('t2', 'p2');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, content, c2],
+            makeMap([
+                ['t1', { toolName: 'view' }],
+                ['t2', { toolName: 'view' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(3);
     });
 });

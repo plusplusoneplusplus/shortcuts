@@ -22,6 +22,8 @@ export const CLIConfigSchema = z.object({
     showReportIntent: z.boolean().optional(),
     /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal (default: 0) */
     toolCompactness: z.number().int().min(0).max(2).optional(),
+    /** Absorb single-line messages between same-category tool groups (default: true) */
+    groupSingleLineMessages: z.boolean().optional(),
     chat: z.object({
         followUpSuggestions: z.object({
             enabled: z.boolean().optional(),

@@ -180,7 +180,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
@@ -224,6 +224,11 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     errors.push('toolCompactness must be 0, 1, or 2');
                 }
             }
+            if ('groupSingleLineMessages' in body) {
+                if (typeof body.groupSingleLineMessages !== 'boolean') {
+                    errors.push('groupSingleLineMessages must be a boolean');
+                }
+            }
 
             // Validate nested chat.followUpSuggestions fields
             const chatBody = body['chat.followUpSuggestions.enabled'] !== undefined || body['chat.followUpSuggestions.count'] !== undefined
@@ -258,6 +263,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
             if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
             if ('toolCompactness' in body) { existing.toolCompactness = body.toolCompactness as CLIConfig['toolCompactness']; }
+            if ('groupSingleLineMessages' in body) { existing.groupSingleLineMessages = body.groupSingleLineMessages as boolean; }
 
             // Handle nested chat.followUpSuggestions fields
             if ('chat.followUpSuggestions.enabled' in body) {

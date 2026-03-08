@@ -5,6 +5,11 @@
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell';
 
+export interface GroupContentItem {
+    key: string;
+    html: string;
+}
+
 /**
  * Maps each known tool name to its grouping category.
  * Tools not listed here return null from getToolGroupCategory and are never grouped.
@@ -97,6 +102,8 @@ interface ToolGroupChunk {
     key: string;
     category: ToolGroupCategory;
     toolIds: string[];
+    /** Absorbed single-line content messages (rendered inline when expanded). */
+    contentItems: GroupContentItem[];
     startTime?: number;
     endTime?: number;
     allSucceeded: boolean;
@@ -105,6 +112,20 @@ interface ToolGroupChunk {
 
 function parseMs(iso: string): number {
     return new Date(iso).getTime();
+}
+
+/**
+ * Returns true when the HTML represents a single visual line of content.
+ * Strips tags and checks that the remaining text contains no newlines.
+ */
+export function isSingleLineHtml(html: string | undefined): boolean {
+    if (!html) return false;
+    const text = html.replace(/<[^>]*>/g, '').trim();
+    return text.length > 0 && !text.includes('\n');
+}
+
+export interface GroupOptions {
+    groupSingleLineMessages?: boolean;
 }
 
 /**
@@ -120,9 +141,11 @@ function parseMs(iso: string): number {
 export function groupConsecutiveToolChunks(
     chunks: ToolChunk[],
     toolById: Map<string, ToolLike>,
-    parentToolIds: Set<string>
+    parentToolIds: Set<string>,
+    options?: GroupOptions
 ): (ToolChunk | ToolGroupChunk)[] {
     const result: (ToolChunk | ToolGroupChunk)[] = [];
+    const groupMessages = options?.groupSingleLineMessages ?? false;
     let i = 0;
 
     while (i < chunks.length) {
@@ -150,18 +173,52 @@ export function groupConsecutiveToolChunks(
 
         // Start a run
         const run: ToolChunk[] = [chunk];
+        const absorbedContent: GroupContentItem[] = [];
         let j = i + 1;
 
         while (j < chunks.length) {
             const next = chunks[j];
-            if (next.kind !== 'tool' || !next.toolId) break;
-            const nextTool = toolById.get(next.toolId);
-            if (!nextTool || parentToolIds.has(next.toolId)) break;
-            const nextCat = getToolGroupCategory(nextTool.toolName);
-            if (nextCat !== category) break;
-            if (next.parentToolId !== chunk.parentToolId) break;
-            run.push(next);
-            j++;
+
+            // Same-category tool — extend the run
+            if (next.kind === 'tool' && next.toolId) {
+                const nextTool = toolById.get(next.toolId);
+                if (!nextTool || parentToolIds.has(next.toolId)) break;
+                const nextCat = getToolGroupCategory(nextTool.toolName);
+                if (nextCat !== category) break;
+                if (next.parentToolId !== chunk.parentToolId) break;
+                run.push(next);
+                j++;
+                continue;
+            }
+
+            // Single-line content between same-category tools — try to absorb
+            if (
+                groupMessages &&
+                next.kind === 'content' &&
+                next.html &&
+                isSingleLineHtml(next.html)
+            ) {
+                const afterIdx = j + 1;
+                if (afterIdx < chunks.length) {
+                    const after = chunks[afterIdx];
+                    if (after.kind === 'tool' && after.toolId) {
+                        const afterTool = toolById.get(after.toolId);
+                        if (
+                            afterTool &&
+                            !parentToolIds.has(after.toolId) &&
+                            getToolGroupCategory(afterTool.toolName) === category &&
+                            after.parentToolId === chunk.parentToolId
+                        ) {
+                            absorbedContent.push({ key: next.key, html: next.html as string });
+                            run.push(after);
+                            j = afterIdx + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            break;
         }
 
         if (run.length < 2) {
@@ -179,14 +236,15 @@ export function groupConsecutiveToolChunks(
         const allEnded   = tools.every(t => t.endTime);
 
         result.push({
-            kind:         'tool-group',
-            key:          `group-${run[0].key}`,
+            kind:           'tool-group',
+            key:            `group-${run[0].key}`,
             category,
             toolIds,
-            startTime:    startTimes.length ? Math.min(...startTimes) : undefined,
-            endTime:      allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
-            allSucceeded: tools.every(t => t.status === 'completed'),
-            parentToolId: chunk.parentToolId,
+            contentItems:   absorbedContent,
+            startTime:      startTimes.length ? Math.min(...startTimes) : undefined,
+            endTime:        allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
+            allSucceeded:   tools.every(t => t.status === 'completed'),
+            parentToolId:   chunk.parentToolId,
         });
         i = j;
     }

@@ -38,6 +38,8 @@ export interface CLIConfig {
     showReportIntent?: boolean;
     /** How compact to render tool calls in conversation views: 0=full, 1=compact, 2=minimal */
     toolCompactness?: 0 | 1 | 2;
+    /** Absorb single-line messages between same-category tool groups (default: true) */
+    groupSingleLineMessages?: boolean;
     /** Chat settings */
     chat?: {
         followUpSuggestions?: {
@@ -72,6 +74,7 @@ export interface ResolvedCLIConfig {
     persist: boolean;
     showReportIntent: boolean;
     toolCompactness: 0 | 1 | 2;
+    groupSingleLineMessages: boolean;
     chat: {
         followUpSuggestions: {
             enabled: boolean;
@@ -108,6 +111,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     persist: true,
     showReportIntent: false,
     toolCompactness: 0,
+    groupSingleLineMessages: true,
     chat: {
         followUpSuggestions: {
             enabled: true,
@@ -132,7 +136,7 @@ export type ConfigFieldSource = 'default' | 'file';
  */
 export const CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
-    'timeout', 'persist', 'showReportIntent', 'toolCompactness',
+    'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'groupSingleLineMessages',
     'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
     'serve.port', 'serve.host', 'serve.dataDir', 'serve.theme',
 ] as const;
@@ -246,6 +250,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         persist: override.persist ?? base.persist,
         showReportIntent: override.showReportIntent ?? base.showReportIntent,
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2,
+        groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
         chat: {
             followUpSuggestions: {
                 enabled: override.chat?.followUpSuggestions?.enabled ?? base.chat.followUpSuggestions.enabled,

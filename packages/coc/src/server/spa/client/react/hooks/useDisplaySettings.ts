@@ -9,9 +9,10 @@ import { getApiBase } from '../utils/config';
 interface DisplaySettings {
     showReportIntent: boolean;
     toolCompactness: 0 | 1 | 2;
+    groupSingleLineMessages: boolean;
 }
 
-const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 1 };
+const DEFAULT_SETTINGS: DisplaySettings = { showReportIntent: false, toolCompactness: 1, groupSingleLineMessages: true };
 
 let cachedSettings: DisplaySettings | null = null;
 let fetchPromise: Promise<DisplaySettings> | null = null;
@@ -24,6 +25,7 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
         return {
             showReportIntent: data?.resolved?.showReportIntent ?? false,
             toolCompactness: (data?.resolved?.toolCompactness ?? 1) as 0 | 1 | 2,
+            groupSingleLineMessages: data?.resolved?.groupSingleLineMessages ?? true,
         };
     } catch {
         return DEFAULT_SETTINGS;

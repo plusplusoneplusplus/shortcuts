@@ -13,7 +13,7 @@ import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard, splitMarkdownSections } from '../utils/format';
 import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
-import type { ToolGroupCategory } from './toolGroupUtils';
+import type { ToolGroupCategory, GroupContentItem } from './toolGroupUtils';
 import { groupConsecutiveToolChunks } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 
@@ -72,6 +72,8 @@ type RenderChunk =
         category:     ToolGroupCategory;
         /** Ordered list of RenderToolCall IDs that are collapsed into this group. */
         toolIds:      string[];
+        /** Absorbed single-line content messages (rendered inline when expanded). */
+        contentItems: GroupContentItem[];
         /** Epoch ms of the earliest startTime among grouped tools (undefined if none have timing). */
         startTime?:   number;
         /** Epoch ms of the latest endTime among grouped tools (undefined if any are still running). */
@@ -508,7 +510,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
-    const { showReportIntent, toolCompactness } = useDisplaySettings();
+    const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
 
     // Pre-compute section markdown slices for section-level copy buttons on assistant turns.
     const sectionMarkdown = useMemo(() => {
@@ -532,8 +534,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
             assistantRender.chunks,
             assistantRender.toolById,
             excludeFromGrouping,
+            { groupSingleLineMessages },
         );
-    }, [assistantRender, toolCompactness]);
+    }, [assistantRender, toolCompactness, groupSingleLineMessages]);
 
     // Lazy image fetching state
     const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -790,6 +793,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry }: ConversationTu
                                         key={chunk.key}
                                         category={chunk.category}
                                         toolCalls={toolCalls}
+                                        contentItems={chunk.contentItems}
                                         isStreaming={!!turn.streaming}
                                         compactness={toolCompactness}
                                         renderToolTree={renderToolTree}
