@@ -418,8 +418,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain('lg:');
         });
 
-        it('sets fixed width on left panel at breakpoint', () => {
-            expect(source).toContain('lg:w-[320px]');
+        it('sets dynamic width on left panel via useResizablePanel', () => {
+            expect(source).toContain('sidebarWidth');
+            expect(source).toContain('width: ${sidebarWidth}px !important');
         });
 
         it('has empty state when no commit is selected', () => {
@@ -786,6 +787,83 @@ describe('RepoGitTab', () => {
             expect(switchedBlock).toBeTruthy();
             expect(switchedBlock![0]).toContain('fetchBranchRange');
             expect(switchedBlock![0]).toContain('fetchCommits');
+        });
+    });
+
+    describe('resizable split panel', () => {
+        it('imports useResizablePanel hook', () => {
+            expect(source).toContain("import { useResizablePanel } from '../hooks/useResizablePanel'");
+        });
+
+        it('calls useResizablePanel with git-sidebar-width storage key', () => {
+            expect(source).toContain("storageKey: 'git-sidebar-width'");
+        });
+
+        it('destructures width, isDragging, handleMouseDown, handleTouchStart from hook', () => {
+            expect(source).toContain('width: sidebarWidth');
+            expect(source).toContain('isDragging');
+            expect(source).toContain('handleMouseDown');
+            expect(source).toContain('handleTouchStart');
+        });
+
+        it('applies dynamic sidebar width via style tag using media query', () => {
+            expect(source).toContain('data-testid="git-commit-list-panel"');
+            expect(source).toContain('width: ${sidebarWidth}px !important');
+        });
+
+        it('renders resize handle between left and right panels', () => {
+            expect(source).toContain('data-testid="git-resize-handle"');
+        });
+
+        it('resize handle has correct accessibility attributes', () => {
+            expect(source).toContain('role="separator"');
+            expect(source).toContain('aria-orientation="vertical"');
+            expect(source).toContain('aria-label="Resize sidebar"');
+        });
+
+        it('resize handle binds mouse and touch events', () => {
+            const handleBlock = source.match(/<div[\s\S]*?git-resize-handle[\s\S]*?\/>/);
+            expect(handleBlock).toBeTruthy();
+            expect(handleBlock![0]).toContain('onMouseDown={handleMouseDown}');
+            expect(handleBlock![0]).toContain('onTouchStart={handleTouchStart}');
+        });
+
+        it('resize handle uses cursor-col-resize class', () => {
+            expect(source).toContain('cursor-col-resize');
+        });
+
+        it('resize handle is hidden on mobile (hidden lg:flex)', () => {
+            const handleBlock = source.match(/<div[\s\S]*?git-resize-handle[\s\S]*?\/>/);
+            expect(handleBlock).toBeTruthy();
+            expect(handleBlock![0]).toContain('hidden lg:flex');
+        });
+
+        it('adds select-none class to container when dragging', () => {
+            expect(source).toContain("isDragging ? ' select-none' : ''");
+        });
+
+        it('configures initialWidth of 320', () => {
+            const hookBlock = source.match(/useResizablePanel\(\{[\s\S]*?\}\)/);
+            expect(hookBlock).toBeTruthy();
+            expect(hookBlock![0]).toContain('initialWidth: 320');
+        });
+
+        it('configures minWidth of 160', () => {
+            const hookBlock = source.match(/useResizablePanel\(\{[\s\S]*?\}\)/);
+            expect(hookBlock).toBeTruthy();
+            expect(hookBlock![0]).toContain('minWidth: 160');
+        });
+
+        it('configures maxWidth of 600', () => {
+            const hookBlock = source.match(/useResizablePanel\(\{[\s\S]*?\}\)/);
+            expect(hookBlock).toBeTruthy();
+            expect(hookBlock![0]).toContain('maxWidth: 600');
+        });
+
+        it('left panel no longer has fixed lg:w-[320px] class', () => {
+            const asideBlock = source.match(/<aside[\s\S]*?data-testid="git-commit-list-panel"[\s\S]*?>/);
+            expect(asideBlock).toBeTruthy();
+            expect(asideBlock![0]).not.toContain('lg:w-[320px]');
         });
     });
 });

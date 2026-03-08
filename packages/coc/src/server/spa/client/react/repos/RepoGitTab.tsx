@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 import { getApiBase } from '../utils/config';
 import { Spinner } from '../shared';
 import { CommitList } from './CommitList';
@@ -42,6 +43,12 @@ type RightPanelView =
 
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const { state, dispatch } = useApp();
+    const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
+        initialWidth: 320,
+        minWidth: 160,
+        maxWidth: 600,
+        storageKey: 'git-sidebar-width',
+    });
     const initialCommitHash = state.selectedGitCommitHash;
     const initialFilePath = state.selectedGitFilePath;
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
@@ -485,13 +492,14 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     return (
         <>
-        <div className="repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden" data-testid="repo-git-tab">
+        <div className={`repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="repo-git-tab">
             {/* Left panel — commit list */}
             <aside
-                className="w-full lg:w-[320px] lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+                className="w-full lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
                 data-testid="git-commit-list-panel"
                 onKeyDown={handlePanelKeyDown}
             >
+                <style>{`@media (min-width: 1024px) { [data-testid="git-commit-list-panel"] { width: ${sidebarWidth}px !important; } }`}</style>
                 <GitPanelHeader
                     branch={branchName || 'HEAD'}
                     ahead={ahead}
@@ -534,6 +542,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 />
                 {commitListPanel}
             </aside>
+            {/* Resize handle — desktop only */}
+            <div
+                className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                data-testid="git-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+                tabIndex={0}
+            />
             {/* Right panel — commit detail */}
             <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e]" data-testid="git-detail-panel">
                 {detailPanel}
