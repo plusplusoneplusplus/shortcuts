@@ -21,7 +21,7 @@ import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';
 import { FileMemoryStore } from './memory-store';
 import { handleAggregateToolCalls } from './tool-call-aggregation-handler';
-import { FileToolCallCacheStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileToolCallCacheStore, resolveToolCallCacheOptions } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -33,6 +33,12 @@ export interface MemoryRouteOptions {
      * When absent the endpoint returns 503 Service Unavailable.
      */
     aggregateToolCallsAIInvoker?: AIInvoker;
+    /**
+     * Optional working directory for scoping the explore cache.
+     * When provided, the cache resolves to git-remote or repo level;
+     * when absent, behavior remains system-level.
+     */
+    workingDirectory?: string;
 }
 
 // ============================================================================
@@ -215,7 +221,9 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         handler: async (_req, res) => {
             try {
                 const config = readMemoryConfig(dataDir);
-                const store = new FileToolCallCacheStore({ dataDir: config.storageDir });
+                const store = new FileToolCallCacheStore(
+                    resolveToolCallCacheOptions(options?.workingDirectory, config.storageDir),
+                );
                 const stats = await store.getStats();
                 sendJson(res, stats);
             } catch (err) {
@@ -228,7 +236,7 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         method: 'POST',
         pattern: '/api/memory/aggregate-tool-calls',
         handler: async (req, res) => {
-            await handleAggregateToolCalls(req, res, dataDir, options?.aggregateToolCallsAIInvoker);
+            await handleAggregateToolCalls(req, res, dataDir, options?.aggregateToolCallsAIInvoker, options?.workingDirectory);
         },
     });
 }

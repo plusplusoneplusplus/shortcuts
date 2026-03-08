@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { FileToolCallCacheStore } from '../../src/memory/tool-call-cache-store';
+import { FileToolCallCacheStore, resolveToolCallCacheOptions } from '../../src/memory/tool-call-cache-store';
 import type { ToolCallQAEntry, ConsolidatedToolCallEntry } from '../../src/memory/tool-call-cache-types';
 
 function makeEntry(overrides?: Partial<ToolCallQAEntry>): ToolCallQAEntry {
@@ -579,5 +579,72 @@ describe('FileToolCallCacheStore', () => {
             const expectedBase = process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
             expect(defaultStore.getCacheDir()).toBe(path.join(expectedBase, 'explore-cache'));
         });
+    });
+});
+
+// ============================================================================
+// resolveToolCallCacheOptions
+// ============================================================================
+
+describe('resolveToolCallCacheOptions', () => {
+    it('returns system level when no workDir is provided', () => {
+        const opts = resolveToolCallCacheOptions();
+        expect(opts.level).toBe('system');
+    });
+
+    it('returns system level with dataDir when no workDir is provided', () => {
+        const opts = resolveToolCallCacheOptions(undefined, '/data');
+        expect(opts.level).toBe('system');
+        expect(opts.dataDir).toBe('/data');
+    });
+
+    it('returns git-remote level when workDir has a git remote', () => {
+        const remote = vi.fn().mockImplementation(() => 'https://github.com/owner/repo.git');
+        vi.doMock('../../src/git/remote', () => ({
+            getRemoteUrl: remote,
+            computeRemoteHash: () => 'abc123',
+        }));
+        // Since we can't easily mock synchronous requires, test via integration:
+        // Use the real function with the actual repo (D:\projects\shortcuts has a remote)
+        const opts = resolveToolCallCacheOptions(process.cwd());
+        expect(opts.level).toBe('git-remote');
+        expect(opts.remoteHash).toBeDefined();
+        expect(typeof opts.remoteHash).toBe('string');
+        expect(opts.remoteHash!.length).toBe(16);
+    });
+
+    it('returns repo level when workDir has no git remote', () => {
+        // Use a temp directory that is not a git repo
+        const tmpDir = os.tmpdir();
+        const opts = resolveToolCallCacheOptions(tmpDir);
+        expect(opts.level).toBe('repo');
+        expect(opts.repoHash).toBeDefined();
+        expect(typeof opts.repoHash).toBe('string');
+        expect(opts.repoHash!.length).toBe(16);
+    });
+
+    it('passes dataDir through in all cases', () => {
+        const myDataDir = '/custom/data';
+
+        // system level
+        const sysOpts = resolveToolCallCacheOptions(undefined, myDataDir);
+        expect(sysOpts.dataDir).toBe(myDataDir);
+
+        // repo level (temp dir has no git remote)
+        const repoOpts = resolveToolCallCacheOptions(os.tmpdir(), myDataDir);
+        expect(repoOpts.dataDir).toBe(myDataDir);
+
+        // git-remote level (actual repo)
+        const remoteOpts = resolveToolCallCacheOptions(process.cwd(), myDataDir);
+        expect(remoteOpts.dataDir).toBe(myDataDir);
+    });
+
+    it('produces options that FileToolCallCacheStore can consume', () => {
+        const opts = resolveToolCallCacheOptions(process.cwd(), os.tmpdir());
+        const store = new FileToolCallCacheStore(opts);
+        const cacheDir = store.getCacheDir();
+        expect(cacheDir).toBeTruthy();
+        // Should NOT be under the system-level path since we provided a workDir
+        expect(cacheDir).not.toBe(path.join(os.tmpdir(), 'explore-cache'));
     });
 });

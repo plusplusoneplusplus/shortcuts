@@ -19,6 +19,37 @@ import type {
     ConsolidatedIndexEntry,
     ToolCallCacheStats,
 } from './tool-call-cache-types';
+import { getRemoteUrl, computeRemoteHash } from '../git/remote';
+import { computeRepoHash } from './memory-store';
+
+/**
+ * Resolve the appropriate {@link ToolCallCacheStoreOptions} for a given
+ * working directory, cascading through git-remote → repo → system scope.
+ *
+ * 1. If `workDir` is provided and has a git remote → `git-remote` level.
+ * 2. If `workDir` is provided but no remote → `repo` level (local-only repo).
+ * 3. If no `workDir` → `system` level (unchanged legacy behavior).
+ */
+export function resolveToolCallCacheOptions(
+    workDir?: string,
+    dataDir?: string,
+): ToolCallCacheStoreOptions {
+    const base: ToolCallCacheStoreOptions = {};
+    if (dataDir) {
+        base.dataDir = dataDir;
+    }
+
+    if (!workDir) {
+        return { ...base, level: 'system' };
+    }
+
+    const remoteUrl = getRemoteUrl(workDir);
+    if (remoteUrl) {
+        return { ...base, level: 'git-remote', remoteHash: computeRemoteHash(remoteUrl) };
+    }
+
+    return { ...base, level: 'repo', repoHash: computeRepoHash(workDir) };
+}
 
 export class FileToolCallCacheStore implements ToolCallCacheStore {
     private readonly cacheDir: string;

@@ -10,7 +10,7 @@
 
 import * as http from 'http';
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
-import { FileToolCallCacheStore, ToolCallCacheAggregator } from '@plusplusoneplusplus/pipeline-core';
+import { FileToolCallCacheStore, ToolCallCacheAggregator, resolveToolCallCacheOptions } from '@plusplusoneplusplus/pipeline-core';
 import { sendJson, send500 } from '../router';
 import { readMemoryConfig } from './memory-config-handler';
 
@@ -26,6 +26,7 @@ export async function handleAggregateToolCalls(
     res: http.ServerResponse,
     dataDir: string,
     aiInvoker?: AIInvoker,
+    workingDirectory?: string,
 ): Promise<void> {
     if (!aiInvoker) {
         sendJson(res, { error: 'AI invoker not configured' }, 503);
@@ -34,7 +35,9 @@ export async function handleAggregateToolCalls(
 
     try {
         const config = readMemoryConfig(dataDir);
-        const store = new FileToolCallCacheStore({ dataDir: config.storageDir });
+        const store = new FileToolCallCacheStore(
+            resolveToolCallCacheOptions(workingDirectory, config.storageDir),
+        );
         const stats = await store.getStats();
 
         if (stats.rawCount === 0) {
