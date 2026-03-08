@@ -139,7 +139,7 @@ export interface QueueExecutorBridge {
     /** Check whether the underlying SDK session for a process is still alive. */
     isSessionAlive(processId: string): Promise<boolean>;
     /** Requeue an existing completed task for a follow-up message. */
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void>;
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }
@@ -209,7 +209,7 @@ export class CLITaskExecutor implements TaskExecutor {
         this.queueManager = qm;
     }
 
-    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void> {
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void> {
         if (!this.queueManager) {
             throw new Error('Queue manager is not available');
         }
@@ -228,6 +228,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 processId: task.processId,
                 attachments,
                 imageTempDir,
+                ...(mode ? { mode } : {}),
             },
         });
 

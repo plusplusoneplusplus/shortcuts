@@ -39,7 +39,7 @@ export interface QueueExecutorBridge {
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
     findTaskByProcessId?(processId: string): { id: string; type: string } | undefined;
     /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void>;
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }
@@ -1778,10 +1778,18 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             };
             const updatedTurns = [...existingTurns, userTurn];
 
-            await store.updateProcess(id, {
+            // Validate optional mode override (ask | plan | autopilot)
+            const VALID_MODES = ['ask', 'plan', 'autopilot'];
+            const modeOverride: string | undefined = typeof body.mode === 'string' && VALID_MODES.includes(body.mode) ? body.mode : undefined;
+
+            const processUpdate: Record<string, unknown> = {
                 conversationTurns: updatedTurns,
                 status: 'running',
-            });
+            };
+            if (modeOverride) {
+                processUpdate.metadata = { ...(process.metadata || {}), mode: modeOverride };
+            }
+            await store.updateProcess(id, processUpdate);
 
             // Delegate AI execution to the queue executor bridge
             // Prefer enqueueing as a chat-followup task so the follow-up is visible
@@ -1803,7 +1811,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 const parentTask = bridge.findTaskByProcessId?.(id);
                 if (parentTask && bridge.requeueForFollowUp) {
                     // Reuse the parent task: update its payload and requeue from history
-                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir);
+                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride);
                 } else {
                     // Fallback: create a new task (no parent found or requeueForFollowUp unavailable)
                     await bridge.enqueue({
@@ -1817,6 +1825,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                             imageTempDir,
                             workingDirectory: process.workingDirectory,
                             readonly: (process as any).payload?.readonly,
+                            ...(modeOverride ? { mode: modeOverride } : {}),
                         },
                         config: {},
                         displayName,

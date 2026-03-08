@@ -247,7 +247,7 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined);
+            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined);
             expect((bridgeWithRequeue.enqueue as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
@@ -349,6 +349,145 @@ describe('POST /api/processes/:id/message', () => {
             expect(sentContent).toContain('Use impl skill when available');
             expect(sentContent).toContain('Use draft skill when available');
             expect(sentContent).toContain('[Task]\nquestion');
+        });
+    });
+
+    // ========================================================================
+    // Mode override
+    // ========================================================================
+
+    describe('mode override', () => {
+        it('should update process metadata.mode when valid mode is provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-mode',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-mode',
+                metadata: { mode: 'autopilot' },
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-mode/message`, {
+                content: 'switch to ask',
+                mode: 'ask',
+            });
+
+            expect(res.status).toBe(202);
+            const updated = await store.getProcess('proc-mode');
+            expect(updated?.metadata?.mode).toBe('ask');
+        });
+
+        it('should pass mode to enqueue payload when no parent task exists', async () => {
+            const proc: AIProcess = {
+                id: 'proc-mode-enqueue',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-mode-enq',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-mode-enqueue/message`, {
+                content: 'hello',
+                mode: 'plan',
+            });
+
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            expect(enqueueFn).toHaveBeenCalledOnce();
+            expect(enqueueFn.mock.calls[0][0].payload.mode).toBe('plan');
+        });
+
+        it('should pass mode to requeueForFollowUp when parent task exists', async () => {
+            const requeueSpy = vi.fn().mockResolvedValue(undefined);
+            const bridgeWithRequeue = createMockBridge();
+            (bridgeWithRequeue as any).requeueForFollowUp = requeueSpy;
+            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-mode-1', type: 'chat' });
+
+            const freshRoutes: Route[] = [];
+            registerApiRoutes(freshRoutes, store, bridgeWithRequeue);
+            const freshSpaHtml = generateDashboardHtml();
+            const freshHandler = createRequestHandler({ routes: freshRoutes, spaHtml: freshSpaHtml, store });
+            const freshServer = http.createServer(freshHandler);
+            await new Promise<void>((resolve, reject) => {
+                freshServer.on('error', reject);
+                freshServer.listen(0, 'localhost', () => resolve());
+            });
+            const freshAddr = freshServer.address() as { port: number };
+            const freshUrl = `http://localhost:${freshAddr.port}`;
+
+            const proc: AIProcess = {
+                id: 'proc-mode-requeue',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-mode-requeue',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${freshUrl}/api/processes/proc-mode-requeue/message`, {
+                content: 'plan this',
+                mode: 'plan',
+            });
+
+            expect(res.status).toBe(202);
+            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan');
+
+            await new Promise<void>((resolve) => freshServer.close(() => resolve()));
+        });
+
+        it('should ignore invalid mode values', async () => {
+            const proc: AIProcess = {
+                id: 'proc-bad-mode',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-bad-mode',
+                metadata: { mode: 'autopilot' },
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-bad-mode/message`, {
+                content: 'hello',
+                mode: 'invalid-mode',
+            });
+
+            const updated = await store.getProcess('proc-bad-mode');
+            expect(updated?.metadata?.mode).toBe('autopilot');
+        });
+
+        it('should not update metadata when mode is not provided', async () => {
+            const proc: AIProcess = {
+                id: 'proc-no-mode',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-no-mode',
+                metadata: { mode: 'autopilot' },
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-no-mode/message`, {
+                content: 'hello',
+            });
+
+            const updated = await store.getProcess('proc-no-mode');
+            expect(updated?.metadata?.mode).toBe('autopilot');
         });
     });
 

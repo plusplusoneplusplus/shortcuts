@@ -44,6 +44,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
+    const [selectedMode, setSelectedMode] = useState<'ask' | 'plan' | 'autopilot'>('autopilot');
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const followUpEventSourceRef = useRef<EventSource | null>(null);
@@ -131,6 +132,9 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                 if (loadCounterRef.current !== loadId) return;
                 const loadedTask = queueData?.task ?? null;
                 setTask(loadedTask);
+                if (loadedTask?.payload?.mode && ['ask', 'plan', 'autopilot'].includes(loadedTask.payload.mode)) {
+                    setSelectedMode(loadedTask.payload.mode);
+                }
 
                 if (!loadedTask?.processId && loadedTask?.status === 'queued') {
                     const prompt = loadedTask?.payload?.prompt ?? '';
@@ -144,6 +148,10 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                 const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
                 if (loadCounterRef.current !== loadId) return;
                 setProcessDetails(procData?.process || null);
+                const processMode = procData?.process?.metadata?.mode;
+                if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
+                    setSelectedMode(processMode);
+                }
                 const loadedTurns = getConversationTurns(procData, loadedTask);
                 if (loadedTask?.status === 'running') {
                     const lastTurn = loadedTurns[loadedTurns.length - 1];
@@ -350,6 +358,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                 body: JSON.stringify({
                     content,
                     images: images.length > 0 ? images : undefined,
+                    mode: selectedMode,
                 }),
             });
 
@@ -547,6 +556,24 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                         />
                     )}
                     <ImagePreviews images={images} onRemove={removeImage} />
+                    <div className="flex items-center gap-1" data-testid="mode-selector">
+                        {([['ask', '💡 Ask'], ['plan', '📋 Plan'], ['autopilot', '🤖 Autopilot']] as const).map(([mode, label]) => (
+                            <button
+                                key={mode}
+                                type="button"
+                                className={cn(
+                                    'px-2 py-0.5 rounded-full text-xs font-medium transition-colors border',
+                                    selectedMode === mode
+                                        ? 'bg-[#0078d4] text-white border-[#0078d4]'
+                                        : 'bg-transparent text-[#848484] border-[#d0d0d0] dark:border-[#3c3c3c] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:border-[#0078d4]'
+                                )}
+                                onClick={() => setSelectedMode(mode)}
+                                data-testid={`mode-${mode}`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
                     <div className="flex items-end gap-2">
                         <textarea
                             rows={1}

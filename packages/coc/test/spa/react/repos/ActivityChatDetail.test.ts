@@ -91,4 +91,37 @@ describe('ActivityChatDetail', () => {
             expect(scrollEffect).toContain('dist < 100');
         });
     });
+
+    describe('mode selector', () => {
+        it('declares selectedMode state with autopilot default', () => {
+            expect(source).toContain("useState<'ask' | 'plan' | 'autopilot'>('autopilot')");
+        });
+
+        it('renders mode selector with three mode buttons', () => {
+            expect(source).toContain('data-testid="mode-selector"');
+            expect(source).toContain('data-testid={`mode-${mode}`}');
+        });
+
+        it('renders all three mode labels', () => {
+            expect(source).toContain("'ask', '💡 Ask'");
+            expect(source).toContain("'plan', '📋 Plan'");
+            expect(source).toContain("'autopilot', '🤖 Autopilot'");
+        });
+
+        it('sends selectedMode in follow-up message body', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const sendFollowUp') + 1200,
+            );
+            expect(sendBlock).toContain('mode: selectedMode');
+        });
+
+        it('initializes selectedMode from task payload mode on load', () => {
+            expect(source).toContain("setSelectedMode(loadedTask.payload.mode)");
+        });
+
+        it('updates selectedMode from process metadata mode', () => {
+            expect(source).toContain("setSelectedMode(processMode)");
+        });
+    });
 });

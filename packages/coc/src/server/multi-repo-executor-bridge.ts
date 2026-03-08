@@ -258,7 +258,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * Requeue an existing task for a follow-up message.
      * Updates the task's payload with the follow-up prompt, then moves it from history → queued.
      */
-    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string): Promise<void> {
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void> {
         for (const manager of this.registry.getAllQueues().values()) {
             const task = manager.getTask(taskId);
             if (!task) continue;
@@ -273,6 +273,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
                     processId: task.processId,
                     attachments,
                     imageTempDir,
+                    ...(mode ? { mode } : {}),
                 },
             });
 
