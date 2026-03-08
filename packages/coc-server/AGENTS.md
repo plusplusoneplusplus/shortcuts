@@ -21,6 +21,11 @@ packages/coc-server/
 │   ├── repo-utils.ts         # Git root detection, repo ID extraction, path normalization
 │   ├── shared/
 │   │   └── router.ts         # Low-level router primitives (createRouter, serveStaticFile, readBody)
+│   ├── memory/               # Memory subsystem (entries store, config, observation browsing, tool-call cache)
+│   │   ├── memory-routes.ts  # Register /api/memory/* endpoints (entries CRUD, config, observations browsing, aggregation)
+│   │   ├── memory-store.ts   # File-based manual memory entries (index.json + per-entry JSON)
+│   │   ├── memory-config-handler.ts # Read/write memory-config.json
+│   │   └── tool-call-aggregation-handler.ts # AI-driven tool-call aggregation
 │   ├── spa/
 │   │   └── client/           # SPA dashboard client assets (compiled)
 │   └── wiki/                 # Wiki serving module

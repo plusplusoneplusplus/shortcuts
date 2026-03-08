@@ -28,7 +28,9 @@ Entry point: `src/index.ts` — re-exports all public API from the modules above
 
 Persistent memory that lets AI interactions learn from past executions. Stores observations per-repo under `~/.coc/memory/`. Design doc: `docs/designs/coc-memory.md`.
 
-**Storage layout:** `~/.coc/memory/system/` (global) and `~/.coc/memory/repos/<hash>/` (per-repo, hash = SHA-256 of resolved repo root, 16-char hex prefix). Each repo dir contains `raw/*.md` (timestamped observations), `consolidated.md` (AI-synthesized summary), `index.json` (metadata), and `repo-info.json`.
+**Storage layout:** `~/.coc/memory/system/` (global), `~/.coc/memory/repos/<hash>/` (per-repo, hash = SHA-256 of resolved repo root, 16-char hex prefix), and `~/.coc/memory/git-remotes/<hash>/` (per-git-remote, hash = SHA-256 of normalized remote URL, 16-char hex prefix). Each level dir contains `raw/*.md` (timestamped observations), `consolidated.md` (AI-synthesized summary), `index.json` (metadata). Repo dirs also have `repo-info.json`, git-remote dirs have `remote-info.json`.
+
+**MemoryLevel:** `'repo' | 'system' | 'git-remote' | 'both'` — the `git-remote` level scopes memory to all local clones of the same upstream repository.
 
 ### Components (`src/memory/`)
 

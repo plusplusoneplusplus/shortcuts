@@ -104,7 +104,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplus
 
 **Wiki layer:** `WikiManager` registry, `WikiData` in-memory store, `ContextBuilder` (RAG-style retrieval), `ConversationSessionManager` (multi-turn AI), `FileWatcher`, deep-wiki integration (`dw-*` handlers for generation/exploration/ask).
 
-**Memory layer:** `FileMemoryStore` (entry CRUD with `id`, `tags`, `summary`, `source` fields), `MemoryConfig` (`storageDir`, `backend`, `maxEntries`, `ttlDays`, `autoInject`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, `GET/POST /api/memory/entries`, `GET/PATCH/DELETE /api/memory/entries/:id`, `GET /api/memory/aggregate-tool-calls/stats`, `POST /api/memory/aggregate-tool-calls`. Dashboard UI: `MemoryView` → `MemoryEntriesPanel` + `MemoryConfigPanel` + `ExploreCachePanel`.
+**Memory layer:** `FileMemoryStore` (entry CRUD with `id`, `tags`, `summary`, `source` fields), `MemoryConfig` (`storageDir`, `backend`, `maxEntries`, `ttlDays`, `autoInject`). REST API registered by `registerMemoryRoutes()`: `GET/PUT /api/memory/config`, `GET/POST /api/memory/entries`, `GET/PATCH/DELETE /api/memory/entries/:id`, `GET /api/memory/aggregate-tool-calls/stats`, `POST /api/memory/aggregate-tool-calls`, `GET /api/memory/observations/levels` (3-level overview), `GET /api/memory/observations` (list files at a level), `GET /api/memory/observations/:filename` (read observation). Dashboard UI: `MemoryView` → `MemoryEntriesPanel` + `MemoryFilesPanel` (3-level file browser) + `MemoryConfigPanel` + `ExploreCachePanel`.
 
 **Testing:** 7+ Vitest test files.
 
@@ -112,7 +112,7 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplus
 
 Opt-in, two-level persistence layer that lets AI pipelines learn from past sessions. After each AI call the AI writes `write_memory` tool calls; those facts are periodically consolidated by an AI aggregation step into `consolidated.md`, which is injected into subsequent prompts.
 
-**Storage layout:** `~/.coc/memory/system/` (cross-repo) and `~/.coc/memory/repos/<16-char-sha256>/` (per-repo), each with `raw/*.md`, `consolidated.md`, `index.json`.
+**Storage layout:** `~/.coc/memory/system/` (cross-repo), `~/.coc/memory/repos/<16-char-sha256>/` (per-repo), and `~/.coc/memory/git-remotes/<16-char-sha256>/` (per-git-remote), each with `raw/*.md`, `consolidated.md`, `index.json`. `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`.
 
 **Key symbols in `pipeline-core`:**
 
