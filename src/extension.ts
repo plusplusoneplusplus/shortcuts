@@ -16,7 +16,8 @@ import {
     getJobTemplateManager,
     registerTemplateCommands,
     ServerClient,
-    getWorkspaceInfo
+    getWorkspaceInfo,
+    computeProcessViewStatus
 } from './shortcuts/ai-service';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
@@ -2256,18 +2257,12 @@ export async function activate(context: vscode.ExtensionContext) {
             showCollapseAll: false
         });
 
-        // Update AI processes view description with counts
+        // Update AI processes view description and badge with counts
         const updateProcessesViewDescription = () => {
             const counts = aiProcessManager.getProcessCounts();
-            if (counts.running > 0 || counts.completed > 0 || counts.failed > 0) {
-                const parts: string[] = [];
-                if (counts.running > 0) parts.push(`${counts.running} running`);
-                if (counts.completed > 0) parts.push(`${counts.completed} done`);
-                if (counts.failed > 0) parts.push(`${counts.failed} failed`);
-                aiProcessesTreeView.description = parts.join(', ');
-            } else {
-                aiProcessesTreeView.description = undefined;
-            }
+            const status = computeProcessViewStatus(counts);
+            aiProcessesTreeView.description = status.description;
+            aiProcessesTreeView.badge = status.badge;
         };
         updateProcessesViewDescription();
         aiProcessManager.onDidChangeProcesses(updateProcessesViewDescription);

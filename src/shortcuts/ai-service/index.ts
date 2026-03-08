@@ -97,7 +97,8 @@ export {
 } from './mock-ai-process-manager';
 
 // Export tree data provider
-export { AIProcessItem, AIProcessTreeDataProvider, AIProcessTreeItem } from './ai-process-tree-provider';
+export { AIProcessItem, AIProcessTreeDataProvider, AIProcessTreeItem, computeProcessViewStatus } from './ai-process-tree-provider';
+export type { ProcessViewStatus } from './ai-process-tree-provider';
 
 // Export interactive session tree items
 export { InteractiveSessionItem, InteractiveSessionSectionItem } from './interactive-session-tree-item';

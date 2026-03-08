@@ -824,3 +824,37 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
     }
 }
 
+/**
+ * Compute the description string and badge for the AI Processes tree view
+ * based on current process counts.
+ *
+ * The description (visible when the panel is expanded) summarises running,
+ * done and failed counts. The badge (visible on the activity-bar icon even
+ * when the sidebar is collapsed) shows the number of active processes
+ * (running + queued).
+ */
+export interface ProcessViewStatus {
+    description: string | undefined;
+    badge: { value: number; tooltip: string } | undefined;
+}
+
+export function computeProcessViewStatus(counts: { running: number; queued: number; completed: number; failed: number }): ProcessViewStatus {
+    // Description
+    let description: string | undefined;
+    if (counts.running > 0 || counts.completed > 0 || counts.failed > 0) {
+        const parts: string[] = [];
+        if (counts.running > 0) { parts.push(`${counts.running} running`); }
+        if (counts.completed > 0) { parts.push(`${counts.completed} done`); }
+        if (counts.failed > 0) { parts.push(`${counts.failed} failed`); }
+        description = parts.join(', ');
+    }
+
+    // Badge — active count (running + queued) shown on the activity bar icon
+    const activeCount = counts.running + counts.queued;
+    const badge = activeCount > 0
+        ? { value: activeCount, tooltip: `${activeCount} active AI process${activeCount !== 1 ? 'es' : ''}` }
+        : undefined;
+
+    return { description, badge };
+}
+
