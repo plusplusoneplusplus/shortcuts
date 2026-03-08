@@ -219,6 +219,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
                             selectedTaskId={selectedTaskId}
                             selectedTask={selectedTask}
                             onBack={() => setMobileShowDetail(false)}
+                            workspaceId={workspaceId}
                         />
                     </div>
                 ) : (
@@ -245,6 +246,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
                 <ActivityDetailPane
                     selectedTaskId={selectedTaskId}
                     selectedTask={selectedTask}
+                    workspaceId={workspaceId}
                 />
             </div>
         </div>

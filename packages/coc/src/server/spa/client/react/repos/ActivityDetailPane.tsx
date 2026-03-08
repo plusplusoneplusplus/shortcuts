@@ -20,13 +20,14 @@ export interface ActivityDetailPaneProps {
     selectedTaskId: string | null;
     selectedTask: any | null;
     onBack?: () => void;
+    workspaceId?: string;
 }
 
 function isTopLevelChatTask(task: any): boolean {
     return task?.type === 'chat' && !(task as any).payload?.processId;
 }
 
-export function ActivityDetailPane({ selectedTaskId, selectedTask, onBack }: ActivityDetailPaneProps) {
+export function ActivityDetailPane({ selectedTaskId, selectedTask, onBack, workspaceId }: ActivityDetailPaneProps) {
     const [fetchedTask, setFetchedTask] = useState<any>(null);
     const [fetching, setFetching] = useState(false);
 
@@ -67,7 +68,7 @@ export function ActivityDetailPane({ selectedTaskId, selectedTask, onBack }: Act
     }
 
     if (isTopLevelChatTask(resolvedTask)) {
-        return <ActivityChatDetail taskId={selectedTaskId} onBack={onBack} />;
+        return <ActivityChatDetail taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} />;
     }
 
     return <QueueTaskDetail onBack={onBack} />;

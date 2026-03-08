@@ -18,6 +18,9 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
 import { cn } from '../shared/cn';
+import { useSlashCommands } from './useSlashCommands';
+import { SlashCommandMenu } from './SlashCommandMenu';
+import type { SkillItem } from './SlashCommandMenu';
 import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { Badge } from '../shared';
 import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
@@ -26,9 +29,10 @@ import type { ClientConversationTurn } from '../types/dashboard';
 export interface ActivityChatDetailProps {
     taskId: string;
     onBack?: () => void;
+    workspaceId?: string;
 }
 
-export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const turnsRef = useRef<ClientConversationTurn[]>([]);
@@ -45,6 +49,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<'ask' | 'plan' | 'autopilot'>('autopilot');
+    const [skills, setSkills] = useState<SkillItem[]>([]);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const followUpEventSourceRef = useRef<EventSource | null>(null);
@@ -56,6 +61,8 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const { isMobile } = useBreakpoint();
     const { state: queueState } = useQueue();
+    const slashCommands = useSlashCommands(skills);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const processId = task?.processId ?? (taskId ? `queue_${taskId}` : null);
     const isPending = task?.status === 'queued';
@@ -108,6 +115,21 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
             setTurnsAndRef(refreshedTurns);
         } catch { /* keep current turns */ }
     }, [setTurnsAndRef]);
+
+    // Fetch skills when workspaceId changes
+    useEffect(() => {
+        setSkills([]);
+        if (!workspaceId) return;
+        fetchApi('/workspaces/' + encodeURIComponent(workspaceId) + '/skills/all')
+            .then((data: any) => {
+                if (data?.merged && Array.isArray(data.merged)) {
+                    setSkills(data.merged);
+                } else if (data?.skills && Array.isArray(data.skills)) {
+                    setSkills(data.skills);
+                }
+            })
+            .catch(() => { /* ignore */ });
+    }, [workspaceId]);
 
     // Load task + conversation on mount / taskId change
     useEffect(() => {
@@ -336,11 +358,16 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
     };
 
     const sendFollowUp = async (overrideContent?: string) => {
-        const content = (overrideContent ?? followUpInput).trim();
-        if (!content || !processId || inputDisabled) return;
+        const rawContent = (overrideContent ?? followUpInput).trim();
+        if (!rawContent || !processId || inputDisabled) return;
+
+        // Extract slash-command skills from the message text
+        const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(rawContent);
+        const content = cleanedPrompt || rawContent;
 
         setSuggestions([]);
         setFollowUpInput('');
+        slashCommands.dismissMenu();
         setError(null);
         setSending(true);
 
@@ -359,6 +386,7 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                     content,
                     images: images.length > 0 ? images : undefined,
                     mode: selectedMode,
+                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
                 }),
             });
 
@@ -575,22 +603,50 @@ export function ActivityChatDetail({ taskId, onBack }: ActivityChatDetailProps) 
                                 </button>
                             ))}
                         </div>
-                        <textarea
-                            rows={1}
-                            value={followUpInput}
-                            disabled={inputDisabled}
-                            placeholder={sessionExpired ? 'Session expired.' : sending ? 'Waiting for response...' : 'Send a message...'}
-                            className="flex-1 min-h-[34px] max-h-28 resize-y rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-60"
-                            onChange={e => setFollowUpInput(e.target.value)}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    void sendFollowUp();
-                                }
-                            }}
-                            onPaste={addFromPaste}
-                            data-testid="activity-chat-input"
-                        />
+                        <div className="relative flex-1">
+                            <textarea
+                                ref={textareaRef}
+                                rows={1}
+                                value={followUpInput}
+                                disabled={inputDisabled}
+                                placeholder={sessionExpired ? 'Session expired.' : sending ? 'Waiting for response...' : 'Send a message... (type / for skills)'}
+                                className="w-full min-h-[34px] max-h-28 resize-y rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-60"
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    setFollowUpInput(val);
+                                    slashCommands.handleInputChange(val, e.target.selectionStart ?? val.length);
+                                }}
+                                onKeyDown={e => {
+                                    if (slashCommands.handleKeyDown(e)) {
+                                        // If menu consumed the key (arrow nav, enter/tab for selection, escape)
+                                        if (e.key === 'Enter' || e.key === 'Tab') {
+                                            const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
+                                            if (skill) {
+                                                slashCommands.selectSkill(skill.name, followUpInput, setFollowUpInput);
+                                            }
+                                        }
+                                        return;
+                                    }
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        void sendFollowUp();
+                                    }
+                                }}
+                                onPaste={addFromPaste}
+                                data-testid="activity-chat-input"
+                            />
+                            <SlashCommandMenu
+                                skills={skills}
+                                filter={slashCommands.menuFilter}
+                                onSelect={(name) => {
+                                    slashCommands.selectSkill(name, followUpInput, setFollowUpInput);
+                                    textareaRef.current?.focus();
+                                }}
+                                onDismiss={slashCommands.dismissMenu}
+                                visible={slashCommands.menuVisible}
+                                highlightIndex={slashCommands.highlightIndex}
+                            />
+                        </div>
                         <button
                             type="button"
                             disabled={inputDisabled}

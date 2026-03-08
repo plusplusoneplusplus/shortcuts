@@ -111,7 +111,7 @@ describe('ActivityChatDetail', () => {
         it('sends selectedMode in follow-up message body', () => {
             const sendBlock = source.substring(
                 source.indexOf('const sendFollowUp'),
-                source.indexOf('const sendFollowUp') + 1200,
+                source.indexOf('const sendFollowUp') + 1600,
             );
             expect(sendBlock).toContain('mode: selectedMode');
         });
@@ -122,6 +122,65 @@ describe('ActivityChatDetail', () => {
 
         it('updates selectedMode from process metadata mode', () => {
             expect(source).toContain("setSelectedMode(processMode)");
+        });
+    });
+
+    describe('slash command skill autocomplete', () => {
+        it('imports useSlashCommands hook', () => {
+            expect(source).toContain("import { useSlashCommands }");
+        });
+
+        it('imports SlashCommandMenu component', () => {
+            expect(source).toContain("import { SlashCommandMenu }");
+        });
+
+        it('accepts workspaceId prop', () => {
+            expect(source).toContain('workspaceId?: string');
+        });
+
+        it('declares skills state', () => {
+            expect(source).toContain('useState<SkillItem[]>([])');
+        });
+
+        it('fetches skills from the workspaces API', () => {
+            expect(source).toContain("/skills/all'");
+        });
+
+        it('initializes useSlashCommands with skills', () => {
+            expect(source).toContain('useSlashCommands(skills)');
+        });
+
+        it('renders SlashCommandMenu with correct props', () => {
+            expect(source).toContain('<SlashCommandMenu');
+            expect(source).toContain('skills={skills}');
+            expect(source).toContain('filter={slashCommands.menuFilter}');
+            expect(source).toContain('visible={slashCommands.menuVisible}');
+            expect(source).toContain('highlightIndex={slashCommands.highlightIndex}');
+        });
+
+        it('calls handleInputChange on textarea change', () => {
+            expect(source).toContain('slashCommands.handleInputChange(');
+        });
+
+        it('calls handleKeyDown for slash menu keyboard navigation', () => {
+            expect(source).toContain('slashCommands.handleKeyDown(e)');
+        });
+
+        it('extracts skills from message before sending', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const sendFollowUp') + 1600,
+            );
+            expect(sendBlock).toContain('slashCommands.parseAndExtract(');
+            expect(sendBlock).toContain('skillNames');
+        });
+
+        it('dismisses slash menu on send', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const sendFollowUp') + 1600,
+            );
+            expect(sendBlock).toContain('slashCommands.dismissMenu()');
         });
     });
 });
