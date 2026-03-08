@@ -620,3 +620,5 @@ export type { PersistedScheduleState } from './schedule-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
 export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule-manager';
 export { registerScheduleRoutes } from './schedule-handler';
+export { resolveTaskRoot, ensureTaskRoot } from './task-root-resolver';
+export type { TaskRootInfo, TaskRootOptions } from './task-root-resolver';
