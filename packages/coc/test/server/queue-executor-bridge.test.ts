@@ -1179,9 +1179,9 @@ describe('CLITaskExecutor', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            // /workspace/plan.md doesn't exist so only additionalContext is included
+            // Uses shared buildFollowPromptText with promptContent style (empty promptFile)
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: expect.stringContaining('Context document:\n\nFocus on tests.\n\n---\n\nRefactor the auth module.'),
+                prompt: expect.stringContaining('Refactor the auth module. /workspace/plan.md\n\nAdditional context: Focus on tests.'),
             }));
         });
 
@@ -1212,7 +1212,7 @@ describe('CLITaskExecutor', () => {
 
                 expect(result.success).toBe(true);
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Context document:\n\n# Task: Add login page\n\nCreate a login page with email and password fields.\n\n---\n\nImplement the feature described above.'),
+                    prompt: expect.stringContaining('Implement the feature described above.\n\nAdditional context: # Task: Add login page\n\nCreate a login page with email and password fields.'),
                 }));
             });
 
@@ -1242,19 +1242,7 @@ describe('CLITaskExecutor', () => {
                 }));
             });
 
-            it('should combine planFilePath content and additionalContext in context block', async () => {
-                const existsSyncMock = vi.mocked(fs.existsSync);
-                const readFileSyncMock = vi.mocked(fs.readFileSync);
-
-                existsSyncMock.mockImplementation((p: fs.PathLike) => {
-                    if (String(p) === '/workspace/plan.md') return true;
-                    return false;
-                });
-                readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
-                    if (String(p) === '/workspace/plan.md') return '# Plan\n\nDo things.';
-                    throw new Error('not found');
-                });
-
+            it('should use promptContent style with planFilePath and additionalContext', async () => {
                 const executor = new CLITaskExecutor(store);
 
                 const task: QueuedTask = {
@@ -1275,12 +1263,10 @@ describe('CLITaskExecutor', () => {
                 const result = await executor.execute(task);
 
                 expect(result.success).toBe(true);
+                // Uses shared buildFollowPromptText: promptContent style + planFilePath + additionalContext
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Context document:\n\n# Plan\n\nDo things.\n\nFocus on error handling.\n\n---\n\nExecute plan with focus.'),
+                    prompt: expect.stringContaining('Execute plan with focus. /workspace/plan.md\n\nAdditional context: Focus on error handling.'),
                 }));
-
-                existsSyncMock.mockReset();
-                readFileSyncMock.mockReset();
             });
 
             it('should not alter prompt when no context fields are provided', async () => {
@@ -1355,8 +1341,9 @@ describe('CLITaskExecutor', () => {
                 const result = await executor.execute(task);
 
                 expect(result.success).toBe(true);
+                // Uses shared buildFollowPromptText: promptFilePath style + additionalContext
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Context document:\n\nTask context here.\n\n---\n\nFollow prompt: /nonexistent/prompt.md'),
+                    prompt: expect.stringContaining('Follow the instruction /nonexistent/prompt.md.\n\nAdditional context: Task context here.'),
                 }));
             });
 
@@ -1464,17 +1451,9 @@ describe('CLITaskExecutor', () => {
                 existsSyncMock.mockReset();
             });
 
-            it('should NOT include planFilePath when promptFilePath has wrong path (regression)', async () => {
-                // This test documents the old bug: when promptFilePath was wrongly constructed
-                // as /workspace/.vscode/workflows/.github/prompts/impl.prompt.md, fs.existsSync
-                // would return false, causing the prompt to fall through to legacy path without planFilePath
-                const existsSyncMock = vi.mocked(fs.existsSync);
-
-                existsSyncMock.mockImplementation((_p: fs.PathLike) => {
-                    // The wrong path doesn't exist
-                    return false;
-                });
-
+            it('should include planFilePath even when promptFilePath has wrong path', async () => {
+                // Previously this was a regression test documenting a bug where wrong paths
+                // dropped the plan file. Now buildFollowPromptText always includes both paths.
                 const executor = new CLITaskExecutor(store);
 
                 const task: QueuedTask = {
@@ -1496,32 +1475,13 @@ describe('CLITaskExecutor', () => {
                 const result = await executor.execute(task);
 
                 expect(result.success).toBe(true);
-                // With wrong path, falls through to legacy: "Follow prompt: {path}" without planFilePath
+                // Uses shared buildFollowPromptText: always references both files
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Follow prompt:'),
+                    prompt: expect.stringContaining('Follow the instruction /workspace/.vscode/workflows/.github/prompts/impl.prompt.md. /workspace/data/repos/abc/tasks/my-task.md'),
                 }));
-                // The planFilePath is NOT included because the prompt file doesn't exist
-                expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.not.stringContaining('my-task.md'),
-                }));
-
-                existsSyncMock.mockReset();
             });
 
-            it('should fall back to legacy context block when additionalContext is present with planFilePath', async () => {
-                const existsSyncMock = vi.mocked(fs.existsSync);
-                const readFileSyncMock = vi.mocked(fs.readFileSync);
-
-                existsSyncMock.mockImplementation((p: fs.PathLike) => {
-                    if (String(p) === '/workspace/.github/skills/impl/SKILL.md') return true;
-                    if (String(p) === '/workspace/plan.md') return true;
-                    return false;
-                });
-                readFileSyncMock.mockImplementation((p: fs.PathOrFileDescriptor, _opts?: any) => {
-                    if (String(p) === '/workspace/plan.md') return '# Old plan content';
-                    throw new Error('not found');
-                });
-
+            it('should use VS Code extension style even with additionalContext and planFilePath', async () => {
                 const executor = new CLITaskExecutor(store);
 
                 const task: QueuedTask = {
@@ -1543,16 +1503,13 @@ describe('CLITaskExecutor', () => {
                 const result = await executor.execute(task);
 
                 expect(result.success).toBe(true);
-                // Should use legacy path with context block since additionalContext is present
+                // Uses shared buildFollowPromptText: file-path style + additional context
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Context document:'),
+                    prompt: expect.stringContaining('Follow the instruction /workspace/.github/skills/impl/SKILL.md. /workspace/plan.md'),
                 }));
                 expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    prompt: expect.stringContaining('Legacy context from old client.'),
+                    prompt: expect.stringContaining('Additional context: Legacy context from old client.'),
                 }));
-
-                existsSyncMock.mockReset();
-                readFileSyncMock.mockReset();
             });
         });
 

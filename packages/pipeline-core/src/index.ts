@@ -687,6 +687,11 @@ export {
     // Pause Marker types
     PauseMarker,
     QueueItem,
+
+    // Follow-Prompt utilities
+    FollowPromptPayload,
+    isFollowPromptPayload,
+    buildFollowPromptText,
 } from './queue';
 
 // ============================================================================

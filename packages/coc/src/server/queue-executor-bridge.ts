@@ -44,6 +44,7 @@ import {
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildDeepModePrompt,
+    buildFollowPromptText,
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
     TASK_FILTER,
@@ -784,54 +785,22 @@ export class CLITaskExecutor implements TaskExecutor {
                 return prompt;
             }
 
-            // Context files: resolve file-path-based prompts
+            // Context files: resolve file-path-based prompts using shared builder
             const ctx = payload.context;
             if (ctx?.files?.length) {
-                const hasAdditionalBlocks = ctx.blocks && ctx.blocks.length > 0;
                 const promptFile = ctx.files[0];
                 const planFile = ctx.files.length > 1 ? ctx.files[1] : undefined;
+                const additionalContext = ctx.blocks?.map(b => b.content).join('\n\n');
                 const contextSuffix = this.findContextFileSuffix(planFile);
 
-                if (!hasAdditionalBlocks && planFile && !prompt.includes('\n')) {
-                    // File-path-based prompt referencing prompt + plan files
-                    try {
-                        if (fs.existsSync(promptFile)) {
-                            const base = `Follow the instruction ${promptFile}. ${planFile}`;
-                            return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
-                        }
-                    } catch {
-                        // Fall through
-                    }
-                }
+                // When promptFile is a real path, use file-path-reference style.
+                // When promptFile is empty/falsy, use the user's typed prompt as direct content.
+                const base = buildFollowPromptText(promptFile
+                    ? { promptFilePath: promptFile, planFilePath: planFile, additionalContext }
+                    : { promptContent: prompt, planFilePath: planFile, additionalContext }
+                );
 
-                // Resolve context block from inline blocks + plan file content
-                const contextBlock = this.resolveContextBlock({
-                    additionalContext: ctx.blocks?.map(b => b.content).join('\n\n'),
-                    planFilePath: planFile,
-                });
-
-                let resolved = prompt;
-                // If prompt looks like inline content (has newlines), use it directly
-                // Otherwise build file-reference-based prompt
-                if (!prompt.includes('\n') && promptFile) {
-                    try {
-                        if (fs.existsSync(promptFile)) {
-                            resolved = `Follow the instruction ${promptFile}.`;
-                        } else {
-                            resolved = `Follow prompt: ${promptFile}`;
-                        }
-                    } catch {
-                        resolved = `Follow prompt: ${promptFile}`;
-                    }
-                }
-
-                if (contextBlock) {
-                    resolved = `Context document:\n\n${contextBlock}\n\n---\n\n${resolved}`;
-                }
-                if (contextSuffix) {
-                    resolved = `${resolved}\n\n${contextSuffix}`;
-                }
-                return resolved;
+                return contextSuffix ? `${base}\n\n${contextSuffix}` : base;
             }
 
             return prompt;
@@ -1609,39 +1578,6 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     /**
-     * Build a structured context block from additionalContext and planFilePath.
-     * Returns the block string, or undefined if no context is available.
-     */
-    private resolveContextBlock(payload: {
-        additionalContext?: string;
-        planFilePath?: string;
-    }): string | undefined {
-        const parts: string[] = [];
-
-        if (payload.planFilePath) {
-            try {
-                if (fs.existsSync(payload.planFilePath)) {
-                    const planContent = fs.readFileSync(payload.planFilePath, 'utf-8');
-                    if (planContent.trim()) {
-                        parts.push(planContent);
-                    }
-                }
-            } catch {
-                // Non-fatal: skip plan file
-            }
-        }
-
-        if (payload.additionalContext) {
-            parts.push(payload.additionalContext);
-        }
-
-        if (parts.length === 0) {
-            return undefined;
-        }
-
-        return parts.join('\n\n');
-    }
-
     /**
      * Look for a CONTEXT.md file in the same directory as the plan file.
      * Returns a prompt suffix like "See context details in /abs/path/CONTEXT.md",

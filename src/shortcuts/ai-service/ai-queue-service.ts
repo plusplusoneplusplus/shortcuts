@@ -32,6 +32,7 @@ import {
     AIClarificationPayload,
     isFollowPromptPayload,
     isAIClarificationPayload,
+    buildFollowPromptText,
 } from './task-types';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import { AIProcessManager } from './ai-process-manager';
@@ -114,23 +115,8 @@ export interface BatchQueueResult {
 // AI Task Executor
 // ============================================================================
 
-export function buildFollowPromptText(payload: FollowPromptPayload): string {
-    // When direct prompt content is available, use it directly (no file indirection).
-    // Fall back to "Follow the instruction {filePath}" for file-based payloads (skills, backward compat).
-    let fullPrompt: string;
-    if (payload.promptContent) {
-        fullPrompt = payload.promptContent;
-        if (payload.planFilePath) {
-            fullPrompt += ` ${payload.planFilePath}`;
-        }
-    } else {
-        fullPrompt = `Follow the instruction ${payload.promptFilePath}. ${payload.planFilePath || ''}`.trim();
-    }
-    if (payload.additionalContext && payload.additionalContext.trim()) {
-        fullPrompt += `\n\nAdditional context: ${payload.additionalContext.trim()}`;
-    }
-    return fullPrompt;
-}
+// Re-export for backward compatibility (tests import from this module)
+export { buildFollowPromptText };
 
 /**
  * Task executor that uses CopilotSDKService for AI execution
