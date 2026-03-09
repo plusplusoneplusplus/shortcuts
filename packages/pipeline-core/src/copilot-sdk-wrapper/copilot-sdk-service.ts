@@ -28,6 +28,7 @@ import {
     MCPServerConfig,
     MCPControlOptions,
     SendMessageOptions,
+    SystemMessageConfig,
     TokenUsage,
     SDKInvocationResult,
     SDKAvailabilityResult,
@@ -111,6 +112,8 @@ export interface SendFollowUpOptions {
     attachments?: Attachment[];
     /** Custom tools to register on the resumed session */
     tools?: any[];
+    /** System message configuration for the resumed session */
+    systemMessage?: SystemMessageConfig;
     /**
      * Agent mode to set on the session before sending the follow-up.
      * Controls how the AI interacts: 'interactive' (ask), 'plan', or 'autopilot'.
@@ -149,6 +152,8 @@ interface ISessionOptions {
     skillDirectories?: string[];
     /** Deny-list of skill names to disable */
     disabledSkills?: string[];
+    /** System message configuration */
+    systemMessage?: SystemMessageConfig;
 }
 
 /**
@@ -160,6 +165,7 @@ interface IResumeSessionOptions {
     onPermissionRequest?: PermissionHandler;
     mcpServers?: Record<string, MCPServerConfig>;
     tools?: any[];
+    systemMessage?: SystemMessageConfig;
 }
 
 /**
@@ -551,6 +557,9 @@ export class CopilotSDKService {
             if (options.tools) {
                 sessionOptions.tools = options.tools;
             }
+            if (options.systemMessage) {
+                sessionOptions.systemMessage = options.systemMessage;
+            }
 
             // MCP control options (tool filtering)
             if (options.availableTools) {
@@ -812,6 +821,9 @@ export class CopilotSDKService {
             }
             if (options?.tools) {
                 resumeOptions.tools = options.tools;
+            }
+            if (options?.systemMessage) {
+                resumeOptions.systemMessage = options.systemMessage;
             }
 
             const session = await client.resumeSession(sessionId, resumeOptions);

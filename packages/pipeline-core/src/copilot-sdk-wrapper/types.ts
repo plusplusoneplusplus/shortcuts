@@ -239,6 +239,23 @@ export interface TokenUsage {
 }
 
 // ============================================================================
+// System Message Configuration
+// ============================================================================
+
+/**
+ * Configuration for customizing the system message on a Copilot SDK session.
+ *
+ * - `append` — Keeps the SDK's default system message and appends your content after it.
+ * - `replace` — Replaces the entire default system message with your own.
+ */
+export interface SystemMessageConfig {
+    /** How the content interacts with the default system message. */
+    mode: 'append' | 'replace';
+    /** The system message content to append or use as replacement. */
+    content: string;
+}
+
+// ============================================================================
 // Attachment Types
 // ============================================================================
 
@@ -342,6 +359,13 @@ export interface SendMessageOptions {
      * description/parameters, and a handler function invoked by the AI.
      */
     tools?: Tool<any>[];
+
+    /**
+     * System message configuration for the SDK session.
+     * Use `mode: "append"` to add extra instructions after the default system prompt,
+     * or `mode: "replace"` for full control over the system prompt.
+     */
+    systemMessage?: SystemMessageConfig;
 
     /**
      * When true, the session is NOT destroyed after the first message completes.
