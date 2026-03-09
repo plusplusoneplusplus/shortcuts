@@ -117,7 +117,7 @@ export function CommentSidebar({
                     </span>
                     {comments.length > 0 && (
                         <div className="flex items-center gap-1">
-                            {onCopyPrompt && (
+                            {openCount > 0 && onCopyPrompt && (
                                 <button
                                     onClick={() => {
                                         onCopyPrompt();
