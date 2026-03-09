@@ -72,8 +72,8 @@ export interface ActivityListPaneProps {
     workspaceId?: string;
     /** Set of task IDs with unseen activity (bold + dot indicator). */
     unseenTaskIds?: Set<string>;
-    /** Mark all completed tasks as read. */
-    onMarkAllRead?: () => void;
+    /** Mark all completed tasks as read (receives the currently-filtered task list). */
+    onMarkAllRead?: (tasks: any[]) => void;
     /** Mark a single completed task as read. */
     onMarkRead?: (taskId: string) => void;
     /** Mark a single completed task as unread. */
@@ -435,7 +435,7 @@ export function ActivityListPane({
                             {onMarkAllRead && unseenTaskIds && filteredHistory.some(t => unseenTaskIds.has(t.id)) && (
                                 <button
                                     className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
-                                    onClick={onMarkAllRead}
+                                    onClick={() => onMarkAllRead(filteredHistory)}
                                     data-testid="mark-all-read-btn"
                                 >
                                     Mark all read

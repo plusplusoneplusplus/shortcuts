@@ -138,7 +138,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     }, [selectedTaskId]);
 
     // Track unseen activity for completed tasks
-    const { unseenTaskIds, markSeen, markAllSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+    const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
 
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
@@ -215,7 +215,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             now={now}
             workspaceId={workspaceId}
             unseenTaskIds={unseenTaskIds}
-            onMarkAllRead={markAllSeen}
+            onMarkAllRead={markTasksSeen}
             onMarkRead={markSeen}
             onMarkUnread={markUnseen}
             onSelectTask={selectTask}

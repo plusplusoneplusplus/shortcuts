@@ -253,4 +253,63 @@ describe('useUnseenActivity', () => {
         // Still unseen, no error
         expect(result.current.unseenTaskIds.has('a')).toBe(true);
     });
+
+    it('markTasksSeen marks only the provided tasks as seen', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a', 'b', 'c');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        expect(result.current.unseenCount).toBe(3);
+
+        // Mark only 'a' and 'b' as seen, leaving 'c' unseen
+        act(() => {
+            result.current.markTasksSeen([history[0], history[1]]);
+        });
+
+        expect(result.current.unseenTaskIds.has('a')).toBe(false);
+        expect(result.current.unseenTaskIds.has('b')).toBe(false);
+        expect(result.current.unseenTaskIds.has('c')).toBe(true);
+        expect(result.current.unseenCount).toBe(1);
+    });
+
+    it('markTasksSeen persists to localStorage', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a', 'b', 'c');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        act(() => {
+            result.current.markTasksSeen([history[0]]);
+        });
+
+        const stored = JSON.parse(localStorage.getItem('coc-unseen-ws1')!);
+        expect(stored['a']).toBe(history[0].completedAt);
+        expect(stored['b']).toBeUndefined();
+        expect(stored['c']).toBeUndefined();
+    });
+
+    it('markTasksSeen is a no-op when given an empty list', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a', 'b');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        expect(result.current.unseenCount).toBe(2);
+
+        act(() => {
+            result.current.markTasksSeen([]);
+        });
+
+        expect(result.current.unseenCount).toBe(2);
+    });
+
+    it('markTasksSeen is a no-op for tasks without completedAt', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        act(() => {
+            result.current.markTasksSeen([{ id: 'a' }]); // no completedAt
+        });
+
+        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+    });
 });

@@ -562,11 +562,12 @@ describe('useUnseenActivity hook: structure', () => {
         expect(UNSEEN_HOOK_SOURCE).toContain('selectedTaskId: string | null');
     });
 
-    it('returns unseenTaskIds, unseenCount, markSeen, and markAllSeen', () => {
+    it('returns unseenTaskIds, unseenCount, markSeen, markAllSeen, and markTasksSeen', () => {
         expect(UNSEEN_HOOK_SOURCE).toContain('unseenTaskIds');
         expect(UNSEEN_HOOK_SOURCE).toContain('unseenCount');
         expect(UNSEEN_HOOK_SOURCE).toContain('markSeen');
         expect(UNSEEN_HOOK_SOURCE).toContain('markAllSeen');
+        expect(UNSEEN_HOOK_SOURCE).toContain('markTasksSeen');
     });
 
     it('persists to localStorage with workspace-scoped key', () => {
@@ -612,8 +613,12 @@ describe('RepoActivityTab: unseen activity wiring', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain('markAllSeen');
     });
 
+    it('destructures markTasksSeen from the hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('markTasksSeen');
+    });
+
     it('passes onMarkAllRead to ActivityListPane', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain('onMarkAllRead={markAllSeen}');
+        expect(ACTIVITY_TAB_SOURCE).toContain('onMarkAllRead={markTasksSeen}');
     });
 
     it('passes onMarkRead to ActivityListPane', () => {
@@ -677,7 +682,7 @@ describe('ActivityListPane: unseen activity indicators', () => {
 
 describe('ActivityListPane: mark all read button', () => {
     it('accepts onMarkAllRead prop in interface', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead?: () => void');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead?: (tasks: any[]) => void');
     });
 
     it('destructures onMarkAllRead from props', () => {
@@ -688,8 +693,8 @@ describe('ActivityListPane: mark all read button', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="mark-all-read-btn"');
     });
 
-    it('mark-all-read button calls onMarkAllRead on click', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onClick={onMarkAllRead}');
+    it('mark-all-read button calls onMarkAllRead with filteredHistory on click', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onClick={() => onMarkAllRead(filteredHistory)}');
     });
 
     it('mark-all-read button only shows when there are unseen tasks', () => {

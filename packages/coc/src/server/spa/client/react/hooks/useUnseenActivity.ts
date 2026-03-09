@@ -34,6 +34,8 @@ export interface UseUnseenActivityResult {
     markSeen: (taskId: string) => void;
     /** Mark all history tasks as seen. */
     markAllSeen: () => void;
+    /** Mark a specific subset of tasks as seen (e.g. the currently filtered list). */
+    markTasksSeen: (tasks: any[]) => void;
     /** Mark a task as unseen/unread (removes it from the seen map). */
     markUnseen: (taskId: string) => void;
 }
@@ -127,6 +129,21 @@ export function useUnseenActivity(
         });
     }, [history]);
 
+    // Mark a specific subset of tasks as seen (e.g. the currently filtered list).
+    const markTasksSeen = useCallback((tasks: any[]) => {
+        setSeenMap(prev => {
+            const updated = { ...prev };
+            let changed = false;
+            for (const task of tasks) {
+                if (task.completedAt && updated[task.id] !== task.completedAt) {
+                    updated[task.id] = task.completedAt;
+                    changed = true;
+                }
+            }
+            return changed ? updated : prev;
+        });
+    }, []);
+
     // Mark a specific task as unseen/unread.
     const markUnseen = useCallback((taskId: string) => {
         setSeenMap(prev => {
@@ -155,7 +172,7 @@ export function useUnseenActivity(
         });
     }, [history]);
 
-    return { unseenTaskIds, unseenCount: unseenTaskIds.size, markSeen, markAllSeen, markUnseen };
+    return { unseenTaskIds, unseenCount: unseenTaskIds.size, markSeen, markAllSeen, markTasksSeen, markUnseen };
 }
 
 /**
