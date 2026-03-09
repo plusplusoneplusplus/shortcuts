@@ -132,8 +132,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
 
     return (
         <div ref={scrollContainerRef} className="commit-detail flex flex-col h-full overflow-auto" data-testid="commit-detail">
-            {/* Commit info header */}
-            {commit && (
+            {/* Commit info header — only for full-commit view, not per-file view */}
+            {commit && !filePath && (
                 <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="commit-info-header">
                     <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-1.5 break-words" data-testid="commit-info-subject">
                         {commit.subject}

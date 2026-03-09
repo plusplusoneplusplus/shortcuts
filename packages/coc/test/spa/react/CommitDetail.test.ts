@@ -172,8 +172,8 @@ describe('CommitDetail', () => {
             expect(source).toContain("import type { GitCommitItem } from './CommitList'");
         });
 
-        it('conditionally renders header only when commit is provided', () => {
-            expect(source).toContain('commit &&');
+        it('conditionally renders header only for full-commit view (not per-file)', () => {
+            expect(source).toContain('commit && !filePath');
         });
     });
 
