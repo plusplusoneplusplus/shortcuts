@@ -146,8 +146,10 @@ export class TaskItem extends vscode.TreeItem {
      */
     private formatModifiedTime(date: Date): string {
         const now = new Date();
-        const diff = now.getTime() - date.getTime();
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        // Compare calendar dates (not raw ms) to handle DST correctly
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const days = Math.round((todayStart.getTime() - dateStart.getTime()) / (1000 * 60 * 60 * 24));
 
         if (days === 0) {
             // Today - show time
