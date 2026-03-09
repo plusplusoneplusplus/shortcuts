@@ -12,6 +12,13 @@ import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/rea
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
 import { TaskTree, getFolderKey } from '../../../src/server/spa/client/react/tasks/TaskTree';
 import type { TaskFolder } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+import type { BreakpointState } from '../../../src/server/spa/client/react/hooks/useBreakpoint';
+
+let mockBreakpointState: BreakpointState = { breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true };
+
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => mockBreakpointState,
+}));
 
 function Wrap({ children }: { children: ReactNode }) {
     return (
@@ -107,6 +114,7 @@ function renderTaskTree(tree: TaskFolder, props?: Partial<React.ComponentProps<t
 describe('TaskTree', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
+        mockBreakpointState = { breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true };
     });
 
     afterEach(() => {
@@ -578,5 +586,28 @@ describe('TaskTree', () => {
 
         // Now only 2 columns, no overflow indicator
         expect(screen.queryByTestId('column-overflow-indicator')).toBeNull();
+    });
+
+    it('clicking a file on mobile dispatches coc-open-markdown-review instead of opening dialog', () => {
+        mockBreakpointState = { breakpoint: 'mobile', isMobile: true, isTablet: false, isDesktop: false };
+
+        const events: CustomEvent[] = [];
+        const listener = (e: Event) => events.push(e as CustomEvent);
+        window.addEventListener('coc-open-markdown-review', listener);
+
+        vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+        renderTaskTree(mockTree);
+
+        // Navigate into feature1 to expose task.md
+        fireEvent.click(screen.getByTestId('task-tree-item-feature1'));
+        fireEvent.click(screen.getByTestId('task-tree-item-task'));
+
+        window.removeEventListener('coc-open-markdown-review', listener);
+
+        expect(events).toHaveLength(1);
+        expect(events[0].detail.filePath).toBe('feature1/task.md');
+        expect(events[0].detail.wsId).toBe('ws1');
+        // openFilePath should NOT be set on mobile (no split-pane preview)
+        expect(screen.getByTestId('open-file-path').textContent).toBe('null');
     });
 });

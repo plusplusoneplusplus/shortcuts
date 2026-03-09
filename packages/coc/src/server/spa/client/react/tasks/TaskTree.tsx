@@ -4,7 +4,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTaskPanel } from '../context/TaskContext';
-import { useQueue } from '../context/QueueContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueueActivity } from '../hooks/useQueueActivity';
 import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
@@ -88,7 +87,6 @@ export function TaskTree({
 }: TaskTreeProps) {
     const { openFilePath, setOpenFilePath, selectedFilePaths, toggleSelectedFile, showContextFiles, setSelectedFolderPath } = useTaskPanel();
     const { fileMap: queueActivity, folderMap: queueFolderActivity } = useQueueActivity(wsId, tasksFolder);
-    const { dispatch: queueDispatch } = useQueue();
     const { isMobile } = useBreakpoint();
     const dnd = useTaskDragDrop();
     const [columns, setColumns] = useState<TaskNode[][]>([]);
@@ -191,7 +189,9 @@ export function TaskTree({
         setSelectedFolderPath(parentFolderPath);
 
         if (isMobile) {
-            queueDispatch({ type: 'OPEN_DIALOG', folderPath: parentFolderPath, workspaceId: wsId });
+            window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
+                detail: { filePath: path, wsId },
+            }));
             return;
         }
 
