@@ -1668,6 +1668,264 @@ describe('EnqueueDialog slash commands', () => {
 });
 
 // ============================================================================
+// EnqueueDialog mode-switch state isolation tests
+// ============================================================================
+
+describe('EnqueueDialog mode-switch state isolation', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    /** Sets up fetch mock that returns per-mode preferences, skills, and models. */
+    function setupFetchForModeSwitch(opts: {
+        taskSkills?: string;
+        askSkills?: string;
+        taskModel?: string;
+        askModel?: string;
+        availableSkills?: Array<{ name: string; description?: string }>;
+        availableModels?: string[];
+    }) {
+        const {
+            taskSkills = '',
+            askSkills = '',
+            taskModel = '',
+            askModel = '',
+            availableSkills = [
+                { name: 'impl', description: 'Implementation' },
+                { name: 'go-deep', description: 'Deep research' },
+            ],
+            availableModels = ['gpt-5.4', 'claude-sonnet'],
+        } = opts;
+
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: availableModels }) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences') && (!opts || opts.method !== 'PATCH')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        lastSkills: { task: taskSkills, ask: askSkills },
+                        lastModels: { task: taskModel, ask: askModel },
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: availableSkills }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/tasks') && !url.includes('/queue')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ name: 'tasks', relativePath: '', children: [] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+    }
+
+    /** Helper that lets us open/close/reopen dialog in different modes. */
+    function ModeSwitcher() {
+        const { dispatch } = useQueue();
+        return (
+            <>
+                <button data-testid="open-task" onClick={() => dispatch({ type: 'OPEN_DIALOG', workspaceId: 'ws1', mode: 'task' })}>Open Task</button>
+                <button data-testid="open-ask" onClick={() => dispatch({ type: 'OPEN_DIALOG', workspaceId: 'ws1', mode: 'ask' })}>Open Ask</button>
+                <button data-testid="close-dialog" onClick={() => dispatch({ type: 'CLOSE_DIALOG' })}>Close</button>
+            </>
+        );
+    }
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        global.fetch = fetchSpy;
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('switching from task to ask mode applies ask-mode skills, not task-mode skills', async () => {
+        setupFetchForModeSwitch({
+            taskSkills: '["impl"]',
+            askSkills: '["go-deep"]',
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <ModeSwitcher />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+
+        // Open in task mode
+        fireEvent.click(screen.getByTestId('open-task'));
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
+
+        // Task skill should be selected
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
+        });
+
+        // Close and reopen in ask mode
+        fireEvent.click(screen.getByTestId('close-dialog'));
+        await waitFor(() => expect(screen.queryByText('Enqueue AI Task')).toBeNull());
+
+        fireEvent.click(screen.getByTestId('open-ask'));
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
+
+        // Ask skill should be selected, not task skill
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-chip-go-deep').className).toContain('bg-[#0078d4]');
+        });
+        expect(screen.getByTestId('skill-chip-impl').className).not.toContain('bg-[#0078d4]');
+    });
+
+    it('switching from task to ask mode applies ask-mode model, not task-mode model', async () => {
+        setupFetchForModeSwitch({
+            taskModel: 'gpt-5.4',
+            askModel: 'claude-sonnet',
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <ModeSwitcher />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+
+        // Open in task mode
+        fireEvent.click(screen.getByTestId('open-task'));
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+
+        // Task model should be selected
+        await waitFor(() => {
+            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+            expect(modelSelect.value).toBe('gpt-5.4');
+        });
+
+        // Close and reopen in ask mode
+        fireEvent.click(screen.getByTestId('close-dialog'));
+        await waitFor(() => expect(screen.queryByText('Enqueue AI Task')).toBeNull());
+
+        fireEvent.click(screen.getByTestId('open-ask'));
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+
+        // Ask model should be selected, not task model
+        await waitFor(() => {
+            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+            expect(modelSelect.value).toBe('claude-sonnet');
+        });
+    });
+
+    it('switching from ask to task mode clears ask skills and applies task skills', async () => {
+        setupFetchForModeSwitch({
+            taskSkills: '["impl"]',
+            askSkills: '["go-deep"]',
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <ModeSwitcher />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+
+        // Open in ask mode
+        fireEvent.click(screen.getByTestId('open-ask'));
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
+
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-chip-go-deep').className).toContain('bg-[#0078d4]');
+        });
+
+        // Close and reopen in task mode
+        fireEvent.click(screen.getByTestId('close-dialog'));
+        await waitFor(() => expect(screen.queryByText('Ask AI (Read-only)')).toBeNull());
+
+        fireEvent.click(screen.getByTestId('open-task'));
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
+
+        // Task skill should be selected, not ask skill
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
+        });
+        expect(screen.getByTestId('skill-chip-go-deep').className).not.toContain('bg-[#0078d4]');
+    });
+
+    it('switching to mode with no saved skills clears selected skills', async () => {
+        setupFetchForModeSwitch({
+            taskSkills: '["impl"]',
+            askSkills: '',  // no saved ask skills
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <ModeSwitcher />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+
+        // Open in task mode — impl should be selected
+        fireEvent.click(screen.getByTestId('open-task'));
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
+        await waitFor(() => {
+            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
+        });
+
+        // Close and reopen in ask mode — no saved ask skills, so impl should NOT leak
+        fireEvent.click(screen.getByTestId('close-dialog'));
+        await waitFor(() => expect(screen.queryByText('Enqueue AI Task')).toBeNull());
+
+        fireEvent.click(screen.getByTestId('open-ask'));
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
+
+        // Neither skill should be selected
+        expect(screen.getByTestId('skill-chip-impl').className).not.toContain('bg-[#0078d4]');
+        expect(screen.getByTestId('skill-chip-go-deep').className).not.toContain('bg-[#0078d4]');
+    });
+
+    it('switching to mode with no saved model resets to default', async () => {
+        setupFetchForModeSwitch({
+            taskModel: 'gpt-5.4',
+            askModel: '',  // no saved ask model
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS' }]}>
+                <ModeSwitcher />
+                <EnqueueDialog />
+            </Wrap>,
+        );
+
+        // Open in task mode — gpt-5.4 should be selected
+        fireEvent.click(screen.getByTestId('open-task'));
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => {
+            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+            expect(modelSelect.value).toBe('gpt-5.4');
+        });
+
+        // Close and reopen in ask mode — no saved ask model, should reset to default ('')
+        fireEvent.click(screen.getByTestId('close-dialog'));
+        await waitFor(() => expect(screen.queryByText('Enqueue AI Task')).toBeNull());
+
+        fireEvent.click(screen.getByTestId('open-ask'));
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+
+        await waitFor(() => {
+            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+            expect(modelSelect.value).toBe('');
+        });
+    });
+});
+
 // EnqueueDialog ask mode tests
 // ============================================================================
 

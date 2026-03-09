@@ -54,10 +54,18 @@ export function EnqueueDialog() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const slashCommands = useSlashCommands(skills);
 
-    // Sync model from preferences when loaded (mode-specific)
+    // Track previous dialog mode to detect mode switches
+    const prevModeRef = useRef(isAskMode);
+
+    // Sync model from preferences when loaded (mode-specific).
+    // On mode change: always apply the new mode's saved model (or clear).
+    // On initial load: apply only when model is empty.
     useEffect(() => {
+        const modeChanged = prevModeRef.current !== isAskMode;
         const savedModel = isAskMode ? savedModels.ask : savedModels.task;
-        if (savedModel && !model) setModel(savedModel);
+        if (modeChanged || !model) {
+            setModel(savedModel || '');
+        }
     }, [savedModels, isAskMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Seed folderPath and workspaceId from dialog initial values when dialog opens
@@ -104,24 +112,31 @@ export function EnqueueDialog() {
             .catch(() => { /* ignore */ });
     }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Restore saved skills for the current dialog mode when both preferences and skills are loaded
+    // Restore saved skills for the current dialog mode when both preferences and skills are loaded.
+    // On mode change: always apply the new mode's saved skills (or clear).
+    // On initial load: apply only when no skills are selected.
+    // prevModeRef is updated here (last reader) to keep both restore effects consistent.
     useEffect(() => {
+        const modeChanged = prevModeRef.current !== isAskMode;
+        prevModeRef.current = isAskMode;
+
         const mode = isAskMode ? 'ask' : 'task';
         const savedSkill = savedSkills[mode];
-        if (savedSkill && skills.length > 0 && selectedSkills.length === 0) {
+        if (savedSkill && skills.length > 0 && (modeChanged || selectedSkills.length === 0)) {
             try {
                 const parsed = JSON.parse(savedSkill);
                 if (Array.isArray(parsed)) {
                     const valid = parsed.filter((s: string) => skills.some(sk => sk.name === s));
-                    if (valid.length > 0) setSelectedSkills(valid);
-                    return;
+                    if (valid.length > 0) { setSelectedSkills(valid); return; }
                 }
             } catch { /* not JSON, treat as single skill name */ }
             const match = skills.find(s => s.name === savedSkill);
             if (match) {
                 setSelectedSkills([savedSkill]);
+                return;
             }
         }
+        if (modeChanged) setSelectedSkills([]);
     }, [savedSkills, skills, isAskMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleModelChange = useCallback((value: string) => {
