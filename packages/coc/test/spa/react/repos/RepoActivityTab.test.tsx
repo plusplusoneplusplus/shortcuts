@@ -69,8 +69,28 @@ describe('RepoActivityTab: split-panel layout', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain('flex-shrink-0 border-r border-[#e0e0e0]');
     });
 
-    it('has tablet-responsive width', () => {
-        expect(ACTIVITY_TAB_SOURCE).toContain("isTablet ? 'w-64' : 'w-80'");
+    it('uses useResizablePanel for draggable left panel', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { useResizablePanel } from '../hooks/useResizablePanel'");
+        expect(ACTIVITY_TAB_SOURCE).toContain("useResizablePanel({");
+        expect(ACTIVITY_TAB_SOURCE).toContain("storageKey: 'activity-left-panel-width'");
+    });
+
+    it('has a resize handle between left and right panels', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-resize-handle"');
+        expect(ACTIVITY_TAB_SOURCE).toContain('cursor-col-resize');
+        expect(ACTIVITY_TAB_SOURCE).toContain('role="separator"');
+    });
+
+    it('has data-testid for the list panel', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('data-testid="activity-list-panel"');
+    });
+
+    it('applies leftPanelWidth via inline style', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('style={{ width: leftPanelWidth }}');
+    });
+
+    it('disables text selection while dragging', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("isDragging && 'select-none'");
     });
 
     it('has a right panel with flex-1 min-w-0', () => {

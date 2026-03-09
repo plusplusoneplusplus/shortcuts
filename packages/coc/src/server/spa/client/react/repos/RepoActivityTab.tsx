@@ -12,6 +12,7 @@ import { fetchApi } from '../hooks/useApi';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 import { ActivityListPane } from './ActivityListPane';
 import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
@@ -34,6 +35,12 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const { dispatch: appDispatch } = useApp();
     const selectedTaskId = queueState.selectedTaskId;
     const { isMobile, isTablet } = useBreakpoint();
+    const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
+        initialWidth: isTablet ? 256 : 320,
+        minWidth: 160,
+        maxWidth: 600,
+        storageKey: 'activity-left-panel-width',
+    });
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
     const repoQueue = queueState.repoQueueMap[workspaceId];
@@ -239,14 +246,27 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     }
 
     return (
-        <div className="flex h-full overflow-hidden" data-testid="activity-split-panel">
+        <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="activity-split-panel">
             {/* Left panel — task list */}
-            <div className={cn(
-                'flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden',
-                isTablet ? 'w-64' : 'w-80',
-            )}>
+            <div
+                className="flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden"
+                style={{ width: leftPanelWidth }}
+                data-testid="activity-list-panel"
+            >
                 {listPane}
             </div>
+
+            {/* Resize handle */}
+            <div
+                className="flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                data-testid="activity-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize activity panel"
+                tabIndex={0}
+            />
 
             {/* Right panel — detail or placeholder */}
             <div className="flex-1 min-w-0 overflow-hidden flex flex-col" data-testid="activity-detail-panel">
