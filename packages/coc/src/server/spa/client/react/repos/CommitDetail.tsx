@@ -169,7 +169,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
             )}
             {/* Diff label with comment toggle */}
             {filePath && (
-                <div className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between" data-testid="diff-file-path">
+                <div className="sticky top-0 z-10 px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between" data-testid="diff-file-path">
                     <span className="text-xs font-mono text-[#616161] dark:text-[#999]">{filePath}</span>
                     <div className="flex items-center gap-2">
                         <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
