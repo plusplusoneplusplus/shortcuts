@@ -518,10 +518,10 @@ export function QueueTaskItem({ task, status, now, selected, onClick, onContextM
     }
 
     return (
-        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "opacity-60 italic")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
+        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
-                    <span className="shrink-0">{icon}</span>
+                    <span className="shrink-0">{task.frozen ? '❄️' : icon}</span>
                     <span className="truncate">{name}</span>
                 </div>
                 {elapsed && (

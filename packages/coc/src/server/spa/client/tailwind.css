@@ -1727,3 +1727,28 @@
     background: rgba(55, 148, 255, 0.15);
     border-color: rgba(55, 148, 255, 0.35);
 }
+
+/* ── Frozen task visual effect ─────────────────────────────────────── */
+
+@keyframes frost-shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.task-frozen {
+    border-color: #7ec8e3 !important;
+    background:
+        linear-gradient(90deg, transparent 30%, rgba(126, 200, 227, 0.10) 50%, transparent 70%),
+        #f0f8ff !important;
+    background-size: 200% 100%, 100% 100%;
+    animation: frost-shimmer 4s linear infinite;
+    opacity: 0.85;
+}
+
+.dark .task-frozen {
+    border-color: #4a9ec2 !important;
+    background:
+        linear-gradient(90deg, transparent 30%, rgba(74, 158, 194, 0.12) 50%, transparent 70%),
+        #1a2e3d !important;
+    background-size: 200% 100%, 100% 100%;
+}

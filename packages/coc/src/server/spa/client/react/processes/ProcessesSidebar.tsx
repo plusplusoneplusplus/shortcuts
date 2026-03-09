@@ -372,12 +372,12 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
     return (
         <Card
             onClick={onClick}
-            className={cn('process-item', compact ? 'px-2 py-1.5' : 'p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]')}
+            className={cn('process-item', compact ? 'px-2 py-1.5' : 'p-2', selected && 'ring-2 ring-[#0078d4] dark:ring-[#3794ff]', task.frozen && 'task-frozen')}
             aria-label={`Task ${statusLabel(task.status).toLowerCase()}: ${preview}`}
         >
             {compact ? (
                 <div className="flex items-center gap-1.5 min-w-0 text-[11px] leading-5">
-                    <span className="shrink-0">{statusIcon(task.status)}</span>
+                    <span className="shrink-0">{task.frozen ? '❄️' : statusIcon(task.status)}</span>
                     {repo && (
                         <span className="queue-task-repo-name shrink-0 text-[10px] text-[#0078d4] dark:text-[#3794ff] font-medium"
                               title={task.repoId || task.workingDirectory || task.payload?.workingDirectory}>
@@ -391,8 +391,8 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
             ) : (
                 <>
                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <Badge status={task.status}>
-                            {statusIcon(task.status)} {statusLabel(task.status)}
+                        <Badge status={task.frozen ? 'cancelled' : task.status}>
+                            {task.frozen ? '❄️' : statusIcon(task.status)} {task.frozen ? 'Frozen' : statusLabel(task.status)}
                         </Badge>
                         <span className="text-[10px] text-[#848484]">
                             {typeLabel(task.type)}
