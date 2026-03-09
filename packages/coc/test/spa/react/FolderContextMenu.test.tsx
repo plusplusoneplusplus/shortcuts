@@ -404,7 +404,7 @@ describe('Folder context menu', () => {
         expect(screen.getByText('Generate Task with AI…')).toBeTruthy();
         expect(screen.getByText('Delete Folder')).toBeTruthy();
         expect(screen.getByText('Move Folder')).toBeTruthy();
-        expect(screen.getByText('Bulk Follow Prompt')).toBeTruthy();
+        expect(screen.getByText('Bulk Run Skill')).toBeTruthy();
 
         // Separators between groups
         const separators = screen.getAllByRole('separator');
@@ -476,7 +476,7 @@ describe('Folder context menu', () => {
         expect(mockOpenGenerate).toHaveBeenCalledWith('feature1');
     });
 
-    it('"Queue All Tasks" has a submenu with Follow Prompt', async () => {
+    it('"Queue All Tasks" has a submenu with Run Skill', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -498,21 +498,18 @@ describe('Folder context menu', () => {
         // Hover to open submenu
         fireEvent.mouseEnter(parentItem!);
 
-        // Submenu should contain "Follow Prompt"
-        const followPromptItems = screen.getAllByText('Follow Prompt');
-        expect(followPromptItems.length).toBeGreaterThanOrEqual(1);
+        // Submenu should contain "Run Skill"
+        const runSkillItems = screen.getAllByText('Run Skill');
+        expect(runSkillItems.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('"Follow Prompt" in Queue submenu opens FollowPromptDialog', async () => {
+    it('"Run Skill" in Queue submenu opens BulkFollowPromptDialog', async () => {
         global.fetch = vi.fn().mockImplementation((url: string) => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             if (url.includes('queue/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
-            }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ prompts: [] }) });
             }
             if (url.includes('/skills')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
@@ -531,13 +528,13 @@ describe('Folder context menu', () => {
         const parentItem = screen.getAllByText('Queue All Tasks')[0].closest('[data-testid^="context-menu-item-"]');
         fireEvent.mouseEnter(parentItem!);
 
-        // Click "Follow Prompt" in the submenu
-        const followPrompt = screen.getAllByText('Follow Prompt')[0];
-        fireEvent.click(followPrompt);
+        // Click "Run Skill" in the submenu
+        const runSkill = screen.getAllByText('Run Skill')[0];
+        fireEvent.click(runSkill);
 
         // BulkFollowPromptDialog should open
         await waitFor(() => {
-            expect(screen.getByText('Follow Prompt')).toBeTruthy();
+            expect(screen.getByText('Run Skill')).toBeTruthy();
             expect(document.getElementById('bulk-follow-prompt-dialog')).toBeTruthy();
         });
     });

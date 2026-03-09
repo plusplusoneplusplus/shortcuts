@@ -87,7 +87,7 @@ describe('TaskPreview', () => {
         expect(closeBtn.closest('.mode-toggle')).toBeTruthy();
     });
 
-    it('renders Follow Prompt and Update Document buttons in the toolbar', async () => {
+    it('renders Run Skill and Update Document buttons in the toolbar', async () => {
         render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
         await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
 
@@ -99,7 +99,7 @@ describe('TaskPreview', () => {
         expect(updateBtn.closest('.mode-toggle')).toBeTruthy();
     });
 
-    it('opens FollowPromptDialog when Follow Prompt button is clicked', async () => {
+    it('opens FollowPromptDialog when Run Skill button is clicked', async () => {
         render(<Wrap><TaskPreview wsId="ws1" filePath="test.md" /></Wrap>);
         await waitFor(() => { expect(document.querySelector('#task-preview-body')).toBeTruthy(); });
 

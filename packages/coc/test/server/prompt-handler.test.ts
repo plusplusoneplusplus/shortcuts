@@ -1,7 +1,7 @@
 /**
  * Prompt Handler Tests
  *
- * Comprehensive tests for the Prompt & Skill Discovery REST API endpoints.
+ * Tests for the Skill Discovery REST API endpoint.
  *
  * Uses port 0 (OS-assigned) for test isolation.
  */
@@ -108,117 +108,12 @@ describe('Prompt Handler', () => {
     // File creation helpers
     // ========================================================================
 
-    /** Create prompt files in the workspace. */
-    function createPromptFiles(files: Record<string, string>, folder = '.github/prompts'): void {
-        for (const [filePath, content] of Object.entries(files)) {
-            const fullPath = path.join(workspaceDir, folder, filePath);
-            fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-            fs.writeFileSync(fullPath, content, 'utf-8');
-        }
-    }
-
     /** Create skill directories in the workspace. */
     function createSkill(name: string, skillMdContent: string): void {
         const skillDir = path.join(workspaceDir, '.github', 'skills', name);
         fs.mkdirSync(skillDir, { recursive: true });
         fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMdContent, 'utf-8');
     }
-
-    // ========================================================================
-    // Prompts endpoint tests
-    // ========================================================================
-
-    describe('GET /api/workspaces/:id/prompts', () => {
-
-        it('should return 404 for unknown workspace', async () => {
-            const srv = await startServer();
-            const res = await request(`${srv.url}/api/workspaces/nonexistent/prompts`);
-            expect(res.status).toBe(404);
-            const body = JSON.parse(res.body);
-            expect(body.error).toBe('Workspace not found');
-        });
-
-        it('should return empty prompts when prompts folder does not exist', async () => {
-            const srv = await startServer();
-            const wsId = await registerWorkspace(srv, workspaceDir);
-            const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/prompts`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.prompts).toEqual([]);
-            expect(body.warning).toBeUndefined();
-        });
-
-        it('should discover .prompt.md files recursively', async () => {
-            createPromptFiles({
-                'fix-bug.prompt.md': '# Fix Bug',
-                'sub/deep.prompt.md': '# Deep Prompt',
-            });
-            const srv = await startServer();
-            const wsId = await registerWorkspace(srv, workspaceDir);
-            const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/prompts`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.prompts.length).toBe(2);
-            const names = body.prompts.map((p: any) => p.name);
-            expect(names).toContain('fix-bug');
-            expect(names).toContain('deep');
-        });
-
-        it('should support custom locations query param', async () => {
-            createPromptFiles({ 'test.prompt.md': '# Test' }, 'custom/prompts');
-            const srv = await startServer();
-            const wsId = await registerWorkspace(srv, workspaceDir);
-            const res = await request(
-                `${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/prompts?locations=custom/prompts`
-            );
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.prompts.length).toBe(1);
-            expect(body.prompts[0].name).toBe('test');
-        });
-
-        it('should return sorted results by name', async () => {
-            createPromptFiles({
-                'z.prompt.md': '# Z',
-                'a.prompt.md': '# A',
-            });
-            const srv = await startServer();
-            const wsId = await registerWorkspace(srv, workspaceDir);
-            const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/prompts`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.prompts[0].name).toBe('a');
-            expect(body.prompts[1].name).toBe('z');
-        });
-
-        it('should include relativePath and sourceFolder', async () => {
-            createPromptFiles({ 'sub/my.prompt.md': '# My Prompt' });
-            const srv = await startServer();
-            const wsId = await registerWorkspace(srv, workspaceDir);
-            const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/prompts`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.prompts.length).toBe(1);
-            // Normalize path separators for cross-platform
-            const relPath = body.prompts[0].relativePath.replace(/\\/g, '/');
-            expect(relPath).toBe('.github/prompts/sub/my.prompt.md');
-            expect(body.prompts[0].sourceFolder).toBeDefined();
-        });
-
-        it('should ignore non-.prompt.md files', async () => {
-            createPromptFiles({
-                'README.md': '# README',
-                'real.prompt.md': '# Real Prompt',
-            });
-            const srv = await startServer();
-            const wsId = await registerWorkspace(srv, workspaceDir);
-            const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/prompts`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.prompts.length).toBe(1);
-            expect(body.prompts[0].name).toBe('real');
-        });
-    });
 
     // ========================================================================
     // Skills endpoint tests

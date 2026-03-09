@@ -1,7 +1,7 @@
 /**
  * Tests for FolderActionDialog component and the dialog-bearing
  * context menu actions in TasksPanel (Rename, Create Subfolder,
- * Create Task, Delete, Bulk Follow Prompt).
+ * Create Task, Delete, Bulk Run Skill).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -530,17 +530,17 @@ describe('TasksPanel folder dialog actions', () => {
         });
     });
 
-    it('clicking "Bulk Follow Prompt" mounts FollowPromptDialog', async () => {
+    it('clicking "Bulk Run Skill" mounts FollowPromptDialog', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
         });
 
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
-        fireEvent.click(screen.getByText('Bulk Follow Prompt'));
+        fireEvent.click(screen.getByText('Bulk Run Skill'));
 
-        // FollowPromptDialog renders a Dialog with title "Follow Prompt"
-        expect(screen.getByText('Follow Prompt')).toBeTruthy();
+        // FollowPromptDialog renders a Dialog with title "Run Skill"
+        expect(screen.getByText('Run Skill')).toBeTruthy();
         expect(screen.getByText('Model')).toBeTruthy();
     });
 

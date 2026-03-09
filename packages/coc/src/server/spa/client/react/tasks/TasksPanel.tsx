@@ -574,8 +574,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
             { separator: true, label: '', onClick: noop },
             // ── AI Actions ──
             {
-                label: '✨ Follow Prompt',
-                icon: '📝',
+                label: '✨ Run Skill',
+                icon: '⚡',
                 onClick: () => {
                     setFileCtxMenu(null);
                     setAiDialogTarget({ path: ctxItem.renamePath, name: ctxItem.displayName });
@@ -656,8 +656,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                         },
                     },
                     {
-                        label: 'Follow Prompt',
-                        icon: '📝',
+                        label: 'Run Skill',
+                        icon: '⚡',
                         onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
                     },
                 ],
@@ -729,8 +729,8 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 onClick: () => handleFolderContextMenuAction('generate-task-ai', folder),
             },
             {
-                label: 'Bulk Follow Prompt',
-                icon: '🤖',
+                label: 'Bulk Run Skill',
+                icon: '⚡',
                 onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
             },
             { separator: true, label: '', onClick: noop },
@@ -1043,7 +1043,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 </Dialog>
             )}
 
-            {/* Bulk Follow Prompt dialog */}
+            {/* Bulk Run Skill dialog */}
             {folderDialog.action === 'follow-prompt' && folderDialog.folder && (
                 <BulkFollowPromptDialog
                     wsId={wsId}

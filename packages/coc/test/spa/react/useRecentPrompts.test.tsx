@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useRecentPrompts } from '../../../src/server/spa/client/react/hooks/useRecentPrompts';
+import { useRecentSkills } from '../../../src/server/spa/client/react/hooks/useRecentSkills';
 
 const mockFetch = vi.fn();
 
@@ -10,18 +10,18 @@ beforeEach(() => {
     global.fetch = mockFetch;
 });
 
-describe('useRecentPrompts', () => {
+describe('useRecentSkills', () => {
     it('loads recent items from GET /api/preferences', async () => {
         const items = [
-            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-            { type: 'skill', name: 'impl', description: 'Implement changes', timestamp: 900 },
+            { name: 'review', timestamp: 1000 },
+            { name: 'impl', description: 'Implement changes', timestamp: 900 },
         ];
         mockFetch.mockResolvedValueOnce({
             ok: true,
             json: () => Promise.resolve({ recentFollowPrompts: items }),
         });
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
@@ -32,7 +32,7 @@ describe('useRecentPrompts', () => {
     it('defaults to empty array when API fails', async () => {
         mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
@@ -46,7 +46,7 @@ describe('useRecentPrompts', () => {
             json: () => Promise.resolve({ lastModel: 'gpt-4' }),
         });
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
@@ -56,8 +56,8 @@ describe('useRecentPrompts', () => {
 
     it('trackUsage prepends new entry and deduplicates', async () => {
         const existing = [
-            { type: 'prompt' as const, name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-            { type: 'skill' as const, name: 'impl', timestamp: 900 },
+            { name: 'review', timestamp: 1000 },
+            { name: 'impl', timestamp: 900 },
         ];
         mockFetch.mockResolvedValueOnce({
             ok: true,
@@ -66,14 +66,14 @@ describe('useRecentPrompts', () => {
         // PATCH call
         mockFetch.mockResolvedValueOnce({ ok: true });
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
         });
 
         act(() => {
-            result.current.trackUsage('prompt', 'review', 'review.prompt.md');
+            result.current.trackUsage('review');
         });
 
         // 'review' should be moved to front, not duplicated
@@ -90,26 +90,24 @@ describe('useRecentPrompts', () => {
         });
         mockFetch.mockResolvedValueOnce({ ok: true });
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
         });
 
         act(() => {
-            result.current.trackUsage('skill', 'draft', undefined, 'Draft a spec');
+            result.current.trackUsage('draft', 'Draft a spec');
         });
 
         expect(result.current.recentItems.length).toBe(1);
-        expect(result.current.recentItems[0].type).toBe('skill');
         expect(result.current.recentItems[0].name).toBe('draft');
         expect(result.current.recentItems[0].description).toBe('Draft a spec');
     });
 
     it('trackUsage caps at 10 items', async () => {
         const items = Array.from({ length: 10 }, (_, i) => ({
-            type: 'prompt' as const,
-            name: `prompt-${i}`,
+            name: `skill-${i}`,
             timestamp: 1000 - i,
         }));
         mockFetch.mockResolvedValueOnce({
@@ -118,20 +116,20 @@ describe('useRecentPrompts', () => {
         });
         mockFetch.mockResolvedValueOnce({ ok: true });
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
         });
 
         act(() => {
-            result.current.trackUsage('skill', 'new-skill');
+            result.current.trackUsage('new-skill');
         });
 
         expect(result.current.recentItems.length).toBe(10);
         expect(result.current.recentItems[0].name).toBe('new-skill');
         // The last old item should be evicted
-        expect(result.current.recentItems.map(i => i.name)).not.toContain('prompt-9');
+        expect(result.current.recentItems.map(i => i.name)).not.toContain('skill-9');
     });
 
     it('trackUsage fires PATCH /api/preferences', async () => {
@@ -141,14 +139,14 @@ describe('useRecentPrompts', () => {
         });
         mockFetch.mockResolvedValueOnce({ ok: true });
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
         });
 
         act(() => {
-            result.current.trackUsage('prompt', 'review', 'review.prompt.md');
+            result.current.trackUsage('review');
         });
 
         await waitFor(() => {
@@ -159,27 +157,26 @@ describe('useRecentPrompts', () => {
             const body = JSON.parse(patchCalls[0][1].body);
             expect(body.recentFollowPrompts).toBeDefined();
             expect(body.recentFollowPrompts[0].name).toBe('review');
-            expect(body.recentFollowPrompts[0].type).toBe('prompt');
         });
     });
 
-    it('trackUsage does not include path when undefined', async () => {
+    it('trackUsage does not include description when not provided', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             json: () => Promise.resolve({ recentFollowPrompts: [] }),
         });
         mockFetch.mockResolvedValueOnce({ ok: true });
 
-        const { result } = renderHook(() => useRecentPrompts());
+        const { result } = renderHook(() => useRecentSkills());
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
         });
 
         act(() => {
-            result.current.trackUsage('skill', 'impl');
+            result.current.trackUsage('impl');
         });
 
-        expect(result.current.recentItems[0].path).toBeUndefined();
+        expect(result.current.recentItems[0].description).toBeUndefined();
     });
 });

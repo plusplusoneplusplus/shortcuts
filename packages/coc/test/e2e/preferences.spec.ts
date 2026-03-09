@@ -16,7 +16,7 @@ import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
 /**
- * Add prompt fixtures so the Follow Prompt submenu has items to render.
+ * Add prompt fixtures so the Run Skill submenu has items to render.
  */
 function createPromptFixtures(repoDir: string): void {
     const promptDir = path.join(repoDir, '.github', 'prompts');
@@ -55,7 +55,7 @@ async function setupRepoForPrefs(
     return repoDir;
 }
 
-/** Helper: open the Follow Prompt submenu for the first file row. Closes it first if already open. */
+/** Helper: open the Run Skill submenu for the first file row. Closes it first if already open. */
 async function openFollowPromptDialog(page: import('@playwright/test').Page): Promise<void> {
     // Close dialog if already open (e.g. from previous call)
     const existing = page.locator('#follow-prompt-submenu');
@@ -68,13 +68,13 @@ async function openFollowPromptDialog(page: import('@playwright/test').Page): Pr
     await fileRow.click({ button: 'right' });
     const contextMenu = page.locator('[data-testid="context-menu"]');
     await expect(contextMenu).toBeVisible({ timeout: 5000 });
-    await contextMenu.getByRole('menuitem', { name: /Follow Prompt/ }).click();
+    await contextMenu.getByRole('menuitem', { name: /Run Skill/ }).click();
     await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
 }
 
 /** Helper: open the Update Document modal for the first file row. Closes overlays first if open. */
 async function openUpdateDocumentDialog(page: import('@playwright/test').Page): Promise<void> {
-    // Close Follow Prompt dialog if open
+    // Close Run Skill dialog if open
     const fp = page.locator('#follow-prompt-submenu');
     if (await fp.isVisible().catch(() => false)) {
         await page.locator('#fp-close').click();
@@ -89,7 +89,7 @@ async function openUpdateDocumentDialog(page: import('@playwright/test').Page): 
     await expect(page.locator('#update-doc-overlay')).toBeVisible();
 }
 
-/** Helper: get a valid non-default model value from the fp-model select (Follow Prompt dialog must be open). */
+/** Helper: get a valid non-default model value from the fp-model select (Run Skill dialog must be open). */
 async function getFirstModelValue(page: import('@playwright/test').Page): Promise<string> {
     // Wait for model options to be populated (async fetch may still be in-flight)
     await page.waitForFunction(() => {
@@ -107,7 +107,7 @@ async function getFirstModelValue(page: import('@playwright/test').Page): Promis
     });
 }
 
-/** Helper: get a second non-default model value from the fp-model select (Follow Prompt dialog must be open). */
+/** Helper: get a second non-default model value from the fp-model select (Run Skill dialog must be open). */
 async function getSecondModelValue(page: import('@playwright/test').Page): Promise<string> {
     return page.evaluate(() => {
         const sel = document.getElementById('fp-model') as HTMLSelectElement | null;
@@ -125,7 +125,7 @@ async function getSecondModelValue(page: import('@playwright/test').Page): Promi
 
 test.describe('Preferences (007)', () => {
 
-    // Mock /api/queue/models so Follow Prompt and Update Document dialogs have model options
+    // Mock /api/queue/models so Run Skill and Update Document dialogs have model options
     test.beforeEach(async ({ page }) => {
         await page.route('**/api/queue/models', route =>
             route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: ['gpt-4', 'claude-3-5-sonnet', 'gemini-2.0'] }) }),
@@ -147,7 +147,7 @@ test.describe('Preferences (007)', () => {
         }
     });
 
-    test('7P.2 selecting model in Follow Prompt persists to server', async ({ page, serverUrl }) => {
+    test('7P.2 selecting model in Run Skill persists to server', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
@@ -198,7 +198,7 @@ test.describe('Preferences (007)', () => {
         }
     });
 
-    test('7P.4 model preference applied to Follow Prompt dialog on open', async ({ page, serverUrl }) => {
+    test('7P.4 model preference applied to Run Skill dialog on open', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
@@ -268,7 +268,7 @@ test.describe('Preferences (007)', () => {
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
 
-            // Open Follow Prompt and change model
+            // Open Run Skill and change model
             await openFollowPromptDialog(page);
             await page.selectOption('#fp-model', modelValue);
             await page.waitForTimeout(300);
@@ -291,7 +291,7 @@ test.describe('Preferences (007)', () => {
             const modelValue = await getFirstModelValue(page);
             expect(modelValue).toBeTruthy();
 
-            // Set model via Follow Prompt dialog
+            // Set model via Run Skill dialog
             await openFollowPromptDialog(page);
             await page.selectOption('#fp-model', modelValue);
             await page.waitForTimeout(500);

@@ -122,7 +122,7 @@ test.describe('Error Handling (008)', () => {
 
             const contextMenu = page.locator('[data-testid="context-menu"]');
             await expect(contextMenu).toBeVisible({ timeout: 5000 });
-            await contextMenu.getByRole('menuitem', { name: /Follow Prompt/ }).click();
+            await contextMenu.getByRole('menuitem', { name: /Run Skill/ }).click();
             await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
             await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
 

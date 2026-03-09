@@ -45,7 +45,7 @@ export interface MarkdownReviewEditorProps {
     initialViewMode?: 'review' | 'source';
     /** Called when the user switches view mode. */
     onViewModeChange?: (mode: 'review' | 'source') => void;
-    /** When true, renders Follow Prompt + Update Document AI buttons in the toolbar. */
+    /** When true, renders Run Skill + Update Document AI buttons in the toolbar. */
     showAiButtons?: boolean;
     /** Scroll position to restore after content loads (used for minimize/restore). */
     initialScrollTop?: number;
@@ -629,9 +629,9 @@ export function MarkdownReviewEditor({
                                             variant="ghost"
                                             size="sm"
                                             data-testid="task-preview-follow-prompt"
-                                            title="Follow Prompt"
+                                            title="Run Skill"
                                             onClick={() => setAiDialogType('follow-prompt')}
-                                        >📝</Button>
+                                        >⚡</Button>
                                         <Button
                                             variant="ghost"
                                             size="sm"

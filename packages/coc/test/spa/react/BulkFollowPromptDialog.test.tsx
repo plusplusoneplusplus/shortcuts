@@ -59,21 +59,21 @@ function renderDialogWithWorkspace(workspaces: any[], folder = makeFolder(), onC
 }
 
 describe('BulkFollowPromptDialog', () => {
-    it('renders Follow Prompt title', async () => {
+    it('renders Run Skill title', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         await act(async () => {
             renderDialog();
         });
-        expect(screen.getByText('Follow Prompt')).toBeDefined();
+        expect(screen.getByText('Run Skill')).toBeDefined();
     });
 
     it('shows task count summary', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         await act(async () => {
             renderDialog();
@@ -84,7 +84,7 @@ describe('BulkFollowPromptDialog', () => {
     it('shows singular "task" for single file', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -100,7 +100,7 @@ describe('BulkFollowPromptDialog', () => {
     it('excludes context files from count', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -117,7 +117,7 @@ describe('BulkFollowPromptDialog', () => {
     it('collects files from nested children', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -144,7 +144,7 @@ describe('BulkFollowPromptDialog', () => {
     it('collects files from document groups', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [],
@@ -181,7 +181,7 @@ describe('BulkFollowPromptDialog', () => {
             }
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve({ prompts: [], skills: [] }),
+                json: () => Promise.resolve({ skills: [] }),
             });
         });
 
@@ -197,101 +197,10 @@ describe('BulkFollowPromptDialog', () => {
         });
     });
 
-    it('renders prompt items when prompts exist', async () => {
-        mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: '.vscode/review.prompt.md' }] }),
-                });
-            }
-            if (url.includes('/skills')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-        });
-
-        await act(async () => {
-            renderDialog();
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('review')).toBeDefined();
-        });
-    });
-
-    it('submits one task per file when prompt is clicked', async () => {
-        const onClose = vi.fn();
-
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
-            if (url.includes('/skills')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
-                });
-            }
-            if (url.includes('/tasks/settings')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
-                });
-            }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-        });
-
-        await act(async () => {
-            renderDialog(makeFolder(), onClose);
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('impl')).toBeDefined();
-        });
-
-        await act(async () => {
-            fireEvent.click(screen.getByText('impl'));
-        });
-
-        await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                ([url, opts]: [string, any]) => opts?.method === 'POST' && url.includes('/queue/tasks')
-            );
-            expect(postCalls.length).toBe(2);
-
-            const bodies = postCalls.map(([_, opts]: [string, any]) => JSON.parse(opts.body));
-            expect(bodies[0].type).toBe('chat');
-            expect(bodies[1].type).toBe('chat');
-            expect(bodies[0].payload.context.files.some((f: string) => f.includes('design.md'))).toBe(true);
-            expect(bodies[1].payload.context.files.some((f: string) => f.includes('spec.md'))).toBe(true);
-            expect(bodies[0].displayName).toContain('design');
-            expect(bodies[1].displayName).toContain('spec');
-        });
-
-        expect(onClose).toHaveBeenCalled();
-        expect(mockAddToast).toHaveBeenCalledWith('Queued 2 tasks successfully', 'success');
-    });
-
     it('submits one task per file for skills', async () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
@@ -329,9 +238,18 @@ describe('BulkFollowPromptDialog', () => {
             expect(postCalls.length).toBe(2);
 
             const bodies = postCalls.map(([_, opts]: [string, any]) => JSON.parse(opts.body));
+            expect(bodies[0].type).toBe('chat');
+            expect(bodies[1].type).toBe('chat');
             expect(bodies[0].payload.context.skills).toContain('draft');
             expect(bodies[1].payload.context.skills).toContain('draft');
+            expect(bodies[0].payload.context.files.some((f: string) => f.includes('design.md'))).toBe(true);
+            expect(bodies[1].payload.context.files.some((f: string) => f.includes('spec.md'))).toBe(true);
+            expect(bodies[0].displayName).toContain('design');
+            expect(bodies[1].displayName).toContain('spec');
         });
+
+        expect(onClose).toHaveBeenCalled();
+        expect(mockAddToast).toHaveBeenCalledWith('Queued 2 tasks successfully', 'success');
     });
 
     it('reports partial failures correctly', async () => {
@@ -339,16 +257,10 @@ describe('BulkFollowPromptDialog', () => {
         let postCount = 0;
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'test', relativePath: 'test.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'test', description: 'Run tests' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -387,7 +299,7 @@ describe('BulkFollowPromptDialog', () => {
     it('shows 0 tasks for empty folder', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const emptyFolder = makeFolder({ singleDocuments: [], documentGroups: [], children: [] });
         await act(async () => {
@@ -396,21 +308,15 @@ describe('BulkFollowPromptDialog', () => {
         expect(screen.getByText(/0 tasks will be queued/)).toBeDefined();
     });
 
-    it('disables prompt buttons when folder has no files', async () => {
+    it('disables skill buttons when folder has no files', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'review', description: 'Review code' }] }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         const emptyFolder = makeFolder({ singleDocuments: [], documentGroups: [], children: [] });
@@ -436,16 +342,10 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({ models: ['gpt-4'] }),
                 });
             }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'review', description: 'Review code' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -509,7 +409,7 @@ describe('BulkFollowPromptDialog', () => {
         const onClose = vi.fn();
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         await act(async () => {
             renderDialog(makeFolder(), onClose);
@@ -525,25 +425,19 @@ describe('BulkFollowPromptDialog', () => {
                     ok: true,
                     json: () => Promise.resolve({
                         recentFollowPrompts: [
-                            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-                            { type: 'skill', name: 'draft', timestamp: 900 },
+                            { name: 'review', timestamp: 1000 },
+                            { name: 'draft', description: 'Draft a spec', timestamp: 900 },
                         ],
                     }),
-                });
-            }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
                 });
             }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [{ name: 'draft' }] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'review' }, { name: 'draft', description: 'Draft a spec' }] }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         await act(async () => {
@@ -565,19 +459,13 @@ describe('BulkFollowPromptDialog', () => {
                     json: () => Promise.resolve({}),
                 });
             }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'review' }] }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         await act(async () => {
@@ -598,24 +486,18 @@ describe('BulkFollowPromptDialog', () => {
                     ok: true,
                     json: () => Promise.resolve({
                         recentFollowPrompts: [
-                            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
+                            { name: 'review', timestamp: 1000 },
                         ],
                     }),
-                });
-            }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'review', relativePath: 'review.prompt.md' }] }),
                 });
             }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'review' }] }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         const emptyFolder = makeFolder({ singleDocuments: [], documentGroups: [], children: [] });
@@ -641,16 +523,10 @@ describe('BulkFollowPromptDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement code' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -693,7 +569,7 @@ describe('BulkFollowPromptDialog', () => {
     it('renders additional info textarea with placeholder', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         await act(async () => {
             renderDialog();
@@ -709,16 +585,10 @@ describe('BulkFollowPromptDialog', () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement code' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -770,16 +640,10 @@ describe('BulkFollowPromptDialog', () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/prompts')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ prompts: [{ name: 'impl', relativePath: '.vscode/impl.prompt.md' }] }),
-                });
-            }
             if (url.includes('/skills')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement code' }] }),
                 });
             }
             if (url.includes('/tasks/settings')) {
@@ -825,7 +689,7 @@ describe('BulkFollowPromptDialog', () => {
     it('excludes tasks with status "future" from count', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -842,7 +706,7 @@ describe('BulkFollowPromptDialog', () => {
     it('excludes tasks with status "done" from count', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -859,7 +723,7 @@ describe('BulkFollowPromptDialog', () => {
     it('includes tasks with no status (undefined)', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -876,7 +740,7 @@ describe('BulkFollowPromptDialog', () => {
     it('includes tasks with active statuses like "pending" and "in-progress"', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -893,7 +757,7 @@ describe('BulkFollowPromptDialog', () => {
     it('excludes inactive tasks from document groups', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [],
@@ -917,7 +781,7 @@ describe('BulkFollowPromptDialog', () => {
     it('excludes inactive tasks from nested children', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [
@@ -944,7 +808,7 @@ describe('BulkFollowPromptDialog', () => {
     it('shows 0 tasks when all are inactive', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         const folder = makeFolder({
             singleDocuments: [

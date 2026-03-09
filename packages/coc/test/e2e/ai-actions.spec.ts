@@ -1,11 +1,11 @@
 /**
  * AI Actions E2E Tests (007)
  *
- * Tests AI action dropdown on task file rows, Follow Prompt / Update Document
+ * Tests AI action dropdown on task file rows, Run Skill / Update Document
  * dialogs, API enqueue calls, and error handling.
  *
  * Depends on createRepoFixture + createTasksFixture for on-disk task files,
- * plus prompt/skill fixture files for the Follow Prompt discovery flow.
+ * plus prompt/skill fixture files for the Run Skill discovery flow.
  */
 
 import * as fs from 'fs';
@@ -39,7 +39,7 @@ async function waitForTaskStatus(
 }
 
 /**
- * Add .prompt.md files and a skill directory so the Follow Prompt submenu
+ * Add .prompt.md files and a skill directory so the Run Skill submenu
  * has items to render.
  */
 function createPromptAndSkillFixtures(repoDir: string): void {
@@ -58,7 +58,7 @@ function createPromptAndSkillFixtures(repoDir: string): void {
     );
 }
 
-/** Helper: create a repo with tasks + prompts/skills, navigate to Tasks sub-tab. */
+/** Helper: create a repo with tasks + skills, navigate to Tasks sub-tab. */
 async function setupRepoWithAIActions(
     page: import('@playwright/test').Page,
     serverUrl: string,
@@ -99,34 +99,31 @@ test.describe('AI Actions (007)', () => {
             await fileRow.click({ button: 'right' });
 
             // Context menu should contain AI action items
-            await expect(page.locator('text=✨ Follow Prompt')).toBeVisible({ timeout: 5000 });
+            await expect(page.locator('text=✨ Run Skill')).toBeVisible({ timeout: 5000 });
             await expect(page.locator('text=✨ Update Document')).toBeVisible({ timeout: 5000 });
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('7.2 Follow Prompt via context menu opens submenu with prompts and skills', async ({ page, serverUrl }) => {
+    test('7.2 Run Skill via context menu opens submenu with skills', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
             const fileRow = page.locator('.miller-file-row').first();
             await fileRow.click({ button: 'right' });
-            await page.locator('text=✨ Follow Prompt').click();
+            await page.locator('text=✨ Run Skill').click();
 
-            // Follow Prompt overlay should appear
+            // Run Skill overlay should appear
             const overlay = page.locator('#follow-prompt-submenu');
             await expect(overlay).toBeVisible();
 
             // Should have a model select
             await expect(page.locator('#fp-model')).toBeVisible();
 
-            // Should load and show prompt items
+            // Should load and show skill items
             await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
-
-            // Should have the "review" prompt we created
-            await expect(page.locator('.fp-item[data-name="review"]')).toBeVisible();
 
             // Should have the "impl" skill
             await expect(page.locator('.fp-item[data-name="impl"]')).toBeVisible();
@@ -135,7 +132,7 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.3 Follow Prompt enqueues task when prompt item clicked', async ({ page, serverUrl, mockAI }) => {
+    test('7.3 Run Skill enqueues task when skill item clicked', async ({ page, serverUrl, mockAI }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
@@ -149,19 +146,19 @@ test.describe('AI Actions (007)', () => {
 
             const fileRow = page.locator('.miller-file-row').first();
             await fileRow.click({ button: 'right' });
-            await page.locator('text=✨ Follow Prompt').click();
+            await page.locator('text=✨ Run Skill').click();
 
-            // Wait for prompts to load
+            // Wait for skills to load
             await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
 
-            // Click on the review prompt
-            await page.locator('.fp-item[data-name="review"]').click();
+            // Click on the impl skill
+            await page.locator('.fp-item[data-name="impl"]').click();
 
             // Verify the POST payload
             const queueResponse = await queueResponsePromise;
             const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
             expect(reqBody.type).toBe('chat');
-            expect(reqBody.displayName).toContain('review');
+            expect(reqBody.displayName).toContain('impl');
 
             // Overlay should be removed
             await expect(page.locator('#follow-prompt-submenu')).toHaveCount(0, { timeout: 5000 });
@@ -317,14 +314,14 @@ test.describe('AI Actions (007)', () => {
         }
     });
 
-    test('7.8 Follow Prompt close button dismisses submenu', async ({ page, serverUrl }) => {
+    test('7.8 Run Skill close button dismisses submenu', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
         try {
             await setupRepoWithAIActions(page, serverUrl, tmpDir);
 
             const fileRow = page.locator('.miller-file-row').first();
             await fileRow.click({ button: 'right' });
-            await page.locator('text=✨ Follow Prompt').click();
+            await page.locator('text=✨ Run Skill').click();
 
             const overlay = page.locator('#follow-prompt-submenu');
             await expect(overlay).toBeVisible();

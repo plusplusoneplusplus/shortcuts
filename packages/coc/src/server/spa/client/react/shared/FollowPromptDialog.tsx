@@ -1,12 +1,12 @@
 /**
- * FollowPromptDialog — modal for running a "Follow Prompt" AI action on a task file.
- * Fetches available prompts/skills, lets user pick one and submit to queue.
+ * FollowPromptDialog — modal for running a skill-based AI action on a task file.
+ * Fetches available skills, lets user pick one or more, and submits to queue.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button, Spinner } from './index';
 import { usePreferences } from '../hooks/usePreferences';
-import { useRecentPrompts } from '../hooks/useRecentPrompts';
+import { useRecentSkills } from '../hooks/useRecentSkills';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
@@ -14,12 +14,6 @@ import { toNativePath } from '@plusplusoneplusplus/pipeline-core/utils/path-util
 
 interface SkillItem {
     name: string;
-    description?: string;
-}
-
-interface PromptItem {
-    name: string;
-    path: string;
     description?: string;
 }
 
@@ -47,13 +41,12 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
     const { state } = useApp();
     const { models: savedModels, setModel, loaded: prefsLoaded } = usePreferences(wsId);
     const model = savedModels.task;
-    const { recentItems, trackUsage } = useRecentPrompts(wsId);
+    const { recentItems, trackUsage } = useRecentSkills(wsId);
     const { addToast } = useGlobalToast();
 
     const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
     const [skills, setSkills] = useState<SkillItem[]>([]);
-    const [prompts, setPrompts] = useState<PromptItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [additionalInfo, setAdditionalInfo] = useState('');
@@ -63,15 +56,13 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         let cancelled = false;
         (async () => {
             try {
-                const [modelsRes, skillRes, promptRes] = await Promise.all([
+                const [modelsRes, skillRes] = await Promise.all([
                     fetch(getApiBase() + '/queue/models').then(r => r.ok ? r.json() : []),
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
-                    fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/prompts`).then(r => r.ok ? r.json() : null),
                 ]);
                 if (cancelled) return;
                 setModels(modelsRes?.models ?? (Array.isArray(modelsRes) ? modelsRes : []));
                 setSkills(skillRes?.skills ?? []);
-                setPrompts(promptRes?.prompts ?? []);
             } catch {
                 // ignore
             } finally {
@@ -92,7 +83,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         setSubmitting(true);
         try {
             for (const name of skillNames) {
-                trackUsage('skill', name, undefined, description);
+                trackUsage(name, description);
                 if (selectedWsId) {
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/preferences/skill-usage`, {
                         method: 'PATCH',
@@ -165,80 +156,9 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         }
     }, [selectedWsId, taskPath, taskName, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage]);
 
-    const handleSubmit = useCallback(async (type: 'prompt' | 'skill', name: string, path?: string, description?: string) => {
-        // For single-skill submit (from prompt buttons or recent items), delegate to multi-skill path
-        if (type === 'skill') {
-            return handleSubmitSkills([name], description);
-        }
-        setSubmitting(true);
-        try {
-            trackUsage(type, name, path, description);
-
-            const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
-            const workingDirectory = ws?.rootPath || '';
-            const isAbsTaskPath = taskPath.startsWith('/') || /^[A-Za-z]:/.test(taskPath);
-            let planFilePath: string;
-            if (isAbsTaskPath) {
-                planFilePath = toNativePath(taskPath);
-            } else {
-                const tasksFolder = await getTasksFolderPath(selectedWsId);
-                const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
-                const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
-                planFilePath = workingDirectory
-                    ? toNativePath(taskBase + '/' + taskPath)
-                    : taskPath;
-            }
-
-            let chatPayload: Record<string, any>;
-            const promptFilePath = workingDirectory
-                ? toNativePath(workingDirectory + '/' + (path || ''))
-                : path || '';
-            chatPayload = {
-                kind: 'chat',
-                mode: 'autopilot',
-                prompt: `Follow the instruction ${promptFilePath}.`,
-                workingDirectory,
-                context: {
-                    files: [promptFilePath, planFilePath],
-                },
-            };
-
-            const trimmed = additionalInfo.trim();
-            if (trimmed) {
-                if (!chatPayload.context) chatPayload.context = {};
-                if (!chatPayload.context.blocks) chatPayload.context.blocks = [];
-                chatPayload.context.blocks.push({ label: 'Additional Info', content: trimmed });
-            }
-
-            const body: any = {
-                type: 'chat',
-                priority: 'normal',
-                displayName: `Follow: ${name} on ${taskName}`,
-                payload: chatPayload,
-            };
-            if (model) body.config = { model };
-
-            const res = await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || `HTTP ${res.status}`);
-            }
-            addToast('Queued successfully', 'success');
-            onClose();
-        } catch (err: any) {
-            addToast(err.message || 'Failed to queue', 'error');
-        } finally {
-            setSubmitting(false);
-        }
-    }, [selectedWsId, taskPath, taskName, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage, handleSubmitSkills]);
-
     return (
         <>
-            <Dialog open onClose={onClose} title="Follow Prompt" id="follow-prompt-submenu">
+            <Dialog open onClose={onClose} title="Run Skill" id="follow-prompt-submenu">
                 <div className="flex flex-col gap-4">
                     {/* Close button */}
                     <button
@@ -302,91 +222,69 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                             <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Last Used</div>
                             {recentItems.map(item => (
                                 <button
-                                    key={`${item.type}-${item.name}`}
+                                    key={`skill-${item.name}`}
                                     className="fp-item fp-recent-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
                                     data-name={item.name}
                                     disabled={submitting}
-                                    onClick={() => handleSubmit(item.type, item.name, item.path, item.description)}
+                                    onClick={() => handleSubmitSkills([item.name], item.description)}
                                 >
-                                    <span>{item.type === 'prompt' ? '📝' : '⚡'}</span>
+                                    <span>⚡</span>
                                     <span className="truncate">{item.name}</span>
                                 </button>
                             ))}
                         </div>
                     )}
 
-                    {/* Prompts and Skills list */}
+                    {/* Skills list */}
                     {loading ? (
                         <div className="flex items-center gap-2 py-4 text-xs text-[#848484]">
                             <Spinner size="sm" /> Loading…
                         </div>
-                    ) : prompts.length === 0 && skills.length === 0 ? (
+                    ) : skills.length === 0 ? (
                         <div className="text-xs text-[#848484] py-2">
-                            <p>No prompts or skills found in this workspace.</p>
-                            <p className="mt-1 text-[10px]">Create prompts in .github/prompts/ or skills in .github/skills/</p>
+                            <p>No skills found in this workspace.</p>
+                            <p className="mt-1 text-[10px]">Create skills in .github/skills/</p>
                         </div>
                     ) : (
                         <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-                            {prompts.length > 0 && (
-                                <div>
-                                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Prompts</div>
-                                    {prompts.map(p => (
-                                        <button
-                                            key={p.name}
-                                            className="fp-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
-                                            data-name={p.name}
-                                            disabled={submitting}
-                                            onClick={() => handleSubmit('prompt', p.name, p.path, p.description)}
-                                        >
-                                            <span>📝</span>
-                                            <span className="flex-shrink-0 font-medium">{p.name}</span>
-                                            {p.description && (
-                                                <span className="text-xs text-[#848484] truncate">{p.description}</span>
-                                            )}
-                                        </button>
-                                    ))}
+                            <div>
+                                <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>
+                                <div className="flex flex-wrap gap-1.5 mb-2" data-testid="fp-skill-chips">
+                                    {skills.map(s => {
+                                        const isActive = selectedSkills.includes(s.name);
+                                        return (
+                                            <button
+                                                key={s.name}
+                                                type="button"
+                                                className={`fp-item inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border transition-colors ${
+                                                    isActive
+                                                        ? 'bg-[#0078d4] text-white border-[#0078d4]'
+                                                        : 'bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4]'
+                                                }`}
+                                                data-name={s.name}
+                                                disabled={submitting}
+                                                onClick={() => toggleSkill(s.name)}
+                                                title={s.description || s.name}
+                                            >
+                                                <span>⚡</span>
+                                                <span className="font-medium">{s.name}</span>
+                                                {isActive && <span className="ml-0.5">✕</span>}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
-                            )}
-                            {skills.length > 0 && (
-                                <div>
-                                    <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>
-                                    <div className="flex flex-wrap gap-1.5 mb-2" data-testid="fp-skill-chips">
-                                        {skills.map(s => {
-                                            const isActive = selectedSkills.includes(s.name);
-                                            return (
-                                                <button
-                                                    key={s.name}
-                                                    type="button"
-                                                    className={`fp-item inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border transition-colors ${
-                                                        isActive
-                                                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
-                                                            : 'bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4]'
-                                                    }`}
-                                                    data-name={s.name}
-                                                    disabled={submitting}
-                                                    onClick={() => toggleSkill(s.name)}
-                                                    title={s.description || s.name}
-                                                >
-                                                    <span>⚡</span>
-                                                    <span className="font-medium">{s.name}</span>
-                                                    {isActive && <span className="ml-0.5">✕</span>}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    {selectedSkills.length > 0 && (
-                                        <button
-                                            type="button"
-                                            className="w-full px-3 py-1.5 text-xs font-medium text-white bg-[#0078d4] rounded hover:bg-[#006cc1] disabled:opacity-50"
-                                            disabled={submitting}
-                                            onClick={() => handleSubmitSkills(selectedSkills)}
-                                            data-testid="fp-submit-skills"
-                                        >
-                                            {submitting ? 'Submitting…' : `Submit with ${selectedSkills.length} skill${selectedSkills.length > 1 ? 's' : ''}`}
-                                        </button>
-                                    )}
-                                </div>
-                            )}
+                                {selectedSkills.length > 0 && (
+                                    <button
+                                        type="button"
+                                        className="w-full px-3 py-1.5 text-xs font-medium text-white bg-[#0078d4] rounded hover:bg-[#006cc1] disabled:opacity-50"
+                                        disabled={submitting}
+                                        onClick={() => handleSubmitSkills(selectedSkills)}
+                                        data-testid="fp-submit-skills"
+                                    >
+                                        {submitting ? 'Submitting…' : `Submit with ${selectedSkills.length} skill${selectedSkills.length > 1 ? 's' : ''}`}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

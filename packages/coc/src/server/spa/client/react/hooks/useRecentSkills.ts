@@ -1,5 +1,5 @@
 /**
- * useRecentPrompts — reads and persists recently-used prompts/skills from preferences.
+ * useRecentSkills — reads and persists recently-used skills from preferences.
  * When wsId is provided, uses per-repo preferences at /api/workspaces/:id/preferences.
  * When wsId is empty/undefined, falls back to global /api/preferences.
  */
@@ -7,24 +7,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../utils/config';
 
-export interface RecentFollowPromptEntry {
-    type: 'prompt' | 'skill';
+export interface RecentSkillEntry {
     name: string;
-    path?: string;
     description?: string;
     timestamp: number;
 }
 
-export interface UseRecentPromptsResult {
-    recentItems: RecentFollowPromptEntry[];
-    trackUsage: (type: 'prompt' | 'skill', name: string, path?: string, description?: string) => void;
+export interface UseRecentSkillsResult {
+    recentItems: RecentSkillEntry[];
+    trackUsage: (name: string, description?: string) => void;
     loaded: boolean;
 }
 
 const MAX_RECENT = 10;
 
-export function useRecentPrompts(wsId?: string): UseRecentPromptsResult {
-    const [recentItems, setRecentItems] = useState<RecentFollowPromptEntry[]>([]);
+export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
+    const [recentItems, setRecentItems] = useState<RecentSkillEntry[]>([]);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
@@ -37,8 +35,12 @@ export function useRecentPrompts(wsId?: string): UseRecentPromptsResult {
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const prefs = await res.json();
+                // Read from legacy key for backwards compatibility
                 if (!cancelled && Array.isArray(prefs.recentFollowPrompts)) {
-                    setRecentItems(prefs.recentFollowPrompts);
+                    const items: RecentSkillEntry[] = prefs.recentFollowPrompts
+                        .filter((e: any) => e.name)
+                        .map((e: any) => ({ name: e.name, description: e.description, timestamp: e.timestamp }));
+                    setRecentItems(items);
                 }
             } catch {
                 // Preferences are optional
@@ -49,16 +51,15 @@ export function useRecentPrompts(wsId?: string): UseRecentPromptsResult {
         return () => { cancelled = true; };
     }, [wsId]);
 
-    const trackUsage = useCallback((type: 'prompt' | 'skill', name: string, path?: string, description?: string) => {
+    const trackUsage = useCallback((name: string, description?: string) => {
         setRecentItems(prev => {
-            const entry: RecentFollowPromptEntry = { type, name, timestamp: Date.now() };
-            if (path) entry.path = path;
+            const entry: RecentSkillEntry = { name, timestamp: Date.now() };
             if (description) entry.description = description;
 
-            const filtered = prev.filter(e => !(e.type === type && e.name === name));
+            const filtered = prev.filter(e => e.name !== name);
             const updated = [entry, ...filtered].slice(0, MAX_RECENT);
 
-            // Fire-and-forget persistence
+            // Fire-and-forget persistence (uses legacy key for backwards compat)
             const url = wsId
                 ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
                 : getApiBase() + '/preferences';

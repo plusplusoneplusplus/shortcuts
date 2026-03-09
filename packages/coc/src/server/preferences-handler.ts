@@ -35,7 +35,7 @@ export interface LastModelsByMode {
     plan?: string;
 }
 
-/** A recently-used prompt or skill in the Follow Prompt dialog. */
+/** A recently-used skill in the Run Skill dialog. */
 export interface RecentFollowPromptEntry {
     type: 'prompt' | 'skill';
     name: string;
@@ -66,7 +66,7 @@ export interface PerRepoPreferences {
     lastEffort?: 'low' | 'medium' | 'high';
     /** Per-mode last-used skill names (task / ask / plan). */
     lastSkills?: LastSkillsByMode;
-    /** Recently-used prompts/skills in Follow Prompt dialog (max 10, newest first). */
+    /** Recently-used skills in Run Skill dialog (max 10, newest first). */
     recentFollowPrompts?: RecentFollowPromptEntry[];
     /** Pinned chat session IDs per workspace (ordered by pin time, newest first). */
     pinnedChats?: Record<string, string[]>;

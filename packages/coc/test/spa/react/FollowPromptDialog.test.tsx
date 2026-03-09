@@ -44,15 +44,15 @@ function renderDialogWithWorkspace(workspaces: any[], onClose = vi.fn(), taskPat
 }
 
 describe('FollowPromptDialog', () => {
-    it('renders Follow Prompt title', async () => {
+    it('renders Run Skill title', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         await act(async () => {
             renderDialog();
         });
-        expect(screen.getByText('Follow Prompt')).toBeDefined();
+        expect(screen.getByText('Run Skill')).toBeDefined();
     });
 
     it('populates model select from /api/queue/models', async () => {
@@ -71,7 +71,7 @@ describe('FollowPromptDialog', () => {
             }
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve({ prompts: [], skills: [] }),
+                json: () => Promise.resolve({ skills: [] }),
             });
         });
 
@@ -154,10 +154,7 @@ describe('FollowPromptDialog', () => {
                     }),
                 });
             }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ prompts: [] }) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         await act(async () => {
@@ -192,10 +189,7 @@ describe('FollowPromptDialog', () => {
                     }),
                 });
             }
-            if (url.includes('/prompts')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ prompts: [] }) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         await act(async () => {
@@ -298,8 +292,8 @@ describe('FollowPromptDialog', () => {
                     ok: true,
                     json: () => Promise.resolve({
                         recentFollowPrompts: [
-                            { type: 'prompt', name: 'review', path: 'review.prompt.md', timestamp: 1000 },
-                            { type: 'skill', name: 'impl', timestamp: 900 },
+                            { name: 'review', description: 'Review changes.', timestamp: 1000 },
+                            { name: 'impl', timestamp: 900 },
                         ],
                     }),
                 });
@@ -362,7 +356,7 @@ describe('FollowPromptDialog', () => {
                     ok: true,
                     json: () => Promise.resolve({
                         recentFollowPrompts: [
-                            { type: 'prompt', name: 'review', path: '.vscode/review.prompt.md', timestamp: 1000 },
+                            { name: 'impl', description: 'Implement changes.', timestamp: 1000 },
                         ],
                     }),
                 });
@@ -408,74 +402,14 @@ describe('FollowPromptDialog', () => {
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.type).toBe('chat');
-            expect(body.payload.context.files.some((f: string) => f.includes('review.prompt.md'))).toBe(true);
-        });
-    });
-
-    it('normalizes backslashes in planFilePath and promptFilePath when workingDirectory has backslashes', async () => {
-        const onClose = vi.fn();
-        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];
-
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/preferences') && !opts?.method) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({
-                        recentFollowPrompts: [
-                            { type: 'prompt', name: 'impl', path: '.vscode/impl.prompt.md', timestamp: 1000 },
-                        ],
-                    }),
-                });
-            }
-            if (url.includes('/skills')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
-                });
-            }
-            if (url.includes('/tasks/settings')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
-                });
-            }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-        });
-
-        await act(async () => {
-            renderDialogWithWorkspace(workspaces, onClose);
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('Last Used')).toBeDefined();
-        });
-
-        const recentButtons = document.querySelectorAll('.fp-recent-item');
-        await act(async () => {
-            fireEvent.click(recentButtons[0]);
-        });
-
-        await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
-            );
-            expect(postCalls.length).toBe(1);
-            const body = JSON.parse(postCalls[0][1].body);
-            // Drive-letter paths use backslashes; absolute paths use forward slashes
-            const files: string[] = body.payload.context.files;
-            files.filter((f: string) => /^[A-Za-z]:/.test(f)).forEach((f: string) => expect(f).not.toContain('/'));
-            expect(files.some((f: string) => f === '/test/repos/abc/tasks/test/task.md')).toBe(true);
-            expect(files.some((f: string) => f === 'D:\\projects\\shortcuts\\.vscode\\impl.prompt.md')).toBe(true);
+            expect(body.payload.context.skills).toContain('impl');
         });
     });
 
     it('renders additional info textarea with placeholder', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ prompts: [], skills: [] }),
+            json: () => Promise.resolve({ skills: [] }),
         });
         await act(async () => {
             renderDialog();
@@ -694,61 +628,6 @@ describe('FollowPromptDialog', () => {
             expect(files).toContain(absTaskPath);
             // Should NOT contain tasks folder prefix
             expect(files.every((f: string) => !f.includes('.vscode/tasks'))).toBe(true);
-        });
-    });
-
-    it('uses absolute taskPath directly without prepending tasks folder (prompt submission)', async () => {
-        const onClose = vi.fn();
-        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: '/home/user/project' }];
-        const absTaskPath = '/home/user/.copilot/session-state/abc-123/plan.md';
-
-        mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/preferences') && !opts?.method) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({
-                        recentFollowPrompts: [
-                            { type: 'prompt', name: 'impl', path: '.github/prompts/impl.prompt.md', timestamp: 1000 },
-                        ],
-                    }),
-                });
-            }
-            if (url.includes('/skills')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ skills: [] }),
-                });
-            }
-            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-        });
-
-        await act(async () => {
-            renderDialogWithWorkspace(workspaces, onClose, absTaskPath);
-        });
-
-        await waitFor(() => {
-            expect(screen.getByText('Last Used')).toBeDefined();
-        });
-
-        const recentButtons = document.querySelectorAll('.fp-recent-item');
-        await act(async () => {
-            fireEvent.click(recentButtons[0]);
-        });
-
-        await waitFor(() => {
-            const postCalls = mockFetch.mock.calls.filter(
-                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
-            );
-            expect(postCalls.length).toBe(1);
-            const body = JSON.parse(postCalls[0][1].body);
-            const files: string[] = body.payload.context.files;
-            // planFilePath should be the absolute path directly
-            expect(files).toContain(absTaskPath);
-            // promptFilePath should also be present
-            expect(files.some((f: string) => f.includes('impl.prompt.md'))).toBe(true);
         });
     });
 });
