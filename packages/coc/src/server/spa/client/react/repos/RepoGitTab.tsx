@@ -133,11 +133,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 const target = initialCommitHash
                     ? loaded.find((c: GitCommitItem) => c.hash.startsWith(initialCommitHash))
                     : null;
-                const first = target ?? (loaded.length > 0 ? loaded[0] : null);
                 if (target && initialFilePath) {
                     setRightPanelView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath });
+                } else if (target) {
+                    setRightPanelView({ type: 'commit', commit: target });
                 } else {
-                    setRightPanelView(first ? { type: 'commit', commit: first } : null);
+                    // On mobile (<lg), start with list visible; on desktop auto-select first commit
+                    const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+                    const first = loaded.length > 0 ? loaded[0] : null;
+                    setRightPanelView(isDesktop && first ? { type: 'commit', commit: first } : null);
                 }
             })
             .catch(err => setError(err.message || 'Failed to load commits'))
@@ -181,6 +185,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     }
                 } else if (rightPanelView?.type === 'branch-file' || rightPanelView?.type === 'working-tree-file') {
                     // Keep the branch-file / working-tree-file view as-is during refresh
+                } else if (rightPanelView === null) {
+                    // No prior selection — keep list visible (preserves mobile back state)
                 } else if (loaded.length > 0) {
                     setRightPanelView({ type: 'commit', commit: loaded[0] });
                 }

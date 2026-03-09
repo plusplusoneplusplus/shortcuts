@@ -600,8 +600,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain('c.hash.startsWith(initialCommitHash)');
         });
 
-        it('falls back to first commit when deep-link hash not found', () => {
-            expect(source).toContain('target ?? (loaded.length > 0 ? loaded[0] : null)');
+        it('falls back to first commit on desktop when deep-link hash not found', () => {
+            expect(source).toContain("const isDesktop = window.matchMedia('(min-width: 1024px)').matches");
+            expect(source).toContain('const first = loaded.length > 0 ? loaded[0] : null');
         });
 
         it('handleSelect updates location.hash with commit URL', () => {
@@ -905,6 +906,22 @@ describe('RepoGitTab', () => {
 
         it('wraps detailPanel in flex-1 container for proper sizing with back button', () => {
             expect(source).toContain('className="flex-1 min-h-0 overflow-hidden"');
+        });
+
+        it('does not auto-select first commit on mobile initial load', () => {
+            // Uses matchMedia to detect mobile and skips auto-select
+            expect(source).toContain("window.matchMedia('(min-width: 1024px)').matches");
+            expect(source).toContain('isDesktop && first');
+        });
+
+        it('preserves null rightPanelView during refresh (mobile back state)', () => {
+            // When user pressed "Back to list" on mobile, refresh should not re-open a commit
+            expect(source).toContain('rightPanelView === null');
+            // The null guard appears before the loaded[0] fallback
+            const nullGuardIdx = source.indexOf('rightPanelView === null');
+            const fallbackIdx = source.indexOf("setRightPanelView({ type: 'commit', commit: loaded[0] })", nullGuardIdx);
+            expect(nullGuardIdx).toBeGreaterThan(0);
+            expect(fallbackIdx).toBeGreaterThan(nullGuardIdx);
         });
     });
 });
