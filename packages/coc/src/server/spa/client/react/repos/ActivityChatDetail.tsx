@@ -375,10 +375,16 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         es.addEventListener('tool-complete', handleToolSSE('tool-complete'));
         es.addEventListener('tool-failed', handleToolSSE('tool-failed'));
 
-        const finish = () => {
+        const closeSSE = () => {
             es.close();
             eventSourceRef.current = null;
             setIsStreaming(false);
+        };
+
+        const finish = () => {
+            closeSSE();
+            // Mark the task as no longer running so the streaming placeholder is removed
+            setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' as const } : prev);
             void refreshConversation(processId);
         };
 
@@ -389,7 +395,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 if (status && !['running', 'queued'].includes(status)) finish();
             } catch { /* ignore */ }
         });
-        es.onerror = finish;
+        // On SSE error (e.g. 404 process not yet created), close but don't mark task completed
+        es.onerror = () => { closeSSE(); void refreshConversation(processId); };
         es.addEventListener('suggestions', (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
