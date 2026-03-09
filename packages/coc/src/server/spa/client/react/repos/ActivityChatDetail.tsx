@@ -36,6 +36,7 @@ import { Badge } from '../shared';
 import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
+import { useFloatingChats } from '../context/FloatingChatsContext';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -52,9 +53,16 @@ export interface ActivityChatDetailProps {
     workspaceId?: string;
     /** When true (i.e., rendered inside a pop-out window), hides the pop-out button. */
     isPopOut?: boolean;
+    /**
+     * Controls the rendering variant:
+     * - `'inline'` (default) — full header with back button, standard padding.
+     * - `'floating'` — compact header (no back button, smaller padding, no border-b),
+     *   as used inside a FloatingDialog overlay.
+     */
+    variant?: 'inline' | 'floating';
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline' }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
@@ -89,6 +97,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
     const { markPoppedOut } = usePopOut();
+    const { floatChat, isFloating } = useFloatingChats();
     const toastCtx = useContext(ToastContext);
     const slashCommands = useSlashCommands(skills);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -618,12 +627,28 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         }
     }, [taskId, workspaceId, markPoppedOut, toastCtx]);
 
+    const handleFloat = useCallback(() => {
+        const title = task?.payload?.prompt || task?.payload?.promptContent || task?.prompt || 'Chat';
+        const shortTitle = typeof title === 'string' ? title.slice(0, 60) : 'Chat';
+        floatChat({
+            taskId,
+            workspaceId,
+            title: shortTitle,
+            status: task?.status ?? 'running',
+        });
+    }, [taskId, workspaceId, task, floatChat]);
+
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <div className={cn(
+                'flex items-center justify-between',
+                variant === 'floating'
+                    ? 'px-2 py-2'
+                    : 'px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+            )}>
                 <div className="flex items-center gap-2 min-w-0">
-                    {onBack && (
+                    {onBack && variant !== 'floating' && (
                         <button
                             className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
                             onClick={onBack}
@@ -659,6 +684,19 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     />
                 </div>
                 <div className="flex items-center gap-2">
+                    {variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
+                        <button
+                            title="Float in current window"
+                            data-testid="activity-chat-float-btn"
+                            onClick={handleFloat}
+                            className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+                                <path d="M2 6h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                        </button>
+                    )}
                     {!isPopOut && !isMobile && (
                         <button
                             title="Pop out to new window"
@@ -705,7 +743,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
             {/* Conversation area */}
             <div className="relative flex-1 min-h-0">
-                <div ref={conversationContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 h-full space-y-3">
+                <div ref={conversationContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3', variant === 'floating' ? 'p-2' : 'p-4')}>
                     {isPending ? (
                         <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
                     ) : loading ? (

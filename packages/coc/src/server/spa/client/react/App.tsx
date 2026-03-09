@@ -9,10 +9,12 @@ import { QueueProvider, useQueue } from './context/QueueContext';
 import { ToastProvider } from './context/ToastContext';
 import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
 import { PopOutProvider } from './context/PopOutContext';
+import { FloatingChatsProvider } from './context/FloatingChatsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
 import { BottomNav } from './layout/BottomNav';
 import { Router } from './layout/Router';
+import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
 import { ToastContainer, useToast } from './shared';
@@ -381,6 +383,7 @@ function AppInner() {
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <TopBar />
             <Router />
+            <FloatingChatManager />
             <BottomNav />
             <ToastContainer toasts={toasts} removeToast={removeToast} />
             <EnqueueDialog />
@@ -404,11 +407,13 @@ export function App() {
         <AppProvider>
             <QueueProvider>
                 <PopOutProvider>
-                    <MinimizedDialogsProvider>
-                        <ThemeProvider>
-                            <AppInner />
-                        </ThemeProvider>
-                    </MinimizedDialogsProvider>
+                    <FloatingChatsProvider>
+                        <MinimizedDialogsProvider>
+                            <ThemeProvider>
+                                <AppInner />
+                            </ThemeProvider>
+                        </MinimizedDialogsProvider>
+                    </FloatingChatsProvider>
                 </PopOutProvider>
             </QueueProvider>
         </AppProvider>

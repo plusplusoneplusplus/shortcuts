@@ -51,6 +51,12 @@ export interface FloatingDialogProps {
     maxWidth?: number;
     /** Maximum height in px when resizable (unconstrained by default). */
     maxHeight?: number;
+    /**
+     * When true, removes default `p-6 gap-4` padding from the panel and makes the content area
+     * fill all available space (`flex-1 min-h-0`). Use when children need to fill the dialog height
+     * (e.g. a full-height chat view).
+     */
+    noPadding?: boolean;
 }
 
 /**
@@ -75,6 +81,7 @@ export function FloatingDialog({
     minHeight,
     maxWidth,
     maxHeight,
+    noPadding = false,
 }: FloatingDialogProps) {
     const panelRef = useRef<HTMLDivElement>(null);
     const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
@@ -172,8 +179,9 @@ export function FloatingDialog({
     const panelClass = cn(
         'fixed z-[10002]',
         hasMaxWOverride
-            ? 'w-full rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4'
-            : 'w-full max-w-[600px] min-w-[480px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-6 flex flex-col gap-4',
+            ? 'w-full rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col'
+            : 'w-full max-w-[600px] min-w-[480px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col',
+        noPadding ? '' : 'p-6 gap-4',
         className,
     );
 
@@ -241,7 +249,10 @@ export function FloatingDialog({
             )}
             {showHeader && (
                 <div
-                    className="flex items-center gap-2 cursor-move select-none"
+                    className={cn(
+                        'flex items-center gap-2 cursor-move select-none',
+                        noPadding && 'px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+                    )}
                     onMouseDown={handleTitleBarMouseDown}
                     data-testid="floating-dialog-drag-handle"
                 >
@@ -279,7 +290,9 @@ export function FloatingDialog({
                     </button>
                 </div>
             )}
-            <div className={cn('text-sm text-[#1e1e1e] dark:text-[#cccccc]', resizable && size && 'overflow-y-auto flex-1 min-h-0')}>{children}</div>
+            <div className={cn(
+                noPadding ? 'flex-1 min-h-0 overflow-hidden flex flex-col' : cn('text-sm text-[#1e1e1e] dark:text-[#cccccc]', resizable && size && 'overflow-y-auto flex-1 min-h-0'),
+            )}>{children}</div>
             {footer && (
                 <div className="flex justify-end gap-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
                     {footer}

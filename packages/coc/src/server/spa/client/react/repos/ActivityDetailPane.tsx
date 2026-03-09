@@ -8,10 +8,14 @@
  *
  * When a task is popped out into a separate window, shows a placeholder
  * with a "Restore inline" button.
+ *
+ * When a task is floated as an overlay dialog, shows a "Chat is floating"
+ * placeholder with a "Restore inline" button that calls unfloatChat.
  */
 
 import { ActivityChatDetail } from './ActivityChatDetail';
 import { usePopOut } from '../context/PopOutContext';
+import { useFloatingChats } from '../context/FloatingChatsContext';
 
 export interface ActivityDetailPaneProps {
     selectedTaskId: string | null;
@@ -22,6 +26,7 @@ export interface ActivityDetailPaneProps {
 
 export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: ActivityDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
+    const { floatingChats, unfloatChat } = useFloatingChats();
 
     if (!selectedTaskId) {
         return (
@@ -44,6 +49,24 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: Acti
                         className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] underline"
                         onClick={() => markRestored(selectedTaskId)}
                         data-testid="activity-chat-restore-btn"
+                    >
+                        Restore inline
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (floatingChats.has(selectedTaskId)) {
+        return (
+            <div className="flex items-center justify-center h-full text-sm text-[#848484]" data-testid="activity-floating-placeholder">
+                <div className="text-center space-y-3">
+                    <div className="text-2xl">💬</div>
+                    <div>Chat is floating</div>
+                    <button
+                        className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] underline"
+                        onClick={() => unfloatChat(selectedTaskId)}
+                        data-testid="activity-chat-restore-inline-btn"
                     >
                         Restore inline
                     </button>
