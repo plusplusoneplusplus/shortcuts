@@ -21,6 +21,8 @@ import {
     deserializeProcess,
     ProcessEvent
 } from './ai/process-types';
+import { withRetry } from './runtime/retry';
+import { getLogger } from './logger';
 
 /** On-disk shape for individual process files (processes/<id>.json) */
 export interface StoredProcessEntry {
@@ -515,6 +517,40 @@ export class FileProcessStore implements ProcessStore {
 
     // --- Internal helpers: index + per-process files ---
 
+    /** Transient FS error codes worth retrying */
+    private static readonly RETRYABLE_FS_ERRORS = new Set(['EACCES', 'EBUSY', 'EPERM', 'ENOLCK', 'EIO']);
+
+    /**
+     * Wrap an atomic write (writeFile + rename) with retry logic.
+     * Retries only on transient FS errors; cleans up stale .tmp on final failure.
+     */
+    private async retryAtomicWrite(tmpPath: string, fn: () => Promise<void>): Promise<void> {
+        const logger = getLogger();
+        try {
+            await withRetry(fn, {
+                attempts: 3,
+                delayMs: 100,
+                backoff: 'exponential',
+                maxDelayMs: 2000,
+                operationName: `atomic write ${path.basename(tmpPath)}`,
+                retryOn: (error: unknown) => {
+                    const code = (error as NodeJS.ErrnoException)?.code;
+                    return !!code && FileProcessStore.RETRYABLE_FS_ERRORS.has(code);
+                },
+                onAttempt: (attempt, maxAttempts, lastError) => {
+                    if (attempt > 1) {
+                        const code = (lastError as NodeJS.ErrnoException)?.code ?? 'unknown';
+                        logger.warn('FileProcessStore', `Retrying atomic write (attempt ${attempt}/${maxAttempts}) after ${code}: ${path.basename(tmpPath)}`);
+                    }
+                },
+            });
+        } catch (outerError) {
+            // Best-effort cleanup of stale .tmp file
+            try { await fs.unlink(tmpPath); } catch { /* ignore */ }
+            throw outerError;
+        }
+    }
+
     private sanitizeId(id: string): string {
         return id.replace(/[^a-zA-Z0-9\-_]/g, '_');
     }
@@ -535,8 +571,10 @@ export class FileProcessStore implements ProcessStore {
     private async writeIndex(entries: ProcessIndexEntry[]): Promise<void> {
         await ensureDataDir(this.processesDir);
         const tmpPath = this.indexPath + '.tmp';
-        await fs.writeFile(tmpPath, JSON.stringify(entries, null, 2), 'utf-8');
-        await fs.rename(tmpPath, this.indexPath);
+        await this.retryAtomicWrite(tmpPath, async () => {
+            await fs.writeFile(tmpPath, JSON.stringify(entries, null, 2), 'utf-8');
+            await fs.rename(tmpPath, this.indexPath);
+        });
     }
 
     private async readProcessFile(id: string): Promise<StoredProcessEntry | undefined> {
@@ -551,8 +589,10 @@ export class FileProcessStore implements ProcessStore {
     private async writeProcessFile(id: string, entry: StoredProcessEntry): Promise<void> {
         const filePath = this.processFilePath(id);
         const tmpPath = filePath + '.tmp';
-        await fs.writeFile(tmpPath, JSON.stringify(entry, null, 2), 'utf-8');
-        await fs.rename(tmpPath, filePath);
+        await this.retryAtomicWrite(tmpPath, async () => {
+            await fs.writeFile(tmpPath, JSON.stringify(entry, null, 2), 'utf-8');
+            await fs.rename(tmpPath, filePath);
+        });
     }
 
     private async deleteProcessFile(id: string): Promise<void> {
@@ -635,8 +675,10 @@ export class FileProcessStore implements ProcessStore {
 
     private async writeWorkspaces(workspaces: WorkspaceInfo[]): Promise<void> {
         const tmpPath = this.workspacesPath + '.tmp';
-        await fs.writeFile(tmpPath, JSON.stringify(workspaces, null, 2), 'utf-8');
-        await fs.rename(tmpPath, this.workspacesPath);
+        await this.retryAtomicWrite(tmpPath, async () => {
+            await fs.writeFile(tmpPath, JSON.stringify(workspaces, null, 2), 'utf-8');
+            await fs.rename(tmpPath, this.workspacesPath);
+        });
     }
 
     private async readWikis(): Promise<WikiInfo[]> {
@@ -650,8 +692,10 @@ export class FileProcessStore implements ProcessStore {
 
     private async writeWikis(wikis: WikiInfo[]): Promise<void> {
         const tmpPath = this.wikisPath + '.tmp';
-        await fs.writeFile(tmpPath, JSON.stringify(wikis, null, 2), 'utf-8');
-        await fs.rename(tmpPath, this.wikisPath);
+        await this.retryAtomicWrite(tmpPath, async () => {
+            await fs.writeFile(tmpPath, JSON.stringify(wikis, null, 2), 'utf-8');
+            await fs.rename(tmpPath, this.wikisPath);
+        });
     }
 
     private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
