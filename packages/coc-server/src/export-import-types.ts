@@ -111,6 +111,8 @@ export interface ExportOptions {
     dataDir: string;
     /** Server version string (informational, included in payload). */
     serverVersion?: string;
+    /** Optional function to load the CLI config file (injected from CLI layer). */
+    loadConfigFile?: (configPath?: string) => CLIConfig | undefined;
 }
 
 /** Import strategy: replace all data or merge with existing. */

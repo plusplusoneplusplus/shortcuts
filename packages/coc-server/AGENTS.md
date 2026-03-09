@@ -12,13 +12,19 @@ packages/coc-server/
 │   ├── router.ts             # Main HTTP router — dispatches to API, static, SPA
 │   ├── git-cache.ts          # In-memory GitCacheService for git API responses
 │   ├── api-handler.ts        # Process/queue REST API: CRUD, git detection, pipeline discovery
-│   ├── admin-handler.ts      # Admin endpoints: data wipe with time-limited confirmation tokens
+│   ├── admin-handler.ts      # Admin endpoints: data wipe/export/import with time-limited confirmation tokens
+│   ├── data-wiper.ts         # DataWiper — deletes processes, queue files, blobs, preferences
+│   ├── data-exporter.ts      # exportAllData — serializes all CoC data to CoCExportPayload
+│   ├── data-importer.ts      # importData — restores CoCExportPayload (replace or merge mode)
 │   ├── preferences-handler.ts # User preferences persistence (~/.coc/preferences.json)
 │   ├── sse-handler.ts        # SSE streaming for individual process output
 │   ├── websocket.ts          # ProcessWebSocketServer: real-time process/queue events
 │   ├── errors.ts             # Centralized APIError class and factory helpers
 │   ├── export-import-types.ts # Export/import schema, validation, CoCExportPayload
 │   ├── repo-utils.ts         # Git root detection, repo ID extraction, path normalization
+│   ├── queue/
+│   │   ├── queue-persistence.ts   # QueuePersistence — saves/restores per-repo queue state to ~/.coc/queues/
+│   │   └── image-blob-store.ts    # ImageBlobStore — externalizes base64 images from queue payloads to blobs/
 │   ├── shared/
 │   │   └── router.ts         # Low-level router primitives (createRouter, serveStaticFile, readBody)
 │   ├── memory/               # Memory subsystem (entries store, config, observation browsing, tool-call cache)
@@ -77,7 +83,7 @@ packages/coc-server/
 ### Execution Server Layer
 
 - **api-handler.ts** — Process CRUD, queue management (`/api/processes`, `/api/queue/*`), child process retrieval (`/api/processes/:id/children`), git remote detection, git commit history (`/api/workspaces/:id/git/commits`, `/git/commits/:hash/files`, `/git/commits/:hash/diff`, `/git/commits/:hash/files/:path/content`), branch range analysis (`/api/workspaces/:id/git/branch-range`, `/branch-range/files`, `/branch-range/diff`, `/branch-range/files/:path/diff`), branch listing and status (`/api/workspaces/:id/git/branches` GET, `/git/branch-status`), branch CRUD (`/git/branches` POST create, `/git/branches/switch` POST, `/git/branches/rename` POST, `/git/branches/:name` DELETE) via `BranchService`, pipeline discovery, directory browsing. Git endpoints for commits, commit-files, commit-diff, commit-file content, and branch-range use `GitCacheService` — mutable data invalidated via `?refresh=true`, immutable hash-keyed data cached forever. Exports `QueueExecutorBridge` for connecting queue to pipeline execution. `parseQueryParams` supports `parentProcessId` filter for child process queries. Registers `skill-handler.ts` (per-workspace `/api/workspaces/:id/skills/*`) and `global-skill-handler.ts` (global `/api/skills/*` and merged `/api/workspaces/:id/skills/all`).
-- **admin-handler.ts** — Destructive operations (data wipe) guarded by time-limited crypto tokens.
+- **admin-handler.ts** — Destructive operations (data wipe, export, import) guarded by time-limited crypto tokens. Delegates to `DataWiper`, `exportAllData`, and `importData`. `getQueuePersistence` option allows queue state to be restored after import.
 - **preferences-handler.ts** — JSON file persistence for UI preferences at `~/.coc/preferences.json`.
 - **websocket.ts** — `ProcessWebSocketServer` broadcasts process lifecycle, queue, and comment events. Supports workspace-scoped filtering and file subscriptions.
 - **sse-handler.ts** — Per-process SSE streaming (`/api/processes/:id/stream`).
@@ -99,6 +105,8 @@ The package exports from `src/index.ts`:
 - **Tools**: `createSuggestFollowUpsTool` — factory for a `suggest_follow_ups` custom tool (passthrough handler, 2–3 follow-up questions)
 - **Router**: `createRequestHandler`, `readJsonBody`, `sendJson`, `send404`, `send400`, `send500`; shared: `createRouter`, `serveStaticFile`, `readBody`
 - **API**: `registerApiRoutes`, `sendJSON`, `sendError`, `parseBody`, `QueueExecutorBridge`
+- **Admin**: `registerAdminRoutes`, `DataWiper`, `exportAllData`, `importData`
+- **Queue Persistence**: `QueuePersistence`, `getRepoQueueFilePath`, `ImageBlobStore`, `PersistedQueueState`
 - **WebSocket**: `ProcessWebSocketServer`, `toProcessSummary`, `toCommentSummary`
 - **SSE**: `handleProcessStream`
 - **Errors**: `APIError`, `handleAPIError`, `badRequest`, `notFound`, etc.
@@ -121,7 +129,7 @@ The package exports from `src/index.ts`:
 
 ## Testing
 
-17 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints, git cache unit and integration tests, child process API routes.
+43 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints, git cache unit and integration tests, child process API routes, **queue persistence restore/save**, and **data wiper dry-run and wipe operations**.
 
 Run with `npm run test:run` in `packages/coc-server/`.
 

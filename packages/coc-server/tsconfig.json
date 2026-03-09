@@ -15,5 +15,5 @@
     "declarationMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "src/admin-handler.ts", "src/wiki/spa/client"]
+  "exclude": ["node_modules", "dist", "test", "src/wiki/spa/client"]
 }

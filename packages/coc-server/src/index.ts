@@ -49,14 +49,29 @@ export type {
     ValidationResult,
     UserPreferences,
     CLIConfig,
-    DataWiper,
-    QueuePersistence,
     ImageBlobEntry,
 } from './export-import-types';
 export {
     EXPORT_SCHEMA_VERSION,
     validateExportPayload,
 } from './export-import-types';
+
+// Data wiper
+export { DataWiper } from './data-wiper';
+export type { WipeOptions, WipeResult } from './data-wiper';
+
+// Data exporter/importer
+export { exportAllData } from './data-exporter';
+export { importData } from './data-importer';
+
+// Queue persistence
+export { QueuePersistence, getRepoQueueFilePath, atomicWriteJson, sanitizeTaskForPersistence } from './queue/queue-persistence';
+export type { PersistedQueueState, QueuePersistenceOptions, RestartPolicy } from './queue/queue-persistence';
+export { ImageBlobStore } from './queue/image-blob-store';
+
+// Admin routes
+export { registerAdminRoutes, TokenManager, TOKEN_EXPIRY_MS, wipeTokenManager, importTokenManager, generateWipeToken, validateWipeToken, resetWipeToken, generateImportToken, validateImportToken, resetImportToken } from './admin-handler';
+export type { AdminRouteOptions, AdminConfigFunctions } from './admin-handler';
 
 // Repository utilities
 export {
