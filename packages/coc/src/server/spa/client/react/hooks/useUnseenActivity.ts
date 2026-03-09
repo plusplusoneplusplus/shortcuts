@@ -128,6 +128,7 @@ export function useUnseenActivity(
     // Periodically clean up entries for tasks no longer in history (limit map growth).
     const lastCleanupRef = useRef(0);
     useEffect(() => {
+        if (history.length === 0) return; // don't wipe seenMap before history loads
         const now = Date.now();
         if (now - lastCleanupRef.current < 60_000) return; // at most once per minute
         lastCleanupRef.current = now;

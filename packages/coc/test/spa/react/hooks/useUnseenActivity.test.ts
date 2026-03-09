@@ -173,6 +173,29 @@ describe('useUnseenActivity', () => {
         expect(stored['b']).toBe(history[1].completedAt);
     });
 
+    it('preserves seen state when history starts empty then loads (page refresh)', () => {
+        // Simulate: user marked all read → page refresh → history starts as []
+        const history = makeTasks('a', 'b');
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({
+            a: history[0].completedAt,
+            b: history[1].completedAt,
+        }));
+
+        // Render with empty history (before API response)
+        const { result, rerender } = renderHook(
+            ({ h }) => useUnseenActivity('ws1', h, null),
+            { initialProps: { h: [] as any[] } },
+        );
+        expect(result.current.unseenCount).toBe(0);
+
+        // History loads from server
+        rerender({ h: history });
+        // Previously-seen tasks must stay seen
+        expect(result.current.unseenTaskIds.has('a')).toBe(false);
+        expect(result.current.unseenTaskIds.has('b')).toBe(false);
+        expect(result.current.unseenCount).toBe(0);
+    });
+
     it('markAllSeen is a no-op when all tasks are already seen', () => {
         const history = makeTasks('a', 'b');
         // First visit seeds all as seen
