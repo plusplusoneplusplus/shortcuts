@@ -208,4 +208,49 @@ describe('useUnseenActivity', () => {
 
         expect(result.current.unseenCount).toBe(0);
     });
+
+    it('marks a seen task as unseen when markUnseen is called', () => {
+        const history = makeTasks('a', 'b');
+        // First visit seeds all as seen
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        expect(result.current.unseenCount).toBe(0);
+
+        act(() => {
+            result.current.markUnseen('a');
+        });
+
+        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+        expect(result.current.unseenCount).toBe(1);
+        expect(result.current.unseenTaskIds.has('b')).toBe(false);
+    });
+
+    it('markUnseen persists to localStorage', () => {
+        const history = makeTasks('a', 'b');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        expect(result.current.unseenCount).toBe(0);
+
+        act(() => {
+            result.current.markUnseen('a');
+        });
+
+        const stored = JSON.parse(localStorage.getItem('coc-unseen-ws1')!);
+        expect(stored['a']).toBeUndefined();
+        expect(stored['b']).toBe(history[1].completedAt);
+    });
+
+    it('markUnseen is a no-op for a task not in seen map', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        // 'a' is already unseen
+        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+
+        act(() => {
+            result.current.markUnseen('a');
+        });
+
+        // Still unseen, no error
+        expect(result.current.unseenTaskIds.has('a')).toBe(true);
+    });
 });

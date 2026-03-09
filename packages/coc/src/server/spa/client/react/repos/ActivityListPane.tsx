@@ -74,6 +74,8 @@ export interface ActivityListPaneProps {
     unseenTaskIds?: Set<string>;
     /** Mark all completed tasks as read. */
     onMarkAllRead?: () => void;
+    /** Mark a single completed task as unread. */
+    onMarkUnread?: (taskId: string) => void;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
     onRefresh: () => void;
@@ -94,6 +96,7 @@ export function ActivityListPane({
     workspaceId,
     unseenTaskIds,
     onMarkAllRead,
+    onMarkUnread,
     onSelectTask,
     onPauseResume,
     onRefresh,
@@ -101,7 +104,7 @@ export function ActivityListPane({
     fetchQueue,
 }: ActivityListPaneProps) {
     const [filterType, setFilterType] = useState<string>('all');
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed' } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
 
     useEffect(() => {
@@ -200,7 +203,7 @@ export function ActivityListPane({
     const activeDropTargetIndex = dropTargetIndex ?? touchDrag.dropTargetIndex;
     const activeDropPosition = dropPosition || touchDrag.dropPosition;
 
-    const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued') => {
+    const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued' | 'completed') => {
         e.preventDefault();
         e.stopPropagation();
         setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus });
@@ -214,6 +217,12 @@ export function ActivityListPane({
         if (taskStatus === 'running') {
             return [{ label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) }];
         }
+        if (taskStatus === 'completed') {
+            const isUnseen = unseenTaskIds?.has(taskId) ?? false;
+            return [
+                ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
+            ];
+        }
         const queuedIndex = queued.findIndex(t => t.id === taskId);
         const task = queued[queuedIndex];
         const isFrozen = task?.frozen;
@@ -226,7 +235,7 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued]);
+    }, [contextMenu, queued, unseenTaskIds, onMarkUnread]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -441,6 +450,7 @@ export function ActivityListPane({
                                                 selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                             )}
                                             onClick={() => onSelectTask(task.id, task)}
+                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
                                             data-task-id={task.id}
                                             data-unseen={isUnseen || undefined}
                                         >
