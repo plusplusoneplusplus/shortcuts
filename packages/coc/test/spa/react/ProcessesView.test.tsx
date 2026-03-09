@@ -34,7 +34,13 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 
 vi.mock('../../../src/server/spa/client/react/repos/ActivityListPane', () => ({
     ActivityListPane: (props: any) => (
-        <div data-testid="activity-list-pane" data-workspace-id={props.workspaceId ?? ''}>
+        <div
+            data-testid="activity-list-pane"
+            data-workspace-id={props.workspaceId ?? ''}
+            data-running-count={String(props.running?.length ?? 0)}
+            data-queued-count={String(props.queued?.length ?? 0)}
+            data-history-count={String(props.history?.length ?? 0)}
+        >
             ActivityListPane
         </div>
     ),
@@ -157,5 +163,85 @@ describe('ProcessesView', () => {
 
         const detailPane = screen.getByTestId('activity-detail-pane');
         expect(detailPane.getAttribute('data-selected-task-id')).toBe('task-789');
+    });
+
+    // Test 8: fetchQueue filters out tasks with a repoId (repo-specific tasks)
+    it('filters out running and queued tasks that have a repoId', async () => {
+        const { fetchApi } = await import('../../../src/server/spa/client/react/hooks/useApi');
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce({
+                running: [
+                    { id: 'r1', type: 'chat', repoId: 'repo-abc' },    // should be filtered
+                    { id: 'r2', type: 'chat' },                          // global — keep
+                ],
+                queued: [
+                    { id: 'q1', type: 'chat', repoId: 'repo-abc' },    // should be filtered
+                    { id: 'q2', type: 'chat' },                          // global — keep
+                    { id: 'pm1', kind: 'pause-marker' },                 // pause-marker — always keep
+                ],
+                stats: {},
+            })
+            .mockResolvedValueOnce({ history: [
+                { id: 'h1', type: 'chat', repoId: 'repo-abc' },        // should be filtered
+                { id: 'h2', type: 'chat' },                              // global — keep
+            ] });
+
+        await act(async () => {
+            render(<ProcessesView />);
+        });
+
+        const listPane = screen.getByTestId('activity-list-pane');
+        expect(listPane.getAttribute('data-running-count')).toBe('1');
+        expect(listPane.getAttribute('data-queued-count')).toBe('2'); // q2 + pause-marker
+        expect(listPane.getAttribute('data-history-count')).toBe('1');
+    });
+
+    // Test 9: WS context updates also filter out repo-specific tasks
+    it('WS context update: repo tasks are filtered from local state', async () => {
+        const { fetchApi } = await import('../../../src/server/spa/client/react/hooks/useApi');
+        // fetchQueue also runs on mount — provide the same mixed data so the filter is exercised
+        (fetchApi as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce({
+                running: [
+                    { id: 'r1', type: 'chat', repoId: 'some-repo' },
+                    { id: 'r2', type: 'chat' },
+                ],
+                queued: [
+                    { id: 'q1', type: 'chat', repoId: 'some-repo' },
+                    { id: 'q2', type: 'chat' },
+                ],
+                stats: {},
+            })
+            .mockResolvedValueOnce({ history: [
+                { id: 'h1', type: 'chat', repoId: 'some-repo' },
+                { id: 'h2', type: 'chat' },
+            ] });
+
+        mockQueueState = {
+            selectedTaskId: null,
+            running: [
+                { id: 'r1', type: 'chat', repoId: 'some-repo' },
+                { id: 'r2', type: 'chat' },
+            ],
+            queued: [
+                { id: 'q1', type: 'chat', repoId: 'some-repo' },
+                { id: 'q2', type: 'chat' },
+            ],
+            history: [
+                { id: 'h1', type: 'chat', repoId: 'some-repo' },
+                { id: 'h2', type: 'chat' },
+            ],
+            stats: { isPaused: false },
+            queueInitialized: true,
+        };
+
+        await act(async () => {
+            render(<ProcessesView />);
+        });
+
+        const listPane = screen.getByTestId('activity-list-pane');
+        expect(listPane.getAttribute('data-running-count')).toBe('1');
+        expect(listPane.getAttribute('data-queued-count')).toBe('1');
+        expect(listPane.getAttribute('data-history-count')).toBe('1');
     });
 });
