@@ -218,6 +218,10 @@ describe('ActivityChatDetail: inline chat detail', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-back-btn"');
     });
 
+    it('vertically centers mode selector, input, and send button', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('flex items-center gap-2');
+    });
+
     it('has a chat input with data-testid', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-input"');
     });

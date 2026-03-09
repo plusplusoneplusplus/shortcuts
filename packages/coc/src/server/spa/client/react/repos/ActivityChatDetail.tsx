@@ -713,7 +713,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
                         />
                     )}
                     <ImagePreviews images={images} onRemove={removeImage} />
-                    <div className="flex items-end gap-2">
+                    <div className="flex items-center gap-2">
                         <div className="shrink-0" data-testid="mode-selector">
                             <select
                                 value={selectedMode}
