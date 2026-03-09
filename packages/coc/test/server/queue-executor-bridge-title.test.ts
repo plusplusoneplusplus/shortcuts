@@ -27,7 +27,7 @@ import {
     QueuedTask,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
-import { CLITaskExecutor, READONLY_PROMPT_PREFIX } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
@@ -229,7 +229,7 @@ describe('CLITaskExecutor — Title Generation', () => {
         );
     });
 
-    it('readonly-chat: should generate title from user message, not from READONLY_PROMPT_PREFIX', async () => {
+    it('should generate title from user message for ask-mode chat', async () => {
         mockTransform.mockResolvedValue('Fix Auth Bug');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
 
@@ -241,8 +241,6 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         expect(mockTransform).toHaveBeenCalledOnce();
         const promptArg = mockTransform.mock.calls[0]?.[0] as string;
-        // Should contain the user's actual message, not the READONLY_PROMPT_PREFIX
         expect(promptArg).toContain(userMessage);
-        expect(promptArg).not.toContain(READONLY_PROMPT_PREFIX);
     });
 });

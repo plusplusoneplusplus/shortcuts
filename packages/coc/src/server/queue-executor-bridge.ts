@@ -84,10 +84,6 @@ import { resolveTaskRoot } from './task-root-resolver';
 /** Statuses that represent a terminal (non-overwritable) process state. */
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
-/** @deprecated No longer injected — kept only so legacy persisted turns can still be stripped in queue-handler. */
-export const READONLY_PROMPT_PREFIX =
-    'IMPORTANT: You are in read-only mode. You MUST NOT create, edit, delete, or modify any files or source code that\'s tracked by the git. Special files like task plan markdown files are exempt from this rule. If the user asks you to make changes, explain what changes would be needed but do not execute them.\n\n';
-
 /** Map CoC ChatMode to SDK AgentMode for protocol-level enforcement. */
 const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
     ask: 'interactive',
@@ -539,11 +535,7 @@ export class CLITaskExecutor implements TaskExecutor {
      */
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void {
         const logger = getLogger();
-        const rawContent = turns.find(t => t.role === 'user')?.content ?? '';
-        // Legacy: strip readonly prefix from turns persisted before SDK mode migration
-        const firstUserContent = rawContent.startsWith(READONLY_PROMPT_PREFIX)
-            ? rawContent.slice(READONLY_PROMPT_PREFIX.length)
-            : rawContent;
+        const firstUserContent = turns.find(t => t.role === 'user')?.content ?? '';
         if (!firstUserContent) return;
 
         // Use void to explicitly fire-and-forget

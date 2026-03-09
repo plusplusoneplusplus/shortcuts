@@ -35,7 +35,7 @@ import {
     TaskExecutionResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
-import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, READONLY_PROMPT_PREFIX } from '../../src/server/queue-executor-bridge';
+import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 
@@ -175,8 +175,6 @@ describe('CLITaskExecutor', () => {
             expect(addedProcess.type).toBe('chat');
             expect(addedProcess.status).toBe('running');
             expect(addedProcess.fullPrompt).toContain('Explain this code');
-            // Prompt should NOT contain the old prefix — mode is now SDK-level
-            expect(addedProcess.fullPrompt).not.toContain(READONLY_PROMPT_PREFIX);
 
             // Verify process was marked completed
             expect(store.updateProcess).toHaveBeenCalledWith('queue_task-1', expect.objectContaining({
@@ -404,10 +402,6 @@ describe('CLITaskExecutor', () => {
                 prompt: expect.stringContaining('Explain the architecture'),
                 mode: 'interactive',
             }));
-            // Prompt should NOT contain the old prefix
-            expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: expect.not.stringContaining(READONLY_PROMPT_PREFIX),
-            }));
         });
 
         it('should pass mode=autopilot to sendMessage for autopilot chat tasks', async () => {
@@ -427,7 +421,6 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: expect.not.stringContaining(READONLY_PROMPT_PREFIX),
                 mode: 'autopilot',
             }));
         });
