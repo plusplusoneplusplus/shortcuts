@@ -98,7 +98,7 @@ describe('ExplorerPanel', () => {
         });
 
         it('main preview pane has min-h-0 for mobile scroll support', () => {
-            expect(source).toContain('flex-1 min-h-0 flex items-center justify-center');
+            expect(source).toContain('flex-1 min-h-0 min-w-0');
         });
 
         it('has right main for preview pane', () => {
