@@ -334,7 +334,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
 
             const payload: ChatPayload = {
                 kind: 'chat',
-                mode: 'autopilot',
+                mode: 'plan',
                 prompt: prompt.trim(),
                 workingDirectory: ws.rootPath,
                 workspaceId: id,

@@ -113,7 +113,7 @@ describe('isChatPayload / hasTaskGenerationContext', () => {
     it('should return true for a valid ChatPayload with task generation context', () => {
         const payload: ChatPayload = {
             kind: 'chat',
-            mode: 'autopilot',
+            mode: 'plan',
             prompt: 'Create a login feature',
             workingDirectory: '/tmp/workspace',
             context: {
@@ -130,7 +130,7 @@ describe('isChatPayload / hasTaskGenerationContext', () => {
     it('should return true for ChatPayload with all optional task generation fields', () => {
         const payload: ChatPayload = {
             kind: 'chat',
-            mode: 'autopilot',
+            mode: 'plan',
             prompt: 'Create a login feature',
             workingDirectory: '/tmp/workspace',
             workspaceId: 'ws-1',
@@ -151,7 +151,7 @@ describe('isChatPayload / hasTaskGenerationContext', () => {
     it('should return false for hasTaskGenerationContext on a plain chat payload', () => {
         const payload: ChatPayload = {
             kind: 'chat',
-            mode: 'autopilot',
+            mode: 'plan',
             prompt: 'Follow this prompt',
         };
         expect(isChatPayload(payload as any)).toBe(true);
@@ -202,7 +202,7 @@ describe('CLITaskExecutor — task-generation', () => {
             createdAt: Date.now(),
             payload: {
                 kind: 'chat',
-                mode: 'autopilot',
+                mode: 'plan',
                 prompt: overrides.prompt || 'Build a user auth module',
                 workingDirectory: workDir,
                 workspaceId: wsId,
@@ -387,6 +387,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(task).toBeDefined();
         expect(task.type).toBe('chat');
         expect(task.payload.kind).toBe('chat');
+        expect(task.payload.mode).toBe('plan');
         expect(task.payload.prompt).toBe('Create a caching layer');
         expect(task.payload.context.taskGeneration.name).toBe('cache-feature');
     });
