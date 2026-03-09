@@ -13,7 +13,7 @@ import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard, splitMarkdownSections } from '../utils/format';
 import { linkifyFilePaths } from '../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
-import type { ToolGroupCategory, GroupContentItem } from './toolGroupUtils';
+import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
 import { groupConsecutiveToolChunks } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';
 
@@ -76,6 +76,8 @@ type RenderChunk =
         toolIds:      string[];
         /** Absorbed single-line content messages (rendered inline when expanded). */
         contentItems: GroupContentItem[];
+        /** Interleaved order of tools and content for faithful rendering. */
+        orderedItems: GroupOrderedItem[];
         /** Epoch ms of the earliest startTime among grouped tools (undefined if none have timing). */
         startTime?:   number;
         /** Epoch ms of the latest endTime among grouped tools (undefined if any are still running). */
@@ -801,6 +803,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType }: C
                                         category={chunk.category}
                                         toolCalls={toolCalls}
                                         contentItems={chunk.contentItems}
+                                        orderedItems={chunk.orderedItems}
                                         isStreaming={!!turn.streaming}
                                         compactness={toolCompactness}
                                         renderToolTree={renderToolTree}

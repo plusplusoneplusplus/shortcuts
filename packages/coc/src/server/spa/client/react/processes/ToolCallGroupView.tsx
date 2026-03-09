@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../shared';
-import type { ToolGroupCategory, GroupContentItem } from './toolGroupUtils';
+import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
 import { getCategoryLabel, getToolGroupStatus } from './toolGroupUtils';
 
 export interface RenderToolCall {
@@ -24,6 +24,8 @@ export interface ToolCallGroupViewProps {
     category: ToolGroupCategory;
     toolCalls: RenderToolCall[];
     contentItems?: GroupContentItem[];
+    /** Interleaved order of tools and content for faithful rendering. */
+    orderedItems?: GroupOrderedItem[];
     compactness: 0 | 1 | 2;
     isStreaming?: boolean;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
@@ -78,6 +80,7 @@ export function ToolCallGroupView({
     category,
     toolCalls,
     contentItems,
+    orderedItems,
     compactness,
     isStreaming,
     renderToolTree,
@@ -168,17 +171,33 @@ export function ToolCallGroupView({
             {/* ── Expanded body ──────────────────────────────────────── */}
             {expanded && (
                 <div className="tool-call-group-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] py-1">
-                    {toolCalls.map(tc => (
-                        <React.Fragment key={tc.id}>
-                            {renderToolTree(tc.id, 0)}
-                        </React.Fragment>
-                    ))}
-                    {contentItems && contentItems.length > 0 && (
-                        <div className="tool-call-group-content px-3 py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
-                            {contentItems.map(item => (
-                                <div key={item.key} dangerouslySetInnerHTML={{ __html: item.html }} />
+                    {orderedItems ? (
+                        orderedItems.map(item =>
+                            item.type === 'tool' ? (
+                                <React.Fragment key={item.toolId}>
+                                    {renderToolTree(item.toolId, 0)}
+                                </React.Fragment>
+                            ) : (
+                                <div key={item.key} className="tool-call-group-content px-3 py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1"
+                                    dangerouslySetInnerHTML={{ __html: item.html }}
+                                />
+                            )
+                        )
+                    ) : (
+                        <>
+                            {toolCalls.map(tc => (
+                                <React.Fragment key={tc.id}>
+                                    {renderToolTree(tc.id, 0)}
+                                </React.Fragment>
                             ))}
-                        </div>
+                            {contentItems && contentItems.length > 0 && (
+                                <div className="tool-call-group-content px-3 py-1 text-xs text-[#616161] dark:text-[#a0a0a0] italic border-t border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] mt-1">
+                                    {contentItems.map(item => (
+                                        <div key={item.key} dangerouslySetInnerHTML={{ __html: item.html }} />
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             )}

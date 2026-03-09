@@ -595,3 +595,89 @@ describe('groupConsecutiveToolChunks — groupSingleLineMessages', () => {
         expect(result).toHaveLength(3);
     });
 });
+
+// groupConsecutiveToolChunks — orderedItems
+// ────────────────────────────────────────────────────────────────────
+
+describe('groupConsecutiveToolChunks — orderedItems', () => {
+    it('orderedItems preserves interleaved order of tools and content', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+        const content = makeContentChunk('c1');
+        const c3 = makeChunk('t3');
+        const c4 = makeChunk('t4');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, c2, content, c3, c4],
+            makeMap([
+                ['t1', { toolName: 'view', status: 'completed' }],
+                ['t2', { toolName: 'view', status: 'completed' }],
+                ['t3', { toolName: 'view', status: 'completed' }],
+                ['t4', { toolName: 'view', status: 'completed' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.orderedItems).toEqual([
+            { type: 'tool', toolId: 't1' },
+            { type: 'tool', toolId: 't2' },
+            { type: 'content', key: 'c1', html: 'text' },
+            { type: 'tool', toolId: 't3' },
+            { type: 'tool', toolId: 't4' },
+        ]);
+    });
+
+    it('orderedItems with multiple content items in correct positions', () => {
+        const c1 = makeChunk('t1');
+        const content1 = makeContentChunk('c1');
+        const c2 = makeChunk('t2');
+        const content2 = makeContentChunk('c2');
+        const c3 = makeChunk('t3');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, content1, c2, content2, c3],
+            makeMap([
+                ['t1', { toolName: 'view' }],
+                ['t2', { toolName: 'view' }],
+                ['t3', { toolName: 'view' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.orderedItems).toEqual([
+            { type: 'tool', toolId: 't1' },
+            { type: 'content', key: 'c1', html: 'text' },
+            { type: 'tool', toolId: 't2' },
+            { type: 'content', key: 'c2', html: 'text' },
+            { type: 'tool', toolId: 't3' },
+        ]);
+    });
+
+    it('orderedItems contains only tools when no content is absorbed', () => {
+        const c1 = makeChunk('t1');
+        const c2 = makeChunk('t2');
+
+        const result = groupConsecutiveToolChunks(
+            [c1, c2],
+            makeMap([
+                ['t1', { toolName: 'view', status: 'completed' }],
+                ['t2', { toolName: 'view', status: 'completed' }],
+            ]),
+            new Set(),
+            { groupSingleLineMessages: true }
+        );
+
+        expect(result).toHaveLength(1);
+        const g = result[0] as any;
+        expect(g.orderedItems).toEqual([
+            { type: 'tool', toolId: 't1' },
+            { type: 'tool', toolId: 't2' },
+        ]);
+    });
+});

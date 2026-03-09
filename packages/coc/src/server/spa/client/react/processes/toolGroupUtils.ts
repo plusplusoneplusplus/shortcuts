@@ -10,6 +10,11 @@ export interface GroupContentItem {
     html: string;
 }
 
+/** A single item in the interleaved rendering order of a tool group. */
+export type GroupOrderedItem =
+    | { type: 'tool'; toolId: string }
+    | { type: 'content'; key: string; html: string };
+
 /**
  * Maps each known tool name to its grouping category.
  * Tools not listed here return null from getToolGroupCategory and are never grouped.
@@ -104,6 +109,8 @@ interface ToolGroupChunk {
     toolIds: string[];
     /** Absorbed single-line content messages (rendered inline when expanded). */
     contentItems: GroupContentItem[];
+    /** Interleaved order of tools and absorbed content for faithful rendering. */
+    orderedItems: GroupOrderedItem[];
     startTime?: number;
     endTime?: number;
     allSucceeded: boolean;
@@ -174,6 +181,7 @@ export function groupConsecutiveToolChunks(
         // Start a run
         const run: ToolChunk[] = [chunk];
         const absorbedContent: GroupContentItem[] = [];
+        const orderedItems: GroupOrderedItem[] = [{ type: 'tool', toolId: chunk.toolId }];
         let j = i + 1;
 
         while (j < chunks.length) {
@@ -187,6 +195,7 @@ export function groupConsecutiveToolChunks(
                 if (nextCat !== category) break;
                 if (next.parentToolId !== chunk.parentToolId) break;
                 run.push(next);
+                orderedItems.push({ type: 'tool', toolId: next.toolId });
                 j++;
                 continue;
             }
@@ -209,8 +218,11 @@ export function groupConsecutiveToolChunks(
                             getToolGroupCategory(afterTool.toolName) === category &&
                             after.parentToolId === chunk.parentToolId
                         ) {
-                            absorbedContent.push({ key: next.key, html: next.html as string });
+                            const contentItem = { key: next.key, html: next.html as string };
+                            absorbedContent.push(contentItem);
+                            orderedItems.push({ type: 'content', ...contentItem });
                             run.push(after);
+                            orderedItems.push({ type: 'tool', toolId: after.toolId });
                             j = afterIdx + 1;
                             continue;
                         }
@@ -241,6 +253,7 @@ export function groupConsecutiveToolChunks(
             category,
             toolIds,
             contentItems:   absorbedContent,
+            orderedItems,
             startTime:      startTimes.length ? Math.min(...startTimes) : undefined,
             endTime:        allEnded && endTimes.length ? Math.max(...endTimes) : undefined,
             allSucceeded:   tools.every(t => t.status === 'completed'),
