@@ -110,7 +110,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
     }, []);
 
     return (
-        <div className="branch-file-diffflex flex-col h-full overflow-hidden" data-testid="branch-file-diff">
+        <div className="branch-file-diff flex flex-col h-full overflow-hidden" data-testid="branch-file-diff">
             {/* Header bar */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-file-diff-header">
                 <div className="flex items-center gap-2">

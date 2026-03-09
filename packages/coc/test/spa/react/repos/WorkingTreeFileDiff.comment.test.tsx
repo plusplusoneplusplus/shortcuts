@@ -213,4 +213,14 @@ describe('WorkingTreeFileDiff — comment integration', () => {
         expect(screen.getByTestId('working-tree-file-diff-untracked')).toBeTruthy();
         expect(screen.queryByTestId('trigger-add-comment')).toBeNull();
     });
+
+    // 9. Regression: outer container must have 'flex' class for scroll to work
+    it('outer container has flex, flex-col, h-full, and overflow-hidden classes (scroll regression)', async () => {
+        await renderDiff('staged');
+        const container = screen.getByTestId('working-tree-file-diff');
+        expect(container.classList.contains('flex')).toBe(true);
+        expect(container.classList.contains('flex-col')).toBe(true);
+        expect(container.classList.contains('h-full')).toBe(true);
+        expect(container.classList.contains('overflow-hidden')).toBe(true);
+    });
 });

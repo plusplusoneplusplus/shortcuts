@@ -121,7 +121,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
     }, []);
 
     return (
-        <div className="working-tree-file-diffflex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff">
+        <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff">
             {/* Header bar */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="working-tree-file-diff-header">
                 <div className="flex items-center gap-2">

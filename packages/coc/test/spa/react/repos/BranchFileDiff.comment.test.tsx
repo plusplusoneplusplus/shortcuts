@@ -218,4 +218,14 @@ describe('BranchFileDiff — comment integration', () => {
             expect.objectContaining({ oldRef: 'branch-base', newRef: 'branch-head', filePath: 'src/foo.ts' }),
         );
     });
+
+    // 9. Regression: outer container must have 'flex' class for scroll to work
+    it('outer container has flex, flex-col, h-full, and overflow-hidden classes (scroll regression)', async () => {
+        await renderDiff();
+        const container = screen.getByTestId('branch-file-diff');
+        expect(container.classList.contains('flex')).toBe(true);
+        expect(container.classList.contains('flex-col')).toBe(true);
+        expect(container.classList.contains('h-full')).toBe(true);
+        expect(container.classList.contains('overflow-hidden')).toBe(true);
+    });
 });
