@@ -143,4 +143,46 @@ describe('useUnseenActivity', () => {
         const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
         expect(result.current.unseenCount).toBe(0);
     });
+
+    it('marks all tasks as seen when markAllSeen is called', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a', 'b', 'c');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        expect(result.current.unseenCount).toBe(3);
+
+        act(() => {
+            result.current.markAllSeen();
+        });
+
+        expect(result.current.unseenCount).toBe(0);
+        expect(result.current.unseenTaskIds.size).toBe(0);
+    });
+
+    it('markAllSeen persists to localStorage', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a', 'b');
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        act(() => {
+            result.current.markAllSeen();
+        });
+
+        const stored = JSON.parse(localStorage.getItem('coc-unseen-ws1')!);
+        expect(stored['a']).toBe(history[0].completedAt);
+        expect(stored['b']).toBe(history[1].completedAt);
+    });
+
+    it('markAllSeen is a no-op when all tasks are already seen', () => {
+        const history = makeTasks('a', 'b');
+        // First visit seeds all as seen
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+        expect(result.current.unseenCount).toBe(0);
+
+        act(() => {
+            result.current.markAllSeen();
+        });
+
+        expect(result.current.unseenCount).toBe(0);
+    });
 });

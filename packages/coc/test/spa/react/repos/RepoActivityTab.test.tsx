@@ -542,10 +542,11 @@ describe('useUnseenActivity hook: structure', () => {
         expect(UNSEEN_HOOK_SOURCE).toContain('selectedTaskId: string | null');
     });
 
-    it('returns unseenTaskIds, unseenCount, and markSeen', () => {
+    it('returns unseenTaskIds, unseenCount, markSeen, and markAllSeen', () => {
         expect(UNSEEN_HOOK_SOURCE).toContain('unseenTaskIds');
         expect(UNSEEN_HOOK_SOURCE).toContain('unseenCount');
         expect(UNSEEN_HOOK_SOURCE).toContain('markSeen');
+        expect(UNSEEN_HOOK_SOURCE).toContain('markAllSeen');
     });
 
     it('persists to localStorage with workspace-scoped key', () => {
@@ -585,6 +586,14 @@ describe('RepoActivityTab: unseen activity wiring', () => {
     it('destructures unseenTaskIds and markSeen from the hook', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain('unseenTaskIds');
         expect(ACTIVITY_TAB_SOURCE).toContain('markSeen');
+    });
+
+    it('destructures markAllSeen from the hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('markAllSeen');
+    });
+
+    it('passes onMarkAllRead to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('onMarkAllRead={markAllSeen}');
     });
 
     it('calls markSeen in selectTask', () => {
@@ -639,5 +648,31 @@ describe('ActivityListPane: unseen activity indicators', () => {
     it('highlights prompt preview text for unseen tasks', () => {
         // Unseen tasks show prompt preview in foreground color instead of muted
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]"');
+    });
+});
+
+describe('ActivityListPane: mark all read button', () => {
+    it('accepts onMarkAllRead prop in interface', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead?: () => void');
+    });
+
+    it('destructures onMarkAllRead from props', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead,');
+    });
+
+    it('renders mark-all-read button with data-testid', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="mark-all-read-btn"');
+    });
+
+    it('mark-all-read button calls onMarkAllRead on click', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onClick={onMarkAllRead}');
+    });
+
+    it('mark-all-read button only shows when there are unseen tasks', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead && unseenTaskIds && filteredHistory.some(t => unseenTaskIds.has(t.id))');
+    });
+
+    it('mark-all-read button has "Mark all read" label', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('Mark all read');
     });
 });

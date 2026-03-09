@@ -72,6 +72,8 @@ export interface ActivityListPaneProps {
     workspaceId?: string;
     /** Set of task IDs with unseen activity (bold + dot indicator). */
     unseenTaskIds?: Set<string>;
+    /** Mark all completed tasks as read. */
+    onMarkAllRead?: () => void;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
     onRefresh: () => void;
@@ -91,6 +93,7 @@ export function ActivityListPane({
     now,
     workspaceId,
     unseenTaskIds,
+    onMarkAllRead,
     onSelectTask,
     onPauseResume,
     onRefresh,
@@ -403,18 +406,29 @@ export function ActivityListPane({
 
                 {filteredHistory.length > 0 && (
                     <div>
-                        <button
-                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
-                            onClick={() => setShowHistory(!showHistory)}
-                        >
-                            {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
-                            {unseenTaskIds && (() => {
-                                const count = filteredHistory.filter(t => unseenTaskIds.has(t.id)).length;
-                                return count > 0 ? (
-                                    <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-count-badge">{count}</span>
-                                ) : null;
-                            })()}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                                onClick={() => setShowHistory(!showHistory)}
+                            >
+                                {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
+                                {unseenTaskIds && (() => {
+                                    const count = filteredHistory.filter(t => unseenTaskIds.has(t.id)).length;
+                                    return count > 0 ? (
+                                        <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-count-badge">{count}</span>
+                                    ) : null;
+                                })()}
+                            </button>
+                            {onMarkAllRead && unseenTaskIds && filteredHistory.some(t => unseenTaskIds.has(t.id)) && (
+                                <button
+                                    className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
+                                    onClick={onMarkAllRead}
+                                    data-testid="mark-all-read-btn"
+                                >
+                                    Mark all read
+                                </button>
+                            )}
+                        </div>
                         {showHistory && (
                             <div className="flex flex-col gap-1 mt-1">
                                 {filteredHistory.map(task => {

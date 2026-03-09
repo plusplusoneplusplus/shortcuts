@@ -32,6 +32,8 @@ export interface UseUnseenActivityResult {
     unseenCount: number;
     /** Mark a task as seen (call when user selects a task). */
     markSeen: (taskId: string) => void;
+    /** Mark all history tasks as seen. */
+    markAllSeen: () => void;
 }
 
 export function useUnseenActivity(
@@ -108,6 +110,21 @@ export function useUnseenActivity(
         }
     }, [history]);
 
+    // Mark all history tasks as seen.
+    const markAllSeen = useCallback(() => {
+        setSeenMap(prev => {
+            const updated = { ...prev };
+            let changed = false;
+            for (const task of history) {
+                if (task.completedAt && updated[task.id] !== task.completedAt) {
+                    updated[task.id] = task.completedAt;
+                    changed = true;
+                }
+            }
+            return changed ? updated : prev;
+        });
+    }, [history]);
+
     // Periodically clean up entries for tasks no longer in history (limit map growth).
     const lastCleanupRef = useRef(0);
     useEffect(() => {
@@ -125,5 +142,5 @@ export function useUnseenActivity(
         });
     }, [history]);
 
-    return { unseenTaskIds, unseenCount: unseenTaskIds.size, markSeen };
+    return { unseenTaskIds, unseenCount: unseenTaskIds.size, markSeen, markAllSeen };
 }
