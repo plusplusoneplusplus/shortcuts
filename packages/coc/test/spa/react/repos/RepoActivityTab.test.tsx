@@ -693,12 +693,12 @@ describe('ActivityListPane: mark all read button', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="mark-all-read-btn"');
     });
 
-    it('mark-all-read button calls onMarkAllRead with filteredHistory on click', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onClick={() => onMarkAllRead(filteredHistory)}');
+    it('mark-all-read button calls onMarkAllRead with filteredUnpinned on click', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onClick={() => onMarkAllRead(filteredUnpinned)}');
     });
 
     it('mark-all-read button only shows when there are unseen tasks', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead && unseenTaskIds && filteredHistory.some(t => unseenTaskIds.has(t.id))');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkAllRead && unseenTaskIds && filteredUnpinned.some(t => unseenTaskIds.has(t.id))');
     });
 
     it('mark-all-read button has "Mark all read" label', () => {

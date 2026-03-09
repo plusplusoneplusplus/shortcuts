@@ -78,6 +78,12 @@ export interface ActivityListPaneProps {
     onMarkRead?: (taskId: string) => void;
     /** Mark a single completed task as unread. */
     onMarkUnread?: (taskId: string) => void;
+    /** Set of pinned chat task IDs (persisted server-side). */
+    pinnedChatIds?: Set<string>;
+    /** Pin a chat task by ID. */
+    onPinChat?: (taskId: string) => void;
+    /** Unpin a chat task by ID. */
+    onUnpinChat?: (taskId: string) => void;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
     onRefresh: () => void;
@@ -100,6 +106,9 @@ export function ActivityListPane({
     onMarkAllRead,
     onMarkRead,
     onMarkUnread,
+    pinnedChatIds,
+    onPinChat,
+    onUnpinChat,
     onSelectTask,
     onPauseResume,
     onRefresh,
@@ -140,6 +149,26 @@ export function ActivityListPane({
     );
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType)), [history, filterType]);
 
+    // Split history into pinned and non-pinned, preserving pin order
+    const { filteredPinned, filteredUnpinned } = useMemo(() => {
+        if (!pinnedChatIds || pinnedChatIds.size === 0) {
+            return { filteredPinned: [], filteredUnpinned: filteredHistory };
+        }
+        const pinned: any[] = [];
+        const unpinned: any[] = [];
+        const historyById = new Map(filteredHistory.map((t: any) => [t.id, t]));
+        // Preserve pin order (newest pinned first)
+        for (const id of pinnedChatIds) {
+            const task = historyById.get(id);
+            if (task) pinned.push(task);
+        }
+        for (const task of filteredHistory) {
+            if (!pinnedChatIds.has(task.id)) unpinned.push(task);
+        }
+        return { filteredPinned: pinned, filteredUnpinned: unpinned };
+    }, [filteredHistory, pinnedChatIds]);
+
+    const [showPinned, setShowPinned] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
 
     const handleCancel = async (taskId: string) => {
@@ -222,7 +251,10 @@ export function ActivityListPane({
         }
         if (taskStatus === 'completed') {
             const isUnseen = unseenTaskIds?.has(taskId) ?? false;
+            const isPinned = pinnedChatIds?.has(taskId) ?? false;
             return [
+                ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
+                ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
                 ...(isUnseen && onMarkRead ? [{ label: 'Mark as Read', icon: '✓', onClick: () => onMarkRead(taskId) }] : []),
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
             ];
@@ -239,7 +271,7 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, unseenTaskIds, onMarkRead, onMarkUnread]);
+    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -417,25 +449,79 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {filteredHistory.length > 0 && (
+                {filteredPinned.length > 0 && (
+                    <div>
+                        <button
+                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
+                            onClick={() => setShowPinned(!showPinned)}
+                            data-testid="pinned-chats-section-toggle"
+                        >
+                            {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length})
+                        </button>
+                        {showPinned && (
+                            <div className="flex flex-col gap-1">
+                                {filteredPinned.map(task => {
+                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    return (
+                                        <Card
+                                            key={task.id}
+                                            className={cn(
+                                                "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
+                                                selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                            )}
+                                            onClick={() => onSelectTask(task.id, task)}
+                                            onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                            data-task-id={task.id}
+                                            data-pinned="true"
+                                            data-unseen={isUnseen || undefined}
+                                        >
+                                            <div className="flex items-center justify-between gap-1.5 text-xs">
+                                                <span className="flex items-center gap-1 min-w-0 truncate">
+                                                    {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
+                                                    <span className="shrink-0">
+                                                        {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                                    </span>
+                                                    <span className={cn("truncate", isUnseen && "font-semibold")}>
+                                                        {task.displayName || task.type || 'Task'}
+                                                    </span>
+                                                </span>
+                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                                </span>
+                                            </div>
+                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")}>{p}</div> : null; })()}
+                                            {task.error && (
+                                                <div className="text-[10px] text-red-500 mt-0.5 truncate">
+                                                    {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
+                                                </div>
+                                            )}
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {filteredUnpinned.length > 0 && (
                     <div>
                         <div className="flex items-center gap-1.5">
                             <button
                                 className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
                                 onClick={() => setShowHistory(!showHistory)}
                             >
-                                {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
+                                {showHistory ? '▼' : '▶'} Completed Tasks ({filteredUnpinned.length})
                                 {unseenTaskIds && (() => {
-                                    const count = filteredHistory.filter(t => unseenTaskIds.has(t.id)).length;
+                                    const count = filteredUnpinned.filter(t => unseenTaskIds.has(t.id)).length;
                                     return count > 0 ? (
                                         <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-count-badge">{count}</span>
                                     ) : null;
                                 })()}
                             </button>
-                            {onMarkAllRead && unseenTaskIds && filteredHistory.some(t => unseenTaskIds.has(t.id)) && (
+                            {onMarkAllRead && unseenTaskIds && filteredUnpinned.some(t => unseenTaskIds.has(t.id)) && (
                                 <button
                                     className="text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:underline transition-colors"
-                                    onClick={() => onMarkAllRead(filteredHistory)}
+                                    onClick={() => onMarkAllRead(filteredUnpinned)}
                                     data-testid="mark-all-read-btn"
                                 >
                                     Mark all read
@@ -444,7 +530,7 @@ export function ActivityListPane({
                         </div>
                         {showHistory && (
                             <div className="flex flex-col gap-1 mt-1">
-                                {filteredHistory.map(task => {
+                                {filteredUnpinned.map(task => {
                                     const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                     return (
                                         <Card
