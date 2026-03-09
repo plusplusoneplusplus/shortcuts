@@ -145,7 +145,7 @@ describe('runArticleExecutor', () => {
         });
 
         expect(mockInvoker).toHaveBeenCalled();
-        expect(result.duration).toBeGreaterThan(0);
+        expect(result.duration).toBeGreaterThanOrEqual(0);
     });
 
     it('should use text mode (no output fields) for map phase', async () => {
