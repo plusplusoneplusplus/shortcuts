@@ -205,6 +205,22 @@ function findLineElement(node: Node, boundary: Element | null): Element | null {
     return null;
 }
 
+/**
+ * Walk up the DOM tree to find the nearest ancestor that scrolls vertically.
+ * Falls back to `document.documentElement` when no scrollable ancestor is found.
+ * Using `parentElement` directly would break when the viewer is nested inside
+ * a non-scrolling wrapper (e.g. CommitDetail's diff-section div).
+ */
+function getScrollableAncestor(el: HTMLElement): HTMLElement {
+    let current = el.parentElement;
+    while (current && current !== document.documentElement) {
+        const { overflowY } = getComputedStyle(current);
+        if (overflowY === 'auto' || overflowY === 'scroll') return current;
+        current = current.parentElement;
+    }
+    return document.documentElement as HTMLElement;
+}
+
 export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, comments, onCommentClick }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
@@ -227,8 +243,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             if (!container) return;
             const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
             if (edits.length === 0) return;
-            const scrollParent = container.parentElement;
-            if (!scrollParent) return;
+            const scrollParent = getScrollableAncestor(container);
             const parentTop = scrollParent.getBoundingClientRect().top;
             const centerOffset = scrollParent.clientHeight / 3;
             for (const edit of edits) {
@@ -250,8 +265,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             if (!container) return;
             const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
             if (edits.length === 0) return;
-            const scrollParent = container.parentElement;
-            if (!scrollParent) return;
+            const scrollParent = getScrollableAncestor(container);
             const parentTop = scrollParent.getBoundingClientRect().top;
             const centerOffset = scrollParent.clientHeight / 3;
             for (let i = edits.length - 1; i >= 0; i--) {
