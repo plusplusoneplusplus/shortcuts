@@ -19,7 +19,7 @@ import { getApiBase } from '../utils/config';
 import { Spinner } from '../shared';
 import { CommitList } from './CommitList';
 import { CommitDetail } from './CommitDetail';
-import { CommitFileContent } from './CommitFileContent';
+
 import { BranchChanges } from './BranchChanges';
 import { BranchFileDiff } from './BranchFileDiff';
 import { GitPanelHeader } from './GitPanelHeader';
@@ -475,11 +475,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             commit={rightPanelView.commit}
         />
     ) : rightPanelView?.type === 'commit-file' ? (
-        <CommitFileContent
+        <CommitDetail
             key={`${rightPanelView.hash}-${rightPanelView.filePath}`}
             workspaceId={workspaceId}
             hash={rightPanelView.hash}
             filePath={rightPanelView.filePath}
+            commit={commits.find(c => c.hash === rightPanelView.hash)}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
         <BranchFileDiff

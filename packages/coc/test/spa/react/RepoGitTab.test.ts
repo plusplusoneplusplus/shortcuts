@@ -438,8 +438,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain('<CommitDetail');
         });
 
-        it('renders CommitFileContent component for commit-file view', () => {
-            expect(source).toContain('<CommitFileContent');
+        it('renders CommitDetail for commit-file view with filePath', () => {
+            // commit-file now routes through CommitDetail with filePath for comment support
+            expect(source).toContain('filePath={rightPanelView.filePath}');
         });
 
         it('renders BranchFileDiff component', () => {
@@ -454,8 +455,8 @@ describe('RepoGitTab', () => {
             expect(source).toContain("import { CommitDetail }");
         });
 
-        it('imports CommitFileContent', () => {
-            expect(source).toContain("import { CommitFileContent } from './CommitFileContent'");
+        it('no longer imports CommitFileContent (replaced by CommitDetail with filePath)', () => {
+            expect(source).not.toContain("import { CommitFileContent }");
         });
 
         it('imports BranchFileDiff', () => {
