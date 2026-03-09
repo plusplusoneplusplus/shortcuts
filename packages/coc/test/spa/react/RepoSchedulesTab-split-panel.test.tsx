@@ -5,6 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AppProvider } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
@@ -54,6 +56,26 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
 vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
+
+// Default breakpoint mock — desktop
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
+}));
+
+vi.mock('../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+    useResizablePanel: () => ({
+        width: 288,
+        isDragging: false,
+        handleMouseDown: vi.fn(),
+        handleTouchStart: vi.fn(),
+        resetWidth: vi.fn(),
+    }),
+}));
+
+const SCHEDULES_TAB_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoSchedulesTab.tsx'),
+    'utf-8'
+);
 
 function Wrap({ children }: { children: ReactNode }) {
     return (
@@ -268,4 +290,77 @@ describe('Split-panel layout', () => {
         const header = screen.getByText('SCHEDULES');
         expect(header.textContent).not.toContain('(');
     });
+
+    it('desktop layout has resize handle with data-testid', async () => {
+        await renderWithSchedules();
+        await waitFor(() => {
+            expect(screen.getByTestId('schedules-resize-handle')).toBeTruthy();
+        });
+    });
+
+    it('desktop layout has schedules-list-panel and schedules-detail-panel', async () => {
+        await renderWithSchedules();
+        await waitFor(() => {
+            expect(screen.getByTestId('schedules-list-panel')).toBeTruthy();
+            expect(screen.getByTestId('schedules-detail-panel')).toBeTruthy();
+        });
+    });
 });
+
+// ============================================================================
+// Mobile layout — source-code structural checks
+// ============================================================================
+
+describe('Mobile layout: source structure', () => {
+    it('imports useBreakpoint hook', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain("import { useBreakpoint }");
+    });
+
+    it('imports useResizablePanel hook', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain("import { useResizablePanel }");
+    });
+
+    it('checks isMobile for responsive layout', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('isMobile');
+    });
+
+    it('has mobileShowDetail state for single-pane navigation', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('mobileShowDetail');
+    });
+
+    it('has a back button to return to schedule list', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('data-testid="schedules-back-btn"');
+        expect(SCHEDULES_TAB_SOURCE).toContain('← Schedules');
+    });
+
+    it('has schedules-mobile-list testid for mobile list pane', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('data-testid="schedules-mobile-list"');
+    });
+
+    it('has resize handle with cursor-col-resize for desktop', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('cursor-col-resize');
+        expect(SCHEDULES_TAB_SOURCE).toContain('data-testid="schedules-resize-handle"');
+    });
+
+    it('persists panel width with storageKey', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain("storageKey: 'schedules-left-panel-width'");
+    });
+
+    it('disables text selection while dragging', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain("isDragging && 'select-none'");
+    });
+
+    it('uses inline style for resizable left panel width', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('style={{ width: leftPanelWidth }}');
+    });
+
+    it('has data-testid for both list and detail panels', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('data-testid="schedules-list-panel"');
+        expect(SCHEDULES_TAB_SOURCE).toContain('data-testid="schedules-detail-panel"');
+    });
+
+    it('sets mobileShowDetail true when selecting a schedule on mobile', () => {
+        expect(SCHEDULES_TAB_SOURCE).toContain('if (isMobile) setMobileShowDetail(true)');
+    });
+});
+

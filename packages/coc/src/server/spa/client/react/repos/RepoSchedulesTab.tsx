@@ -8,6 +8,8 @@ import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { formatRelativeTime } from '../utils/format';
 import { fetchWorkflows } from './workflow-api';
+import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useApp } from '../context/AppContext';
 import type { PipelineInfo } from './repoGrouping';
 
@@ -133,6 +135,14 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
     const [showCreate, setShowCreate] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [duplicateValues, setDuplicateValues] = useState<Partial<Schedule> | null>(null);
+    const { isMobile, isTablet } = useBreakpoint();
+    const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
+        initialWidth: isTablet ? 256 : 288,
+        minWidth: 160,
+        maxWidth: 600,
+        storageKey: 'schedules-left-panel-width',
+    });
+    const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
     const fetchSchedules = useCallback(async () => {
         try {
@@ -172,6 +182,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
         setSelectedId(scheduleId);
         dispatch({ type: 'SET_SELECTED_SCHEDULE', id: scheduleId });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/schedules/' + encodeURIComponent(scheduleId);
+        if (isMobile) setMobileShowDetail(true);
     };
 
     // Fetch history whenever selectedId changes
@@ -239,123 +250,178 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
 
     const selectedSchedule = schedules.find(s => s.id === selectedId) ?? null;
 
-    return (
-        <div className="flex h-full overflow-hidden">
-            {/* Left panel */}
-            <div className="w-72 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden">
-                {/* Panel header */}
-                <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                    <span className="text-[11px] uppercase text-[#848484] font-medium">
-                        SCHEDULES{schedules.length > 0 ? ` (${schedules.length})` : ''}
-                    </span>
-                    <Button variant="primary" size="sm" onClick={() => { setShowCreate(true); }}>
-                        + New
-                    </Button>
-                </div>
-
-                {/* Empty state */}
-                {schedules.length === 0 && (
-                    <div className="p-4 text-center text-sm text-[#848484]">
-                        <div className="text-2xl mb-2">🕐</div>
-                        <div>No schedules for this repo yet.</div>
-                        <div className="text-xs mt-1">Click &quot;+ New&quot; to automate a workflow or script.</div>
-                    </div>
-                )}
-
-                {/* Schedule list */}
-                {schedules.length > 0 && (
-                    <ul className="repo-schedule-list px-2 pb-4 flex flex-col gap-0.5 overflow-y-auto">
-                        {schedules.map(schedule => {
-                            const isActive = schedule.id === selectedId;
-                            return (
-                                <li
-                                    key={schedule.id}
-                                    className={
-                                        'repo-schedule-item flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer ' +
-                                        'hover:bg-[#e8e8e8] dark:hover:bg-[#333] ' +
-                                        (isActive
-                                            ? 'bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]'
-                                            : '')
-                                    }
-                                    role="option"
-                                    aria-selected={isActive}
-                                    onClick={() => handleSelect(schedule.id)}
-                                >
-                                    <span className="flex-shrink-0">
-                                        <StatusDot status={schedule.status} isRunning={schedule.isRunning} />
-                                    </span>
-                                    <span className={
-                                        'flex-1 text-xs text-[#1e1e1e] dark:text-[#cccccc] truncate' +
-                                        (isActive ? ' font-medium' : '')
-                                    }>
-                                        {schedule.name}
-                                        {schedule.targetType === 'script' && (
-                                            <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#0078d4] font-medium align-middle">
-                                                [Script]
-                                            </span>
-                                        )}
-                                        {(!schedule.targetType || schedule.targetType === 'prompt') && (
-                                            <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#848484] font-medium align-middle">
-                                                [Prompt]
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="text-[10px] text-[#848484] font-mono flex-shrink-0 hidden xl:block">
-                                        {schedule.cronDescription}
-                                    </span>
-                                    {schedule.nextRun && schedule.status === 'active' && (
-                                        <span className="text-[10px] text-[#848484] flex-shrink-0">
-                                            {formatRelativeTime(schedule.nextRun)}
-                                        </span>
-                                    )}
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )}
+    const listPanel = (
+        <>
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                <span className="text-[11px] uppercase text-[#848484] font-medium">
+                    SCHEDULES{schedules.length > 0 ? ` (${schedules.length})` : ''}
+                </span>
+                <Button variant="primary" size="sm" onClick={() => { setShowCreate(true); if (isMobile) setMobileShowDetail(true); }}>
+                    + New
+                </Button>
             </div>
 
-            {/* Right panel */}
-            <div className="flex-1 min-w-0 overflow-y-auto">
-                {showCreate ? (
-                    <div className="px-4 py-3">
-                        <CreateScheduleForm
-                            workspaceId={workspaceId}
-                            onCreated={() => { setShowCreate(false); setDuplicateValues(null); fetchSchedules(); }}
-                            onCancel={() => { setShowCreate(false); setDuplicateValues(null); }}
-                            initialValues={duplicateValues ? {
-                                name: `Copy of ${duplicateValues.name}`,
-                                target: duplicateValues.target,
-                                targetType: duplicateValues.targetType,
-                                cron: duplicateValues.cron,
-                                params: duplicateValues.params ? { ...duplicateValues.params } : undefined,
-                                onFailure: duplicateValues.onFailure,
-                            } : undefined}
-                        />
-                    </div>
-                ) : selectedSchedule ? (
-                    <div className="px-4 py-3">
-                        <ScheduleDetail
-                            schedule={selectedSchedule}
-                            workspaceId={workspaceId}
-                            history={history}
-                            editingId={editingId}
-                            onRunNow={handleRunNow}
-                            onPauseResume={handlePauseResume}
-                            onEdit={(id) => setEditingId(id)}
-                            onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); }}
-                            onDelete={handleDelete}
-                            onCancelEdit={() => setEditingId(null)}
-                            onSaved={() => { setEditingId(null); fetchSchedules(); }}
-                        />
+            {/* Empty state */}
+            {schedules.length === 0 && (
+                <div className="p-4 text-center text-sm text-[#848484]">
+                    <div className="text-2xl mb-2">🕐</div>
+                    <div>No schedules for this repo yet.</div>
+                    <div className="text-xs mt-1">Click &quot;+ New&quot; to automate a workflow or script.</div>
+                </div>
+            )}
+
+            {/* Schedule list */}
+            {schedules.length > 0 && (
+                <ul className="repo-schedule-list px-2 pb-4 flex flex-col gap-0.5 overflow-y-auto">
+                    {schedules.map(schedule => {
+                        const isActive = schedule.id === selectedId;
+                        return (
+                            <li
+                                key={schedule.id}
+                                className={
+                                    'repo-schedule-item flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer ' +
+                                    'hover:bg-[#e8e8e8] dark:hover:bg-[#333] ' +
+                                    (isActive
+                                        ? 'bg-[#e8e8e8] dark:bg-[#2a2d2e] border-l-2 border-[#0078d4]'
+                                        : '')
+                                }
+                                role="option"
+                                aria-selected={isActive}
+                                onClick={() => handleSelect(schedule.id)}
+                            >
+                                <span className="flex-shrink-0">
+                                    <StatusDot status={schedule.status} isRunning={schedule.isRunning} />
+                                </span>
+                                <span className={
+                                    'flex-1 text-xs text-[#1e1e1e] dark:text-[#cccccc] truncate' +
+                                    (isActive ? ' font-medium' : '')
+                                }>
+                                    {schedule.name}
+                                    {schedule.targetType === 'script' && (
+                                        <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#0078d4] font-medium align-middle">
+                                            [Script]
+                                        </span>
+                                    )}
+                                    {(!schedule.targetType || schedule.targetType === 'prompt') && (
+                                        <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-[#f3f3f3] dark:bg-[#2a2a2a] text-[#848484] font-medium align-middle">
+                                            [Prompt]
+                                        </span>
+                                    )}
+                                </span>
+                                <span className="text-[10px] text-[#848484] font-mono flex-shrink-0 hidden xl:block">
+                                    {schedule.cronDescription}
+                                </span>
+                                {schedule.nextRun && schedule.status === 'active' && (
+                                    <span className="text-[10px] text-[#848484] flex-shrink-0">
+                                        {formatRelativeTime(schedule.nextRun)}
+                                    </span>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </>
+    );
+
+    const detailContent = (
+        <>
+            {showCreate ? (
+                <div className="px-4 py-3">
+                    <CreateScheduleForm
+                        workspaceId={workspaceId}
+                        onCreated={() => { setShowCreate(false); setDuplicateValues(null); fetchSchedules(); }}
+                        onCancel={() => { setShowCreate(false); setDuplicateValues(null); }}
+                        initialValues={duplicateValues ? {
+                            name: `Copy of ${duplicateValues.name}`,
+                            target: duplicateValues.target,
+                            targetType: duplicateValues.targetType,
+                            cron: duplicateValues.cron,
+                            params: duplicateValues.params ? { ...duplicateValues.params } : undefined,
+                            onFailure: duplicateValues.onFailure,
+                        } : undefined}
+                    />
+                </div>
+            ) : selectedSchedule ? (
+                <div className="px-4 py-3">
+                    <ScheduleDetail
+                        schedule={selectedSchedule}
+                        workspaceId={workspaceId}
+                        history={history}
+                        editingId={editingId}
+                        onRunNow={handleRunNow}
+                        onPauseResume={handlePauseResume}
+                        onEdit={(id) => setEditingId(id)}
+                        onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); }}
+                        onDelete={handleDelete}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSaved={() => { setEditingId(null); fetchSchedules(); }}
+                    />
+                </div>
+            ) : (
+                <div className="flex items-center justify-center h-full text-sm text-[#848484]">
+                    {schedules.length === 0
+                        ? 'Create your first schedule with "+ New"'
+                        : 'Select a schedule to view details'}
+                </div>
+            )}
+        </>
+    );
+
+    if (isMobile) {
+        return (
+            <div className="flex flex-col h-full overflow-hidden" data-testid="schedules-split-panel">
+                {mobileShowDetail ? (
+                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="schedules-detail-panel">
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0">
+                            <button
+                                className="text-xs text-[#0078d4] flex items-center gap-1 hover:underline"
+                                onClick={() => setMobileShowDetail(false)}
+                                data-testid="schedules-back-btn"
+                            >
+                                ← Schedules
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto">
+                            {detailContent}
+                        </div>
                     </div>
                 ) : (
-                    <div className="flex items-center justify-center h-full text-sm text-[#848484]">
-                        {schedules.length === 0
-                            ? 'Create your first schedule with "+ New"'
-                            : 'Select a schedule to view details'}
+                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="schedules-mobile-list">
+                        {listPanel}
                     </div>
                 )}
+            </div>
+        );
+    }
+
+    return (
+        <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="schedules-split-panel">
+            {/* Left panel */}
+            <div
+                className="flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden"
+                style={{ width: leftPanelWidth }}
+                data-testid="schedules-list-panel"
+            >
+                {listPanel}
+            </div>
+
+            {/* Resize handle */}
+            <div
+                className="flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                data-testid="schedules-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize schedules panel"
+                tabIndex={0}
+            />
+
+            {/* Right panel */}
+            <div className="flex-1 min-w-0 overflow-y-auto" data-testid="schedules-detail-panel">
+                {detailContent}
             </div>
         </div>
     );
