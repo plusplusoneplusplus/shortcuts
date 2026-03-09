@@ -60,6 +60,7 @@ import {
     mergeConsecutiveContentItems,
     QueuedTask,
     QueueExecutor,
+    READ_ONLY_SYSTEM_MESSAGE,
     resolveToolCallCacheOptions,
     TaskExecutionResult,
     TaskExecutor,
@@ -278,7 +279,7 @@ export class CLITaskExecutor implements TaskExecutor {
             }
 
             try {
-                await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments);
+                await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments, followUpPayload.mode);
                 const duration = Date.now() - startTime;
                 const proc = await this.store.getProcess(followUpPayload.processId!);
                 const turnCount = proc?.conversationTurns?.length ?? 0;
@@ -572,7 +573,7 @@ export class CLITaskExecutor implements TaskExecutor {
      * 4. On completion, append assistant turn to conversationTurns
      * 5. Update process status back to 'completed'
      */
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void> {
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
 
@@ -587,6 +588,36 @@ export class CLITaskExecutor implements TaskExecutor {
         }
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
+        // Detect mode transitions involving ask mode
+        const previousMode = process.metadata?.mode as ChatMode | undefined;
+        const currentMode = mode ?? previousMode;
+        const enteringAsk = currentMode === 'ask' && previousMode !== 'ask';
+        const leavingAsk = currentMode !== 'ask' && previousMode === 'ask';
+
+        // Update process metadata with current mode when it changes
+        if (mode && mode !== previousMode) {
+            await this.store.updateProcess(processId, {
+                metadata: {
+                    type: process.metadata?.type ?? 'chat',
+                    ...(process.metadata ?? {}),
+                    previousMode,
+                    mode: currentMode,
+                },
+            });
+        }
+
+        // Force session re-creation when transitioning to/from ask mode
+        // so the system message can be updated on the resumed session
+        if (enteringAsk || leavingAsk) {
+            logger.debug(LogCategory.AI, `[FollowUp] Mode transition ${previousMode} → ${currentMode}, forcing session refresh`);
+            await this.aiService.destroyKeptAliveSession(process.sdkSessionId);
+        }
+
+        // Inject read-only system message for ask mode (used when session is resumed)
+        const systemMessage = currentMode === 'ask'
+            ? { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE }
+            : undefined;
+
         // Initialize output buffer for this follow-up
         this.outputBuffers.set(processId, '');
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
@@ -598,10 +629,11 @@ export class CLITaskExecutor implements TaskExecutor {
             const followUpMessage = (this.followUpSuggestions.enabled && isFirstTurn)
                 ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : message;
-            const agentMode = toAgentMode(process.metadata?.mode as ChatMode | undefined);
+            const agentMode = toAgentMode(currentMode);
             const result = await this.aiService.sendFollowUp(process.sdkSessionId, followUpMessage, {
                 workingDirectory,
                 mode: agentMode,
+                systemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
                 tools: suggestTools.length > 0 ? suggestTools : undefined,
@@ -864,7 +896,10 @@ export class CLITaskExecutor implements TaskExecutor {
             const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
                 ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : '';
-            return this.executeWithAI(task, prompt + countSuffix, tools ? { tools } : undefined);
+            const systemMessage = payload.mode === 'ask'
+                ? { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE }
+                : undefined;
+            return this.executeWithAI(task, prompt + countSuffix, { tools, systemMessage });
         }
 
         // Fallback: no-op

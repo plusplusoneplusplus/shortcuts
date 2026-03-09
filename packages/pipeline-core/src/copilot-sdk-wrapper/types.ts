@@ -415,6 +415,24 @@ export interface ToolEvent {
 export type AgentMode = 'interactive' | 'plan' | 'autopilot';
 
 // ============================================================================
+// Read-Only Mode Constants
+// ============================================================================
+
+/**
+ * Marker string embedded in the read-only system message for reliable detection
+ * during filtering. Allows surgical add/remove of the read-only instruction
+ * without affecting other system message content.
+ */
+export const READ_ONLY_MARKER = '<!-- COC_READ_ONLY_MODE -->';
+
+/**
+ * System message injected when the chat is in `ask` (read-only) mode.
+ * Instructs the AI to avoid using any file-modification tools.
+ */
+export const READ_ONLY_SYSTEM_MESSAGE = `${READ_ONLY_MARKER}
+You are in read-only mode. You MUST NOT use any tools that create, edit, delete, or modify files in the repository, with the sole exception of the plan file. You may only read files, search code, and answer questions. If the user asks you to make changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode. Do not use tools such as: edit_file, create_file, delete_file, write_file, insert_edit, or any tool that modifies the filesystem (except when writing to the plan file).`;
+
+// ============================================================================
 // SDK Result Types
 // ============================================================================
 

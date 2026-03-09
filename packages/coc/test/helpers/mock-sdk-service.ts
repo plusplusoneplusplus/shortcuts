@@ -24,6 +24,7 @@ export interface MockCopilotSDKService {
     canResumeSession: ReturnType<typeof vi.fn>;
     transform: ReturnType<typeof vi.fn>;
     abortSession: ReturnType<typeof vi.fn>;
+    destroyKeptAliveSession: ReturnType<typeof vi.fn>;
 }
 
 /** Configuration for SDK service mock behavior */
@@ -60,6 +61,7 @@ export interface MockSDKServiceResult {
     mockCanResumeSession: ReturnType<typeof vi.fn>;
     mockTransform: ReturnType<typeof vi.fn>;
     mockAbortSession: ReturnType<typeof vi.fn>;
+    mockDestroyKeptAliveSession: ReturnType<typeof vi.fn>;
     /** Reset all mocks to their initial configured state */
     resetAll: () => void;
 }
@@ -100,6 +102,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
     const mockCanResumeSession = vi.fn().mockResolvedValue(canResumeSessionResult);
     const mockTransform = vi.fn().mockResolvedValue('Generated Title');
     const mockAbortSession = vi.fn().mockResolvedValue(true);
+    const mockDestroyKeptAliveSession = vi.fn().mockResolvedValue(true);
 
     const service: MockCopilotSDKService = {
         sendMessage: mockSendMessage,
@@ -109,6 +112,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         canResumeSession: mockCanResumeSession,
         transform: mockTransform,
         abortSession: mockAbortSession,
+        destroyKeptAliveSession: mockDestroyKeptAliveSession,
     };
 
     const resetAll = () => {
@@ -119,6 +123,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockCanResumeSession.mockReset().mockResolvedValue(canResumeSessionResult);
         mockTransform.mockReset().mockResolvedValue('Generated Title');
         mockAbortSession.mockReset().mockResolvedValue(true);
+        mockDestroyKeptAliveSession.mockReset().mockResolvedValue(true);
     };
 
     return {
@@ -130,6 +135,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockCanResumeSession,
         mockTransform,
         mockAbortSession,
+        mockDestroyKeptAliveSession,
         resetAll,
     };
 }
