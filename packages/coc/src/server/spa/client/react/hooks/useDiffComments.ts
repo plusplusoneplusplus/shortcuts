@@ -55,8 +55,7 @@ export interface UseDiffCommentsReturn {
     resolvingCommentId: string | null;
     refresh: () => Promise<void>;
     runRelocation: (lines: DiffLine[]) => Promise<void>;
-    // TODO: resolveWithAI / fixWithAI / copyResolvePrompt — omitted until a
-    // document write-back path is defined for diff comments.
+    copyAllCommentsAsPrompt: () => void;
 }
 
 // ============================================================================
@@ -361,6 +360,38 @@ export function useDiffComments(
     }, [wsId, updateCommentFn]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ------------------------------------------------------------------
+    // copyAllCommentsAsPrompt — formats all comments into a prompt and
+    // copies it to the clipboard so the user can paste it into an AI chat.
+    // ------------------------------------------------------------------
+
+    const copyAllCommentsAsPrompt = useCallback((): void => {
+        const ctx = contextRef.current;
+        if (!commentsRef.current.length || !ctx) return;
+
+        const commentsBlock = commentsRef.current
+            .map((c, i) =>
+                `### Comment ${i + 1} (id: ${c.id}, status: ${c.status})\n` +
+                `Lines ${c.selection.diffLineStart}–${c.selection.diffLineEnd} (${c.selection.side})\n` +
+                `Selected code:\n\`\`\`\n${c.selectedText}\n\`\`\`\n` +
+                `Comment: ${c.comment}`
+            )
+            .join('\n\n');
+
+        const refRange = ctx.newRef === 'working-tree'
+            ? `working tree changes`
+            : `${ctx.oldRef} → ${ctx.newRef}`;
+
+        const prompt =
+            `You are reviewing a git diff for file: ${ctx.filePath}\n` +
+            `Diff range: ${refRange}\n\n` +
+            `The following ${commentsRef.current.length} comment(s) have been added to the diff:\n\n` +
+            `${commentsBlock}\n\n` +
+            `Please address these comments.`;
+
+        void navigator.clipboard.writeText(prompt);
+    }, []); // commentsRef and contextRef are always up-to-date
+
+    // ------------------------------------------------------------------
     // refresh
     // ------------------------------------------------------------------
 
@@ -413,5 +444,6 @@ export function useDiffComments(
         resolvingCommentId,
         refresh,
         runRelocation,
+        copyAllCommentsAsPrompt,
     };
 }

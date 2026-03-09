@@ -115,7 +115,7 @@ export function CommentSidebar({
                     <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
                         Comments ({comments.length})
                     </span>
-                    {openCount > 0 && (
+                    {comments.length > 0 && (
                         <div className="flex items-center gap-1">
                             {onCopyPrompt && (
                                 <button
@@ -123,15 +123,15 @@ export function CommentSidebar({
                                         onCopyPrompt();
                                         setCopied(true);
                                     }}
-                                    title="Copy resolve prompt"
-                                    aria-label="Copy resolve prompt"
+                                    title="Copy all comments as prompt"
+                                    aria-label="Copy all comments as prompt"
                                     data-testid="copy-prompt-btn"
                                     className="inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
                                 >
                                     {copied ? '✓' : '📋'}
                                 </button>
                             )}
-                            {onResolveAllWithAI && (
+                            {openCount > 0 && onResolveAllWithAI && (
                                 <button
                                     onClick={onResolveAllWithAI}
                                     disabled={resolving}

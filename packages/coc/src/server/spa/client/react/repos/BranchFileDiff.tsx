@@ -47,7 +47,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError } = useDiffComments(workspaceId, diffContext);
+            clearAiError, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
     const fetchDiff = useCallback(() => {
         setLoading(true);
@@ -176,6 +176,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
+                        onCopyPrompt={copyAllCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"
                     />
                 )}

@@ -452,6 +452,78 @@ describe('useDiffComments', () => {
         expect(result.current.comments).toHaveLength(0);
     });
 
+    // ── 16. copyAllCommentsAsPrompt copies all comments to clipboard ────
+
+    it('copyAllCommentsAsPrompt copies all comments including resolved to clipboard', async () => {
+        const writeTextMock = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { clipboard: { writeText: writeTextMock } });
+
+        const open = makeComment({ id: 'c1', status: 'open', comment: 'Fix this', selectedText: 'foo()' });
+        const resolved = makeComment({ id: 'c2', status: 'resolved', comment: 'Already done', selectedText: 'bar()' });
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ comments: [open, resolved] }) });
+
+        const { result } = renderHook(() => useDiffComments('ws-1', mockContextA));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => {
+            result.current.copyAllCommentsAsPrompt();
+        });
+
+        expect(writeTextMock).toHaveBeenCalledOnce();
+        const prompt: string = writeTextMock.mock.calls[0][0];
+        expect(prompt).toContain('src/index.ts');
+        expect(prompt).toContain('abc123');
+        expect(prompt).toContain('def456');
+        expect(prompt).toContain('Fix this');
+        expect(prompt).toContain('Already done');
+        expect(prompt).toContain('foo()');
+        expect(prompt).toContain('bar()');
+        expect(prompt).toContain('status: open');
+        expect(prompt).toContain('status: resolved');
+        expect(prompt).toContain('2 comment');
+    });
+
+    it('copyAllCommentsAsPrompt does nothing when there are no comments', async () => {
+        const writeTextMock = vi.fn();
+        vi.stubGlobal('navigator', { clipboard: { writeText: writeTextMock } });
+
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ comments: [] }) });
+
+        const { result } = renderHook(() => useDiffComments('ws-1', mockContextA));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => {
+            result.current.copyAllCommentsAsPrompt();
+        });
+
+        expect(writeTextMock).not.toHaveBeenCalled();
+    });
+
+    it('copyAllCommentsAsPrompt uses "working tree changes" label for working-tree diffs', async () => {
+        const writeTextMock = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { clipboard: { writeText: writeTextMock } });
+
+        const wtContext: DiffCommentContext = {
+            repositoryId: 'repo-1',
+            filePath: 'src/index.ts',
+            oldRef: 'INDEX',
+            newRef: 'working-tree',
+        };
+        const comment = makeComment({ context: wtContext });
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ comments: [comment] }) });
+
+        const { result } = renderHook(() => useDiffComments('ws-1', wtContext));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => {
+            result.current.copyAllCommentsAsPrompt();
+        });
+
+        expect(writeTextMock).toHaveBeenCalledOnce();
+        const prompt: string = writeTextMock.mock.calls[0][0];
+        expect(prompt).toContain('working tree changes');
+    });
+
     // ── 15. updateComment updates the comment in state ─────────────────
 
     it('updateComment replaces comment in state', async () => {

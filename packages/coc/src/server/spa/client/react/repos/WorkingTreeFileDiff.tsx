@@ -56,7 +56,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError } = useDiffComments(workspaceId, diffContext);
+            clearAiError, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
     const fetchDiff = useCallback(() => {
         if (stage === 'untracked') {
@@ -193,6 +193,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
+                        onCopyPrompt={copyAllCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"
                     />
                 )}
