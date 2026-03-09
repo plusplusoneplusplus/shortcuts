@@ -1,5 +1,6 @@
 /**
- * Tests for QueueTaskDetail (PendingTaskInfoPanel) rendered inside QueueProvider + AppProvider.
+ * Tests for PendingTaskInfoPanel rendered inside ActivityChatDetail
+ * with QueueProvider + AppProvider.
  * Verifies metadata fields, action buttons, task-type-specific payload sections,
  * and the /queue/<id> API call on mount.
  */
@@ -10,7 +11,7 @@ import { useEffect, type ReactNode } from 'react';
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/context/AppContext';
 import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/context/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/context/ToastContext';
-import { QueueTaskDetail } from '../../../src/server/spa/client/react/queue/QueueTaskDetail';
+import { ActivityChatDetail } from '../../../src/server/spa/client/react/repos/ActivityChatDetail';
 
 // Mock config to return predictable API base
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
@@ -38,15 +39,15 @@ function Wrap({ children }: { children: ReactNode }) {
 
 /**
  * Seeds a pending (queued) task into queue state and selects it,
- * so QueueTaskDetail renders the PendingTaskInfoPanel.
+ * so ActivityChatDetail renders the PendingTaskInfoPanel.
  */
-function SeededQueueTaskDetail({ task }: { task: any }) {
+function SeededActivityChatDetail({ task }: { task: any }) {
     const { dispatch: queueDispatch } = useQueue();
     useEffect(() => {
         queueDispatch({ type: 'QUEUE_UPDATED', queue: { queued: [task], running: [], stats: {} } });
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
     }, []);
-    return <QueueTaskDetail />;
+    return <ActivityChatDetail taskId={task.id} />;
 }
 
 function makePendingTask(overrides?: Partial<any>): any {
@@ -99,7 +100,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -121,7 +122,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -145,7 +146,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -168,7 +169,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -199,7 +200,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -231,7 +232,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -247,7 +248,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
@@ -266,14 +267,13 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 
-        // PendingTaskInfoPanel should still render with the basic task info from queue state
-        // (it uses fullTask || task, so the queue state task is shown immediately)
+        // ActivityChatDetail fetches from the API, so a never-resolving fetch shows loading state
         await waitFor(() => {
-            expect(screen.getByText('task-123')).toBeTruthy();
+            expect(screen.getByText('Loading conversation...')).toBeTruthy();
         });
     });
 
@@ -283,7 +283,7 @@ describe('PendingTaskInfoPanel', () => {
 
         render(
             <Wrap>
-                <SeededQueueTaskDetail task={task} />
+                <SeededActivityChatDetail task={task} />
             </Wrap>
         );
 

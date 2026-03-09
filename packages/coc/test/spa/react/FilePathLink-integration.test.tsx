@@ -1,5 +1,5 @@
 /**
- * Tests for FilePathLink integration in ToolCallView and QueueTaskDetail.
+ * Tests for FilePathLink integration in ToolCallView and ActivityChatDetail.
  * Verifies that `.file-path-link` spans are rendered in the right places.
  */
 /* @vitest-environment jsdom */

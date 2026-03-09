@@ -3,10 +3,9 @@
  *
  * Validates:
  * - RepoActivityTab exists and renders a queue-style left rail plus a conditional right pane
- * - Selecting a top-level chat task renders inline chat detail (ActivityChatDetail)
- * - Selecting a non-chat task renders QueueTaskDetail
+ * - All task types are rendered inline via ActivityChatDetail
  * - Follow-up child chat tasks remain hidden in the Activity left rail
- * - ActivityDetailPane switches between chat and queue detail
+ * - ActivityDetailPane always uses ActivityChatDetail
  * - Mobile layout with back/list behavior
  * - Empty state rendering
  */
@@ -135,28 +134,16 @@ describe('ActivityDetailPane: detail routing', () => {
         expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain("import { ActivityChatDetail } from './ActivityChatDetail'");
     });
 
-    it('imports QueueTaskDetail', () => {
-        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain("import { QueueTaskDetail } from '../queue/QueueTaskDetail'");
-    });
-
-    it('has isTopLevelChatTask helper', () => {
-        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('function isTopLevelChatTask');
-    });
-
-    it('checks task type is chat', () => {
-        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain("task?.type === 'chat'");
-    });
-
-    it('excludes follow-up chat tasks (those with payload.processId)', () => {
-        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('payload?.processId');
-    });
-
-    it('renders ActivityChatDetail for top-level chat tasks', () => {
+    it('always renders ActivityChatDetail for selected tasks', () => {
         expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('<ActivityChatDetail');
     });
 
-    it('renders QueueTaskDetail for non-chat tasks', () => {
-        expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('<QueueTaskDetail');
+    it('does not import QueueTaskDetail', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).not.toContain('QueueTaskDetail');
+    });
+
+    it('does not route based on task type', () => {
+        expect(ACTIVITY_DETAIL_PANE_SOURCE).not.toContain('isTopLevelChatTask');
     });
 
     it('shows empty-state placeholder when no task is selected', () => {
@@ -167,7 +154,7 @@ describe('ActivityDetailPane: detail routing', () => {
         expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('📋');
     });
 
-    it('passes onBack prop to both detail components', () => {
+    it('passes onBack prop to ActivityChatDetail', () => {
         expect(ACTIVITY_DETAIL_PANE_SOURCE).toContain('onBack={onBack}');
     });
 });
@@ -243,20 +230,13 @@ describe('ActivityChatDetail: inline chat detail', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Loading conversation...');
     });
 
-    it('shows waiting state for queued tasks', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Waiting to start');
+    it('shows PendingTaskInfoPanel for queued tasks', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('<PendingTaskInfoPanel');
     });
 
-    it('shows metadata grid for queued tasks', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="queued-task-meta"');
-    });
-
-    it('displays task ID in queued metadata', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("label=\"Task ID\"");
-    });
-
-    it('displays model in queued metadata', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("label=\"Model\"");
+    it('passes cancel and moveToTop handlers', () => {
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('onCancel={handleCancel}');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('onMoveToTop={handleMoveToTop}');
     });
 
     it('imports MetaRow and FilePathValue from PendingTaskPayload', () => {

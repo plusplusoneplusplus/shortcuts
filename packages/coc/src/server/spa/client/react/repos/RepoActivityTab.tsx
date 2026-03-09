@@ -3,7 +3,7 @@
  * with conditional right-pane rendering for chat tasks versus other queue tasks.
  *
  * Top-level chat tasks are rendered inline via ActivityChatDetail.
- * Non-chat tasks use the existing QueueTaskDetail.
+ * All task types are handled by the unified ActivityChatDetail component.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';

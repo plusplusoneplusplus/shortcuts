@@ -1,9 +1,16 @@
 /**
- * ActivityChatDetail — inline chat detail surface for the Activity tab.
+ * ActivityChatDetail — unified detail surface for the Activity tab.
  *
- * Renders a chat conversation for a top-level chat queue task without
- * navigating away from the Activity tab. Derives the process ID from
- * the queue task and reuses the existing queue/process/SSE APIs.
+ * Renders a chat conversation for any queue task (chat, run-workflow,
+ * run-script, etc.) without navigating away from the Activity tab.
+ * Derives the process ID from the queue task and reuses the existing
+ * queue/process/SSE APIs.
+ *
+ * This component unifies the former ActivityChatDetail and QueueTaskDetail
+ * into a single surface with all features: rich SSE streaming (chunk,
+ * tool-start/complete/failed, conversation-snapshot), retry-on-error,
+ * cancel/move-to-top for pending tasks, conversation caching, mode
+ * selector, slash commands, and copy conversation.
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
@@ -14,6 +21,7 @@ import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
 import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { getConversationTurns } from '../chat/chatConversationUtils';
 import { useQueue } from '../context/QueueContext';
+import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
@@ -24,7 +32,10 @@ import type { SkillItem } from './SlashCommandMenu';
 import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { Badge } from '../shared';
 import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
+import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
+
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 export interface ActivityChatDetailProps {
     taskId: string;
@@ -34,6 +45,7 @@ export interface ActivityChatDetailProps {
 
 export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
+    const [fullTask, setFullTask] = useState<any>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const [loading, setLoading] = useState(true);
@@ -50,6 +62,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<'ask' | 'plan' | 'autopilot'>('autopilot');
     const [skills, setSkills] = useState<SkillItem[]>([]);
+    const lastFailedMessageRef = useRef<string>('');
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const followUpEventSourceRef = useRef<EventSource | null>(null);
@@ -60,7 +73,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
     const { isMobile } = useBreakpoint();
-    const { state: queueState } = useQueue();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
+    const { state: appState, dispatch: appDispatch } = useApp();
     const slashCommands = useSlashCommands(skills);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -85,7 +99,10 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
         turnsRef.current = resolved;
         setTurns(resolved);
-    }, []);
+        if (taskId) {
+            appDispatch({ type: 'CACHE_CONVERSATION', processId: taskId, turns: resolved });
+        }
+    }, [taskId, appDispatch]);
 
     const stopStreaming = useCallback(() => {
         eventSourceRef.current?.close();
@@ -131,6 +148,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
             .catch(() => { /* ignore */ });
     }, [workspaceId]);
 
+    // Fetch full task data for pending tasks (metadata + payload)
+    useEffect(() => {
+        if (!taskId || !isPending) { setFullTask(null); return; }
+        fetchApi(`/queue/${encodeURIComponent(taskId)}`)
+            .then((data: any) => setFullTask(data?.task || null))
+            .catch(() => setFullTask(null));
+    }, [taskId, isPending, queueState.refreshVersion]);
+
     // Load task + conversation on mount / taskId change
     useEffect(() => {
         isInitialLoadRef.current = true;
@@ -139,6 +164,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
         setError(null);
         setSessionExpired(false);
         setTask(null);
+        setFullTask(null);
         setTurnsAndRef([]);
         setProcessDetails(null);
         setSuggestions([]);
@@ -147,6 +173,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
         clearImages();
         stopStreaming();
         closeFollowUpStream();
+        queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
 
         (async () => {
             try {
@@ -167,25 +194,42 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
                 }
 
                 const pid = loadedTask?.processId ?? `queue_${taskId}`;
-                const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
-                if (loadCounterRef.current !== loadId) return;
-                setProcessDetails(procData?.process || null);
-                const processMode = procData?.process?.metadata?.mode;
-                if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
-                    setSelectedMode(processMode);
-                }
-                const loadedTurns = getConversationTurns(procData, loadedTask);
-                if (loadedTask?.status === 'running') {
-                    const lastTurn = loadedTurns[loadedTurns.length - 1];
-                    if (lastTurn?.role === 'assistant') {
-                        setTurnsAndRef(loadedTurns.map((t, i) =>
-                            i === loadedTurns.length - 1 ? { ...t, streaming: true } : t
-                        ));
-                    } else {
-                        setTurnsAndRef([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
-                    }
+
+                // Check shared conversation cache
+                const cached = appState.conversationCache[taskId];
+                if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
+                    setTurnsAndRef(cached.turns);
+                    // Background-refresh metadata
+                    fetchApi(`/processes/${encodeURIComponent(pid)}`)
+                        .then((data: any) => {
+                            setProcessDetails(data?.process || null);
+                            const processMode = data?.process?.metadata?.mode;
+                            if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
+                                setSelectedMode(processMode);
+                            }
+                        })
+                        .catch(() => { /* metadata refresh is best-effort */ });
                 } else {
-                    setTurnsAndRef(loadedTurns);
+                    const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                    if (loadCounterRef.current !== loadId) return;
+                    setProcessDetails(procData?.process || null);
+                    const processMode = procData?.process?.metadata?.mode;
+                    if (processMode && ['ask', 'plan', 'autopilot'].includes(processMode)) {
+                        setSelectedMode(processMode);
+                    }
+                    const loadedTurns = getConversationTurns(procData, loadedTask);
+                    if (loadedTask?.status === 'running') {
+                        const lastTurn = loadedTurns[loadedTurns.length - 1];
+                        if (lastTurn?.role === 'assistant') {
+                            setTurnsAndRef(loadedTurns.map((t, i) =>
+                                i === loadedTurns.length - 1 ? { ...t, streaming: true } : t
+                            ));
+                        } else {
+                            setTurnsAndRef([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
+                        }
+                    } else {
+                        setTurnsAndRef(loadedTurns);
+                    }
                 }
             } catch (err: any) {
                 if (loadCounterRef.current !== loadId) return;
@@ -222,7 +266,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
         })();
     }, [taskId, queueState.refreshVersion, setTurnsAndRef]);
 
-    // SSE for running tasks
+    // SSE for running tasks — rich streaming with chunk/tool events
     useEffect(() => {
         if (eventSourceRef.current) {
             eventSourceRef.current.close();
@@ -233,6 +277,75 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
         const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;
         setIsStreaming(true);
+
+        const ensureAssistantTurn = (prev: ClientConversationTurn[]): ClientConversationTurn[] => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === 'assistant') return prev;
+            return [...prev, { role: 'assistant', content: '', streaming: true, timeline: [] }];
+        };
+
+        es.addEventListener('conversation-snapshot', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if (data.turns) {
+                    setTurnsAndRef(data.turns);
+                }
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('chunk', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                const chunk = data.content || '';
+                setTurnsAndRef((prev) => {
+                    const turns = ensureAssistantTurn(prev);
+                    const last = turns[turns.length - 1];
+                    turns[turns.length - 1] = {
+                        ...last,
+                        content: (last.content || '') + chunk,
+                        streaming: true,
+                        timeline: (() => {
+                            const prev = last.timeline || [];
+                            const lastItem = prev[prev.length - 1];
+                            if (lastItem && lastItem.type === 'content') {
+                                return [...prev.slice(0, -1), { ...lastItem, content: (lastItem.content || '') + chunk }];
+                            }
+                            return [...prev, { type: 'content' as const, timestamp: new Date().toISOString(), content: chunk }];
+                        })(),
+                    };
+                    return [...turns];
+                });
+            } catch { /* ignore */ }
+        });
+
+        const handleToolSSE = (eventType: 'tool-start' | 'tool-complete' | 'tool-failed') => (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                setTurnsAndRef((prev) => {
+                    const turns = ensureAssistantTurn(prev);
+                    const last = turns[turns.length - 1];
+                    const toolCall: any = {
+                        id: data.toolCallId,
+                        toolName: data.toolName || 'unknown',
+                        args: data.parameters || {},
+                        status: eventType === 'tool-start' ? 'running' : eventType === 'tool-complete' ? 'completed' : 'failed',
+                        startTime: new Date().toISOString(),
+                        ...(eventType !== 'tool-start' ? { endTime: new Date().toISOString(), result: data.result, error: data.error } : {}),
+                        ...(data.parentToolCallId ? { parentToolCallId: data.parentToolCallId } : {}),
+                    };
+                    turns[turns.length - 1] = {
+                        ...last,
+                        streaming: true,
+                        timeline: [...(last.timeline || []), { type: eventType, timestamp: new Date().toISOString(), toolCall }],
+                    };
+                    return [...turns];
+                });
+            } catch { /* ignore */ }
+        };
+
+        es.addEventListener('tool-start', handleToolSSE('tool-start'));
+        es.addEventListener('tool-complete', handleToolSSE('tool-complete'));
+        es.addEventListener('tool-failed', handleToolSSE('tool-failed'));
 
         const finish = () => {
             es.close();
@@ -366,10 +479,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
         const content = cleanedPrompt || rawContent;
 
         setSuggestions([]);
+        lastFailedMessageRef.current = content;
         setFollowUpInput('');
         slashCommands.dismissMenu();
         setError(null);
         setSending(true);
+        queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
 
         const timestamp = new Date().toISOString();
         setTurnsAndRef(prev => ([
@@ -410,7 +525,24 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
             removeStreamingPlaceholder();
         } finally {
             setSending(false);
+            queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
         }
+    };
+
+    const handleCancel = async () => {
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+        onBack?.();
+    };
+
+    const handleMoveToTop = async () => {
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-to-top', { method: 'POST' });
+        queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+    };
+
+    const retryLastMessage = () => {
+        if (!lastFailedMessageRef.current) return;
+        void sendFollowUp(lastFailedMessageRef.current);
     };
 
     const launchInteractiveResume = async () => {
@@ -509,38 +641,27 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
             {/* Conversation area */}
             <div className="relative flex-1 min-h-0">
                 <div ref={conversationContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 h-full space-y-3">
-                    {loading ? (
+                    {isPending ? (
+                        <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
+                    ) : loading ? (
                         <div className="flex items-center gap-2 text-[#848484] text-sm">
                             <Spinner size="sm" /> Loading conversation...
-                        </div>
-                    ) : isPending ? (
-                        <div className="space-y-4" data-testid="queued-task-meta">
-                            {/* Metadata grid */}
-                            <div className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
-                                {task.id && <MetaRow label="Task ID" value={task.id} />}
-                                {task.config?.model && <MetaRow label="Model" value={task.config.model} />}
-                                {task.priority && task.priority !== 'normal' && (
-                                    <MetaRow label="Priority" value={`${task.priority === 'high' ? '🔥' : '🔽'} ${task.priority}`} />
-                                )}
-                                {task.createdAt && <MetaRow label="Created" value={new Date(task.createdAt).toLocaleString()} />}
-                                {task.payload?.workingDirectory && <FilePathValue label="Working Dir" value={task.payload.workingDirectory} />}
-                                {task.payload?.mode && task.payload.mode !== 'autopilot' && <MetaRow label="Mode" value={String(task.payload.mode)} />}
-                            </div>
-                            {/* User prompt */}
-                            {turns.length > 0 && turns.map((turn, i) => (
-                                <ConversationTurnBubble key={i} turn={turn} taskId={taskId} />
-                            ))}
-                            {/* Waiting indicator */}
-                            <div className="flex items-center gap-2 text-sm text-[#848484] py-2">
-                                <Spinner /> Waiting to start…
-                            </div>
                         </div>
                     ) : turns.length === 0 ? (
                         <div className="text-[#848484] text-sm">No conversation data available.</div>
                     ) : (
-                        turns.map((turn, i) => (
-                            <ConversationTurnBubble key={i} turn={turn} taskId={taskId} />
-                        ))
+                        <div className="space-y-3">
+                            {(() => {
+                                const hasStreaming = turns.some(t => t.streaming);
+                                const renderTurns =
+                                    task?.status === 'running' && !hasStreaming && turns.length > 0
+                                        ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
+                                        : turns;
+                                return renderTurns.map((turn, i) => (
+                                    <ConversationTurnBubble key={i} turn={turn} taskId={taskId} />
+                                ));
+                            })()}
+                        </div>
                     )}
                 </div>
                 <button
@@ -575,7 +696,15 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
                             )}
                         </div>
                     )}
-                    {error && <div className="text-xs text-[#f14c4c]">{error}</div>}
+                    {error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
+                    {error && lastFailedMessageRef.current && (
+                        <button
+                            className="retry-btn text-xs underline text-[#f14c4c]"
+                            onClick={() => retryLastMessage()}
+                        >
+                            Retry
+                        </button>
+                    )}
                     {suggestions.length > 0 && !sending && task?.status !== 'running' && (
                         <SuggestionChips
                             suggestions={suggestions}

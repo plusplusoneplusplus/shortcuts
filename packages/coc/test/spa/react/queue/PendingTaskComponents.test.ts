@@ -2,8 +2,8 @@
  * Tests for extracted pending-task components:
  *   PendingTaskInfoPanel, PendingTaskPayload, MetaRow, FilePathValue
  *
- * Validates that the components exist as standalone modules with the
- * same structure and exports that QueueTaskDetail previously had inline.
+ * Validates that the components exist as standalone modules and are
+ * imported by ActivityChatDetail.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -16,10 +16,6 @@ const PENDING_INFO_PATH = path.join(
 
 const PENDING_PAYLOAD_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'PendingTaskPayload.tsx'
-);
-
-const QUEUE_TASK_DETAIL_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'QueueTaskDetail.tsx'
 );
 
 describe('PendingTaskInfoPanel (standalone)', () => {
@@ -162,42 +158,29 @@ describe('PendingTaskPayload (standalone)', () => {
     });
 });
 
-describe('QueueTaskDetail imports extracted components', () => {
+describe('ActivityChatDetail imports extracted components', () => {
     let source: string;
+    const ACTIVITY_CHAT_DETAIL_PATH = path.join(
+        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityChatDetail.tsx'
+    );
 
     beforeAll(() => {
-        source = fs.readFileSync(QUEUE_TASK_DETAIL_PATH, 'utf-8');
+        source = fs.readFileSync(ACTIVITY_CHAT_DETAIL_PATH, 'utf-8');
     });
 
-    it('imports PendingTaskInfoPanel from standalone module', () => {
-        expect(source).toContain("import { PendingTaskInfoPanel } from './PendingTaskInfoPanel'");
+    it('imports PendingTaskInfoPanel from queue module', () => {
+        expect(source).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
     });
 
-    it('imports PendingTaskPayload, MetaRow, FilePathValue from standalone module', () => {
-        expect(source).toContain("import { PendingTaskPayload, MetaRow, FilePathValue } from './PendingTaskPayload'");
+    it('imports MetaRow, FilePathValue from queue module', () => {
+        expect(source).toContain("import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload'");
     });
 
-    it('no longer defines PendingTaskInfoPanel inline', () => {
-        expect(source).not.toMatch(/^function PendingTaskInfoPanel/m);
-    });
-
-    it('no longer defines MetaRow inline', () => {
-        expect(source).not.toMatch(/^function MetaRow/m);
-    });
-
-    it('no longer defines FilePathValue inline', () => {
-        expect(source).not.toMatch(/^function FilePathValue/m);
-    });
-
-    it('no longer defines PendingTaskPayload inline', () => {
-        expect(source).not.toMatch(/^function PendingTaskPayload/m);
-    });
-
-    it('still uses PendingTaskInfoPanel in JSX', () => {
+    it('uses PendingTaskInfoPanel in JSX', () => {
         expect(source).toContain('<PendingTaskInfoPanel');
     });
 
-    it('still exports QueueTaskDetail', () => {
-        expect(source).toContain('export function QueueTaskDetail');
+    it('exports ActivityChatDetail', () => {
+        expect(source).toContain('export function ActivityChatDetail');
     });
 });

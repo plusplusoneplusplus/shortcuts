@@ -17,7 +17,7 @@ import { ToolCallView } from '../../../src/server/spa/client/react/processes/Too
 import { MarkdownView } from '../../../src/server/spa/client/react/processes/MarkdownView';
 // QueuePanel merged into ProcessesSidebar
 import { QueueView } from '../../../src/server/spa/client/react/queue/QueueView';
-import { QueueTaskDetail } from '../../../src/server/spa/client/react/queue/QueueTaskDetail';
+import { ActivityChatDetail } from '../../../src/server/spa/client/react/repos/ActivityChatDetail';
 
 // Mock useDisplaySettings — controls report_intent visibility
 const mockDisplaySettings = { showReportIntent: false };
@@ -68,7 +68,7 @@ function SeededQueueTaskDetail({ task }: { task: any }) {
         dispatch({ type: 'SET_HISTORY', history: [task] });
         dispatch({ type: 'SELECT_QUEUE_TASK', id: task.id });
     }, [dispatch, task]);
-    return <QueueTaskDetail />;
+    return <ActivityChatDetail taskId={task.id} />;
 }
 
 describe('ProcessFilters', () => {
@@ -1181,7 +1181,7 @@ describe('ProcessesSidebar (queue panel)', () => {
     });
 });
 
-describe('QueueTaskDetail metadata popover', () => {
+describe('ActivityChatDetail metadata popover', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -1213,6 +1213,13 @@ describe('QueueTaskDetail metadata popover', () => {
                             ],
                         },
                     }),
+                });
+            }
+            if (url.endsWith('/api/queue/task-meta-1') && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-meta-1', processId, status: 'completed', type: 'chat' } }),
                 });
             }
             return Promise.resolve({
@@ -1248,7 +1255,7 @@ describe('QueueTaskDetail metadata popover', () => {
     });
 });
 
-describe('QueueTaskDetail follow-up input', () => {
+describe('ActivityChatDetail follow-up input', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -1309,6 +1316,14 @@ describe('QueueTaskDetail follow-up input', () => {
                 });
             }
 
+            if (url.endsWith('/api/queue/task-follow-1') && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-follow-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
+
             return Promise.resolve({
                 ok: false,
                 status: 404,
@@ -1335,7 +1350,7 @@ describe('QueueTaskDetail follow-up input', () => {
 
         await screen.findByText('First answer');
 
-        const input = screen.getByPlaceholderText('Continue this conversation...');
+        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
         fireEvent.change(input, { target: { value: 'Follow-up question' } });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
@@ -1384,6 +1399,14 @@ describe('QueueTaskDetail follow-up input', () => {
                 });
             }
 
+            if (url.endsWith('/api/queue/task-expired-1') && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-expired-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
+
             return Promise.resolve({
                 ok: false,
                 status: 404,
@@ -1410,20 +1433,20 @@ describe('QueueTaskDetail follow-up input', () => {
 
         await screen.findByText('Done');
 
-        const input = screen.getByPlaceholderText('Continue this conversation...');
+        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
         fireEvent.change(input, { target: { value: 'Need more' } });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
         await waitFor(() => {
-            expect(screen.getByText('Session expired. Start a new task to continue.')).toBeDefined();
+            expect(screen.getByText('Session expired.')).toBeDefined();
         });
 
         expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
-        expect((screen.getByPlaceholderText('Session expired. Start a new task to continue.') as HTMLTextAreaElement).disabled).toBe(true);
+        expect((screen.getByPlaceholderText('Session expired.') as HTMLTextAreaElement).disabled).toBe(true);
     });
 });
 
-describe('QueueTaskDetail semantic hooks', () => {
+describe('ActivityChatDetail semantic hooks', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
@@ -1448,6 +1471,13 @@ describe('QueueTaskDetail semantic hooks', () => {
                     }),
                 });
             }
+            if (url.endsWith('/api/queue/task-hooks-1')) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-hooks-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
             return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
         });
         (global as any).EventSource = undefined;
@@ -1461,9 +1491,9 @@ describe('QueueTaskDetail semantic hooks', () => {
         );
 
         await screen.findByText('Hi');
-        const panel = container.querySelector('#detail-panel');
+        const panel = container.querySelector('[data-testid="activity-chat-detail"]');
         expect(panel).toBeDefined();
-        expect(panel!.classList.contains('chat-layout')).toBe(true);
+        expect(panel!.classList.contains('flex-1')).toBe(true);
     });
 
     it('shows chat-error-bubble and bubble-error classes on follow-up error', async () => {
@@ -1496,6 +1526,13 @@ describe('QueueTaskDetail semantic hooks', () => {
                     json: async () => ({ error: 'Internal server error' }),
                 });
             }
+            if (url.endsWith('/api/queue/task-err-1') && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-err-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
             return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
         });
         (global as any).EventSource = undefined;
@@ -1509,7 +1546,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         );
 
         await screen.findByText('A');
-        const input = screen.getByPlaceholderText('Continue this conversation...');
+        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
         fireEvent.change(input, { target: { value: 'follow up' } });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
@@ -1546,6 +1583,13 @@ describe('QueueTaskDetail semantic hooks', () => {
             if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
                 return Promise.reject(new Error('Network error'));
             }
+            if (url.endsWith('/api/queue/task-retry-1') && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-retry-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
             return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
         });
         (global as any).EventSource = undefined;
@@ -1559,7 +1603,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         );
 
         await screen.findByText('A');
-        const input = screen.getByPlaceholderText('Continue this conversation...');
+        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
         fireEvent.change(input, { target: { value: 'retry me' } });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
@@ -1590,6 +1634,13 @@ describe('QueueTaskDetail semantic hooks', () => {
                     }),
                 });
             }
+            if (url.endsWith('/api/queue/task-scroll-1')) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-scroll-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
             return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
         });
         (global as any).EventSource = undefined;
@@ -1603,7 +1654,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         );
 
         await screen.findByText('Y');
-        const btn = container.querySelector('#scroll-to-bottom-btn');
+        const btn = container.querySelector('[title="Scroll to bottom"]');
         expect(btn).toBeDefined();
         // Not scrolled up so should not have visible class
         expect(btn!.classList.contains('visible')).toBe(false);
@@ -1629,6 +1680,13 @@ describe('QueueTaskDetail semantic hooks', () => {
                     }),
                 });
             }
+            if (url.endsWith('/api/queue/task-rel-1')) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-rel-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
             return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
         });
         (global as any).EventSource = undefined;
@@ -1642,7 +1700,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         );
 
         await screen.findByText('There');
-        const conv = container.querySelector('#queue-task-conversation');
+        const conv = container.querySelector('.overflow-y-auto.space-y-3');
         expect(conv).toBeDefined();
         // The scrollable container itself should NOT have 'relative'
         expect(conv!.classList.contains('relative')).toBe(false);
@@ -1669,6 +1727,13 @@ describe('QueueTaskDetail semantic hooks', () => {
                     }),
                 });
             }
+            if (url.endsWith('/api/queue/task-stream-1')) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-stream-1', processId, status: 'running', type: 'chat' } }),
+                });
+            }
             return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
         });
         (global as any).EventSource = vi.fn().mockImplementation(() => ({
@@ -1689,7 +1754,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         await screen.findByText('Go');
         // Should render 2 bubbles: user + streaming placeholder
         await waitFor(() => {
-            const bubbles = container.querySelectorAll('.space-y-3 > *');
+            const bubbles = container.querySelectorAll('.space-y-3 > .space-y-3 > *');
             expect(bubbles.length).toBe(2);
         });
     });
@@ -1724,6 +1789,13 @@ describe('QueueTaskDetail semantic hooks', () => {
                     json: async () => ({ error: 'session_expired' }),
                 });
             }
+            if (url.endsWith('/api/queue/task-410-1') && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ task: { id: 'task-410-1', processId, status: 'completed', type: 'chat' } }),
+                });
+            }
             return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
         });
         (global as any).EventSource = undefined;
@@ -1737,7 +1809,7 @@ describe('QueueTaskDetail semantic hooks', () => {
         );
 
         await screen.findByText('A');
-        const input = screen.getByPlaceholderText('Continue this conversation...');
+        const input = screen.getByPlaceholderText('Send a message... (type / for skills)');
         fireEvent.change(input, { target: { value: 'More' } });
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
