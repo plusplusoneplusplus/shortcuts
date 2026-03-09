@@ -750,6 +750,15 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
                                         }
                                         return;
                                     }
+                                    // Shift+Tab cycles through modes (ask → plan → autopilot → ask)
+                                    if (e.key === 'Tab' && e.shiftKey) {
+                                        e.preventDefault();
+                                        setSelectedMode(prev => {
+                                            const modes: Array<'ask' | 'plan' | 'autopilot'> = ['ask', 'plan', 'autopilot'];
+                                            return modes[(modes.indexOf(prev) + 1) % modes.length];
+                                        });
+                                        return;
+                                    }
                                     if (e.key === 'Enter' && !e.shiftKey) {
                                         e.preventDefault();
                                         void sendFollowUp();

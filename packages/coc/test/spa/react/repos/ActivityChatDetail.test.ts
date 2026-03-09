@@ -139,6 +139,46 @@ describe('ActivityChatDetail', () => {
         it('updates selectedMode from process metadata mode', () => {
             expect(source).toContain("setSelectedMode(processMode)");
         });
+
+        it('cycles mode on Shift+Tab keydown', () => {
+            expect(source).toContain("e.key === 'Tab' && e.shiftKey");
+        });
+
+        it('Shift+Tab prevents default tab behavior', () => {
+            const keyBlock = source.substring(
+                source.indexOf("e.key === 'Tab' && e.shiftKey"),
+                source.indexOf("e.key === 'Tab' && e.shiftKey") + 300,
+            );
+            expect(keyBlock).toContain('e.preventDefault()');
+        });
+
+        it('Shift+Tab cycles through all three modes in order', () => {
+            const keyBlock = source.substring(
+                source.indexOf("e.key === 'Tab' && e.shiftKey"),
+                source.indexOf("e.key === 'Tab' && e.shiftKey") + 500,
+            );
+            expect(keyBlock).toContain("'ask', 'plan', 'autopilot'");
+            expect(keyBlock).toContain('% modes.length');
+        });
+
+        it('Shift+Tab uses functional state update for mode cycling', () => {
+            const keyBlock = source.substring(
+                source.indexOf("e.key === 'Tab' && e.shiftKey"),
+                source.indexOf("e.key === 'Tab' && e.shiftKey") + 300,
+            );
+            expect(keyBlock).toContain('setSelectedMode(prev =>');
+        });
+
+        it('Shift+Tab handler runs after slash command menu check', () => {
+            const onKeyDown = source.substring(
+                source.indexOf('onKeyDown={e =>'),
+                source.indexOf('onPaste={addFromPaste}'),
+            );
+            const slashIdx = onKeyDown.indexOf('slashCommands.handleKeyDown(e)');
+            const shiftTabIdx = onKeyDown.indexOf("e.key === 'Tab' && e.shiftKey");
+            expect(slashIdx).toBeGreaterThan(-1);
+            expect(shiftTabIdx).toBeGreaterThan(slashIdx);
+        });
     });
 
     describe('slash command skill autocomplete', () => {
