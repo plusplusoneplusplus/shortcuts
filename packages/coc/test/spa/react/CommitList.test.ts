@@ -441,6 +441,21 @@ describe('CommitList', () => {
         });
     });
 
+    describe('commit subject display', () => {
+        it('does not truncate commit subject text', () => {
+            // subject span should allow wrapping, not truncate with ellipsis
+            expect(source).not.toContain('"text-xs text-[#1e1e1e] dark:text-[#ccc] truncate"');
+        });
+
+        it('uses break-words to allow full subject display', () => {
+            expect(source).toContain('break-words');
+        });
+
+        it('aligns hash and subject to top for multi-line subjects', () => {
+            expect(source).toContain('items-start');
+        });
+    });
+
     describe('context menu support', () => {
         it('attaches onContextMenu handler to commit rows', () => {
             expect(source).toContain('onContextMenu=');

@@ -240,9 +240,9 @@ export function CommitList({ title, commits, selectedHash, selectedFile, onSelec
                                 >
                                     <span className="text-[10px] mt-0.5 flex-shrink-0">{isUnpushed ? '●' : '○'}</span>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-start gap-2">
                                             <span className={`font-mono text-xs flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
-                                            <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] truncate">{commit.subject}</span>
+                                            <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0">{commit.subject}</span>
                                         </div>
                                         <div className="text-[11px] text-[#848484] mt-0.5">
                                             {formatRelativeTime(commit.date)} · {commit.author}
