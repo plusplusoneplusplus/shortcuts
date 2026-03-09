@@ -490,3 +490,180 @@ describe('GET /api/memory/observations/:filename', () => {
         expect(status).toBe(400);
     });
 });
+
+// ── Explore-cache browsing routes ─────────────────────────────────────────────
+
+function seedExploreCacheRaw(storageDir: string, level: 'system' | 'git-remote' | 'repo', hash: string | undefined, count: number): void {
+    let rawDir: string;
+    if (level === 'system') rawDir = path.join(storageDir, 'explore-cache', 'raw');
+    else if (level === 'git-remote') rawDir = path.join(storageDir, 'git-remotes', hash!, 'explore-cache', 'raw');
+    else rawDir = path.join(storageDir, 'repos', hash!, 'explore-cache', 'raw');
+
+    fs.mkdirSync(rawDir, { recursive: true });
+    for (let i = 0; i < count; i++) {
+        const entry = {
+            id: `raw-entry-${i}`,
+            toolName: 'grep',
+            question: `Question ${i}`,
+            answer: `Answer ${i}`,
+            args: { pattern: `p-${i}` },
+            timestamp: new Date(Date.now() + i * 1000).toISOString(),
+        };
+        fs.writeFileSync(path.join(rawDir, `${Date.now() + i}-grep.json`), JSON.stringify(entry, null, 2));
+    }
+}
+
+function seedExploreCacheConsolidated(storageDir: string, level: 'system' | 'git-remote' | 'repo', hash: string | undefined): void {
+    let consolidatedDir: string;
+    if (level === 'system') consolidatedDir = path.join(storageDir, 'explore-cache', 'consolidated');
+    else if (level === 'git-remote') consolidatedDir = path.join(storageDir, 'git-remotes', hash!, 'explore-cache', 'consolidated');
+    else consolidatedDir = path.join(storageDir, 'repos', hash!, 'explore-cache', 'consolidated');
+
+    const entriesDir = path.join(consolidatedDir, 'entries');
+    fs.mkdirSync(entriesDir, { recursive: true });
+
+    const indexEntry = {
+        id: 'c-1',
+        question: 'How does auth work?',
+        topics: ['auth', 'security'],
+        toolSources: ['grep'],
+        createdAt: new Date().toISOString(),
+        hitCount: 3,
+    };
+    fs.writeFileSync(path.join(consolidatedDir, 'index.json'), JSON.stringify([indexEntry]));
+    fs.writeFileSync(path.join(entriesDir, 'c-1.md'), 'Auth is handled via JWT tokens.');
+}
+
+describe('GET /api/memory/explore-cache/levels', () => {
+    it('returns system, repos, and gitRemotes overview', async () => {
+        const storageDir = path.join(tmpDir, 'ec-levels');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        seedExploreCacheRaw(storageDir, 'system', undefined, 2);
+        seedExploreCacheRaw(storageDir, 'repo', 'repohash1', 1);
+        seedExploreCacheRaw(storageDir, 'git-remote', 'remotehash1', 3);
+
+        const { status, body } = await apiGet('/api/memory/explore-cache/levels');
+        expect(status).toBe(200);
+        expect(body.system.rawCount).toBe(2);
+        expect(body.repos).toHaveLength(1);
+        expect(body.repos[0].hash).toBe('repohash1');
+        expect(body.repos[0].rawCount).toBe(1);
+        expect(body.gitRemotes).toHaveLength(1);
+        expect(body.gitRemotes[0].hash).toBe('remotehash1');
+        expect(body.gitRemotes[0].rawCount).toBe(3);
+    });
+
+    it('returns empty arrays when no explore-cache exists', async () => {
+        const storageDir = path.join(tmpDir, 'ec-empty');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status, body } = await apiGet('/api/memory/explore-cache/levels');
+        expect(status).toBe(200);
+        expect(body.system.rawCount).toBe(0);
+        expect(body.repos).toEqual([]);
+        expect(body.gitRemotes).toEqual([]);
+    });
+});
+
+describe('GET /api/memory/explore-cache/raw', () => {
+    it('lists raw files at system level', async () => {
+        const storageDir = path.join(tmpDir, 'ec-raw-list');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedExploreCacheRaw(storageDir, 'system', undefined, 3);
+
+        const { status, body } = await apiGet('/api/memory/explore-cache/raw?level=system');
+        expect(status).toBe(200);
+        expect(body.files).toHaveLength(3);
+        expect(body.level).toBe('system');
+    });
+
+    it('lists files at git-remote level', async () => {
+        const storageDir = path.join(tmpDir, 'ec-raw-remote');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedExploreCacheRaw(storageDir, 'git-remote', 'rhash', 2);
+
+        const { status, body } = await apiGet('/api/memory/explore-cache/raw?level=git-remote&hash=rhash');
+        expect(status).toBe(200);
+        expect(body.files).toHaveLength(2);
+    });
+
+    it('returns 400 for invalid level', async () => {
+        const storageDir = path.join(tmpDir, 'ec-raw-bad');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status } = await apiGet('/api/memory/explore-cache/raw?level=invalid');
+        expect(status).toBe(400);
+    });
+});
+
+describe('GET /api/memory/explore-cache/raw/:filename', () => {
+    it('reads a single raw Q&A entry', async () => {
+        const storageDir = path.join(tmpDir, 'ec-raw-single');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedExploreCacheRaw(storageDir, 'system', undefined, 1);
+
+        const { body: listBody } = await apiGet('/api/memory/explore-cache/raw?level=system');
+        const filename = listBody.files[0];
+
+        const { status, body } = await apiGet(`/api/memory/explore-cache/raw/${encodeURIComponent(filename)}?level=system`);
+        expect(status).toBe(200);
+        expect(body.toolName).toBe('grep');
+        expect(typeof body.question).toBe('string');
+        expect(typeof body.answer).toBe('string');
+    });
+
+    it('returns 404 for non-existent file', async () => {
+        const storageDir = path.join(tmpDir, 'ec-raw-404');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status } = await apiGet('/api/memory/explore-cache/raw/nonexistent.json?level=system');
+        expect(status).toBe(404);
+    });
+});
+
+describe('GET /api/memory/explore-cache/consolidated', () => {
+    it('lists consolidated index entries', async () => {
+        const storageDir = path.join(tmpDir, 'ec-con-list');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedExploreCacheConsolidated(storageDir, 'system', undefined);
+
+        const { status, body } = await apiGet('/api/memory/explore-cache/consolidated?level=system');
+        expect(status).toBe(200);
+        expect(body.entries).toHaveLength(1);
+        expect(body.entries[0].id).toBe('c-1');
+        expect(body.entries[0].question).toBe('How does auth work?');
+        expect(body.entries[0]).not.toHaveProperty('answer');
+    });
+
+    it('returns empty entries when no consolidated data', async () => {
+        const storageDir = path.join(tmpDir, 'ec-con-empty');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status, body } = await apiGet('/api/memory/explore-cache/consolidated?level=system');
+        expect(status).toBe(200);
+        expect(body.entries).toEqual([]);
+    });
+});
+
+describe('GET /api/memory/explore-cache/consolidated/:id', () => {
+    it('reads a consolidated entry with answer', async () => {
+        const storageDir = path.join(tmpDir, 'ec-con-id');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+        seedExploreCacheConsolidated(storageDir, 'system', undefined);
+
+        const { status, body } = await apiGet('/api/memory/explore-cache/consolidated/c-1?level=system');
+        expect(status).toBe(200);
+        expect(body.id).toBe('c-1');
+        expect(body.question).toBe('How does auth work?');
+        expect(body.answer).toBe('Auth is handled via JWT tokens.');
+    });
+
+    it('returns 404 for non-existent id', async () => {
+        const storageDir = path.join(tmpDir, 'ec-con-404');
+        await apiPut('/api/memory/config', { storageDir, backend: 'file', maxEntries: 100, ttlDays: 0, autoInject: false });
+
+        const { status } = await apiGet('/api/memory/explore-cache/consolidated/nonexistent?level=system');
+        expect(status).toBe(404);
+    });
+});
