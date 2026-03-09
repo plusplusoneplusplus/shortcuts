@@ -514,13 +514,13 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
         await gotoQueueTask(page, serverUrl, taskId);
 
         // Input elements exist and are enabled for completed tasks
-        await expect(page.locator('#chat-input')).toBeVisible();
-        await expect(page.locator('#chat-send-btn')).toBeVisible();
-        await expect(page.locator('#chat-input')).not.toBeDisabled();
-        await expect(page.locator('#chat-send-btn')).not.toBeDisabled();
+        await expect(page.locator('[data-testid="activity-chat-input"]')).toBeVisible();
+        await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeVisible();
+        await expect(page.locator('[data-testid="activity-chat-input"]')).not.toBeDisabled();
+        await expect(page.locator('[data-testid="activity-chat-send-btn"]')).not.toBeDisabled();
 
         // Placeholder text
-        await expect(page.locator('#chat-input')).toHaveAttribute('placeholder', /[Cc]ontinue|message/i);
+        await expect(page.locator('[data-testid="activity-chat-input"]')).toHaveAttribute('placeholder', /[Cc]ontinue|message/i);
     });
 
     test('allows typing in the input textarea', async ({ page, serverUrl, mockAI }) => {
@@ -531,7 +531,7 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
 
         await gotoQueueTask(page, serverUrl, taskId);
 
-        const textarea = page.locator('#chat-input');
+        const textarea = page.locator('[data-testid="activity-chat-input"]');
         await textarea.fill('This is a follow-up message');
 
         await expect(textarea).toHaveValue('This is a follow-up message');
@@ -555,7 +555,7 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
         await waitForConversation(page, 2);
 
         // Type and send
-        const textarea = page.locator('#chat-input');
+        const textarea = page.locator('[data-testid="activity-chat-input"]');
         await textarea.fill('Follow-up question');
         await textarea.press('Enter');
 
@@ -587,8 +587,8 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
         await waitForConversation(page, 2);
 
         // Type and click send button
-        await page.fill('#chat-input', 'Sent via button');
-        await page.click('#chat-send-btn');
+        await page.fill('[data-testid="activity-chat-input"]', 'Sent via button');
+        await page.click('[data-testid="activity-chat-send-btn"]');
 
         // User message sent
         await expect(page.locator('.chat-message.user')).toHaveCount(2, { timeout: 3000 });
@@ -605,7 +605,7 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
         await gotoQueueTask(page, serverUrl, taskId);
         await waitForConversation(page, 2);
 
-        const textarea = page.locator('#chat-input');
+        const textarea = page.locator('[data-testid="activity-chat-input"]');
         await textarea.fill('Line 1');
         await textarea.press('Shift+Enter');
         await textarea.type('Line 2');
@@ -685,7 +685,7 @@ test.describe('Queue Task Conversation – Scroll', () => {
         await page.waitForTimeout(3000);
 
         // Check scroll position DURING streaming
-        const conversationEl = page.locator('#queue-task-conversation');
+        const conversationEl = page.locator('[data-testid="activity-chat-conversation"]');
         const metrics = await conversationEl.evaluate((el) => ({
             scrollHeight: el.scrollHeight,
             clientHeight: el.clientHeight,
@@ -716,18 +716,18 @@ test.describe('Queue Task Conversation – Scroll', () => {
 
         // Scroll to top programmatically
         await page.evaluate(() => {
-            const el = document.getElementById('queue-task-conversation');
-            if (el) el.scrollTop = 0;
+            const el = document.querySelector('[data-testid="activity-chat-conversation"]');
+            if (el) (el as HTMLElement).scrollTop = 0;
         });
 
         // Dispatch scroll event to trigger tracking
         await page.evaluate(() => {
-            const el = document.getElementById('queue-task-conversation');
+            const el = document.querySelector('[data-testid="activity-chat-conversation"]');
             if (el) el.dispatchEvent(new Event('scroll'));
         });
 
         // Button should become visible (uses .visible class)
-        const btn = page.locator('#scroll-to-bottom-btn');
+        const btn = page.locator('[data-testid="scroll-to-bottom-btn"]');
         await expect(btn).toHaveClass(/visible/, { timeout: 2000 });
 
         // Click button
@@ -735,7 +735,7 @@ test.describe('Queue Task Conversation – Scroll', () => {
 
         // Should scroll to bottom
         await page.waitForTimeout(500);
-        const isNearBottom = await page.locator('#queue-task-conversation').evaluate((el) => {
+        const isNearBottom = await page.locator('[data-testid="activity-chat-conversation"]').evaluate((el) => {
             return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         });
         expect(isNearBottom).toBe(true);
@@ -766,8 +766,8 @@ test.describe('Queue Task Conversation – Error Handling', () => {
         });
 
         // Send follow-up
-        await page.fill('#chat-input', 'Follow-up');
-        await page.press('#chat-input', 'Enter');
+        await page.fill('[data-testid="activity-chat-input"]', 'Follow-up');
+        await page.press('[data-testid="activity-chat-input"]', 'Enter');
 
         // Error should appear (bubble-error or chat-error-bubble)
         await expect(page.locator('.bubble-error, .chat-error-bubble')).toBeVisible({ timeout: 3000 });
@@ -792,16 +792,16 @@ test.describe('Queue Task Conversation – Error Handling', () => {
         });
 
         // Send follow-up
-        await page.fill('#chat-input', 'Expired');
-        await page.press('#chat-input', 'Enter');
+        await page.fill('[data-testid="activity-chat-input"]', 'Expired');
+        await page.press('[data-testid="activity-chat-input"]', 'Enter');
 
         // Error bubble with "session expired" message
         await expect(page.locator('.chat-error-bubble')).toBeVisible({ timeout: 3000 });
         await expect(page.locator('.chat-error-bubble')).toContainText(/[Ss]ession/);
 
         // Input permanently disabled
-        await expect(page.locator('#chat-input')).toBeDisabled();
-        await expect(page.locator('#chat-send-btn')).toBeDisabled();
+        await expect(page.locator('[data-testid="activity-chat-input"]')).toBeDisabled();
+        await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeDisabled();
     });
 
     test('shows error bubble with retry button on network failure', async ({ page, serverUrl, mockAI }) => {
@@ -819,8 +819,8 @@ test.describe('Queue Task Conversation – Error Handling', () => {
         });
 
         // Send follow-up
-        await page.fill('#chat-input', 'Network fail');
-        await page.press('#chat-input', 'Enter');
+        await page.fill('[data-testid="activity-chat-input"]', 'Network fail');
+        await page.press('[data-testid="activity-chat-input"]', 'Enter');
 
         // Error bubble with retry button
         await expect(page.locator('.bubble-error')).toBeVisible({ timeout: 3000 });

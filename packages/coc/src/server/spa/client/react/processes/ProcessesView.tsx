@@ -113,10 +113,11 @@ export function ProcessesView() {
         selectedTaskRef.current = found;
     }, [selectedTaskId, running, queued, history]);
 
-    // Reset mobile detail view when selection is cleared
+    // Sync mobile detail view with selectedTaskId (handles deep links)
     useEffect(() => {
         if (!selectedTaskId) setMobileShowDetail(false);
-    }, [selectedTaskId]);
+        else if (isMobile) setMobileShowDetail(true);
+    }, [selectedTaskId, isMobile]);
 
     const selectTask = useCallback((id: string, task?: any) => {
         if (task?.type === 'run-workflow') {

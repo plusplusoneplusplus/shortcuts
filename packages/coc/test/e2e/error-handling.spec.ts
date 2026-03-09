@@ -24,6 +24,14 @@ function createPromptFixtures(repoDir: string): void {
         path.join(promptDir, 'review.prompt.md'),
         '---\ndescription: Review task\n---\nReview this task.\n',
     );
+
+    // Skills must be in .github/skills/ for the FollowPromptDialog to find them
+    const skillDir = path.join(repoDir, '.github', 'skills', 'review');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        '---\ndescription: Review task\n---\n# review\nReview this task.\n',
+    );
 }
 
 // ================================================================
@@ -126,8 +134,9 @@ test.describe('Error Handling (008)', () => {
             await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
             await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
 
-            // Click a prompt item to trigger enqueue
+            // Select a skill chip then click submit to trigger enqueue
             await page.locator('.fp-item').first().click();
+            await page.locator('[data-testid="fp-submit-skills"]').click();
 
             // Error toast should appear
             await expect(page.locator('.toast-error')).toBeVisible({ timeout: 5000 });

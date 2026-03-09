@@ -151,8 +151,9 @@ test.describe('AI Actions (007)', () => {
             // Wait for skills to load
             await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
 
-            // Click on the impl skill
+            // Select the impl skill chip then submit
             await page.locator('.fp-item[data-name="impl"]').click();
+            await page.locator('[data-testid="fp-submit-skills"]').click();
 
             // Verify the POST payload
             const queueResponse = await queueResponsePromise;

@@ -650,7 +650,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 <div className="flex items-center gap-2 min-w-0">
                     {onBack && variant !== 'floating' && (
                         <button
-                            className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
+                            className="inline-flex items-center justify-center min-h-7 min-w-7 px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
                             onClick={onBack}
                             data-testid="activity-chat-back-btn"
                         >
@@ -743,7 +743,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
             {/* Conversation area */}
             <div className="relative flex-1 min-h-0">
-                <div ref={conversationContainerRef} className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3', variant === 'floating' ? 'p-2' : 'p-4')}>
+                <div ref={conversationContainerRef} data-testid="activity-chat-conversation" className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3', variant === 'floating' ? 'p-2' : 'p-4')}>
                     {isPending ? (
                         <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
                     ) : loading ? (
@@ -768,6 +768,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     )}
                 </div>
                 <button
+                    data-testid="scroll-to-bottom-btn"
                     className={cn(
                         "absolute bottom-4 right-4 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-[#0078d4] text-white shadow-md hover:bg-[#106ebe] text-sm pointer-events-none opacity-0 transition-opacity",
                         isScrolledUp && "visible pointer-events-auto opacity-100"

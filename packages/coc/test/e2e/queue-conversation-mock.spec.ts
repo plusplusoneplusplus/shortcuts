@@ -381,7 +381,7 @@ test.describe('Mock AI: Complete Multi-Turn Conversation', () => {
             return { success: true, response: 'Follow-up answer', sessionId: 'sess-multi' };
         });
 
-        await page.fill('#chat-input', 'Follow-up question');
+        await page.fill('[data-testid="activity-chat-input"]', 'Follow-up question');
         await page.keyboard.press('Enter');
 
         // Wait for the second exchange to complete (4 bubbles total)
