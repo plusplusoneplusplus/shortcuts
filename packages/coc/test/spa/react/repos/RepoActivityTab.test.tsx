@@ -616,6 +616,10 @@ describe('RepoActivityTab: unseen activity wiring', () => {
         expect(ACTIVITY_TAB_SOURCE).toContain('onMarkAllRead={markAllSeen}');
     });
 
+    it('passes onMarkRead to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('onMarkRead={markSeen}');
+    });
+
     it('calls markSeen in selectTask', () => {
         const selectTaskStart = ACTIVITY_TAB_SOURCE.indexOf('const selectTask = useCallback');
         const selectTaskEnd = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen])', selectTaskStart);
@@ -694,5 +698,36 @@ describe('ActivityListPane: mark all read button', () => {
 
     it('mark-all-read button has "Mark all read" label', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('Mark all read');
+    });
+});
+
+describe('ActivityListPane: mark as read context menu', () => {
+    it('accepts onMarkRead prop in interface', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead?: (taskId: string) => void');
+    });
+
+    it('destructures onMarkRead from props', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead,');
+    });
+
+    it('shows "Mark as Read" menu item for unseen completed tasks', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("label: 'Mark as Read'");
+    });
+
+    it('Mark as Read item calls onMarkRead with taskId', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead(taskId)');
+    });
+
+    it('Mark as Read item only appears when task is unseen', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('isUnseen && onMarkRead');
+    });
+
+    it('shows "Mark as Unread" for seen tasks and "Mark as Read" for unseen tasks', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("label: 'Mark as Unread'");
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("label: 'Mark as Read'");
+    });
+
+    it('includes onMarkRead in contextMenuItems useMemo dependencies', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('onMarkRead, onMarkUnread');
     });
 });

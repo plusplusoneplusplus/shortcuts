@@ -74,6 +74,8 @@ export interface ActivityListPaneProps {
     unseenTaskIds?: Set<string>;
     /** Mark all completed tasks as read. */
     onMarkAllRead?: () => void;
+    /** Mark a single completed task as read. */
+    onMarkRead?: (taskId: string) => void;
     /** Mark a single completed task as unread. */
     onMarkUnread?: (taskId: string) => void;
     onSelectTask: (id: string, task?: any) => void;
@@ -96,6 +98,7 @@ export function ActivityListPane({
     workspaceId,
     unseenTaskIds,
     onMarkAllRead,
+    onMarkRead,
     onMarkUnread,
     onSelectTask,
     onPauseResume,
@@ -220,6 +223,7 @@ export function ActivityListPane({
         if (taskStatus === 'completed') {
             const isUnseen = unseenTaskIds?.has(taskId) ?? false;
             return [
+                ...(isUnseen && onMarkRead ? [{ label: 'Mark as Read', icon: '✓', onClick: () => onMarkRead(taskId) }] : []),
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
             ];
         }
@@ -235,7 +239,7 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, unseenTaskIds, onMarkUnread]);
+    }, [contextMenu, queued, unseenTaskIds, onMarkRead, onMarkUnread]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (

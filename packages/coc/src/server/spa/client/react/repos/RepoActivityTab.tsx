@@ -216,6 +216,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             workspaceId={workspaceId}
             unseenTaskIds={unseenTaskIds}
             onMarkAllRead={markAllSeen}
+            onMarkRead={markSeen}
             onMarkUnread={markUnseen}
             onSelectTask={selectTask}
             onPauseResume={handlePauseResume}
