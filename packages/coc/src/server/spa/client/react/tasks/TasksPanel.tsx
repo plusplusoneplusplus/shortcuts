@@ -482,8 +482,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 label: 'Copy Absolute Path',
                 icon: '📂',
                 onClick: () => {
-                    const rootPath = (ws?.rootPath ?? '').replace(/\\/g, '/');
-                    const abs = [rootPath, tasksFolder, ctxItem.renamePath].filter(Boolean).join('/');
+                    const abs = [tasksFolder.replace(/\\/g, '/'), ctxItem.renamePath].filter(Boolean).join('/');
                     navigator.clipboard.writeText(abs);
                 },
             },
@@ -632,8 +631,7 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                 label: 'Copy Absolute Path',
                 icon: '📂',
                 onClick: () => {
-                    const rootPath = (ws?.rootPath ?? '').replace(/\\/g, '/');
-                    const abs = [rootPath, tasksFolder, folderPath].filter(Boolean).join('/');
+                    const abs = [tasksFolder.replace(/\\/g, '/'), folderPath].filter(Boolean).join('/');
                     navigator.clipboard.writeText(abs);
                 },
             },

@@ -245,28 +245,7 @@ describe('Folder context menu', () => {
         expect(clipboardSpy).toHaveBeenCalledWith('/test/repos/abc/tasks/feature1');
     });
 
-    it('"Copy Absolute Path" writes rootPath + tasksFolderPath + relativePath to clipboard', async () => {
-        // Pre-populate workspace with rootPath via dispatch
-        const { unmount } = render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
-        unmount();
-
-        // Re-render with a workspace that has rootPath in AppProvider
-        // We need to mock the workspaces in AppContext — inject via fetch
-        const fetchWithWorkspaces = vi.fn().mockImplementation((url: string) => {
-            if (url.includes('/workspaces') && !url.includes('/tasks')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve([{ id: 'ws1', rootPath: '/home/user/project' }]),
-                });
-            }
-            return fetchSpy(url);
-        });
-        global.fetch = fetchWithWorkspaces;
-
-        // Render a version with AppProvider that gets workspaces loaded
-        // Since AppProvider doesn't fetch workspaces automatically, we'll test the fallback path
-        // where rootPath is empty (no workspace found)
-        global.fetch = fetchSpy;
+    it('"Copy Absolute Path" writes tasksFolder + relativePath to clipboard (no rootPath prefix)', async () => {
         render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
         await waitFor(() => {
             expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
@@ -275,8 +254,33 @@ describe('Folder context menu', () => {
         fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
         const absPathBtn = screen.getByText('Copy Absolute Path');
         fireEvent.click(absPathBtn);
-        // Without rootPath in context, it falls back to tasksFolderPath/feature1
+        // tasksFolder is already absolute — must not prepend rootPath
         expect(clipboardSpy).toHaveBeenCalledWith('/test/repos/abc/tasks/feature1');
+    });
+
+    it('"Copy Absolute Path" normalizes Windows backslashes in tasksFolder', async () => {
+        const fetchWithWindowsPath = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: 'C:\\Users\\user\\.coc\\repos\\ws1\\tasks' }),
+                });
+            }
+            return fetchSpy(url);
+        });
+        global.fetch = fetchWithWindowsPath;
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-feature1')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-feature1'));
+        const absPathBtn = screen.getByText('Copy Absolute Path');
+        fireEvent.click(absPathBtn);
+        expect(clipboardSpy).toHaveBeenCalledWith('C:/Users/user/.coc/repos/ws1/tasks/feature1');
+
+        global.fetch = fetchSpy;
     });
 
     it('"Queue All Tasks" is disabled when folder has zero markdown files', async () => {

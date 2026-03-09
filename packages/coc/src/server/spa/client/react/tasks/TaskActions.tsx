@@ -37,7 +37,7 @@ export function TaskActions({ wsId, openFilePath, selectedFilePaths, tasksFolder
 
     const handleCopyPath = () => {
         if (openFilePath) {
-            copyToClipboard(`${tasksFolderPath}/${openFilePath}`);
+            copyToClipboard(`${tasksFolderPath.replace(/\\/g, '/')}/${openFilePath}`);
         }
     };
 

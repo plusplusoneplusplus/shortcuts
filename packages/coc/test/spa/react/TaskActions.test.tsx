@@ -83,4 +83,28 @@ describe('TaskActions — toolbar', () => {
         fireEvent.click(screen.getByText('Copy path'));
         expect(writeText).toHaveBeenCalledWith('/test/repos/abc/tasks/coc/add-retry-logic.plan.md');
     });
+
+    it('normalizes Windows backslashes in tasksFolderPath when copying', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+        });
+
+        const windowsPath = 'C:\\Users\\user\\.coc\\repos\\abc\\tasks';
+        render(
+            <Wrap>
+                <TaskActions
+                    wsId="ws1"
+                    openFilePath="coc/add-retry-logic.plan.md"
+                    selectedFilePaths={[]}
+                    tasksFolderPath={windowsPath}
+                    onClearSelection={vi.fn()}
+                />
+            </Wrap>
+        );
+
+        fireEvent.click(screen.getByText('Copy path'));
+        expect(writeText).toHaveBeenCalledWith('C:/Users/user/.coc/repos/abc/tasks/coc/add-retry-logic.plan.md');
+    });
 });

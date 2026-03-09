@@ -280,6 +280,25 @@ describe('File context menu', () => {
         expect(clipboardSpy).toHaveBeenCalledWith('tasks/notes.md');
     });
 
+    it('"Copy Absolute Path" uses tasksFolder directly without prepending rootPath', async () => {
+        const fetchWithAbsPath = vi.fn().mockImplementation((url: string) => {
+            if (url.includes('tasks/settings')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ folderPath: '/home/user/.coc/repos/ws1/tasks' }) });
+            }
+            return setupFetch()(url);
+        });
+        global.fetch = fetchWithAbsPath;
+
+        render(<Wrap><TasksPanel wsId="ws1" /></Wrap>);
+        await waitFor(() => {
+            expect(screen.getByTestId('task-tree-item-notes')).toBeTruthy();
+        });
+
+        fireEvent.contextMenu(screen.getByTestId('task-tree-item-notes'));
+        fireEvent.click(screen.getByText('Copy Absolute Path'));
+        expect(clipboardSpy).toHaveBeenCalledWith('/home/user/.coc/repos/ws1/tasks/notes.md');
+    });
+
     // ── Rename dialog ──────────────────────────────────────────────────
 
     it('clicking Rename opens the rename dialog with pre-filled name', async () => {
