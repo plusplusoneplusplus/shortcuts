@@ -31,12 +31,12 @@ function WorkspaceInjector({ workspaces, children }: { workspaces: any[]; childr
     return <>{children}</>;
 }
 
-function renderDialogWithWorkspace(workspaces: any[], onClose = vi.fn()) {
+function renderDialogWithWorkspace(workspaces: any[], onClose = vi.fn(), taskPath = 'test/task.md') {
     return render(
         <AppProvider>
             <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
                 <WorkspaceInjector workspaces={workspaces}>
-                    <UpdateDocumentDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+                    <UpdateDocumentDialog wsId="ws-1" taskPath={taskPath} taskName="task" onClose={onClose} />
                 </WorkspaceInjector>
             </ToastProvider>
         </AppProvider>
@@ -223,6 +223,90 @@ describe('UpdateDocumentDialog', () => {
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.payload.data.planFilePath).not.toContain('\\');
             expect(body.payload.data.planFilePath).toBe('/test/repos/abc/tasks/test/task.md');
+        });
+    });
+
+    it('uses absolute taskPath directly without prepending tasks folder', async () => {
+        const onClose = vi.fn();
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];
+        const absTaskPath = 'C:\\Users\\TestUser\\.copilot\\session-state\\abc-123\\plan.md';
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, onClose, absTaskPath);
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Submit'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            // Should use forward-slashed version of the absolute path directly
+            expect(body.payload.data.planFilePath).toBe('C:/Users/TestUser/.copilot/session-state/abc-123/plan.md');
+            // Should NOT contain tasks folder prefix
+            expect(body.payload.data.planFilePath).not.toContain('.vscode/tasks');
+        });
+    });
+
+    it('uses absolute Unix taskPath directly without prepending tasks folder', async () => {
+        const onClose = vi.fn();
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: '/home/user/project' }];
+        const absTaskPath = '/home/user/.copilot/session-state/abc-123/plan.md';
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, onClose, absTaskPath);
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Submit'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.data.planFilePath).toBe(absTaskPath);
+            expect(body.payload.data.planFilePath).not.toContain('.vscode/tasks');
+        });
+    });
+
+    it('pre-fills prompt with absolute taskPath when taskPath is absolute', async () => {
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: '/project' }];
+        const absTaskPath = '/home/user/.copilot/session-state/abc-123/plan.md';
+
+        mockFetch.mockImplementation((url: string) => {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, vi.fn(), absTaskPath);
+        });
+
+        await waitFor(() => {
+            const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+            // Should contain the absolute path directly, not tasks-folder-prefixed
+            expect(textarea.value).toContain(absTaskPath);
+            expect(textarea.value).not.toContain('.vscode/tasks');
         });
     });
 });

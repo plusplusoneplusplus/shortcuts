@@ -31,12 +31,12 @@ function WorkspaceInjector({ workspaces, children }: { workspaces: any[]; childr
     return <>{children}</>;
 }
 
-function renderDialogWithWorkspace(workspaces: any[], onClose = vi.fn()) {
+function renderDialogWithWorkspace(workspaces: any[], onClose = vi.fn(), taskPath = 'test/task.md') {
     return render(
         <AppProvider>
             <ToastProvider value={{ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }}>
                 <WorkspaceInjector workspaces={workspaces}>
-                    <FollowPromptDialog wsId="ws-1" taskPath="test/task.md" taskName="task" onClose={onClose} />
+                    <FollowPromptDialog wsId="ws-1" taskPath={taskPath} taskName="task" onClose={onClose} />
                 </WorkspaceInjector>
             </ToastProvider>
         </AppProvider>
@@ -645,5 +645,110 @@ describe('FollowPromptDialog', () => {
 
         // Textarea should be disabled while submitting
         expect(textarea.disabled).toBe(true);
+    });
+
+    it('uses absolute taskPath directly without prepending tasks folder (skill submission)', async () => {
+        const onClose = vi.fn();
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: 'D:\\projects\\shortcuts' }];
+        const absTaskPath = 'C:\\Users\\TestUser\\.copilot\\session-state\\abc-123\\plan.md';
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implement changes.' }] }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, onClose, absTaskPath);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('fp-submit-skills')).toBeDefined();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('fp-submit-skills'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            const files: string[] = body.payload.context.files;
+            // Should use the absolute path directly, not prepend tasks folder
+            expect(files).toContain(absTaskPath);
+            // Should NOT contain tasks folder prefix
+            expect(files.every((f: string) => !f.includes('.vscode/tasks'))).toBe(true);
+        });
+    });
+
+    it('uses absolute taskPath directly without prepending tasks folder (prompt submission)', async () => {
+        const onClose = vi.fn();
+        const workspaces = [{ id: 'ws-1', name: 'Test', rootPath: '/home/user/project' }];
+        const absTaskPath = '/home/user/.copilot/session-state/abc-123/plan.md';
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/preferences') && !opts?.method) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        recentFollowPrompts: [
+                            { type: 'prompt', name: 'impl', path: '.github/prompts/impl.prompt.md', timestamp: 1000 },
+                        ],
+                    }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [] }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialogWithWorkspace(workspaces, onClose, absTaskPath);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Last Used')).toBeDefined();
+        });
+
+        const recentButtons = document.querySelectorAll('.fp-recent-item');
+        await act(async () => {
+            fireEvent.click(recentButtons[0]);
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue/tasks')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            const files: string[] = body.payload.context.files;
+            // planFilePath should be the absolute path directly
+            expect(files).toContain(absTaskPath);
+            // promptFilePath should also be present
+            expect(files.some((f: string) => f.includes('impl.prompt.md'))).toBe(true);
+        });
     });
 });
