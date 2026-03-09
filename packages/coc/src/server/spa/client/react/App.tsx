@@ -8,6 +8,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
 import { ToastProvider } from './context/ToastContext';
 import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
+import { PopOutProvider } from './context/PopOutContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
 import { BottomNav } from './layout/BottomNav';
@@ -402,11 +403,13 @@ export function App() {
     return (
         <AppProvider>
             <QueueProvider>
-                <MinimizedDialogsProvider>
-                    <ThemeProvider>
-                        <AppInner />
-                    </ThemeProvider>
-                </MinimizedDialogsProvider>
+                <PopOutProvider>
+                    <MinimizedDialogsProvider>
+                        <ThemeProvider>
+                            <AppInner />
+                        </ThemeProvider>
+                    </MinimizedDialogsProvider>
+                </PopOutProvider>
             </QueueProvider>
         </AppProvider>
     );

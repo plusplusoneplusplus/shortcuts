@@ -13,7 +13,7 @@
  * selector, slash commands, and copy conversation.
  */
 
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback, useContext } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
 import { Button, Spinner, SuggestionChips } from '../shared';
@@ -22,6 +22,8 @@ import { ConversationMetadataPopover, getSessionIdFromProcess } from '../process
 import { getConversationTurns } from '../chat/chatConversationUtils';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
+import { usePopOut } from '../context/PopOutContext';
+import { ToastContext } from '../context/ToastContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { ImagePreviews } from '../shared/ImagePreviews';
@@ -47,9 +49,11 @@ export interface ActivityChatDetailProps {
     taskId: string;
     onBack?: () => void;
     workspaceId?: string;
+    /** When true (i.e., rendered inside a pop-out window), hides the pop-out button. */
+    isPopOut?: boolean;
 }
 
-export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChatDetailProps) {
+export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
@@ -81,6 +85,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
     const { isMobile } = useBreakpoint();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
+    const { markPoppedOut } = usePopOut();
+    const toastCtx = useContext(ToastContext);
     const slashCommands = useSlashCommands(skills);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -578,6 +584,18 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
         }
     };
 
+    const handlePopOut = useCallback(() => {
+        const base = window.location.origin + window.location.pathname;
+        const wsParam = workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : '';
+        const url = `${base}${wsParam}#popout/activity/${encodeURIComponent(taskId)}`;
+        const popup = window.open(url, `coc-popout-${taskId}`, 'width=800,height=900');
+        if (!popup) {
+            toastCtx?.addToast('Pop-out blocked. Allow popups for this site and try again.', 'error');
+        } else {
+            markPoppedOut(taskId);
+        }
+    }, [taskId, workspaceId, markPoppedOut, toastCtx]);
+
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail">
             {/* Header */}
@@ -614,6 +632,20 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
                     )}
                 </div>
                 <div className="flex items-center gap-2">
+                    {!isPopOut && !isMobile && (
+                        <button
+                            title="Pop out to new window"
+                            data-testid="activity-chat-popout-btn"
+                            onClick={handlePopOut}
+                            className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M10 2h4v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M14 2L8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                        </button>
+                    )}
                     <button
                         title="Copy conversation"
                         data-testid="copy-conversation-btn"
