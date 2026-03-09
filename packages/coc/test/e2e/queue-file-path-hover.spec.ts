@@ -39,7 +39,7 @@ async function waitForTaskStatus(
 
 async function gotoConversation(page: Page, serverUrl: string, taskId: string): Promise<void> {
     await page.goto(`${serverUrl}/#process/queue_${taskId}`);
-    await page.waitForSelector('#detail-panel.chat-layout', { timeout: 8_000 });
+    await page.waitForSelector('[data-testid="activity-chat-detail"]', { timeout: 8_000 });
 }
 
 async function waitForBubbles(page: Page, count: number, timeoutMs = 6_000): Promise<void> {

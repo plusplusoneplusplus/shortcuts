@@ -46,7 +46,7 @@ async function seedAndWaitForTask(
 /** Navigate to the queue task detail page and wait for the chat layout. */
 async function gotoQueueTask(page: Page, serverUrl: string, taskId: string): Promise<void> {
     await page.goto(`${serverUrl}/#process/queue_${taskId}`);
-    await expect(page.locator('#detail-panel.chat-layout')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 5000 });
 }
 
 /** Wait for a specific number of chat message bubbles. */
