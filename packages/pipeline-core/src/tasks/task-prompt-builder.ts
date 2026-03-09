@@ -383,6 +383,69 @@ export function parseCreatedFilePath(
     return undefined;
 }
 
+// ============================================================================
+// System Prompt for Plan Generation
+// ============================================================================
+
+/**
+ * Options for building the plan-generation system prompt.
+ */
+export interface PlanSystemPromptOptions {
+    /** Absolute path to the target directory for the plan file. */
+    targetPath: string;
+    /** When true, the AI should auto-select or create a subfolder. */
+    autoFolder?: boolean;
+    /** Absolute path to the tasks root (required when autoFolder is true). */
+    tasksRoot?: string;
+    /** Existing subfolder names for auto-folder selection hints. */
+    existingFolders?: string[];
+}
+
+/**
+ * Build a system prompt for plan generation that instructs the AI on:
+ * - Output location and file naming conventions
+ * - Plan document structure
+ * - Constraints (plan only, do not implement)
+ *
+ * Returns a system prompt string to be passed via `systemMessage` with `mode: 'append'`.
+ */
+export function buildPlanGenerationSystemPrompt(options: PlanSystemPromptOptions): string {
+    const { autoFolder, tasksRoot, existingFolders } = options;
+    const targetPath = toForwardSlashes(options.targetPath);
+
+    const locationBlock = autoFolder && tasksRoot
+        ? buildAutoFolderLocationBlock(toForwardSlashes(tasksRoot), existingFolders || [])
+        : buildFixedLocationBlock(targetPath);
+
+    return `You are a plan generator. Your sole responsibility is to produce a single .plan.md file.
+
+## Output Rules
+${locationBlock}
+- File names MUST be kebab-case and end with \`.plan.md\` (e.g. \`oauth2-authentication.plan.md\`).
+- You MUST NOT implement the plan. Only create the plan document.
+- Do NOT save files to your session state or any directory other than the specified target.
+
+## Plan Document Structure
+The plan file should include:
+- A clear title (H1)
+- Problem statement and proposed approach
+- Acceptance criteria
+- Subtasks broken into actionable items
+- Notes or open questions (if any)`;
+}
+
+function buildFixedLocationBlock(targetPath: string): string {
+    return `- Save the file to this EXACT directory: \`${targetPath}\``;
+}
+
+function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders: string[]): string {
+    const filtered = existingFolders.filter(f => f !== 'archive' && !f.startsWith('archive/'));
+    const folderList = filtered.length > 0 ? filtered.join(', ') : '(none yet)';
+    return `- Save location: \`${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md\`
+- Existing folder options: ${folderList}
+- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.`;
+}
+
 /**
  * Clean AI response — strip code fences if present.
  */

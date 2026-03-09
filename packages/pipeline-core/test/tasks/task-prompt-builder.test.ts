@@ -15,6 +15,7 @@ import {
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,
     buildDeepModePrompt,
+    buildPlanGenerationSystemPrompt,
     gatherFeatureContext,
     parseCreatedFilePath,
     cleanAIResponse,
@@ -424,6 +425,93 @@ describe('parseCreatedFilePath', () => {
         const response = 'I created /nonexistent/path/task.md';
         const result = parseCreatedFilePath(response, '/nonexistent/path');
         expect(result).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// buildPlanGenerationSystemPrompt
+// ============================================================================
+
+describe('buildPlanGenerationSystemPrompt', () => {
+    it('should include plan generator role', () => {
+        const prompt = buildPlanGenerationSystemPrompt({ targetPath: '/tmp/tasks' });
+        expect(prompt).toContain('plan generator');
+    });
+
+    it('should include fixed target path in non-auto mode', () => {
+        const prompt = buildPlanGenerationSystemPrompt({ targetPath: '/tmp/tasks/coc' });
+        expect(prompt).toContain('/tmp/tasks/coc');
+        expect(prompt).toContain('EXACT directory');
+    });
+
+    it('should include .plan.md naming convention', () => {
+        const prompt = buildPlanGenerationSystemPrompt({ targetPath: '/tmp/tasks' });
+        expect(prompt).toContain('.plan.md');
+        expect(prompt).toContain('kebab-case');
+    });
+
+    it('should include "do not implement" instruction', () => {
+        const prompt = buildPlanGenerationSystemPrompt({ targetPath: '/tmp/tasks' });
+        expect(prompt).toContain('MUST NOT implement');
+    });
+
+    it('should include plan document structure guidance', () => {
+        const prompt = buildPlanGenerationSystemPrompt({ targetPath: '/tmp/tasks' });
+        expect(prompt).toContain('Problem statement');
+        expect(prompt).toContain('Acceptance criteria');
+        expect(prompt).toContain('Subtasks');
+    });
+
+    it('should use auto-folder block when autoFolder is true', () => {
+        const prompt = buildPlanGenerationSystemPrompt({
+            targetPath: '/tmp/tasks',
+            autoFolder: true,
+            tasksRoot: '/tmp/tasks',
+            existingFolders: ['coc', 'deep-wiki'],
+        });
+        expect(prompt).toContain('<chosen-folder>');
+        expect(prompt).toContain('coc, deep-wiki');
+        expect(prompt).not.toContain('EXACT directory');
+    });
+
+    it('should exclude archive folders in auto-folder mode', () => {
+        const prompt = buildPlanGenerationSystemPrompt({
+            targetPath: '/tmp/tasks',
+            autoFolder: true,
+            tasksRoot: '/tmp/tasks',
+            existingFolders: ['coc', 'archive', 'archive/old'],
+        });
+        expect(prompt).toContain('coc');
+        expect(prompt).not.toContain('archive');
+    });
+
+    it('should show (none yet) when no non-archive folders exist', () => {
+        const prompt = buildPlanGenerationSystemPrompt({
+            targetPath: '/tmp/tasks',
+            autoFolder: true,
+            tasksRoot: '/tmp/tasks',
+            existingFolders: ['archive'],
+        });
+        expect(prompt).toContain('(none yet)');
+    });
+
+    it('should normalize Windows paths to forward slashes', () => {
+        const prompt = buildPlanGenerationSystemPrompt({
+            targetPath: 'C:\\Users\\dev\\data\\tasks',
+        });
+        expect(prompt).toContain('C:/Users/dev/data/tasks');
+        expect(prompt).not.toContain('dev\\data');
+    });
+
+    it('should normalize Windows tasksRoot in auto-folder mode', () => {
+        const prompt = buildPlanGenerationSystemPrompt({
+            targetPath: 'C:\\Users\\dev\\data\\tasks',
+            autoFolder: true,
+            tasksRoot: 'C:\\Users\\dev\\data\\tasks',
+            existingFolders: ['coc'],
+        });
+        expect(prompt).toContain('C:/Users/dev/data/tasks');
+        expect(prompt).not.toContain('dev\\data');
     });
 });
 

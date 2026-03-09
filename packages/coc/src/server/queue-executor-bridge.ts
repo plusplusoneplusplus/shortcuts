@@ -35,7 +35,7 @@ import {
     hasReplicationContext,
     saveImagesToTempFiles,
 } from '@plusplusoneplusplus/coc-server';
-import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
     approveAllPermissions,
     applyDeepModePrefix,
@@ -45,6 +45,7 @@ import {
     buildCreateTaskPromptWithName,
     buildDeepModePrompt,
     buildFollowPromptText,
+    buildPlanGenerationSystemPrompt,
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
     TASK_FILTER,
@@ -1041,7 +1042,7 @@ export class CLITaskExecutor implements TaskExecutor {
         };
     }
 
-    private async executeWithAI(task: QueuedTask, prompt: string, options?: { tools?: Tool<any>[] }): Promise<unknown> {
+    private async executeWithAI(task: QueuedTask, prompt: string, options?: { tools?: Tool<any>[]; systemMessage?: SystemMessageConfig }): Promise<unknown> {
         const processId = `queue_${task.id}`;
 
         // Initialize output accumulator for this process
@@ -1159,6 +1160,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 keepAlive: true,
                 attachments,
                 tools: options?.tools,
+                systemMessage: options?.systemMessage,
                 skillDirectories,
                 disabledSkills,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
@@ -1260,6 +1262,14 @@ export class CLITaskExecutor implements TaskExecutor {
             aiPrompt = applyDeepModePrefix(aiPrompt);
         }
 
+        // Build system prompt for plan generation
+        const systemPrompt = buildPlanGenerationSystemPrompt({
+            targetPath: resolvedTarget,
+            autoFolder: isAutoFolder,
+            tasksRoot: isAutoFolder ? tasksBase : undefined,
+            existingFolders: autoFolderContext?.existingFolders,
+        });
+
         // Update process store with the actual enriched prompt (replaces raw user text)
         const processId = `queue_${task.id}`;
         const enrichedPreview = aiPrompt.length > 80 ? aiPrompt.substring(0, 77) + '...' : aiPrompt;
@@ -1279,7 +1289,9 @@ export class CLITaskExecutor implements TaskExecutor {
             // Non-fatal: store may be a stub
         }
 
-        return this.executeWithAI(task, aiPrompt);
+        return this.executeWithAI(task, aiPrompt, {
+            systemMessage: { mode: 'append', content: systemPrompt },
+        });
     }
 
     private async executeRunPipeline(task: QueuedTask): Promise<unknown> {

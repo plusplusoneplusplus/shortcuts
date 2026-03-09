@@ -105,6 +105,8 @@ export {
     buildCreateFromFeaturePrompt,
     applyDeepModePrefix,
     buildDeepModePrompt,
+    buildPlanGenerationSystemPrompt,
+    PlanSystemPromptOptions,
     gatherFeatureContext,
     parseCreatedFilePath,
     cleanAIResponse,

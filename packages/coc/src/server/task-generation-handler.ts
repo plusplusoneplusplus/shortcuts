@@ -22,6 +22,7 @@ import {
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,
     buildDeepModePrompt,
+    buildPlanGenerationSystemPrompt,
     gatherFeatureContext,
     parseCreatedFilePath,
     buildDiscoveryPrompt,
@@ -157,6 +158,14 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 aiPrompt = buildCreateTaskPrompt(prompt, resolvedTarget);
             }
 
+            // Build system prompt for plan generation
+            const systemPrompt = buildPlanGenerationSystemPrompt({
+                targetPath: resolvedTarget,
+                autoFolder: isAutoFolder,
+                tasksRoot: isAutoFolder ? tasksBase : undefined,
+                existingFolders: autoFolderContext?.existingFolders,
+            });
+
             // Switch to SSE streaming
             writeSSEHeaders(res);
             sendEvent(res, 'progress', { phase: 'generating', message: 'Sending prompt to AI...' });
@@ -181,6 +190,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                     model: model || undefined,
                     workingDirectory: ws.rootPath,
                     timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+                    systemMessage: { mode: 'append', content: systemPrompt },
                     onPermissionRequest: approveAllPermissions,
                     onStreamingChunk: (chunk: string) => {
                         if (!clientDisconnected) {

@@ -47,6 +47,7 @@ export {
     Attachment,
     // Message types
     SendMessageOptions,
+    SystemMessageConfig,
     TokenUsage,
     SDKInvocationResult,
     SDKAvailabilityResult,
