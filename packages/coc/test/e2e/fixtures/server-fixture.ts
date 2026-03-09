@@ -51,9 +51,9 @@ const { FileProcessStore } = require('@plusplusoneplusplus/pipeline-core');
 
 type ExecutionServer = Awaited<ReturnType<typeof createExecutionServer>>;
 
-/** Resolve the repo-scoped task root path from dataDir + repoDir. */
-export function getTaskRoot(dataDir: string, repoDir: string): string {
-    return resolveTaskRoot({ dataDir, rootPath: repoDir }).absolutePath;
+/** Resolve the repo-scoped task root path from dataDir + workspaceId. */
+export function getTaskRoot(dataDir: string, workspaceId: string): string {
+    return resolveTaskRoot({ dataDir, rootPath: '', workspaceId }).absolutePath;
 }
 
 /** Internal context that groups resources with a shared lifecycle. */

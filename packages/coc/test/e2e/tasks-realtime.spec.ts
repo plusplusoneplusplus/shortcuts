@@ -48,12 +48,10 @@ test.describe('Tasks real-time: API create (015)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rt-tasks-create-'));
         const repoDir = createRepoFixture(tmpDir);
         createTasksFixture(repoDir);
-        const taskRoot = getTaskRoot(dataDir, repoDir);
+        const taskRoot = getTaskRoot(dataDir, 'ws-rt-create');
 
         try {
             await navigateToTasksTab(page, serverUrl, repoDir, 'ws-rt-create');
-
-            // POST a new task via REST API (triggers file write → TaskWatcher → WS broadcast)
             const res = await request(`${serverUrl}/api/workspaces/ws-rt-create/tasks`, {
                 method: 'POST',
                 body: JSON.stringify({ name: 'api-created-task', type: 'file' }),
@@ -83,7 +81,7 @@ test.describe('Tasks real-time: API delete (015)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rt-tasks-delete-'));
         const repoDir = createRepoFixture(tmpDir);
         createTasksFixture(repoDir);
-        const taskRoot = getTaskRoot(dataDir, repoDir);
+        const taskRoot = getTaskRoot(dataDir, 'ws-rt-delete');
 
         try {
             await navigateToTasksTab(page, serverUrl, repoDir, 'ws-rt-delete');

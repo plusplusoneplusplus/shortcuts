@@ -42,10 +42,7 @@ async function setupRepoWithTasks(
     // Wait for task tree to render
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
-    return { repoDir, taskRoot: getTaskRoot(dataDir, repoDir) };
-}
-
-test.describe('Archive Workflow (012)', () => {
+    return { repoDir, taskRoot: getTaskRoot(dataDir, wsId) };() => {
 
     test('12.1 archive task via context menu', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-archive-'));
