@@ -60,11 +60,17 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
         const workingDirectory = ws?.rootPath || '';
         getTasksFolderPath(selectedWsId).then(tasksFolder => {
             if (cancelled) return;
-            const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
-            const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
-            const full = workingDirectory
-                ? toForwardSlashes(taskBase + '/' + taskPath)
-                : taskPath;
+            const isAbsTaskPath = taskPath.startsWith('/') || /^[A-Za-z]:/.test(taskPath);
+            let full: string;
+            if (isAbsTaskPath) {
+                full = toForwardSlashes(taskPath);
+            } else {
+                const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+                const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
+                full = workingDirectory
+                    ? toForwardSlashes(taskBase + '/' + taskPath)
+                    : taskPath;
+            }
             setResolvedPath(full);
             setPrompt(prev => {
                 // Only auto-update the prompt if user hasn't edited it
@@ -85,12 +91,18 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
         try {
             const ws = state.workspaces.find((w: any) => w.id === selectedWsId);
             const workingDirectory = ws?.rootPath || '';
-            const tasksFolder = await getTasksFolderPath(selectedWsId);
-            const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
-            const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
-            const planFilePath = workingDirectory
-                ? toForwardSlashes(taskBase + '/' + taskPath)
-                : taskPath;
+            const isAbsTaskPath = taskPath.startsWith('/') || /^[A-Za-z]:/.test(taskPath);
+            let planFilePath: string;
+            if (isAbsTaskPath) {
+                planFilePath = toForwardSlashes(taskPath);
+            } else {
+                const tasksFolder = await getTasksFolderPath(selectedWsId);
+                const isAbsFolder = tasksFolder.startsWith('/') || /^[A-Za-z]:/.test(tasksFolder);
+                const taskBase = isAbsFolder ? tasksFolder : (workingDirectory + '/' + tasksFolder);
+                planFilePath = workingDirectory
+                    ? toForwardSlashes(taskBase + '/' + taskPath)
+                    : taskPath;
+            }
 
             const body: any = {
                 type: 'custom',
