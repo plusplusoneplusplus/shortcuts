@@ -360,6 +360,9 @@ function mapQueued(t: any) {
         status: t.status, displayName: t.displayName, createdAt: t.createdAt,
         workingDirectory: (t.payload as any)?.workingDirectory,
         payload: {
+            kind: (t.payload as any)?.kind,
+            mode: (t.payload as any)?.mode,
+            prompt: (t.payload as any)?.prompt,
             planFilePath: (t.payload as any)?.planFilePath,
             filePath: (t.payload as any)?.filePath,
             workingDirectory: (t.payload as any)?.workingDirectory,
@@ -384,8 +387,20 @@ describe('mapQueued — payload passthrough', () => {
         const mapped = mapQueued(task);
         expect(mapped.payload.planFilePath).toBe('/data/repos/abc/tasks/feat/plan.md');
         expect(mapped.payload.workingDirectory).toBe('/workspace');
-        // Large content should NOT be present
-        expect((mapped.payload as any).prompt).toBeUndefined();
+        // Prompt is now included for preview text in the WS broadcast
+        expect(mapped.payload.prompt).toBe('This is a very long prompt that should NOT be broadcast');
+    });
+
+    it('includes payload.kind and payload.mode for chat tasks', () => {
+        const task = {
+            id: 'chat-1', repoId: 'r1', type: 'chat', priority: 1,
+            status: 'running', displayName: 'Ask task', createdAt: '2025-01-01',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'hello', workingDirectory: '/ws' },
+        };
+        const mapped = mapQueued(task);
+        expect(mapped.payload.kind).toBe('chat');
+        expect(mapped.payload.mode).toBe('ask');
+        expect(mapped.payload.prompt).toBe('hello');
     });
 
     it('includes payload.filePath in mapped output', () => {
@@ -423,6 +438,9 @@ describe('mapQueued — payload passthrough', () => {
         };
         const mapped = mapQueued(task);
         expect(mapped.payload).toEqual({
+            kind: undefined,
+            mode: undefined,
+            prompt: undefined,
             planFilePath: undefined,
             filePath: undefined,
             workingDirectory: undefined,
