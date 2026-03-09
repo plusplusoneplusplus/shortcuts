@@ -1124,11 +1124,17 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const result: Record<string, unknown> = { taskId: id, type: task.type };
 
             // Resolve plan file content if available
-            if (payload?.planFilePath) {
-                result.planFilePath = payload.planFilePath;
+            // Support both legacy planFilePath and new ChatPayload context.files[]
+            const planFilePath: string | undefined =
+                payload?.planFilePath ??
+                (Array.isArray(payload?.context?.files) && typeof payload.context.files[0] === 'string'
+                    ? payload.context.files[0]
+                    : undefined);
+            if (planFilePath) {
+                result.planFilePath = planFilePath;
                 try {
-                    if (fs.existsSync(payload.planFilePath)) {
-                        result.planFileContent = fs.readFileSync(payload.planFilePath, 'utf-8');
+                    if (fs.existsSync(planFilePath)) {
+                        result.planFileContent = fs.readFileSync(planFilePath, 'utf-8');
                     }
                 } catch {
                     // Non-fatal: plan file may be inaccessible

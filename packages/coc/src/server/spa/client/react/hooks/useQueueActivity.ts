@@ -30,6 +30,12 @@ function extractTaskPath(
     // Candidate absolute paths in priority order
     const candidates: string[] = [];
 
+    // New ChatPayload format: context.files[] replaces planFilePath/promptFilePath
+    if (Array.isArray(payload.context?.files)) {
+        for (const f of payload.context.files) {
+            if (typeof f === 'string') candidates.push(f);
+        }
+    }
     if (typeof payload.planFilePath === 'string') {
         candidates.push(payload.planFilePath);
     }
