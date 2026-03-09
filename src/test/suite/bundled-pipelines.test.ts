@@ -370,7 +370,7 @@ reduce:
 
             const item = new PipelineItem(bundledPipeline);
 
-            assert.strictEqual(item.contextValue, 'pipeline_bundled');
+            assert.strictEqual(item.contextValue, 'workflow_bundled');
         });
 
         test('should set correct context value for workspace pipeline', () => {
@@ -388,7 +388,7 @@ reduce:
 
             const item = new PipelineItem(workspacePipeline);
 
-            assert.strictEqual(item.contextValue, 'pipeline');
+            assert.strictEqual(item.contextValue, 'workflow');
         });
 
         test('should show (read-only) description for bundled pipeline', () => {
@@ -441,7 +441,7 @@ reduce:
             assert.strictEqual(item.label, 'Bundled Pipelines');
             assert.strictEqual(item.categoryType, 'bundled');
             assert.strictEqual(item.description, '(3)');
-            assert.strictEqual(item.contextValue, 'pipelineCategory_bundled');
+            assert.strictEqual(item.contextValue, 'workflowCategory_bundled');
             assert.strictEqual(item.itemType, 'category');
         });
 
@@ -456,7 +456,7 @@ reduce:
             assert.strictEqual(item.label, 'Workspace Pipelines');
             assert.strictEqual(item.categoryType, 'workspace');
             assert.strictEqual(item.description, '(5)');
-            assert.strictEqual(item.contextValue, 'pipelineCategory_workspace');
+            assert.strictEqual(item.contextValue, 'workflowCategory_workspace');
         });
 
         test('should be collapsed by default', () => {
