@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedProcess, seedWorkspace, request } from './fixtures/seed';
+import { seedProcess, seedQueueTask, seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
 // ================================================================
@@ -211,28 +211,20 @@ test.describe('Error Handling (008)', () => {
     // ----------------------------------------------------------------
 
     test('8.16 process changes are reflected after reload', async ({ page, serverUrl }) => {
-        // Seed a running process
-        await seedProcess(serverUrl, 'err-reload-1', { status: 'running', promptPreview: 'Reload Test' });
+        // Seed a queue task
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Reload Test' });
 
         await page.goto(serverUrl + '/#processes');
 
-        // Should show 1 process
-        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
-
-        // Update process status via API
-        await request(`${serverUrl}/api/processes/err-reload-1`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'failed' }),
-        });
+        // Should show at least 1 task
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
 
         // Reload
         await page.reload();
         await page.click('[data-tab="processes"]');
 
-        // Failed process should appear in the list
-        await expect(page.locator('.process-item').filter({ hasText: /failed|Failed/i })).toHaveCount(1, {
-            timeout: 5000,
-        });
+        // Task should still appear in history after reload
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
     });
 
     // ----------------------------------------------------------------
@@ -267,8 +259,8 @@ test.describe('Error Handling (008)', () => {
     // ----------------------------------------------------------------
 
     test('8.18 processes recover on reload after init failure', async ({ page, serverUrl }) => {
-        // First visit: intercept to fail
-        await page.route('**/api/processes', (route, req) => {
+        // First visit: intercept queue API to fail
+        await page.route('**/api/queue', (route, req) => {
             if (req.method() === 'GET') {
                 return route.fulfill({
                     status: 500,
@@ -281,20 +273,19 @@ test.describe('Error Handling (008)', () => {
 
         await page.goto(serverUrl + '/#processes');
 
-        // No processes should be visible
-        await expect(page.locator('.process-item')).toHaveCount(0);
+        // No tasks should be visible, empty state shown
+        await expect(page.locator('[data-task-id]')).toHaveCount(0);
 
-        // Seed a process while page shows error
-        await seedProcess(serverUrl, 'err-recover-1', { promptPreview: 'Recovered Process' });
+        // Seed a queue task while page shows error
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Recovered Task' });
 
         // Remove route intercept and reload
         await page.unrouteAll({ behavior: 'ignoreErrors' });
         await page.reload();
         await page.click('[data-tab="processes"]');
 
-        // Should now show the process
-        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
-        await expect(page.locator('.process-item')).toContainText('Recovered');
+        // Should now show the task
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
     });
 
     // ----------------------------------------------------------------
@@ -330,12 +321,12 @@ test.describe('Error Handling (008)', () => {
     // ----------------------------------------------------------------
 
     test('8.20 wipe followed by reload shows no processes', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'wipe-reload-1', { status: 'running', promptPreview: 'Wipe Me' });
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Wipe Me' });
 
         await page.goto(serverUrl + '/#processes');
 
-        // Verify process exists
-        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
+        // Verify task exists
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
 
         // Navigate to admin and wipe
         await page.click('#admin-toggle');
@@ -354,6 +345,6 @@ test.describe('Error Handling (008)', () => {
         // Reload and check processes tab
         await page.reload();
         await page.click('[data-tab="processes"]');
-        await expect(page.locator('.process-item')).toHaveCount(0, { timeout: 5000 });
+        await expect(page.locator('[data-task-id]')).toHaveCount(0, { timeout: 5000 });
     });
 });

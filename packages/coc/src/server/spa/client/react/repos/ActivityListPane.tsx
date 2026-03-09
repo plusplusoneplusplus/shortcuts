@@ -275,7 +275,7 @@ export function ActivityListPane({
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
-            <div className="p-4 text-center text-sm text-[#848484]">
+            <div className="p-4 text-center text-sm text-[#848484]" data-testid="queue-empty-state">
                 {isPaused ? (
                     <>
                         <div className="mb-2">Queue is paused</div>

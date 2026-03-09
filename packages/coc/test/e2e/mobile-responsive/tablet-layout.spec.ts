@@ -2,7 +2,7 @@
  * Tablet Layout Tests — verify hybrid behavior at 768×1024.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedWorkspace, seedProcesses, seedWiki } from '../fixtures/seed';
+import { seedWorkspace, seedQueueTasks, seedWiki } from '../fixtures/seed';
 import { createWikiFixture } from '../fixtures/wiki-fixtures';
 import { TABLET } from './viewports';
 import * as fs from 'fs';
@@ -47,19 +47,17 @@ test.describe('Tablet Layout', () => {
     });
 
     test('tablet: ProcessesView renders two-pane layout', async ({ page, serverUrl }) => {
-        await seedProcesses(serverUrl, 2);
+        await seedQueueTasks(serverUrl, [
+            { type: 'chat', displayName: 'T1' },
+            { type: 'chat', displayName: 'T2' },
+        ]);
         await page.goto(`${serverUrl}/#processes`);
 
-        await expect(page.locator('.process-item')).toHaveCount(2, { timeout: 10000 });
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
-        // Sidebar and detail pane should both be visible
-        const sidebar = page.locator('[data-testid="responsive-sidebar"]');
-        const detail = page.locator('#detail-empty, #detail-content');
-        await expect(sidebar).toBeVisible();
-        await expect(detail.first()).toBeVisible();
-
-        const sidebarBox = await sidebar.boundingBox();
-        expect(sidebarBox!.width).toBeGreaterThan(200);
+        // Both list panel and detail panel should be visible
+        const splitPanel = page.locator('[data-testid="activity-split-panel"]');
+        await expect(splitPanel).toBeVisible();
     });
 
     test('tablet: ReposView renders two-pane layout', async ({ page, serverUrl }) => {

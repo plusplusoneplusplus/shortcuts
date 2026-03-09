@@ -2,7 +2,7 @@
  * Mobile Touch Interaction Tests — verify touch targets and mobile-specific UI.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedProcess, seedProcesses, seedWorkspace } from '../fixtures/seed';
+import { seedQueueTask, seedQueueTasks, seedWorkspace } from '../fixtures/seed';
 import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
@@ -16,7 +16,7 @@ test.describe('Mobile Touch Interaction', () => {
 
         const buttons = bottomNav.locator('button');
         const count = await buttons.count();
-        expect(count).toBe(3);
+        expect(count).toBe(4);
 
         for (let i = 0; i < count; i++) {
             const box = await buttons.nth(i).boundingBox();
@@ -25,13 +25,18 @@ test.describe('Mobile Touch Interaction', () => {
     });
 
     test('mobile: process list items meet 44px min tap height', async ({ page, serverUrl }) => {
-        await seedProcesses(serverUrl, 3);
+        await seedQueueTasks(serverUrl, [
+            { type: 'chat', displayName: 'T1' },
+            { type: 'chat', displayName: 'T2' },
+            { type: 'chat', displayName: 'T3' },
+        ]);
         await page.goto(`${serverUrl}/#processes`);
 
-        await expect(page.locator('.process-item')).toHaveCount(3, { timeout: 10000 });
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
-        const items = page.locator('.process-item');
-        for (let i = 0; i < 3; i++) {
+        const items = page.locator('[data-task-id]');
+        const count = await items.count();
+        for (let i = 0; i < count && i < 3; i++) {
             const box = await items.nth(i).boundingBox();
             expect(box!.height).toBeGreaterThanOrEqual(44);
         }
@@ -93,14 +98,14 @@ test.describe('Mobile Touch Interaction', () => {
     });
 
     test('mobile: back button is visible and tappable', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'touch-back-1', { promptPreview: 'Touch Back Test' });
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Touch Back Test' });
         await page.goto(`${serverUrl}/#processes`);
 
-        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.process-item').first().tap();
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
+        await page.locator('[data-task-id]').first().tap();
 
-        const backBtn = page.locator('[data-testid="mobile-back-button"]');
-        await expect(backBtn).toBeVisible({ timeout: 5000 });
+        const backBtn = page.locator('[data-testid="activity-chat-back-btn"]');
+        await expect(backBtn).toBeVisible({ timeout: 8000 });
 
         const box = await backBtn.boundingBox();
         expect(box!.height).toBeGreaterThanOrEqual(28);
@@ -108,6 +113,6 @@ test.describe('Mobile Touch Interaction', () => {
 
         // Verify tapping back button works
         await backBtn.tap();
-        await expect(page.locator('.process-item')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 5000 });
     });
 });

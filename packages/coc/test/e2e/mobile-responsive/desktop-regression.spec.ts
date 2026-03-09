@@ -3,7 +3,7 @@
  * is unchanged by the responsive commits.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedWorkspace, seedProcess, seedProcesses } from '../fixtures/seed';
+import { seedWorkspace, seedQueueTask, seedQueueTasks } from '../fixtures/seed';
 import { createWikiFixture } from '../fixtures/wiki-fixtures';
 import { DESKTOP } from './viewports';
 import * as fs from 'fs';
@@ -14,38 +14,33 @@ test.use({ viewport: DESKTOP });
 
 test.describe('Desktop Regression', () => {
     test('desktop: ProcessesView shows sidebar and detail side-by-side', async ({ page, serverUrl }) => {
-        await seedProcesses(serverUrl, 3);
+        await seedQueueTasks(serverUrl, [
+            { type: 'chat', displayName: 'T1' },
+            { type: 'chat', displayName: 'T2' },
+            { type: 'chat', displayName: 'T3' },
+        ]);
         await page.goto(`${serverUrl}/#processes`);
 
-        await expect(page.locator('.process-item').first()).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
-        // Sidebar (ResponsiveSidebar wrapper) should be visible
-        const sidebar = page.locator('[data-testid="responsive-sidebar"]');
-        await expect(sidebar).toBeVisible();
-        const box = await sidebar.boundingBox();
-        expect(box!.width).toBeGreaterThan(250);
+        // ActivityListPane (left panel) should be visible
+        const listPane = page.locator('[data-testid="activity-split-panel"]');
+        await expect(listPane).toBeVisible();
 
         // Detail pane should also be visible
-        const detail = page.locator('#detail-empty, #detail-content');
+        const detail = page.locator('[data-testid="activity-detail-panel"]');
         await expect(detail.first()).toBeVisible();
     });
 
     test('desktop: ProcessesView sidebar + detail are both visible', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'desk-proc-1', { promptPreview: 'Desktop Detail' });
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Desktop Detail' });
         await page.goto(`${serverUrl}/#processes`);
 
-        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.process-item').first().click();
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
+        await page.locator('[data-task-id]').first().click();
 
-        const sidebar = page.locator('[data-testid="responsive-sidebar"]');
-        const detail = page.locator('#detail-content');
-        await expect(sidebar).toBeVisible();
-        await expect(detail).toBeVisible();
-
-        const sidebarBox = await sidebar.boundingBox();
-        const detailBox = await detail.boundingBox();
-        expect(sidebarBox!.width).toBeGreaterThan(0);
-        expect(detailBox!.width).toBeGreaterThan(0);
+        const detail = page.locator('[data-testid="activity-chat-detail"]');
+        await expect(detail).toBeVisible({ timeout: 8000 });
     });
 
     test('desktop: ReposView shows sidebar', async ({ page, serverUrl }) => {

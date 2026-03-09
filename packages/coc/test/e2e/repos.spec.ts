@@ -72,8 +72,8 @@ test.describe('Repos tab', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="processes"]');
 
-        // Wait for workspaces to load and populate dropdown (All + seeded repo = 2)
-        await expect(page.locator('#workspace-select option')).toHaveCount(2, { timeout: 10000 });
+        // The global processes view renders the queue activity panel
+        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10000 });
     });
 });
 

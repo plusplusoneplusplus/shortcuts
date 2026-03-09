@@ -2,7 +2,7 @@
  * Cross-Viewport Deep Link Tests — verify hash routing at all viewport sizes.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedProcess, seedWorkspace } from '../fixtures/seed';
+import { seedQueueTask, seedWorkspace } from '../fixtures/seed';
 import { MOBILE, TABLET, DESKTOP } from './viewports';
 
 test.describe('Cross-Viewport Deep Links', () => {
@@ -15,11 +15,12 @@ test.describe('Cross-Viewport Deep Links', () => {
 
     test('deeplinks: #processes/:id resolves at mobile viewport', async ({ page, serverUrl }) => {
         await page.setViewportSize(MOBILE);
-        await seedProcess(serverUrl, 'dl-mob-proc', { promptPreview: 'DeepLink Mobile' });
-        await page.goto(`${serverUrl}/#processes/dl-mob-proc`);
+        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'DeepLink Mobile' });
+        const taskId = task.id as string;
+        await page.goto(`${serverUrl}/#process/queue_${encodeURIComponent(taskId)}`);
 
         // Detail should render on mobile (full-screen)
-        await expect(page.locator('#detail-content')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 10000 });
     });
 
     test('deeplinks: #repos/:id resolves at mobile viewport', async ({ page, serverUrl }) => {

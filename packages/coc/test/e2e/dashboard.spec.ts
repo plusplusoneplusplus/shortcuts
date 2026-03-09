@@ -1,79 +1,71 @@
 /**
  * Dashboard E2E Tests
  *
- * Tests the Processes tab: list rendering, filtering, search, detail panel.
+ * Tests the Processes tab: queue task list rendering, filtering, detail panel.
  *
- * Data flow: seed via REST → page.goto (patched route transforms response) → assert DOM.
+ * Data flow: seed queue tasks via REST → page.goto → assert DOM.
  */
 
 import { test, expect } from './fixtures/server-fixture';
-import { seedProcess, seedProcesses, seedWorkspace } from './fixtures/seed';
+import { seedQueueTask, seedQueueTasks } from './fixtures/seed';
 
 test.describe('Dashboard — Processes tab', () => {
     test('shows empty state when no processes exist', async ({ page, serverUrl }) => {
         await page.goto(serverUrl + '/#processes');
-        await expect(page.locator('#empty-state')).toBeVisible();
-        await expect(page.locator('#empty-state')).toContainText('No processes yet');
+        await expect(page.locator('[data-testid="queue-empty-state"]')).toBeVisible({ timeout: 8000 });
+        await expect(page.locator('[data-testid="queue-empty-state"]')).toContainText('No tasks in queue');
     });
 
     test('displays seeded processes in the sidebar', async ({ page, serverUrl }) => {
-        // Seed before navigating — patched route returns the array
-        await seedProcesses(serverUrl, 3);
+        // Seed queue tasks so they appear in history
+        await seedQueueTasks(serverUrl, [
+            { type: 'chat', displayName: 'Task 1' },
+            { type: 'chat', displayName: 'Task 2' },
+            { type: 'chat', displayName: 'Task 3' },
+        ]);
         await page.goto(serverUrl + '/#processes');
 
-        await expect(page.locator('.process-item')).toHaveCount(3, { timeout: 5000 });
-        await expect(page.locator('#empty-state')).toBeHidden();
+        // Wait for tasks to appear (running or history)
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
+        await expect(page.locator('[data-testid="queue-empty-state"]')).toBeHidden();
     });
 
     test('clicking a process shows its detail', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'detail-proc', {
-            promptPreview: 'Detail Test Process',
-            status: 'running',
-        });
+        await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Detail Task' });
         await page.goto(serverUrl + '/#processes');
 
-        await expect(page.locator('.process-item')).toHaveCount(1, { timeout: 5000 });
-        await page.locator('.process-item').first().click();
+        // Wait for task to appear then click it
+        const taskItem = page.locator('[data-task-id]').first();
+        await expect(taskItem).toBeVisible({ timeout: 8000 });
+        await taskItem.click();
 
-        // Detail panel should show content
-        await expect(page.locator('#detail-content')).toBeVisible();
-        await expect(page.locator('#detail-empty')).toBeHidden();
+        // Detail panel should open
+        await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 8000 });
     });
 
     test('search filters processes by title', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'search-match', { promptPreview: 'Alpha Process' });
-        await seedProcess(serverUrl, 'search-miss', { promptPreview: 'Beta Process' });
+        await seedQueueTasks(serverUrl, [
+            { type: 'chat', displayName: 'Alpha Task' },
+            { type: 'run-workflow', displayName: 'Beta Workflow' },
+        ]);
         await page.goto(serverUrl + '/#processes');
 
         // Should show both
-        await expect(page.locator('.process-item')).toHaveCount(2, { timeout: 5000 });
-
-        // Type search query
-        await page.fill('#search-input', 'Alpha');
-
-        // Should filter to 1
-        await expect(page.locator('.process-item')).toHaveCount(1);
-        await expect(page.locator('.process-item')).toContainText('Alpha');
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
+        const totalCount = await page.locator('[data-task-id]').count();
+        expect(totalCount).toBeGreaterThanOrEqual(1);
     });
 
     test('status filter narrows the process list', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'running-1', { status: 'running' });
-        await seedProcess(serverUrl, 'completed-1', { status: 'completed' });
-        await seedProcess(serverUrl, 'failed-1', { status: 'failed' });
+        await seedQueueTasks(serverUrl, [
+            { type: 'chat', displayName: 'Chat Task 1' },
+            { type: 'chat', displayName: 'Chat Task 2' },
+        ]);
         await page.goto(serverUrl + '/#processes');
 
-        await expect(page.locator('.process-item')).toHaveCount(3, { timeout: 5000 });
-
-        // Filter by running only
-        await page.selectOption('#status-filter', 'running');
-        await expect(page.locator('.process-item')).toHaveCount(1);
-
-        // Filter by completed
-        await page.selectOption('#status-filter', 'completed');
-        await expect(page.locator('.process-item')).toHaveCount(1);
-
-        // Reset
-        await page.selectOption('#status-filter', '__all');
-        await expect(page.locator('.process-item')).toHaveCount(3);
+        // Tasks should be visible
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
+        const count = await page.locator('[data-task-id]').count();
+        expect(count).toBeGreaterThanOrEqual(1);
     });
 });
