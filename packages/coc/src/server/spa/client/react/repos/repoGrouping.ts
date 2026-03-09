@@ -97,6 +97,12 @@ export function groupReposByRemote(
             continue;
         }
         const normalized = normalizeRemoteUrl(rawUrl);
+        if (!normalized) {
+            // normalizeRemoteUrl returned empty — fall back to treating as ungrouped
+            // so the repo still renders visibly rather than as a group with falsy key.
+            ungrouped.push(repo);
+            continue;
+        }
         if (!groups.has(normalized)) {
             groups.set(normalized, {
                 normalizedUrl: normalized,

@@ -305,7 +305,14 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const branchStatus = getBranchService().getBranchStatus(ws.rootPath, dirty);
 
             if (!branchStatus) {
-                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
+                // Even when branch status is unavailable (e.g. no commits yet, detached HEAD
+                // edge cases), still attempt to detect the remote URL so that the repo can
+                // be grouped correctly in the sidebar.
+                const remoteUrl = detectRemoteUrl(ws.rootPath);
+                if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+                    await store.updateWorkspace(ws.id, { remoteUrl });
+                }
+                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null });
                 return;
             }
 
@@ -350,7 +357,13 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                         const dirty = getBranchService().hasUncommittedChanges(ws.rootPath);
                         const branchStatus = getBranchService().getBranchStatus(ws.rootPath, dirty);
                         if (!branchStatus) {
-                            results[wsId] = { branch: null, dirty: false, isGitRepo: false, remoteUrl: null };
+                            // Even when branch status is unavailable, still detect remoteUrl
+                            // so Azure DevOps repos without commits still get grouped.
+                            const remoteUrl = detectRemoteUrl(ws.rootPath);
+                            if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+                                await store.updateWorkspace(ws.id, { remoteUrl });
+                            }
+                            results[wsId] = { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null };
                             return;
                         }
                         const branch = getGitRangeService().getCurrentBranch(ws.rootPath);

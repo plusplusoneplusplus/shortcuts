@@ -507,6 +507,62 @@ describe('API Handler', () => {
             expect(body.remoteUrl).toBeNull();
         });
 
+        it('should return remoteUrl for a git repo with no commits (Azure DevOps grouping scenario)', async () => {
+            // Simulates adding an Azure DevOps repo that has a remote configured but no
+            // commits yet. getBranchStatus returns null (no HEAD), but the remoteUrl must
+            // still be detected and returned so the sidebar group is created.
+            const srv = await startServer();
+            const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'empty-git-'));
+            try {
+                childProcess.execSync('git init', { cwd: repoDir });
+                childProcess.execSync(
+                    'git remote add origin https://dev.azure.com/myorg/myproject/_git/myrepo',
+                    { cwd: repoDir },
+                );
+
+                await postJSON(`${srv.url}/api/workspaces`, {
+                    id: 'ws-empty-git', name: 'empty-git', rootPath: repoDir,
+                });
+
+                const res = await request(`${srv.url}/api/workspaces/ws-empty-git/git-info`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.isGitRepo).toBe(false);
+                expect(body.remoteUrl).toBe('https://dev.azure.com/myorg/myproject/_git/myrepo');
+            } finally {
+                fs.rmSync(repoDir, { recursive: true, force: true });
+            }
+        });
+
+        it('should return remoteUrl via batch for a git repo with no commits (Azure DevOps grouping scenario)', async () => {
+            // Same as above but exercises the POST /api/git-info/batch path.
+            const srv = await startServer();
+            const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'empty-git-batch-'));
+            try {
+                childProcess.execSync('git init', { cwd: repoDir });
+                childProcess.execSync(
+                    'git remote add origin https://dev.azure.com/myorg/myproject/_git/myrepo',
+                    { cwd: repoDir },
+                );
+
+                await postJSON(`${srv.url}/api/workspaces`, {
+                    id: 'ws-empty-git-batch', name: 'empty-git-batch', rootPath: repoDir,
+                });
+
+                const batchRes = await postJSON(`${srv.url}/api/git-info/batch`, {
+                    workspaceIds: ['ws-empty-git-batch'],
+                });
+                expect(batchRes.status).toBe(200);
+                const batchBody = JSON.parse(batchRes.body);
+                expect(batchBody.results['ws-empty-git-batch']).toBeDefined();
+                expect(batchBody.results['ws-empty-git-batch'].remoteUrl)
+                    .toBe('https://dev.azure.com/myorg/myproject/_git/myrepo');
+            } finally {
+                fs.rmSync(repoDir, { recursive: true, force: true });
+            }
+        });
+
+
         it('should allow updating remoteUrl via PATCH', async () => {
             const srv = await startServer();
             await postJSON(`${srv.url}/api/workspaces`, {

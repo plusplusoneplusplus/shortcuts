@@ -186,4 +186,72 @@ describe('groupReposByRemote with Azure DevOps URLs', () => {
         expect(azureGroups[0].repos).toHaveLength(3);
         expect(azureGroups[0].label).toBe('org/proj/repo');
     });
+
+    it('creates a group for a single Azure DevOps repo using workspace.remoteUrl (Phase 1 — before gitInfo loads)', () => {
+        // Simulates Phase 1: workspace registered with remoteUrl detected, gitInfo not yet loaded.
+        const repos: RepoData[] = [
+            {
+                workspace: { id: 'ws-1', name: 'my-azure-repo', rootPath: '/r/1', remoteUrl: 'https://dev.azure.com/myorg/myproject/_git/myrepo' },
+                gitInfoLoading: true,
+            },
+        ];
+        const groups = groupReposByRemote(repos, {});
+        expect(groups).toHaveLength(1);
+        expect(groups[0].normalizedUrl).toBe('dev.azure.com/myorg/myproject/myrepo');
+        expect(groups[0].repos).toHaveLength(1);
+        expect(groups[0].label).toBe('myorg/myproject/myrepo');
+    });
+
+    it('groups two Azure DevOps repos using workspace.remoteUrl without waiting for gitInfo', () => {
+        const repos: RepoData[] = [
+            {
+                workspace: { id: 'ws-1', name: 'clone-https', rootPath: '/r/1', remoteUrl: 'https://dev.azure.com/org/proj/_git/repo' },
+                gitInfoLoading: true,
+            },
+            {
+                workspace: { id: 'ws-2', name: 'clone-ssh', rootPath: '/r/2', remoteUrl: 'git@ssh.dev.azure.com:v3/org/proj/repo' },
+                gitInfoLoading: true,
+            },
+        ];
+        const groups = groupReposByRemote(repos, {});
+        expect(groups).toHaveLength(1);
+        expect(groups[0].normalizedUrl).toBe('dev.azure.com/org/proj/repo');
+        expect(groups[0].repos).toHaveLength(2);
+    });
+
+    it('falls back to workspace.remoteUrl when gitInfo is null (not-a-git-repo response)', () => {
+        // Simulates Phase 2 result where branchStatus was null but remoteUrl was detected.
+        const repos: RepoData[] = [
+            {
+                workspace: { id: 'ws-1', name: 'no-commits', rootPath: '/r/1', remoteUrl: 'https://dev.azure.com/org/proj/_git/repo' },
+                gitInfo: { branch: null, dirty: false, isGitRepo: false, remoteUrl: null },
+            },
+        ];
+        const groups = groupReposByRemote(repos, {});
+        expect(groups).toHaveLength(1);
+        // workspace.remoteUrl takes precedence over gitInfo.remoteUrl (null)
+        expect(groups[0].normalizedUrl).toBe('dev.azure.com/org/proj/repo');
+    });
+
+    it('treats repos with empty normalized URL as ungrouped (defensive guard)', () => {
+        // Edge case: if normalizeRemoteUrl somehow returns "", the repo should be ungrouped
+        // rather than creating an invisible group with a falsy normalizedUrl.
+        const repos: RepoData[] = [
+            {
+                workspace: { id: 'ws-bad', name: 'bad-url', rootPath: '/r/1' },
+                // gitInfo.remoteUrl that normalizes to empty (whitespace-only)
+                gitInfo: { branch: 'main', dirty: false, isGitRepo: true, remoteUrl: '   ' },
+            },
+            {
+                workspace: { id: 'ws-ok', name: 'good-repo', rootPath: '/r/2', remoteUrl: 'https://dev.azure.com/org/proj/_git/repo' },
+            },
+        ];
+        const groups = groupReposByRemote(repos, {});
+        // ws-bad: remoteUrl normalizes to "" → treated as ungrouped
+        // ws-ok: valid Azure DevOps URL → gets a group
+        const azureGroup = groups.find(g => g.normalizedUrl?.includes('dev.azure.com'));
+        expect(azureGroup).toBeDefined();
+        const ungrouped = groups.find(g => g.normalizedUrl === null && g.repos[0].workspace.id === 'ws-bad');
+        expect(ungrouped).toBeDefined();
+    });
 });
