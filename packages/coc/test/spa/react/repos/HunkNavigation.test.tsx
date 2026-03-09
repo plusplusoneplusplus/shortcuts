@@ -220,6 +220,7 @@ describe('UnifiedDiffViewerHandle', () => {
         );
         const viewer = container.querySelector('[data-testid="diff"]')!;
         const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
         scrollParent.scrollTo = vi.fn();
         ref.current?.scrollToNextHunk();
         expect(scrollParent.scrollTo).toHaveBeenCalled();
@@ -232,6 +233,7 @@ describe('UnifiedDiffViewerHandle', () => {
         );
         const viewer = container.querySelector('[data-testid="diff"]')!;
         const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
         scrollParent.scrollTo = vi.fn();
         ref.current?.scrollToPrevHunk();
         expect(scrollParent.scrollTo).toHaveBeenCalled();
@@ -244,6 +246,7 @@ describe('UnifiedDiffViewerHandle', () => {
         );
         const viewer = container.querySelector('[data-testid="diff"]')!;
         const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
         Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
         Object.defineProperty(scrollParent, 'scrollTop', { value: 0, configurable: true });
         vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
@@ -269,6 +272,7 @@ describe('UnifiedDiffViewerHandle', () => {
         );
         const viewer = container.querySelector('[data-testid="diff"]')!;
         const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
         Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
         Object.defineProperty(scrollParent, 'scrollTop', { value: 1000, configurable: true });
         vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
