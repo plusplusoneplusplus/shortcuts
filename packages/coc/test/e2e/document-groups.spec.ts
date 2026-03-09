@@ -42,7 +42,10 @@ async function setupRepoWithTasks(
     // Wait for task tree to render
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
-    return { repoDir, taskRoot: getTaskRoot(dataDir, wsId) };() => {
+    return { repoDir, taskRoot: getTaskRoot(dataDir, wsId) };
+}
+
+test.describe('Document Groups (013)', () => {
 
     test('13.1 grouped docs shown under shared base name', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-docgroup-'));

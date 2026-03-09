@@ -42,7 +42,10 @@ async function setupRepoWithTasks(
     // Wait for task tree to render
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
-    return { repoDir, taskRoot: getTaskRoot(dataDir, wsId) };() => {
+    return { repoDir, taskRoot: getTaskRoot(dataDir, wsId) };
+}
+
+test.describe('Task CRUD (010)', () => {
 
     test('10.1 create new task via toolbar', async ({ page, serverUrl, dataDir }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
