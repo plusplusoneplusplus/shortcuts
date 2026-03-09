@@ -15,6 +15,8 @@ interface MiniReposSidebarProps {
     onRefresh: () => void;
     onItemHoverStart?: () => void;
     onItemHoverEnd?: () => void;
+    /** Per-workspace unseen (unread) chat count. */
+    unseenCounts?: Record<string, number>;
 }
 
 /** Disambiguate first letters within a list of repos: use 2 chars when collisions exist. */
@@ -47,6 +49,7 @@ function MiniRepoItem({
     repo,
     label,
     isSelected,
+    unseenCount,
     onClick,
     onDoubleClick,
     onHoverStart,
@@ -55,11 +58,12 @@ function MiniRepoItem({
     repo: RepoData;
     label: string;
     isSelected: boolean;
+    unseenCount?: number;
     onClick: () => void;
     onDoubleClick: () => void;
     onHoverStart?: () => void;
     onHoverEnd?: () => void;
-}) {
+}){
     const ws = repo.workspace;
     const color = ws.color || '#848484';
     const branch = repo.gitInfo?.branch || '';
@@ -69,7 +73,7 @@ function MiniRepoItem({
         <button
             data-testid="mini-repo-item"
             className={cn(
-                'w-full h-10 flex items-center justify-center gap-1.5 rounded transition-colors',
+                'relative w-full h-10 flex items-center justify-center gap-1.5 rounded transition-colors',
                 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
                 isSelected && 'border-l-[3px] border-l-[#0078d4]'
             )}
@@ -85,11 +89,20 @@ function MiniRepoItem({
                 style={{ background: color }}
             />
             <span className="text-[11px] text-[#616161] dark:text-[#999]">{label}</span>
+            {unseenCount != null && unseenCount > 0 && (
+                <span
+                    className="absolute top-1 right-1 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#0078d4] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
+                    data-testid="mini-repo-unseen-badge"
+                    aria-label={`${unseenCount} unread`}
+                >
+                    {unseenCount > 99 ? '99+' : unseenCount}
+                </span>
+            )}
         </button>
     );
 }
 
-export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHoverEnd }: MiniReposSidebarProps) {
+export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHoverEnd, unseenCounts }: MiniReposSidebarProps) {
     const { state, dispatch } = useApp();
     const [addOpen, setAddOpen] = useState(false);
 
@@ -149,6 +162,7 @@ export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHov
                                     repo={repo}
                                     label={labels.get(repo.workspace.id) || '?'}
                                     isSelected={repo.workspace.id === state.selectedRepoId}
+                                    unseenCount={unseenCounts?.[repo.workspace.id]}
                                     onClick={() => selectRepo(repo.workspace.id)}
                                     onDoubleClick={() => expandAndSelect(repo.workspace.id)}
                                     onHoverStart={onItemHoverStart}

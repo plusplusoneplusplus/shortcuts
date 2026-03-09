@@ -157,3 +157,19 @@ export function useUnseenActivity(
 
     return { unseenTaskIds, unseenCount: unseenTaskIds.size, markSeen, markAllSeen, markUnseen };
 }
+
+/**
+ * Pure helper: compute the unseen count for a workspace from localStorage + history.
+ * Safe to call outside of React (no hooks).
+ */
+export function computeUnseenCount(workspaceId: string, history: any[]): number {
+    const storageKey = STORAGE_PREFIX + workspaceId;
+    const seenMap = loadSeenMap(storageKey) ?? {};
+    let count = 0;
+    for (const task of history) {
+        if (!task.completedAt) continue;
+        const seen = seenMap[task.id];
+        if (!seen || seen !== task.completedAt) count++;
+    }
+    return count;
+}

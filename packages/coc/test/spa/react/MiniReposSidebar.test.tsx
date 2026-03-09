@@ -414,3 +414,78 @@ describe('Long hover expand', () => {
         expect(item).toBeDefined();
     });
 });
+
+// ============================================================================
+// Unseen badges
+// ============================================================================
+
+describe('MiniReposSidebar — unseen badges', () => {
+    it('shows unseen badge when unseenCounts > 0', () => {
+        const repos = [makeRepo({ workspace: { id: 'ws-1', name: 'Alpha' } })];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} unseenCounts={{ 'ws-1': 3 }} />
+            </Wrap>
+        );
+        const badge = screen.getByTestId('mini-repo-unseen-badge');
+        expect(badge).toBeDefined();
+        expect(badge.textContent).toBe('3');
+    });
+
+    it('does not show badge when unseenCounts is 0', () => {
+        const repos = [makeRepo({ workspace: { id: 'ws-1', name: 'Alpha' } })];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} unseenCounts={{ 'ws-1': 0 }} />
+            </Wrap>
+        );
+        expect(screen.queryByTestId('mini-repo-unseen-badge')).toBeNull();
+    });
+
+    it('does not show badge when unseenCounts not provided', () => {
+        const repos = [makeRepo({ workspace: { id: 'ws-1', name: 'Alpha' } })];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} />
+            </Wrap>
+        );
+        expect(screen.queryByTestId('mini-repo-unseen-badge')).toBeNull();
+    });
+
+    it('caps badge display at 99+', () => {
+        const repos = [makeRepo({ workspace: { id: 'ws-1', name: 'Alpha' } })];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} unseenCounts={{ 'ws-1': 150 }} />
+            </Wrap>
+        );
+        const badge = screen.getByTestId('mini-repo-unseen-badge');
+        expect(badge.textContent).toBe('99+');
+    });
+
+    it('shows individual badges per repo', () => {
+        const repos = [
+            makeRepo({ workspace: { id: 'ws-1', name: 'Alpha' } }),
+            makeRepo({ workspace: { id: 'ws-2', name: 'Beta' } }),
+        ];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} unseenCounts={{ 'ws-1': 2, 'ws-2': 0 }} />
+            </Wrap>
+        );
+        const badges = screen.queryAllByTestId('mini-repo-unseen-badge');
+        expect(badges).toHaveLength(1);
+        expect(badges[0].textContent).toBe('2');
+    });
+
+    it('badge has accessible aria-label', () => {
+        const repos = [makeRepo({ workspace: { id: 'ws-1', name: 'Alpha' } })];
+        render(
+            <Wrap>
+                <MiniReposSidebar repos={repos} onRefresh={() => {}} unseenCounts={{ 'ws-1': 5 }} />
+            </Wrap>
+        );
+        const badge = screen.getByTestId('mini-repo-unseen-badge');
+        expect(badge.getAttribute('aria-label')).toBe('5 unread');
+    });
+});

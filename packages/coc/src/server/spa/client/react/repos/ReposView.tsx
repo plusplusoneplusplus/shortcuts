@@ -3,7 +3,7 @@
  * Left: ReposGrid (sidebar). Right: RepoDetail (when a repo is selected).
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -16,12 +16,13 @@ import { ResponsiveSidebar } from '../shared/ResponsiveSidebar';
 import { cn } from '../shared';
 import { countTasks } from './repoGrouping';
 import { fetchWorkflows } from './workflow-api';
+import { computeUnseenCount } from '../hooks/useUnseenActivity';
 import type { RepoData } from './repoGrouping';
 
 
 export function ReposView() {
     const { state, dispatch } = useApp();
-    const { dispatch: queueDispatch } = useQueue();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const isTablet = breakpoint === 'tablet';
@@ -53,6 +54,16 @@ export function ReposView() {
     }, []);
 
     const isCollapsed = state.reposSidebarCollapsed && !tempExpanded;
+
+    // Compute per-repo unseen counts for the mini sidebar badge.
+    const unseenCounts = useMemo(() => {
+        const counts: Record<string, number> = {};
+        for (const [repoId, repoQueue] of Object.entries(queueState.repoQueueMap)) {
+            const count = computeUnseenCount(repoId, repoQueue.history ?? []);
+            if (count > 0) counts[repoId] = count;
+        }
+        return counts;
+    }, [queueState.repoQueueMap]);
 
     const handleBack = useCallback(() => {
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
@@ -285,7 +296,7 @@ export function ReposView() {
                         onMouseLeave={state.reposSidebarCollapsed ? handleMiniHoverEnd : undefined}
                     >
                         {isCollapsed ? (
-                            <MiniReposSidebar repos={repos} onRefresh={fetchRepos} onItemHoverStart={handleMiniHoverStart} onItemHoverEnd={handleMiniHoverEnd} />
+                            <MiniReposSidebar repos={repos} onRefresh={fetchRepos} onItemHoverStart={handleMiniHoverStart} onItemHoverEnd={handleMiniHoverEnd} unseenCounts={unseenCounts} />
                         ) : (
                             <ReposGrid repos={repos} onRefresh={fetchRepos} />
                         )}
