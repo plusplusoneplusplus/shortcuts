@@ -533,4 +533,34 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain('setCopied(false), 2000');
         });
     });
+
+    describe('mode-based input border colors', () => {
+        it('defines MODE_BORDER_COLORS mapping for all three modes', () => {
+            expect(source).toContain('MODE_BORDER_COLORS');
+            expect(source).toContain("autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus:ring-green-500/50' }");
+            expect(source).toContain("ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus:ring-yellow-500/50' }");
+            expect(source).toContain("plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' }");
+        });
+
+        it('applies dynamic border class from MODE_BORDER_COLORS to textarea', () => {
+            expect(source).toContain('MODE_BORDER_COLORS[selectedMode].border');
+        });
+
+        it('applies dynamic focus ring class from MODE_BORDER_COLORS to textarea', () => {
+            expect(source).toContain('MODE_BORDER_COLORS[selectedMode].ring');
+        });
+
+        it('uses cn() utility to compose textarea classes with mode border', () => {
+            const textareaBlock = source.substring(
+                source.indexOf('<textarea') - 50,
+                source.indexOf('data-testid="activity-chat-input"') + 50,
+            );
+            expect(textareaBlock).toContain('cn(');
+            expect(textareaBlock).toContain('MODE_BORDER_COLORS[selectedMode]');
+        });
+
+        it('MODE_BORDER_COLORS is typed as Record over all mode variants', () => {
+            expect(source).toContain("Record<'ask' | 'plan' | 'autopilot'");
+        });
+    });
 });

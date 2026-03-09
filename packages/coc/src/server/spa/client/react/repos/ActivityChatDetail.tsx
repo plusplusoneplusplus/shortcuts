@@ -37,6 +37,12 @@ import type { ClientConversationTurn } from '../types/dashboard';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
+const MODE_BORDER_COLORS: Record<'ask' | 'plan' | 'autopilot', { border: string; ring: string }> = {
+    autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus:ring-green-500/50' },
+    ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus:ring-yellow-500/50' },
+    plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' },
+};
+
 export interface ActivityChatDetailProps {
     taskId: string;
     onBack?: () => void;
@@ -733,7 +739,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId }: ActivityChat
                                 value={followUpInput}
                                 disabled={inputDisabled}
                                 placeholder={sessionExpired ? 'Session expired.' : sending ? 'Waiting for response...' : 'Send a message... (type / for skills)'}
-                                className="w-full min-h-[34px] max-h-28 resize-y rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-60"
+                                className={cn('w-full min-h-[34px] max-h-28 resize-y rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60', MODE_BORDER_COLORS[selectedMode].border, MODE_BORDER_COLORS[selectedMode].ring)}
                                 onChange={e => {
                                     const val = e.target.value;
                                     setFollowUpInput(val);
