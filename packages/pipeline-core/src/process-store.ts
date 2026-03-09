@@ -9,13 +9,14 @@
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent } from './ai/process-types';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline/types';
+import type { TokenUsage } from './copilot-sdk-wrapper/types';
 
 /**
  * Output event emitted during process execution.
  * Used by SSE streaming to push real-time output to clients.
  */
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -50,6 +51,12 @@ export interface ProcessOutputEvent {
     itemProcess?: ItemProcessEventData;
     /** Follow-up message suggestions (for 'suggestions' events). */
     suggestions?: string[];
+    /** Per-turn token usage data (for 'token-usage' events). */
+    tokenUsage?: TokenUsage;
+    /** Session-level token limit (for 'token-usage' events). */
+    sessionTokenLimit?: number;
+    /** Session-level current tokens (for 'token-usage' events). */
+    sessionCurrentTokens?: number;
 }
 
 /**

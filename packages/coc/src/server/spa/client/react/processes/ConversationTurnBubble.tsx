@@ -3,7 +3,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import { cn, ImageGallery, Spinner } from '../shared';
-import type { ClientConversationTurn } from '../types/dashboard';
+import type { ClientConversationTurn, ClientTokenUsage } from '../types/dashboard';
 import { MarkdownView } from './MarkdownView';
 import { ToolCallView } from './ToolCallView';
 import { mergeConsecutiveContentItems } from './timeline-utils';
@@ -507,6 +507,36 @@ function buildRawContent(turn: ClientConversationTurn): string {
 
 export { buildRawContent as _buildRawContent };
 
+/** Small badge showing per-turn token cost on assistant bubbles. */
+function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
+    const [expanded, setExpanded] = useState(false);
+
+    function fmt(n: number): string {
+        if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+        if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+        return String(n);
+    }
+
+    const summary = `↓${fmt(tokenUsage.inputTokens)} ↑${fmt(tokenUsage.outputTokens)}`;
+    const detail = [
+        `Input: ${tokenUsage.inputTokens.toLocaleString()}`,
+        `Output: ${tokenUsage.outputTokens.toLocaleString()}`,
+        tokenUsage.cacheReadTokens > 0 ? `Cache read: ${tokenUsage.cacheReadTokens.toLocaleString()}` : null,
+        tokenUsage.cacheWriteTokens > 0 ? `Cache write: ${tokenUsage.cacheWriteTokens.toLocaleString()}` : null,
+        `Total: ${tokenUsage.totalTokens.toLocaleString()}`,
+    ].filter(Boolean).join(' · ');
+
+    return (
+        <button
+            className="token-usage-badge inline-flex items-center px-1.5 py-0.5 rounded text-[10px] tabular-nums bg-[#f0f0f0] dark:bg-[#2d2d2d] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#383838] transition-colors cursor-pointer border border-transparent hover:border-[#d0d0d0] dark:hover:border-[#505050]"
+            title={expanded ? 'Click to collapse' : detail}
+            onClick={() => setExpanded(v => !v)}
+        >
+            {expanded ? detail : summary}
+        </button>
+    );
+}
+
 export function ConversationTurnBubble({ turn, taskId, onRetry, processType }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === 'run-script';
@@ -674,6 +704,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType }: C
                     )}
                     {turn.streaming && (
                         <span className="text-[#f14c4c] streaming-indicator">Live</span>
+                    )}
+                    {!isUser && turn.tokenUsage && !turn.streaming && (
+                        <TokenUsageBadge tokenUsage={turn.tokenUsage} />
                     )}
                     {!isUser && turn.isError && onRetry && (
                         <button

@@ -62,6 +62,7 @@ export {
     isValidModelId,
     getModelCount,
     getModelsByTier,
+    getModelContextWindow,
 } from './model-registry';
 
 // Copilot SDK Service

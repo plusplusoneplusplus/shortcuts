@@ -6,6 +6,7 @@
  */
 
 import { AIBackendType } from './types';
+import type { TokenUsage } from '../copilot-sdk-wrapper/types';
 
 /**
  * Supported AI tools for invocation
@@ -136,6 +137,8 @@ export interface ConversationTurn {
     historical?: boolean;
     /** Suggested follow-up messages the user can send (assistant turns only). */
     suggestions?: string[];
+    /** Token usage for this turn (assistant turns only, undefined for non-streaming or legacy). */
+    tokenUsage?: TokenUsage;
 }
 
 /**
@@ -156,6 +159,8 @@ export interface SerializedConversationTurn {
     historical?: boolean;
     /** Suggested follow-up messages the user can send (assistant turns only). */
     suggestions?: string[];
+    /** Token usage for this turn (assistant turns only). */
+    tokenUsage?: TokenUsage;
 }
 
 /**
@@ -399,6 +404,17 @@ export interface AIProcess {
 
     /** Ordered list of conversation turns for multi-turn chat */
     conversationTurns?: ConversationTurn[];
+
+    // ========================================================================
+    // Context Window Tracking Fields (Added 2026-03)
+    // ========================================================================
+
+    /** Session-level context window size (from session.usage_info) */
+    tokenLimit?: number;
+    /** Tokens currently occupying the session context (from session.usage_info) */
+    currentTokens?: number;
+    /** Running total of token usage across all turns in this session */
+    cumulativeTokenUsage?: TokenUsage;
 }
 
 /**
@@ -448,6 +464,17 @@ export interface SerializedAIProcess {
 
     /** Ordered list of conversation turns (timestamps as ISO strings) */
     conversationTurns?: SerializedConversationTurn[];
+
+    // ========================================================================
+    // Context Window Tracking Fields (Added 2026-03)
+    // ========================================================================
+
+    /** Session-level context window size */
+    tokenLimit?: number;
+    /** Tokens currently occupying the session context */
+    currentTokens?: number;
+    /** Running total of token usage across all turns */
+    cumulativeTokenUsage?: TokenUsage;
 }
 
 /**
@@ -548,8 +575,14 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                     } : undefined
                 } : undefined
             })),
-            images: turn.images
-        }))
+            images: turn.images,
+            suggestions: turn.suggestions,
+            tokenUsage: turn.tokenUsage,
+        })),
+        // Context window tracking fields
+        tokenLimit: process.tokenLimit,
+        currentTokens: process.currentTokens,
+        cumulativeTokenUsage: process.cumulativeTokenUsage,
     };
 }
 
@@ -638,8 +671,14 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                     } : undefined
                 } : undefined
             })),
-            images: turn.images
-        }))
+            images: turn.images,
+            suggestions: turn.suggestions,
+            tokenUsage: turn.tokenUsage,
+        })),
+        // Context window tracking fields
+        tokenLimit: serialized.tokenLimit,
+        currentTokens: serialized.currentTokens,
+        cumulativeTokenUsage: serialized.cumulativeTokenUsage,
     };
 }
 

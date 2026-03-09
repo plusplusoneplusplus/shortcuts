@@ -2,6 +2,22 @@
  * Canonical type definitions for all React code.
  */
 
+/** Token usage data for a single conversation turn (client-side representation) */
+export interface ClientTokenUsage {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    totalTokens: number;
+    turnCount: number;
+    cost?: number;
+    duration?: number;
+    /** Session-level token limit (from session.usage_info) */
+    tokenLimit?: number;
+    /** Session-level current token count (from session.usage_info) */
+    currentTokens?: number;
+}
+
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'admin' | 'memory' | 'skills';
 export type RepoSubTab = 'info' | 'workflows' | 'tasks' | 'schedules' | 'templates' | 'git' | 'wiki' | 'copilot' | 'workflow' | 'explorer' | 'activity';
 export type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
@@ -51,6 +67,8 @@ export interface ClientConversationTurn {
     historical?: boolean;
     /** Skills invoked via /slash commands in this turn */
     skillNames?: string[];
+    /** Token usage for this turn (assistant turns only, undefined for non-streaming/legacy) */
+    tokenUsage?: ClientTokenUsage;
 }
 
 /** Cached conversation data for a historical process. */
@@ -110,6 +128,10 @@ export interface QueueState {
     draining: boolean;
     drainQueued: number;
     drainRunning: number;
+    /** Session-level context window limit (tokens) — from token-usage or conversation-snapshot */
+    sessionTokenLimit?: number;
+    /** Currently occupied context window tokens — from token-usage or conversation-snapshot */
+    sessionCurrentTokens?: number;
 }
 
 export interface TaskPanelState {

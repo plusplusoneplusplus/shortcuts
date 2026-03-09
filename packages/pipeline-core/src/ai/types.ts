@@ -30,7 +30,8 @@ export {
     getActiveModels,
     isValidModelId,
     getModelCount,
-    getModelsByTier
+    getModelsByTier,
+    getModelContextWindow
 } from '../copilot-sdk-wrapper/model-registry';
 
 /**

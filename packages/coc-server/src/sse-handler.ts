@@ -27,6 +27,7 @@ import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
  *   event: workflow-progress → { phase, totalItems, completedItems, failedItems, percentage, message? }
  *   event: item-process     → { itemIndex, processId, status, phase, itemLabel?, error? }
  *   event: suggestions       → { suggestions: string[], turnIndex: number }
+ *   event: token-usage       → { turnIndex, tokenUsage, sessionTokenLimit?, sessionCurrentTokens? }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
  *   event: heartbeat          → {}
@@ -128,6 +129,13 @@ export async function handleProcessStream(
                 suggestions: event.suggestions,
                 turnIndex: event.turnIndex,
             });
+        } else if (event.type === 'token-usage') {
+            sendEvent(res, 'token-usage', {
+                turnIndex: event.turnIndex,
+                tokenUsage: event.tokenUsage,
+                sessionTokenLimit: event.sessionTokenLimit,
+                sessionCurrentTokens: event.sessionCurrentTokens,
+            });
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,
@@ -156,10 +164,15 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
 /**
  * Replay persisted conversation turns as a single structured snapshot event.
  * Sends the full turns array so the client can reconstruct conversation state.
+ * Also includes session-level token tracking data when available.
  */
 function replayConversationTurns(res: ServerResponse, process: AIProcess): void {
     const turns = process.conversationTurns;
     if (!turns || turns.length === 0) { return; }
 
-    sendEvent(res, 'conversation-snapshot', { turns });
+    sendEvent(res, 'conversation-snapshot', {
+        turns,
+        sessionTokenLimit: process.tokenLimit,
+        sessionCurrentTokens: process.currentTokens,
+    });
 }

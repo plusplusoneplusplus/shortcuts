@@ -739,15 +739,54 @@ export class CLITaskExecutor implements TaskExecutor {
                 toolCalls: result.toolCalls || undefined,
                 timeline: followUpTimeline,
                 suggestions: this.pendingSuggestions.get(processId),
+                tokenUsage: result.tokenUsage,
             };
             this.pendingSuggestions.delete(processId);
+
+            // Update session-level context window tracking
+            const tokenLimit = result.tokenUsage?.tokenLimit ?? refreshed?.tokenLimit;
+            const currentTokens = result.tokenUsage?.currentTokens ?? refreshed?.currentTokens;
+            const prevCumulative = refreshed?.cumulativeTokenUsage;
+            const cumulativeTokenUsage = result.tokenUsage ? {
+                inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
+                outputTokens: (prevCumulative?.outputTokens ?? 0) + result.tokenUsage.outputTokens,
+                cacheReadTokens: (prevCumulative?.cacheReadTokens ?? 0) + result.tokenUsage.cacheReadTokens,
+                cacheWriteTokens: (prevCumulative?.cacheWriteTokens ?? 0) + result.tokenUsage.cacheWriteTokens,
+                totalTokens: (prevCumulative?.totalTokens ?? 0) + result.tokenUsage.totalTokens,
+                turnCount: (prevCumulative?.turnCount ?? 0) + result.tokenUsage.turnCount,
+                cost: result.tokenUsage.cost !== undefined
+                    ? (prevCumulative?.cost ?? 0) + result.tokenUsage.cost
+                    : prevCumulative?.cost,
+                duration: result.tokenUsage.duration !== undefined
+                    ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
+                    : prevCumulative?.duration,
+            } : prevCumulative;
 
             await this.store.updateProcess(processId, {
                 conversationTurns: [...cleanTurns, assistantTurn],
                 status: 'completed',
                 endTime: new Date(),
                 result: result.response || undefined,
+                ...(tokenLimit !== undefined ? { tokenLimit } : {}),
+                ...(currentTokens !== undefined ? { currentTokens } : {}),
+                ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
             });
+
+            // Emit token-usage SSE event if token data is available
+            if (result.tokenUsage) {
+                try {
+                    this.store.emitProcessEvent(processId, {
+                        type: 'token-usage',
+                        turnIndex: assistantTurn.turnIndex,
+                        tokenUsage: result.tokenUsage,
+                        sessionTokenLimit: tokenLimit,
+                        sessionCurrentTokens: currentTokens,
+                    });
+                } catch {
+                    // Non-fatal
+                }
+            }
+
             this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
 
             // Generate a human-readable title if not already set (fire-and-forget)

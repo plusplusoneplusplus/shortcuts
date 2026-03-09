@@ -36,6 +36,7 @@ import { Badge } from '../shared';
 import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
+import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -72,6 +73,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<'ask' | 'plan' | 'autopilot'>('autopilot');
     const [skills, setSkills] = useState<SkillItem[]>([]);
+    const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
+    const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
     const lastFailedMessageRef = useRef<string>('');
 
     const eventSourceRef = useRef<EventSource | null>(null);
@@ -182,6 +185,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setSuggestions([]);
         setFollowUpInput('');
         setResumeFeedback(null);
+        setSessionTokenLimit(undefined);
+        setSessionCurrentTokens(undefined);
         clearImages();
         stopStreaming();
         closeFollowUpStream();
@@ -302,6 +307,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 if (data.turns) {
                     setTurnsAndRef(data.turns);
                 }
+                if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
+                if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
             } catch { /* ignore */ }
         });
 
@@ -378,6 +385,21 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
+            } catch { /* ignore */ }
+        });
+        es.addEventListener('token-usage', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
+                if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
+                // Attach tokenUsage to the relevant turn
+                if (data.tokenUsage && typeof data.turnIndex === 'number') {
+                    setTurnsAndRef(prev => prev.map(t =>
+                        t.turnIndex === data.turnIndex && t.role === 'assistant'
+                            ? { ...t, tokenUsage: data.tokenUsage }
+                            : t
+                    ));
+                }
             } catch { /* ignore */ }
         });
 
@@ -600,7 +622,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                     {onBack && (
                         <button
                             className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
@@ -630,6 +652,11 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                             Resume CLI
                         </Button>
                     )}
+                    <ContextWindowIndicator
+                        tokenLimit={sessionTokenLimit}
+                        currentTokens={sessionCurrentTokens}
+                        className="hidden sm:flex ml-2 max-w-[180px]"
+                    />
                 </div>
                 <div className="flex items-center gap-2">
                     {!isPopOut && !isMobile && (

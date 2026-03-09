@@ -37,6 +37,7 @@ export {
     isValidModelId,
     getModelCount,
     getModelsByTier,
+    getModelContextWindow,
     // MCP types
     MCPServerConfigBase,
     MCPLocalServerConfig,

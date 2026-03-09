@@ -250,6 +250,7 @@ export {
     isValidModelId,
     getModelCount,
     getModelsByTier,
+    getModelContextWindow,
     // AI Command Types
     AICommand,
     AICommandMode,

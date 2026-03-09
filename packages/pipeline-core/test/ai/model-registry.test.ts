@@ -21,6 +21,7 @@ import {
     isValidModelId,
     getModelCount,
     getModelsByTier,
+    getModelContextWindow,
 } from '../../src/copilot-sdk-wrapper/model-registry';
 
 describe('Model Registry', () => {
@@ -368,6 +369,39 @@ describe('Model Registry', () => {
             // Even if push didn't throw, the original constant should be intact
             // (in practice, 'as const' makes the type readonly but array is still mutable at runtime)
             expect(VALID_MODELS.length).toBeGreaterThanOrEqual(originalLength);
+        });
+    });
+
+    // ========================================================================
+    // Context Window Sizes
+    // ========================================================================
+
+    describe('getModelContextWindow()', () => {
+        it('returns known context window for claude-sonnet-4.6', () => {
+            expect(getModelContextWindow('claude-sonnet-4.6')).toBe(200_000);
+        });
+
+        it('returns known context window for claude-haiku-4.5', () => {
+            expect(getModelContextWindow('claude-haiku-4.5')).toBe(200_000);
+        });
+
+        it('returns known context window for claude-opus-4.6', () => {
+            expect(getModelContextWindow('claude-opus-4.6')).toBe(200_000);
+        });
+
+        it('returns known context window for gpt-5.4', () => {
+            expect(getModelContextWindow('gpt-5.4')).toBe(128_000);
+        });
+
+        it('returns undefined for unknown model ID', () => {
+            expect(getModelContextWindow('unknown-model-xyz')).toBeUndefined();
+        });
+
+        it('all registered models have a contextWindow set', () => {
+            for (const model of getAllModels()) {
+                expect(model.contextWindow).toBeDefined();
+                expect(model.contextWindow).toBeGreaterThan(0);
+            }
         });
     });
 });

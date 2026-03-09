@@ -30,6 +30,8 @@ export interface ModelDefinition {
     readonly tier: 'fast' | 'standard' | 'premium';
     /** Whether the model is deprecated but kept for backward compatibility */
     readonly deprecated?: boolean;
+    /** Known context window size in tokens (used as fallback before session.usage_info arrives) */
+    readonly contextWindow?: number;
 }
 
 // ============================================================================
@@ -51,36 +53,42 @@ const MODEL_DEFINITIONS: readonly ModelDefinition[] = [
         label: 'Claude Sonnet 4.6',
         description: '(Recommended)',
         tier: 'standard',
+        contextWindow: 200_000,
     },
     {
         id: 'claude-haiku-4.5',
         label: 'Claude Haiku 4.5',
         description: '(Fast)',
         tier: 'fast',
+        contextWindow: 200_000,
     },
     {
         id: 'claude-opus-4.6',
         label: 'Claude Opus 4.6',
         description: '(Premium)',
         tier: 'premium',
+        contextWindow: 200_000,
     },
     {
         id: 'gpt-5.4',
         label: 'GPT-5.4',
         description: '',
         tier: 'standard',
+        contextWindow: 128_000,
     },
     {
         id: 'gpt-5.3-codex',
         label: 'GPT-5.3 Codex',
         description: '',
         tier: 'premium',
+        contextWindow: 128_000,
     },
     {
         id: 'gemini-3-pro-preview',
         label: 'Gemini 3 Pro',
         description: '(Preview)',
         tier: 'standard',
+        contextWindow: 128_000,
     },
 ] as const;
 
@@ -179,4 +187,13 @@ export function getModelCount(): number {
  */
 export function getModelsByTier(tier: ModelDefinition['tier']): readonly ModelDefinition[] {
     return MODEL_DEFINITIONS.filter(m => m.tier === tier);
+}
+
+/**
+ * Get the known context window size for a model.
+ * Returns the static value from the registry, or `undefined` if not known.
+ * Use as a fallback when `session.usage_info` has not been received yet.
+ */
+export function getModelContextWindow(modelId: string): number | undefined {
+    return MODEL_REGISTRY.get(modelId)?.contextWindow;
 }
