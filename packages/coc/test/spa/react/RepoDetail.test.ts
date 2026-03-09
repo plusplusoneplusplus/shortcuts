@@ -419,6 +419,73 @@ describe('RepoDetail New Chat button removed from header', () => {
     });
 });
 
+describe('RepoDetail Launch CLI button in header', () => {
+    it('renders Launch CLI button with data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-launch-cli-btn"');
+    });
+
+    it('uses secondary variant', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('variant="secondary"');
+    });
+
+    it('button has title "Open CLI in terminal"', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('title="Open CLI in terminal"');
+    });
+
+    it('button appears before Queue Task button', () => {
+        const launchIdx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
+        const queueTaskIdx = REPO_DETAIL_SOURCE.indexOf('repo-queue-task-btn');
+        expect(launchIdx).toBeGreaterThan(-1);
+        expect(queueTaskIdx).toBeGreaterThan(-1);
+        expect(launchIdx).toBeLessThan(queueTaskIdx);
+    });
+
+    it('button is disabled during loading', () => {
+        const idx = REPO_DETAIL_SOURCE.indexOf('repo-launch-cli-btn');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, idx - 300), idx);
+        expect(block).toContain('disabled={isLaunchingCli}');
+    });
+
+    it('handleLaunchCli calls fetchApi with /chat/launch-terminal endpoint', () => {
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('handleLaunchCli');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 400);
+        expect(fnBody).toContain("fetchApi('/chat/launch-terminal'");
+        expect(fnBody).toContain("method: 'POST'");
+    });
+
+    it('handleLaunchCli sends workingDirectory in request body', () => {
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('handleLaunchCli');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 400);
+        expect(fnBody).toContain('workingDirectory: ws.rootPath');
+    });
+
+    it('handleLaunchCli resets isLaunchingCli in finally block', () => {
+        const fnStart = REPO_DETAIL_SOURCE.indexOf('handleLaunchCli');
+        const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 400);
+        expect(fnBody).toContain('finally');
+        expect(fnBody).toContain('setIsLaunchingCli(false)');
+    });
+
+    it('button is always visible (not gated on sub-tab or pause state)', () => {
+        const lines = REPO_DETAIL_SOURCE.split('\n');
+        const btnLineIdx = lines.findIndex(l => l.includes('repo-launch-cli-btn'));
+        const precedingBlock = lines.slice(Math.max(0, btnLineIdx - 10), btnLineIdx).join('\n');
+        expect(precedingBlock).not.toContain("activeSubTab ===");
+    });
+
+    it('mobile overflow menu includes Launch CLI option', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-launch-cli"');
+    });
+
+    it('mobile Launch CLI option appears before Queue Task in overflow', () => {
+        const launchIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-launch-cli');
+        const queueIdx = REPO_DETAIL_SOURCE.indexOf('repo-more-queue-task');
+        expect(launchIdx).toBeLessThan(queueIdx);
+    });
+});
+
 describe('RepoDetail Wiki badge wiring', () => {
     it('renders wiki generating badge with data-testid', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="wiki-generating-badge"');

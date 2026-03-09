@@ -75,6 +75,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
     }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [isLaunchingCli, setIsLaunchingCli] = useState(false);
     const tabStripRef = useRef<HTMLDivElement>(null);
     const moreMenuRef = useRef<HTMLDivElement>(null);
     const [tabScrollState, setTabScrollState] = useState<{ canScrollLeft: boolean; canScrollRight: boolean }>({ canScrollLeft: false, canScrollRight: false });
@@ -135,6 +136,19 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             await fetchApi('/queue/resume?repoId=' + encodeURIComponent(ws.id), { method: 'POST' });
         } finally {
             setIsPauseResumeLoading(false);
+        }
+    }
+
+    async function handleLaunchCli() {
+        setIsLaunchingCli(true);
+        try {
+            await fetchApi('/chat/launch-terminal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workingDirectory: ws.rootPath }),
+            });
+        } finally {
+            setIsLaunchingCli(false);
         }
     }
 
@@ -211,6 +225,16 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             ▶ Resume Queue
                         </Button>
                     )}
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={isLaunchingCli}
+                        onClick={handleLaunchCli}
+                        title="Open CLI in terminal"
+                        data-testid="repo-launch-cli-btn"
+                    >
+                        &gt;_ Launch CLI
+                    </Button>
                     {/* On mobile: collapse Queue Task, Generate, Edit, Remove into overflow menu */}
                     {isMobile ? (
                         <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
@@ -226,6 +250,13 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             {moreMenuOpen && (
                                 <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
                                     <div className="flex flex-col" data-testid="repo-more-menu-items">
+                                        <button
+                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                            data-testid="repo-more-launch-cli"
+                                            onClick={() => { setMoreMenuOpen(false); handleLaunchCli(); }}
+                                        >
+                                            &gt;_ Launch CLI
+                                        </button>
                                         <button
                                             className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                             data-testid="repo-more-queue-task"
