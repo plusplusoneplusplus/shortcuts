@@ -831,5 +831,150 @@ suite('Diff Indicator Bar Tests', () => {
             assert.ok(markBottom <= viewportBottom, 'Mark bottom should be <= viewport bottom');
         });
     });
+
+    /**
+     * Tests for the hunk-based rendering minimap fix.
+     *
+     * In hunk-based inline rendering, some lines are collapsed and not in the DOM.
+     * Marks must use data-aligned-index to find the correct element rather than
+     * treating the aligned index as a DOM array index.
+     */
+    suite('DOM-Based Mark Positioning (Hunk-Based Rendering Fix)', () => {
+
+        /**
+         * Simulate calculateMarkPosition using aligned-index lookup (fixed behavior).
+         * lineOffsetsByAlignedIndex maps alignedIndex → offsetTop relative to the pane content.
+         * Returns null if the element is not present (collapsed).
+         */
+        function calculateMarkPositionDomFixed(
+            startIdx: number,
+            endIdx: number,
+            lineOffsetsByAlignedIndex: Map<number, { top: number; height: number }>,
+            scrollHeight: number,
+            barHeight: number
+        ): { top: number; height: number } | null {
+            const startEntry = lineOffsetsByAlignedIndex.get(startIdx);
+            const endEntry = lineOffsetsByAlignedIndex.get(endIdx);
+            if (!startEntry || !endEntry) return null;
+
+            const lineTop = startEntry.top;
+            const endBottom = endEntry.top + endEntry.height;
+            const totalHeight = endBottom - lineTop;
+            return {
+                top: (lineTop / scrollHeight) * barHeight,
+                height: Math.max((totalHeight / scrollHeight) * barHeight, 2)
+            };
+        }
+
+        test('should position mark based on aligned index, not DOM array index', () => {
+            // Scenario: file has 100 aligned lines, but lines 0-19 (context) are collapsed.
+            // First visible line in DOM is at aligned index 20.
+            // A deletion at aligned index 20 is the first DOM element.
+            //
+            // Old (buggy) behavior: lineElements[20] picks the 21st DOM element (wrong)
+            // New (fixed) behavior: querySelector('[data-aligned-index="20"]') picks the correct element
+
+            const barHeight = 500;
+            const lineHeight = 10; // px per line
+            // Only lines 20-30 are visible (collapsed section before and after)
+            // Their offsets within pane-content (after paneContentOffsetTop subtraction):
+            const lineOffsets = new Map<number, { top: number; height: number }>();
+            for (let i = 20; i <= 30; i++) {
+                lineOffsets.set(i, { top: (i - 20) * lineHeight, height: lineHeight });
+            }
+            const scrollHeight = 11 * lineHeight; // only 11 lines visible
+
+            // Deletion at aligned index 20 (first visible line, DOM index 0)
+            const result = calculateMarkPositionDomFixed(20, 20, lineOffsets, scrollHeight, barHeight);
+            assert.ok(result !== null, 'Should find element at aligned index 20');
+
+            // Position = (0 / 110) * 500 = 0 (first visible line → top of minimap)
+            assert.strictEqual(result!.top, 0);
+
+            // Without the fix, old code would try lineElements[20] which is the 21st DOM
+            // element — that element doesn't exist here, so it falls back to percentage-based:
+            // percentageFallback = (20 / totalLines) * barHeight = out-of-sync with scroll
+            // With the fix, we get DOM position 0, matching the viewport at scrollTop=0.
+        });
+
+        test('should return null for collapsed (not-in-DOM) lines and fall back to percentage', () => {
+            // Context line at aligned index 5 is collapsed (no DOM element)
+            const lineOffsets = new Map<number, { top: number; height: number }>();
+            // Only addition at aligned index 10 is visible
+            lineOffsets.set(10, { top: 50, height: 10 });
+            const scrollHeight = 200;
+            const barHeight = 400;
+
+            // Line 5 is not in DOM
+            const result = calculateMarkPositionDomFixed(5, 5, lineOffsets, scrollHeight, barHeight);
+            assert.strictEqual(result, null, 'Should return null for collapsed line');
+        });
+
+        test('should correctly subtract paneContentOffsetTop from element offsetTop', () => {
+            // The pane-content element itself has an offsetTop (from the pane header above it).
+            // element.offsetTop relative to .diff-view-wrapper = paneContentOffsetTop + position_in_pane.
+            // After subtraction, the mark uses position_in_pane which matches scrollTop/scrollHeight.
+
+            const paneContentOffsetTop = 29; // typical pane-header height
+            const barHeight = 500;
+            const scrollHeight = 1000; // scrollable content height of pane-content
+
+            // Element raw offsetTop (relative to .diff-view-wrapper) = 29 + 100 = 129
+            const rawOffsetTop = 129;
+            // After subtraction: 129 - 29 = 100
+            const correctedTop = rawOffsetTop - paneContentOffsetTop;
+            const markPosition = (correctedTop / scrollHeight) * barHeight;
+
+            // Viewport at same scroll position (scrollTop = 100)
+            const viewportTop = (100 / scrollHeight) * barHeight;
+
+            assert.strictEqual(correctedTop, 100);
+            assert.strictEqual(markPosition, 50); // 100/1000 * 500
+            assert.strictEqual(viewportTop, 50);  // same: mark and viewport indicator aligned
+        });
+
+        test('without offsetTop correction, mark and viewport would be misaligned', () => {
+            // Demonstrates why subtracting paneContentOffsetTop matters.
+            const paneContentOffsetTop = 29;
+            const barHeight = 500;
+            const scrollHeight = 1000;
+
+            // Element at top of pane-content (actual scroll position 0)
+            const rawOffsetTop = paneContentOffsetTop; // 29
+            const uncorrectedMark = (rawOffsetTop / scrollHeight) * barHeight;       // 29/1000*500 = 14.5
+            const correctedMark   = ((rawOffsetTop - paneContentOffsetTop) / scrollHeight) * barHeight; // 0/1000*500 = 0
+
+            const viewportAtTop = (0 / scrollHeight) * barHeight; // 0
+
+            // Corrected mark aligns with viewport
+            assert.strictEqual(correctedMark, viewportAtTop);
+            // Uncorrected mark does not
+            assert.notStrictEqual(uncorrectedMark, viewportAtTop, 'Uncorrected mark should NOT match viewport');
+        });
+
+        test('mark positions should match viewport indicator at corresponding scroll positions', () => {
+            // With the fix, a mark at DOM offsetTop X should align with the viewport
+            // indicator when scrollTop = X (mark is at the top of the visible area).
+            const barHeight = 400;
+            const scrollHeight = 2000;
+            const clientHeight = 500;
+
+            // Change lines in the DOM at pane-content positions 600 and 620 (line height 20px)
+            const lineOffsets = new Map<number, { top: number; height: number }>();
+            lineOffsets.set(30, { top: 600, height: 20 }); // aligned index 30, DOM position 600px
+            lineOffsets.set(31, { top: 620, height: 20 }); // aligned index 31, DOM position 620px
+
+            const markResult = calculateMarkPositionDomFixed(30, 31, lineOffsets, scrollHeight, barHeight);
+            assert.ok(markResult !== null);
+
+            // Mark top = 600/2000 * 400 = 120
+            assert.strictEqual(markResult!.top, 120);
+
+            // When user scrolls so that line 30 is at the top of the viewport (scrollTop = 600),
+            // the viewport indicator top should also be at 120.
+            const viewport = calculateViewportIndicator(600, scrollHeight, clientHeight, barHeight);
+            assert.strictEqual(viewport.top, 120, 'Viewport indicator should align with mark when scrolled to that line');
+        });
+    });
 });
 

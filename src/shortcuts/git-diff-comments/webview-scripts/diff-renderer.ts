@@ -726,10 +726,16 @@ function createInlineLineElement(
     type: DiffLineType,
     side: 'old' | 'new' | 'context',
     comments: DiffComment[],
-    highlightedContent?: string
+    highlightedContent?: string,
+    alignedIndex?: number
 ): HTMLElement {
     const lineDiv = document.createElement('div');
     lineDiv.className = `inline-diff-line inline-diff-line-${type}`;
+
+    // Store aligned index for minimap positioning (maps DOM element back to alignedDiffInfo index)
+    if (alignedIndex !== undefined) {
+        lineDiv.dataset.alignedIndex = String(alignedIndex);
+    }
 
     // Store original content for accurate extraction during save
     // This preserves whitespace that might be lost when extracting from DOM
@@ -901,7 +907,9 @@ export function renderInlineDiff(): void {
         inlineContainer.appendChild(createHunkHeaderElement(hunk, 'inline'));
 
         // Render each line in the hunk
-        for (const line of hunk.lines) {
+        for (let lineIdx = 0; lineIdx < hunk.lines.length; lineIdx++) {
+            const line = hunk.lines[lineIdx];
+            const alignedIdx = hunk.alignedStartIndex + lineIdx;
             let highlightedContent: string | undefined;
             let comments: DiffComment[] = [];
             let type: DiffLineType;
@@ -938,7 +946,7 @@ export function renderInlineDiff(): void {
 
             const lineEl = createInlineLineElement(
                 oldNum, newNum, content, type, side,
-                comments, highlightedContent
+                comments, highlightedContent, alignedIdx
             );
             inlineContainer.appendChild(lineEl);
         }
@@ -1057,7 +1065,9 @@ export function expandCollapsedSection(hunkIndex: number): void {
         const placeholder = placeholders[0];
         const frag = document.createDocumentFragment();
 
-        for (const line of hiddenLines) {
+        for (let lineIdx = 0; lineIdx < hiddenLines.length; lineIdx++) {
+            const line = hiddenLines[lineIdx];
+            const alignedIdx = startIdx + lineIdx;
             let highlightedContent: string | undefined;
             let comments: DiffComment[] = [];
             let type: DiffLineType;
@@ -1092,7 +1102,7 @@ export function expandCollapsedSection(hunkIndex: number): void {
                 highlightedContent = line.newLineNum !== null ? newHighlighted[line.newLineNum - 1] : undefined;
             }
 
-            frag.appendChild(createInlineLineElement(oldNum, newNum, content, type, side, comments, highlightedContent));
+            frag.appendChild(createInlineLineElement(oldNum, newNum, content, type, side, comments, highlightedContent, alignedIdx));
         }
 
         placeholder.replaceWith(frag);
@@ -1358,40 +1368,50 @@ export function renderIndicatorBar(): void {
     const barHeight = indicatorBarInner.clientHeight;
     const scrollHeight = contentContainer.scrollHeight;
     const clientHeight = contentContainer.clientHeight;
+    // Offset of the pane-content element from its offsetParent (.diff-view-wrapper).
+    // Subtracting this from a child element's offsetTop gives the position within
+    // the scrollable area, matching the coordinate system used by scrollTop/scrollHeight.
+    const paneContentOffsetTop = contentContainer.offsetTop;
 
     // If content doesn't need scrolling, use simple percentage
     const useScrollRatio = scrollHeight > clientHeight;
 
-    const lineElements = contentContainer.querySelectorAll(
-        viewMode === 'inline' ? '.inline-diff-line' : '.diff-line'
-    );
-
     // Helper to calculate mark position and height for a range of aligned indices.
-    // In split view with hunk-based rendering, collapsed lines have no DOM element so the
-    // 1:1 mapping between alignedDiffInfo indices and `.diff-line` elements is broken.
-    // Always use percentage-based positioning in split view; use DOM-based positioning
-    // only for inline view where every aligned line has a DOM element.
+    // In inline view with hunk-based rendering, elements carry data-aligned-index so we
+    // can look them up by aligned index (not DOM array index) and use their actual scroll
+    // position, keeping marks in sync with the viewport indicator.
+    // In split view, always use percentage-based positioning because collapsed lines have
+    // no DOM element and the 1:1 mapping between alignedDiffInfo indices and DOM elements
+    // is broken.
     const useDomPositioning = viewMode === 'inline' && useScrollRatio;
 
     const calculateMarkPosition = (startIdx: number, endIdx: number): { top: number; height: number } => {
-        if (useDomPositioning && lineElements[startIdx]) {
-            const startEl = lineElements[startIdx] as HTMLElement;
-            const endEl = lineElements[endIdx] as HTMLElement;
-            const lineTop = startEl.offsetTop;
-            const endBottom = endEl.offsetTop + endEl.offsetHeight;
-            const totalHeight = endBottom - lineTop;
+        if (useDomPositioning) {
+            const startEl = contentContainer!.querySelector<HTMLElement>(
+                `.inline-diff-line[data-aligned-index="${startIdx}"]`
+            );
+            const endEl = contentContainer!.querySelector<HTMLElement>(
+                `.inline-diff-line[data-aligned-index="${endIdx}"]`
+            );
+            if (startEl && endEl) {
+                // Subtract paneContentOffsetTop so positions are relative to the scroll
+                // container's content area (matching scrollTop / scrollHeight coordinate system).
+                const lineTop = startEl.offsetTop - paneContentOffsetTop;
+                const endBottom = endEl.offsetTop - paneContentOffsetTop + endEl.offsetHeight;
+                const totalHeight = endBottom - lineTop;
 
-            return {
-                top: (lineTop / scrollHeight) * barHeight,
-                height: Math.max((totalHeight / scrollHeight) * barHeight, 2)
-            };
-        } else {
-            // Percentage-based calculation — treats the bar as a minimap of the full logical file
-            return {
-                top: (startIdx / totalLines) * barHeight,
-                height: Math.max(((endIdx - startIdx + 1) / totalLines) * barHeight, 2)
-            };
+                return {
+                    top: (lineTop / scrollHeight) * barHeight,
+                    height: Math.max((totalHeight / scrollHeight) * barHeight, 2)
+                };
+            }
         }
+        // Percentage-based fallback — treats the bar as a minimap of the full logical file.
+        // Used for split view and for inline-view lines not present in the DOM (collapsed).
+        return {
+            top: (startIdx / totalLines) * barHeight,
+            height: Math.max(((endIdx - startIdx + 1) / totalLines) * barHeight, 2)
+        };
     };
 
     // STEP 1: Render diff change marks (additions/deletions only, no comment styling)
@@ -1565,26 +1585,27 @@ function scrollToLineIndex(index: number): void {
 /**
  * Setup viewport indicator tracking
  */
-let viewportTrackingInitialized = false;
+let viewportTrackingContainer: HTMLElement | null = null;
+let viewportTrackingListener: (() => void) | null = null;
 
 function setupViewportTracking(): void {
     const viewMode = getViewMode();
-    let container: HTMLElement | null = null;
-
-    if (viewMode === 'inline') {
-        container = document.getElementById('inline-content');
-    } else {
-        // For split view, use the new-content pane as reference
-        container = document.getElementById('new-content');
-    }
+    const container: HTMLElement | null = viewMode === 'inline'
+        ? document.getElementById('inline-content')
+        : document.getElementById('new-content');
 
     if (!container) return;
+
+    // Remove old listener before adding a new one to prevent accumulation
+    if (viewportTrackingContainer && viewportTrackingListener) {
+        viewportTrackingContainer.removeEventListener('scroll', viewportTrackingListener);
+    }
 
     // Update viewport indicator on scroll
     const updateViewport = () => {
         const indicatorBarInner = document.getElementById('diff-indicator-bar-inner');
         const viewportIndicator = document.getElementById('diff-indicator-viewport');
-        if (!indicatorBarInner || !viewportIndicator || !container) return;
+        if (!indicatorBarInner || !viewportIndicator) return;
 
         const scrollTop = container.scrollTop;
         const scrollHeight = container.scrollHeight;
@@ -1607,8 +1628,8 @@ function setupViewportTracking(): void {
         viewportIndicator.style.height = `${Math.max(viewportHeight, 20)}px`;
     };
 
-    // Remove old listener if exists
-    container.removeEventListener('scroll', updateViewport);
+    viewportTrackingContainer = container;
+    viewportTrackingListener = updateViewport;
     container.addEventListener('scroll', updateViewport);
 
     // Initial update
