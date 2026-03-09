@@ -89,7 +89,7 @@ describe('RepoActivityTab: selectTask keeps chat inline', () => {
 
     beforeAll(() => {
         const start = ACTIVITY_TAB_SOURCE.indexOf('const selectTask = useCallback');
-        const end = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId])', start);
+        const end = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen])', start);
         selectTaskBlock = ACTIVITY_TAB_SOURCE.substring(start, end + 60);
     });
 
@@ -517,5 +517,123 @@ describe('ActivityListPane: reused follow-up chat tasks stay visible', () => {
 
     it('does not filter allTasks with isChatFollowUp', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain("[...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history]");
+    });
+});
+
+// ── Unseen activity tracking ───────────────────────────────────────────
+
+const UNSEEN_HOOK_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks', 'useUnseenActivity.ts'),
+    'utf-8',
+);
+
+describe('useUnseenActivity hook: structure', () => {
+    it('exports useUnseenActivity function', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('export function useUnseenActivity');
+    });
+
+    it('accepts workspaceId, history, and selectedTaskId params', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('workspaceId: string');
+        expect(UNSEEN_HOOK_SOURCE).toContain('history: any[]');
+        expect(UNSEEN_HOOK_SOURCE).toContain('selectedTaskId: string | null');
+    });
+
+    it('returns unseenTaskIds, unseenCount, and markSeen', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('unseenTaskIds');
+        expect(UNSEEN_HOOK_SOURCE).toContain('unseenCount');
+        expect(UNSEEN_HOOK_SOURCE).toContain('markSeen');
+    });
+
+    it('persists to localStorage with workspace-scoped key', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain("'coc-unseen-'");
+        expect(UNSEEN_HOOK_SOURCE).toContain('localStorage');
+    });
+
+    it('seeds all existing history as seen on first visit', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('hadPriorStateRef');
+        expect(UNSEEN_HOOK_SOURCE).toContain('seededRef');
+    });
+
+    it('auto-marks selected task as seen when it completes', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('selectedTaskId');
+        expect(UNSEEN_HOOK_SOURCE).toContain('task?.completedAt');
+    });
+
+    it('compares completedAt for unseen detection', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain("seen !== task.completedAt");
+    });
+
+    it('cleans up stale entries for tasks no longer in history', () => {
+        expect(UNSEEN_HOOK_SOURCE).toContain('lastCleanupRef');
+        expect(UNSEEN_HOOK_SOURCE).toContain('stale');
+    });
+});
+
+describe('RepoActivityTab: unseen activity wiring', () => {
+    it('imports useUnseenActivity hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain("import { useUnseenActivity } from '../hooks/useUnseenActivity'");
+    });
+
+    it('calls useUnseenActivity with workspaceId, history, and selectedTaskId', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('useUnseenActivity(workspaceId, history, selectedTaskId)');
+    });
+
+    it('destructures unseenTaskIds and markSeen from the hook', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('unseenTaskIds');
+        expect(ACTIVITY_TAB_SOURCE).toContain('markSeen');
+    });
+
+    it('calls markSeen in selectTask', () => {
+        const selectTaskStart = ACTIVITY_TAB_SOURCE.indexOf('const selectTask = useCallback');
+        const selectTaskEnd = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen])', selectTaskStart);
+        const selectTaskBlock = ACTIVITY_TAB_SOURCE.substring(selectTaskStart, selectTaskEnd + 70);
+        expect(selectTaskBlock).toContain('markSeen(id)');
+    });
+
+    it('passes unseenTaskIds to ActivityListPane', () => {
+        expect(ACTIVITY_TAB_SOURCE).toContain('unseenTaskIds={unseenTaskIds}');
+    });
+});
+
+describe('ActivityListPane: unseen activity indicators', () => {
+    it('accepts unseenTaskIds prop in interface', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('unseenTaskIds?: Set<string>');
+    });
+
+    it('destructures unseenTaskIds from props', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('unseenTaskIds,');
+    });
+
+    it('renders unseen dot indicator with data-testid', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="unseen-dot"');
+    });
+
+    it('uses blue dot circle for unseen indicator', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('rounded-full bg-[#0078d4]');
+    });
+
+    it('applies font-semibold to unseen task names', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('isUnseen && "font-semibold"');
+    });
+
+    it('shows unseen count badge on Completed Tasks header', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="unseen-count-badge"');
+    });
+
+    it('unseen count badge uses blue background pill style', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('bg-[#0078d4] text-white px-1.5 py-px rounded-full');
+    });
+
+    it('sets data-unseen attribute on unseen history cards', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-unseen={isUnseen || undefined}');
+    });
+
+    it('computes isUnseen per history task', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("unseenTaskIds?.has(task.id)");
+    });
+
+    it('highlights prompt preview text for unseen tasks', () => {
+        // Unseen tasks show prompt preview in foreground color instead of muted
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]"');
     });
 });

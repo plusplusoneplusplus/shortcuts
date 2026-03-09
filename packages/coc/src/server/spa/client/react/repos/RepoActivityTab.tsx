@@ -14,6 +14,7 @@ import { useApp } from '../context/AppContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ActivityListPane } from './ActivityListPane';
 import { ActivityDetailPane } from './ActivityDetailPane';
+import { useUnseenActivity } from '../hooks/useUnseenActivity';
 
 export interface RepoActivityTabProps {
     workspaceId: string;
@@ -129,6 +130,9 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         if (!selectedTaskId) setMobileShowDetail(false);
     }, [selectedTaskId]);
 
+    // Track unseen activity for completed tasks
+    const { unseenTaskIds, markSeen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
         if (task?.type === 'run-workflow') {
@@ -140,12 +144,13 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             queueDispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
             return;
         }
+        markSeen(id);
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(id);
         if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, workspaceId, isMobile, selectedTaskId]);
+    }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen]);
 
     // Scroll selected task card into view
     useEffect(() => {
@@ -202,6 +207,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             isMobile={isMobile}
             now={now}
             workspaceId={workspaceId}
+            unseenTaskIds={unseenTaskIds}
             onSelectTask={selectTask}
             onPauseResume={handlePauseResume}
             onRefresh={handleRefresh}

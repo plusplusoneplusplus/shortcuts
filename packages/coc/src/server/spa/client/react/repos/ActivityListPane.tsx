@@ -70,6 +70,8 @@ export interface ActivityListPaneProps {
     isMobile: boolean;
     now: number;
     workspaceId?: string;
+    /** Set of task IDs with unseen activity (bold + dot indicator). */
+    unseenTaskIds?: Set<string>;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
     onRefresh: () => void;
@@ -88,6 +90,7 @@ export function ActivityListPane({
     isMobile,
     now,
     workspaceId,
+    unseenTaskIds,
     onSelectTask,
     onPauseResume,
     onRefresh,
@@ -405,40 +408,51 @@ export function ActivityListPane({
                             onClick={() => setShowHistory(!showHistory)}
                         >
                             {showHistory ? '▼' : '▶'} Completed Tasks ({filteredHistory.length})
+                            {unseenTaskIds && (() => {
+                                const count = filteredHistory.filter(t => unseenTaskIds.has(t.id)).length;
+                                return count > 0 ? (
+                                    <span className="ml-1 text-[9px] bg-[#0078d4] text-white px-1.5 py-px rounded-full" data-testid="unseen-count-badge">{count}</span>
+                                ) : null;
+                            })()}
                         </button>
                         {showHistory && (
                             <div className="flex flex-col gap-1 mt-1">
-                                {filteredHistory.map(task => (
-                                    <Card
-                                        key={task.id}
-                                        className={cn(
-                                            "p-2 cursor-pointer",
-                                            selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
-                                        )}
-                                        onClick={() => onSelectTask(task.id, task)}
-                                        data-task-id={task.id}
-                                    >
-                                        <div className="flex items-center justify-between gap-1.5 text-xs">
-                                            <span className="flex items-center gap-1 min-w-0 truncate">
-                                                <span className="shrink-0">
-                                                    {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                {filteredHistory.map(task => {
+                                    const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    return (
+                                        <Card
+                                            key={task.id}
+                                            className={cn(
+                                                "p-2 cursor-pointer",
+                                                selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                            )}
+                                            onClick={() => onSelectTask(task.id, task)}
+                                            data-task-id={task.id}
+                                            data-unseen={isUnseen || undefined}
+                                        >
+                                            <div className="flex items-center justify-between gap-1.5 text-xs">
+                                                <span className="flex items-center gap-1 min-w-0 truncate">
+                                                    {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
+                                                    <span className="shrink-0">
+                                                        {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                                    </span>
+                                                    <span className={cn("truncate", isUnseen && "font-semibold")}>
+                                                        {task.displayName || task.type || 'Task'}
+                                                    </span>
                                                 </span>
-                                                <span className="truncate">
-                                                    {task.displayName || task.type || 'Task'}
+                                                <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                    {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
-                                            </span>
-                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
-                                                {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
-                                            </span>
-                                        </div>
-                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate">{p}</div> : null; })()}
-                                        {task.error && (
-                                            <div className="text-[10px] text-red-500 mt-0.5 truncate">
-                                                {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
                                             </div>
-                                        )}
-                                    </Card>
-                                ))}
+                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")}>{p}</div> : null; })()}
+                                            {task.error && (
+                                                <div className="text-[10px] text-red-500 mt-0.5 truncate">
+                                                    {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
+                                                </div>
+                                            )}
+                                        </Card>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
