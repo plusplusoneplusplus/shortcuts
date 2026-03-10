@@ -105,4 +105,75 @@ describe('ActivityListPane pinned chats', () => {
             expect(source).toContain('border-l-2 border-l-amber-400');
         });
     });
+
+    describe('archive support', () => {
+        describe('props interface', () => {
+            it('declares archivedChatIds prop', () => {
+                expect(source).toContain('archivedChatIds?: Set<string>');
+            });
+
+            it('declares onArchiveChat prop', () => {
+                expect(source).toContain('onArchiveChat?: (taskId: string) => void');
+            });
+
+            it('declares onUnarchiveChat prop', () => {
+                expect(source).toContain('onUnarchiveChat?: (taskId: string) => void');
+            });
+        });
+
+        describe('archived section rendering', () => {
+            it('renders an archived section with data-testid', () => {
+                expect(source).toContain('data-testid="archived-chats-section-toggle"');
+            });
+
+            it('renders archived cards with data-archived attribute', () => {
+                expect(source).toContain('data-archived="true"');
+            });
+
+            it('uses showArchived state for collapsing', () => {
+                expect(source).toContain('showArchived');
+                expect(source).toContain('setShowArchived');
+            });
+
+            it('shows box icon in archived section header', () => {
+                expect(source).toContain('📦 Archived');
+            });
+        });
+
+        describe('history filtering', () => {
+            it('computes filteredArchived from history', () => {
+                expect(source).toContain('filteredArchived');
+            });
+
+            it('computes activeHistory excluding archived tasks', () => {
+                expect(source).toContain('activeHistory');
+            });
+        });
+
+        describe('context menu archive/unarchive', () => {
+            it('includes Archive menu item', () => {
+                expect(source).toContain("'Archive'");
+            });
+
+            it('includes Unarchive menu item', () => {
+                expect(source).toContain("'Unarchive'");
+            });
+
+            it('calls onArchiveChat when archive is clicked', () => {
+                expect(source).toContain('onArchiveChat(taskId)');
+            });
+
+            it('calls onUnarchiveChat when unarchive is clicked', () => {
+                expect(source).toContain('onUnarchiveChat(taskId)');
+            });
+
+            it('includes archivedChatIds in contextMenuItems dependencies', () => {
+                const depsLine = source.substring(
+                    source.indexOf('}, [contextMenu, queued'),
+                    source.indexOf('}, [contextMenu, queued') + 300,
+                );
+                expect(depsLine).toContain('archivedChatIds');
+            });
+        });
+    });
 });

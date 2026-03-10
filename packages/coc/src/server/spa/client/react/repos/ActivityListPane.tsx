@@ -84,6 +84,12 @@ export interface ActivityListPaneProps {
     onPinChat?: (taskId: string) => void;
     /** Unpin a chat task by ID. */
     onUnpinChat?: (taskId: string) => void;
+    /** Set of archived chat task IDs (persisted server-side). */
+    archivedChatIds?: Set<string>;
+    /** Archive a chat task by ID. */
+    onArchiveChat?: (taskId: string) => void;
+    /** Unarchive a chat task by ID. */
+    onUnarchiveChat?: (taskId: string) => void;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
     onRefresh: () => void;
@@ -109,6 +115,9 @@ export function ActivityListPane({
     pinnedChatIds,
     onPinChat,
     onUnpinChat,
+    archivedChatIds,
+    onArchiveChat,
+    onUnarchiveChat,
     onSelectTask,
     onPauseResume,
     onRefresh,
@@ -149,27 +158,42 @@ export function ActivityListPane({
     );
     const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType)), [history, filterType]);
 
-    // Split history into pinned and non-pinned, preserving pin order
+    // Separate archived from non-archived history
+    const { activeHistory, filteredArchived } = useMemo(() => {
+        if (!archivedChatIds || archivedChatIds.size === 0) {
+            return { activeHistory: filteredHistory, filteredArchived: [] };
+        }
+        const active: any[] = [];
+        const archived: any[] = [];
+        for (const task of filteredHistory) {
+            if (archivedChatIds.has(task.id)) archived.push(task);
+            else active.push(task);
+        }
+        return { activeHistory: active, filteredArchived: archived };
+    }, [filteredHistory, archivedChatIds]);
+
+    // Split active history into pinned and non-pinned, preserving pin order
     const { filteredPinned, filteredUnpinned } = useMemo(() => {
         if (!pinnedChatIds || pinnedChatIds.size === 0) {
-            return { filteredPinned: [], filteredUnpinned: filteredHistory };
+            return { filteredPinned: [], filteredUnpinned: activeHistory };
         }
         const pinned: any[] = [];
         const unpinned: any[] = [];
-        const historyById = new Map(filteredHistory.map((t: any) => [t.id, t]));
+        const historyById = new Map(activeHistory.map((t: any) => [t.id, t]));
         // Preserve pin order (newest pinned first)
         for (const id of pinnedChatIds) {
             const task = historyById.get(id);
             if (task) pinned.push(task);
         }
-        for (const task of filteredHistory) {
+        for (const task of activeHistory) {
             if (!pinnedChatIds.has(task.id)) unpinned.push(task);
         }
         return { filteredPinned: pinned, filteredUnpinned: unpinned };
-    }, [filteredHistory, pinnedChatIds]);
+    }, [activeHistory, pinnedChatIds]);
 
     const [showPinned, setShowPinned] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
+    const [showArchived, setShowArchived] = useState(false);
 
     const handleCancel = async (taskId: string) => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
@@ -252,11 +276,14 @@ export function ActivityListPane({
         if (taskStatus === 'completed') {
             const isUnseen = unseenTaskIds?.has(taskId) ?? false;
             const isPinned = pinnedChatIds?.has(taskId) ?? false;
+            const isArchived = archivedChatIds?.has(taskId) ?? false;
             return [
                 ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
                 ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
                 ...(isUnseen && onMarkRead ? [{ label: 'Mark as Read', icon: '✓', onClick: () => onMarkRead(taskId) }] : []),
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
+                ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
+                ...(!isArchived && onArchiveChat ? [{ label: 'Archive', icon: '📦', onClick: () => onArchiveChat(taskId) }] : []),
             ];
         }
         const queuedIndex = queued.findIndex(t => t.id === taskId);
@@ -271,7 +298,7 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat]);
+    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -571,15 +598,61 @@ export function ActivityListPane({
                         )}
                     </div>
                 )}
-            </div>
-            {contextMenu && (
-                <ContextMenu
-                    position={{ x: contextMenu.x, y: contextMenu.y }}
-                    items={contextMenuItems}
-                    onClose={closeContextMenu}
-                />
+            {filteredArchived.length > 0 && (
+                <div>
+                    <button
+                        className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
+                        onClick={() => setShowArchived(!showArchived)}
+                        data-testid="archived-chats-section-toggle"
+                    >
+                        {showArchived ? '▼' : '▶'} 📦 Archived ({filteredArchived.length})
+                    </button>
+                    {showArchived && (
+                        <div className="flex flex-col gap-1">
+                            {filteredArchived.map(task => {
+                                const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                return (
+                                    <Card
+                                        key={task.id}
+                                        className={cn(
+                                            "p-2 cursor-pointer opacity-60",
+                                            selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                        )}
+                                        onClick={() => onSelectTask(task.id, task)}
+                                        onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                        data-task-id={task.id}
+                                        data-archived="true"
+                                    >
+                                        <div className="flex items-center justify-between gap-1.5 text-xs">
+                                            <span className="flex items-center gap-1 min-w-0 truncate">
+                                                <span className="shrink-0">
+                                                    {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
+                                                </span>
+                                                <span className={cn("truncate", isUnseen && "font-semibold")}>
+                                                    {task.displayName || task.type || 'Task'}
+                                                </span>
+                                            </span>
+                                            <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
+                                                {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
+                                            </span>
+                                        </div>
+                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]">{p}</div> : null; })()}
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             )}
-        </>
+        </div>
+        {contextMenu && (
+            <ContextMenu
+                position={{ x: contextMenu.x, y: contextMenu.y }}
+                items={contextMenuItems}
+                onClose={closeContextMenu}
+            />
+        )}
+    </>
     );
 }
 
