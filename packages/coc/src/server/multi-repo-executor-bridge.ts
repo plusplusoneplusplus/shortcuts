@@ -132,9 +132,26 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     /**
      * Look up the repoId (workspace ID) for a given root path.
      * Returns the registered workspace ID, or falls back to the normalized path.
+     * Supports subdirectory paths: if `rootPath` is under a registered workspace,
+     * returns that workspace's ID (longest-prefix match wins for nested workspaces).
      */
     getRepoIdForPath(rootPath: string): string {
-        return this.pathToRepoId.get(path.resolve(rootPath)) ?? path.resolve(rootPath);
+        const resolved = path.resolve(rootPath);
+        // 1. Exact match (most common — task workingDirectory IS the workspace root)
+        const exact = this.pathToRepoId.get(resolved);
+        if (exact) return exact;
+        // 2. Prefix match — task workingDirectory is a subdirectory of a registered workspace.
+        // Find the longest matching prefix (most specific workspace wins).
+        let bestId: string | undefined;
+        let bestLen = 0;
+        for (const [wsPath, wsId] of this.pathToRepoId) {
+            if (resolved.startsWith(wsPath + path.sep) && wsPath.length > bestLen) {
+                bestId = wsId;
+                bestLen = wsPath.length;
+            }
+        }
+        if (bestId) return bestId;
+        return resolved; // fallback: path not under any registered workspace
     }
 
     /**

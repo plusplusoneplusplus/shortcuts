@@ -38,16 +38,6 @@ interface WorkspaceLike {
     rootPath?: string;
 }
 
-interface QueueMessageTaskLike {
-    workingDirectory?: string;
-    payload?: { workingDirectory?: string };
-}
-
-interface QueueMessageLike {
-    queued?: QueueMessageTaskLike[];
-    running?: QueueMessageTaskLike[];
-    history?: QueueMessageTaskLike[];
-}
 
 function normalizePath(pathValue: string): string {
     return toForwardSlashes(pathValue);
@@ -58,9 +48,6 @@ function getFileName(path: string): string {
     return normalized.split('/').pop() || path;
 }
 
-function normalizeComparablePath(pathValue: string): string {
-    return normalizePath(pathValue).replace(/\/+$/, '').toLowerCase();
-}
 
 function resolveWorkspaceForPath(filePath: string, workspaces: WorkspaceLike[]): WorkspaceLike | null {
     const normalizedPath = normalizePath(filePath);
@@ -93,38 +80,11 @@ function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | n
     return normalizedPath.slice(tasksRoot.length + 1);
 }
 
-function getQueueWorkingDirectory(queue: QueueMessageLike): string | null {
-    const buckets = [queue.running, queue.queued, queue.history];
-    for (const bucket of buckets) {
-        if (!Array.isArray(bucket)) continue;
-        for (const task of bucket) {
-            const candidate = task?.workingDirectory || task?.payload?.workingDirectory;
-            if (typeof candidate === 'string' && candidate.trim()) {
-                return candidate;
-            }
-        }
-    }
-    return null;
-}
-
-function resolveWorkspaceIdForQueueMessage(
-    queue: QueueMessageLike,
-    workspaces: WorkspaceLike[],
-): string | null {
-    const workingDirectory = getQueueWorkingDirectory(queue);
-    if (!workingDirectory) return null;
-    const normalizedWorkingDirectory = normalizeComparablePath(workingDirectory);
-    const matchedWorkspace = workspaces.find(ws =>
-        typeof ws.rootPath === 'string' && normalizeComparablePath(ws.rootPath) === normalizedWorkingDirectory
-    );
-    return matchedWorkspace?.id ?? null;
-}
 
 function AppInner() {
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { toasts, addToast, removeToast } = useToast();
-    const repoIdAliasRef = useRef<Record<string, string>>({});
     const prevWsStatusRef = useRef(appState.wsStatus);
     const hasConnectedRef = useRef(false);
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
@@ -169,27 +129,8 @@ function AppInner() {
             case 'queue-updated':
                 if (msg.queue) {
                     if (msg.queue.repoId) {
-                        const queueRepoId = String(msg.queue.repoId);
-                        queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: queueRepoId, queue: msg.queue });
-
-                        // Per-repo WS events use internal queue repo IDs (sha256 hash).
-                        // Mirror updates onto workspace IDs so repo tabs/badges stay in sync.
-                        const resolvedWorkspaceId = resolveWorkspaceIdForQueueMessage(msg.queue, appState.workspaces as WorkspaceLike[]);
-                        if (resolvedWorkspaceId) {
-                            repoIdAliasRef.current[queueRepoId] = resolvedWorkspaceId;
-                            if (resolvedWorkspaceId !== queueRepoId) {
-                                queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: resolvedWorkspaceId, queue: msg.queue });
-                            }
-                        } else {
-                            const aliasedWorkspaceId = repoIdAliasRef.current[queueRepoId];
-                            // Only use alias if it still maps to a currently-known workspace,
-                            // preventing stale entries from injecting events into removed repos.
-                            const aliasStillValid = aliasedWorkspaceId &&
-                                (appState.workspaces as WorkspaceLike[]).some(ws => ws.id === aliasedWorkspaceId);
-                            if (aliasStillValid && aliasedWorkspaceId !== queueRepoId) {
-                                queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId, queue: msg.queue });
-                            }
-                        }
+                        // Server always sends workspace UUID as repoId (see multi-repo-executor-bridge.ts).
+                        queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: String(msg.queue.repoId), queue: msg.queue });
                     } else {
                         queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
                         // Fetch history if not included

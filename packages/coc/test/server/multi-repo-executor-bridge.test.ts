@@ -416,4 +416,36 @@ describe('MultiRepoQueueExecutorBridge', () => {
             bridge.dispose();
         });
     });
+
+    // --------------------------------------------------------------------
+    // getRepoIdForPath — subdirectory prefix matching
+    // --------------------------------------------------------------------
+
+    describe('getRepoIdForPath subdirectory prefix matching', () => {
+        it('returns workspace id for a subdirectory of a registered workspace', () => {
+            const { bridge } = createBridge();
+            const sep = require('path').sep;
+            bridge.registerRepoId('ws-abc', '/home/user/repo');
+            expect(bridge.getRepoIdForPath('/home/user/repo/src')).toBe('ws-abc');
+            expect(bridge.getRepoIdForPath('/home/user/repo/src/nested/deep')).toBe('ws-abc');
+            bridge.dispose();
+        });
+
+        it('returns most specific workspace id when paths overlap', () => {
+            const { bridge } = createBridge();
+            bridge.registerRepoId('ws-parent', '/home/user/repo');
+            bridge.registerRepoId('ws-child', '/home/user/repo/packages/sub');
+            expect(bridge.getRepoIdForPath('/home/user/repo/packages/sub/src')).toBe('ws-child');
+            expect(bridge.getRepoIdForPath('/home/user/repo/other')).toBe('ws-parent');
+            bridge.dispose();
+        });
+
+        it('falls back to absolute path for unregistered paths', () => {
+            const { bridge } = createBridge();
+            const p = require('path');
+            const unregistered = p.resolve('/home/user/unrelated/path');
+            expect(bridge.getRepoIdForPath(unregistered)).toBe(unregistered);
+            bridge.dispose();
+        });
+    });
 });
