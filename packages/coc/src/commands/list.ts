@@ -20,7 +20,6 @@ import {
     gray,
     dim,
     printError,
-    printHeader,
     printWarning,
 } from '../logger';
 import type { OutputFormat } from '../output-formatter';

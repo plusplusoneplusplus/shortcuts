@@ -21,7 +21,6 @@ import type { PipelineConfig, FilterConfig } from '@plusplusoneplusplus/pipeline
 import {
     printSuccess,
     printError,
-    printWarning,
     printHeader,
     green,
     yellow,

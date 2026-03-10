@@ -9,7 +9,6 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import { findPromptFiles } from '@plusplusoneplusplus/pipeline-core';
 import type { PromptFileInfo } from '@plusplusoneplusplus/pipeline-core';
 

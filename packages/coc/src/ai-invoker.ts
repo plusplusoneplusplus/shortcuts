@@ -21,7 +21,6 @@ import type {
     AIInvoker,
     AIInvokerOptions,
     AIInvokerResult,
-    CopilotSDKService,
     MCPServerConfig,
     SendMessageOptions,
     Tool,
