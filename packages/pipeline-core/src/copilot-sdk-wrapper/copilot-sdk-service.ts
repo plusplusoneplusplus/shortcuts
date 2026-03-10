@@ -78,55 +78,6 @@ interface StreamingResult {
 }
 
 /**
- * A session kept alive for multi-turn conversation.
- */
-interface KeptAliveSession {
-    session: ICopilotSession;
-    client: ICopilotClient;
-    createdAt: number;
-    lastUsedAt: number;
-    workingDirectory?: string;
-}
-
-/**
- * Options for follow-up messages on a kept-alive session.
- */
-export interface SendFollowUpOptions {
-    /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS) */
-    timeoutMs?: number;
-    /**
-     * Idle timeout in milliseconds. Resets every time a streaming chunk or
-     * message event is received. See SendMessageOptions.idleTimeoutMs.
-     * @default DEFAULT_AI_IDLE_TIMEOUT_MS (1 hour)
-     */
-    idleTimeoutMs?: number;
-    /** Callback for streaming chunks */
-    onStreamingChunk?: (chunk: string) => void;
-    /** Callback for tool execution lifecycle events */
-    onToolEvent?: (event: ToolEvent) => void;
-    /** Working directory used to initialize the SDK client when resuming sessions */
-    workingDirectory?: string;
-    /** Permission handler for resumed sessions */
-    onPermissionRequest?: PermissionHandler;
-    /** File or directory attachments to include with the follow-up message */
-    attachments?: Attachment[];
-    /** Custom tools to register on the resumed session */
-    tools?: any[];
-    /** System message configuration for the resumed session */
-    systemMessage?: SystemMessageConfig;
-    /**
-     * Agent mode to set on the session before sending the follow-up.
-     * Controls how the AI interacts: 'interactive' (ask), 'plan', or 'autopilot'.
-     */
-    mode?: AgentMode;
-    /**
-     * Switch the model before sending this follow-up message.
-     * Issues a `session.model.switchTo` RPC call; conversation history is preserved.
-     */
-    model?: string;
-}
-
-/**
  * Options for creating a CopilotClient
  */
 interface ICopilotClientOptions {
@@ -162,24 +113,11 @@ interface ISessionOptions {
 }
 
 /**
- * Options for resuming an existing session.
- * Mirrors the SDK's ResumeSessionConfig subset we rely on.
- */
-interface IResumeSessionOptions {
-    streaming?: boolean;
-    onPermissionRequest?: PermissionHandler;
-    mcpServers?: Record<string, MCPServerConfig>;
-    tools?: any[];
-    systemMessage?: SystemMessageConfig;
-}
-
-/**
  * Interface for the CopilotClient from @github/copilot-sdk
  * We define this interface to avoid direct type dependency on the SDK
  */
 interface ICopilotClient {
     createSession(options?: ISessionOptions): Promise<ICopilotSession>;
-    resumeSession?(sessionId: string, options?: IResumeSessionOptions): Promise<ICopilotSession>;
     stop(): Promise<void>;
 }
 
@@ -348,18 +286,6 @@ export class CopilotSDKService {
 
     /** Map of active sessions for cancellation support */
     private activeSessions: Map<string, ICopilotSession> = new Map();
-
-    /** Sessions kept alive for multi-turn conversation */
-    private keptAliveSessions: Map<string, KeptAliveSession> = new Map();
-
-    /** Default idle timeout for kept-alive sessions (10 minutes) */
-    private static readonly KEEP_ALIVE_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
-
-    /** Cleanup interval for kept-alive sessions (1 minute) */
-    private static readonly KEEP_ALIVE_CLEANUP_INTERVAL_MS = 60 * 1000;
-
-    /** Timer handle for kept-alive session cleanup */
-    private keepAliveCleanupTimer?: ReturnType<typeof setInterval>;
 
     /** Default timeout for SDK requests */
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
@@ -763,33 +689,18 @@ export class CopilotSDKService {
             // Clean up session
             if (session) {
                 this.untrackSession(session.sessionId);
-                if (options.keepAlive && result?.success) {
-                    // Preserve session and its client for follow-up messages
-                    const now = Date.now();
-                    this.keptAliveSessions.set(session.sessionId, {
-                        session,
-                        client: client!,
-                        createdAt: now,
-                        lastUsedAt: now,
-                        workingDirectory: options.workingDirectory,
-                    });
-                    this.ensureKeepAliveCleanupTimer();
-                    logger.debug(LogCategory.AI,
-                        `CopilotSDKService [${session.sessionId}]: Session kept alive for follow-up`);
-                } else {
+                try {
+                    await session.destroy();
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed`);
+                } catch (destroyError) {
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
+                }
+                // Stop the per-session client
+                if (client) {
                     try {
-                        await session.destroy();
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed`);
-                    } catch (destroyError) {
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
-                    }
-                    // Stop the per-session client
-                    if (client) {
-                        try {
-                            await client.stop();
-                        } catch {
-                            // ignore — client may already be dead
-                        }
+                        await client.stop();
+                    } catch {
+                        // ignore — client may already be dead
                     }
                 }
             } else if (client) {
@@ -801,310 +712,6 @@ export class CopilotSDKService {
                 }
             }
         }
-    }
-
-    /**
-     * Try to resume a session from the SDK backing store and register it as kept-alive.
-     */
-    private async resumeKeptAliveSession(
-        sessionId: string,
-        options?: SendFollowUpOptions,
-    ): Promise<KeptAliveSession | undefined> {
-        const logger = getLogger();
-        const timeoutMs = options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
-
-        try {
-            const client = await this.createClient(options?.workingDirectory);
-            if (typeof client.resumeSession !== 'function') {
-                // Client doesn't support resume — stop it
-                try { await client.stop(); } catch { /* ignore */ }
-                return undefined;
-            }
-
-            const resumeOptions: IResumeSessionOptions = {};
-            // The SDK requires onPermissionRequest; default to denyAll when none is provided.
-            resumeOptions.onPermissionRequest = options?.onPermissionRequest || denyAllPermissions;
-            if (options?.onStreamingChunk || timeoutMs > 120000) {
-                resumeOptions.streaming = true;
-            }
-            if (options?.tools) {
-                resumeOptions.tools = options.tools;
-            }
-            if (options?.systemMessage) {
-                resumeOptions.systemMessage = options.systemMessage;
-            }
-
-            const session = await client.resumeSession(sessionId, resumeOptions);
-            const now = Date.now();
-            const entry: KeptAliveSession = {
-                session,
-                client,
-                createdAt: now,
-                lastUsedAt: now,
-                workingDirectory: options?.workingDirectory,
-            };
-            this.keptAliveSessions.set(sessionId, entry);
-            this.ensureKeepAliveCleanupTimer();
-            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Session resumed for follow-up`);
-            return entry;
-        } catch (error) {
-            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Resume failed: ${error}`);
-            return undefined;
-        }
-    }
-
-    /**
-     * Check whether a session is available for follow-up.
-     * If needed, attempts to resume it from the SDK by session ID.
-     */
-    public async canResumeSession(
-        sessionId: string,
-        options?: Pick<SendFollowUpOptions, 'workingDirectory' | 'onPermissionRequest'>,
-    ): Promise<boolean> {
-        if (this.keptAliveSessions.has(sessionId)) {
-            return true;
-        }
-        const resumed = await this.resumeKeptAliveSession(sessionId, options);
-        return resumed !== undefined;
-    }
-
-    /**
-     * Send a follow-up message to a kept-alive session.
-     *
-     * @param sessionId - The session ID returned from a previous sendMessage({ keepAlive: true }) call
-     * @param prompt - The follow-up prompt
-     * @param options - Optional timeout and streaming settings
-     * @returns SDKInvocationResult with the same sessionId
-     */
-    public async sendFollowUp(
-        sessionId: string,
-        prompt: string,
-        options?: SendFollowUpOptions,
-    ): Promise<SDKInvocationResult> {
-        const logger = getLogger();
-        let entry = this.keptAliveSessions.get(sessionId);
-        if (!entry) {
-            entry = await this.resumeKeptAliveSession(sessionId, options);
-        }
-        if (!entry) {
-            return {
-                success: false,
-                error: `Session ${sessionId} not found or has expired`,
-            };
-        }
-
-        const { session } = entry;
-        const startTime = Date.now();
-
-        // Set agent mode if specified
-        if (options?.mode && session.rpc?.mode) {
-            await session.rpc.mode.set({ mode: options.mode });
-            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Mode set to '${options.mode}'`);
-        }
-
-        // Switch model if specified
-        if (options?.model && session.rpc?.model) {
-            await session.rpc.model.switchTo({ modelId: options.model });
-            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Model switched to '${options.model}'`);
-        }
-
-        // Track for cancellation during the call
-        this.trackSession(session);
-
-        try {
-            return await this.executeFollowUpSend(entry, sessionId, prompt, options, startTime);
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            const isConnectionError = CopilotSDKService.isConnectionDisposedError(error);
-
-            logger.error(LogCategory.AI,
-                `CopilotSDKService [${sessionId}]: Follow-up failed: ${errorMessage}`,
-                error instanceof Error ? error : undefined);
-
-            // Destroy the broken session and its client
-            this.keptAliveSessions.delete(sessionId);
-            try { await session.destroy(); } catch { /* ignore */ }
-            try { await entry.client.stop(); } catch { /* ignore */ }
-
-            // Retry once via resume if this was a connection error
-            if (isConnectionError) {
-                logger.info(LogCategory.AI,
-                    `CopilotSDKService [${sessionId}]: Connection disposed, attempting resume-and-retry`);
-                const resumed = await this.resumeKeptAliveSession(sessionId, options);
-                if (resumed) {
-                    this.trackSession(resumed.session);
-                    try {
-                        return await this.executeFollowUpSend(resumed, sessionId, prompt, options, startTime);
-                    } catch (retryError) {
-                        const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
-                        logger.error(LogCategory.AI,
-                            `CopilotSDKService [${sessionId}]: Retry after resume also failed: ${retryMsg}`);
-                        this.keptAliveSessions.delete(sessionId);
-                        try { await resumed.session.destroy(); } catch { /* ignore */ }
-                        try { await resumed.client.stop(); } catch { /* ignore */ }
-                    } finally {
-                        this.untrackSession(sessionId);
-                    }
-                }
-            }
-
-            return { success: false, error: `Follow-up error: ${errorMessage}`, sessionId };
-        } finally {
-            this.untrackSession(sessionId);
-        }
-    }
-
-    /**
-     * Explicitly destroy a kept-alive session and free its resources.
-     *
-     * @param sessionId - The session ID to destroy
-     * @returns true if the session was found and destroyed, false if not found
-     */
-    public async destroyKeptAliveSession(sessionId: string): Promise<boolean> {
-        const logger = getLogger();
-        const entry = this.keptAliveSessions.get(sessionId);
-        if (!entry) {
-            logger.debug(LogCategory.AI,
-                `CopilotSDKService [${sessionId}]: Kept-alive session not found for destroy`);
-            return false;
-        }
-
-        this.keptAliveSessions.delete(sessionId);
-        try {
-            await entry.session.destroy();
-            logger.debug(LogCategory.AI,
-                `CopilotSDKService [${sessionId}]: Kept-alive session destroyed`);
-        } catch (error) {
-            logger.debug(LogCategory.AI,
-                `CopilotSDKService [${sessionId}]: Warning: Error destroying kept-alive session: ${error}`);
-        }
-        try {
-            await entry.client.stop();
-        } catch {
-            // ignore — client may already be dead
-        }
-        return true;
-    }
-
-    /**
-     * Check whether a kept-alive session exists (without modifying it).
-     */
-    public hasKeptAliveSession(sessionId: string): boolean {
-        return this.keptAliveSessions.has(sessionId);
-    }
-
-    /**
-     * Get the current agent mode of a kept-alive session.
-     *
-     * @param sessionId - The session ID of a kept-alive session
-     * @returns The current mode, or undefined if the session doesn't support rpc.mode
-     * @throws If the session is not found
-     */
-    public async getMode(sessionId: string): Promise<AgentMode | undefined> {
-        const entry = this.keptAliveSessions.get(sessionId);
-        if (!entry) {
-            throw new Error(`Session ${sessionId} not found or has expired`);
-        }
-        if (!entry.session.rpc?.mode) {
-            return undefined;
-        }
-        const result = await entry.session.rpc.mode.get();
-        return result.mode as AgentMode;
-    }
-
-    /**
-     * Set the agent mode on a kept-alive session.
-     *
-     * @param sessionId - The session ID of a kept-alive session
-     * @param mode - The mode to set: 'interactive', 'plan', or 'autopilot'
-     * @throws If the session is not found or doesn't support rpc.mode
-     */
-    public async setMode(sessionId: string, mode: AgentMode): Promise<void> {
-        const logger = getLogger();
-        const entry = this.keptAliveSessions.get(sessionId);
-        if (!entry) {
-            throw new Error(`Session ${sessionId} not found or has expired`);
-        }
-        if (!entry.session.rpc?.mode) {
-            throw new Error(`Session ${sessionId} does not support rpc.mode`);
-        }
-        await entry.session.rpc.mode.set({ mode });
-        logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Mode set to '${mode}'`);
-    }
-
-    /**
-     * Switch the AI model on a kept-alive session.
-     * Takes effect for the next message; conversation history is preserved.
-     *
-     * @param sessionId - The session ID of a kept-alive session
-     * @param model - The model ID to switch to (e.g., 'gpt-4.1', 'claude-sonnet-4.6')
-     * @throws If the session is not found or doesn't support rpc.model
-     */
-    public async setSessionModel(sessionId: string, model: string): Promise<void> {
-        const logger = getLogger();
-        const entry = this.keptAliveSessions.get(sessionId);
-        if (!entry) {
-            throw new Error(`Session ${sessionId} not found or has expired`);
-        }
-        if (!entry.session.rpc?.model) {
-            throw new Error(`Session ${sessionId} does not support rpc.model`);
-        }
-        await entry.session.rpc.model.switchTo({ modelId: model });
-        logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Model switched to '${model}'`);
-    }
-
-    /**
-     * Start the keep-alive cleanup timer (idempotent).
-     */
-    private ensureKeepAliveCleanupTimer(): void {
-        if (this.keepAliveCleanupTimer) { return; }
-        this.keepAliveCleanupTimer = setInterval(() => {
-            this.cleanupIdleKeptAliveSessions().catch(() => { /* ignore */ });
-        }, CopilotSDKService.KEEP_ALIVE_CLEANUP_INTERVAL_MS);
-
-        // Don't block Node exit
-        if (this.keepAliveCleanupTimer.unref) {
-            this.keepAliveCleanupTimer.unref();
-        }
-    }
-
-    /**
-     * Destroy kept-alive sessions that have been idle beyond the timeout.
-     */
-    private async cleanupIdleKeptAliveSessions(): Promise<number> {
-        const logger = getLogger();
-        const now = Date.now();
-        const expired: string[] = [];
-
-        for (const [sessionId, entry] of this.keptAliveSessions) {
-            if (now - entry.lastUsedAt > CopilotSDKService.KEEP_ALIVE_IDLE_TIMEOUT_MS) {
-                expired.push(sessionId);
-            }
-        }
-
-        for (const sessionId of expired) {
-            const entry = this.keptAliveSessions.get(sessionId);
-            if (entry) {
-                this.keptAliveSessions.delete(sessionId);
-                try { await entry.session.destroy(); } catch { /* ignore */ }
-                try { await entry.client.stop(); } catch { /* ignore */ }
-                logger.debug(LogCategory.AI,
-                    `CopilotSDKService [${sessionId}]: Idle kept-alive session cleaned up`);
-            }
-        }
-
-        if (expired.length > 0) {
-            logger.debug(LogCategory.AI,
-                `CopilotSDKService: Cleaned up ${expired.length} idle kept-alive session(s)`);
-        }
-
-        // Stop the timer when no sessions remain
-        if (this.keptAliveSessions.size === 0 && this.keepAliveCleanupTimer) {
-            clearInterval(this.keepAliveCleanupTimer);
-            this.keepAliveCleanupTimer = undefined;
-        }
-
-        return expired.length;
     }
 
     /**
@@ -1194,57 +801,6 @@ export class CopilotSDKService {
     }
 
     /**
-     * Execute the follow-up send (non-streaming or streaming) on a session entry.
-     * Extracted to allow retry without duplicating logic.
-     */
-    private async executeFollowUpSend(
-        entry: KeptAliveSession,
-        sessionId: string,
-        prompt: string,
-        options: SendFollowUpOptions | undefined,
-        startTime: number,
-    ): Promise<SDKInvocationResult> {
-        const logger = getLogger();
-        const { session } = entry;
-        const timeoutMs = options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
-
-        let response: string;
-        let tokenUsage: TokenUsage | undefined;
-        let turnCount = 0;
-        let capturedToolCalls: ToolCall[] | undefined;
-
-        if ((options?.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
-            const idleTimeoutMs = options?.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
-            const streamingResult = await this.sendWithStreaming(
-                session, prompt, timeoutMs, options?.onStreamingChunk, undefined, options?.onToolEvent, idleTimeoutMs, options?.attachments,
-            );
-            response = streamingResult.response;
-            tokenUsage = streamingResult.tokenUsage;
-            turnCount = streamingResult.turnCount;
-            capturedToolCalls = streamingResult.toolCalls;
-        } else {
-            const sendResult = await this.sendWithTimeout(session, prompt, timeoutMs, options?.attachments);
-            response = sendResult?.data?.content || '';
-        }
-
-        // Update last-used timestamp
-        entry.lastUsedAt = Date.now();
-
-        const durationMs = Date.now() - startTime;
-        logger.debug(LogCategory.AI,
-            `CopilotSDKService [${sessionId}]: Follow-up completed in ${durationMs}ms`);
-
-        if (!response && turnCount > 0) {
-            return { success: true, response: '', sessionId, tokenUsage, toolCalls: capturedToolCalls };
-        }
-        if (!response) {
-            return { success: false, error: 'No response received', sessionId, tokenUsage, toolCalls: capturedToolCalls };
-        }
-
-        return { success: true, response, sessionId, tokenUsage, toolCalls: capturedToolCalls };
-    }
-
-    /**
      * Clean up resources. Should be called when the extension deactivates.
      */
     public async cleanup(): Promise<void> {
@@ -1258,22 +814,6 @@ export class CopilotSDKService {
         }
         await Promise.allSettled(abortPromises);
         this.activeSessions.clear();
-
-        // Destroy all kept-alive sessions and their per-session clients
-        const keepAlivePromises: Promise<void>[] = [];
-        for (const [, entry] of this.keptAliveSessions) {
-            keepAlivePromises.push(
-                entry.session.destroy().catch(() => {}).then(() =>
-                    entry.client.stop().catch(() => {})
-                )
-            );
-        }
-        this.keptAliveSessions.clear();
-        if (this.keepAliveCleanupTimer) {
-            clearInterval(this.keepAliveCleanupTimer);
-            this.keepAliveCleanupTimer = undefined;
-        }
-        await Promise.allSettled(keepAlivePromises);
 
         this.removeStreamErrorGuard();
         this.sdkModule = null;
@@ -1299,7 +839,6 @@ export class CopilotSDKService {
                 prompt,
                 model: options?.model ?? 'gpt-4.1',
                 timeoutMs: options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS,
-                keepAlive: false,
                 workingDirectory: options?.cwd,
             });
 

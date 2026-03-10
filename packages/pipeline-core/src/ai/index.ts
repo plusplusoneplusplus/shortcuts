@@ -75,7 +75,6 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
-    SendFollowUpOptions,
     // MCP Config Loader
     MCPConfigFile,
     MCPConfigLoadResult,

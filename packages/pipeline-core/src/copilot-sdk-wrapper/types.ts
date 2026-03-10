@@ -368,13 +368,6 @@ export interface SendMessageOptions {
     systemMessage?: SystemMessageConfig;
 
     /**
-     * When true, the session is NOT destroyed after the first message completes.
-     * The returned `sessionId` can be passed to `sendFollowUp()` for multi-turn conversation.
-     * @default false
-     */
-    keepAlive?: boolean;
-
-    /**
      * Agent mode to set on the session after creation.
      * Controls how the AI interacts: 'interactive' (ask), 'plan', or 'autopilot'.
      * When not specified, the SDK default mode is used.

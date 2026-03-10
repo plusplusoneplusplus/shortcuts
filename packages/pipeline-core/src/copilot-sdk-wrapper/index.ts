@@ -70,7 +70,6 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
-    SendFollowUpOptions,
     tryConvertImageFileToDataUrl,
 } from './copilot-sdk-service';
 
