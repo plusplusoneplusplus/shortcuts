@@ -319,17 +319,6 @@ export class MapReduceExecutor {
             return await this.limiter.all(tasks, this.options.isCancelled);
         } catch (error) {
             if (error instanceof CancellationError) {
-                // Return cancelled results for any remaining items
-                const processedCount = completedCount + failedCount;
-                const cancelledResults: MapResult<TMapOutput>[] = [];
-                for (let i = processedCount; i < workItems.length; i++) {
-                    cancelledResults.push({
-                        workItemId: workItems[i].id,
-                        success: false,
-                        error: 'Operation cancelled',
-                        executionTimeMs: 0
-                    });
-                }
                 throw error; // Re-throw to propagate cancellation
             }
             throw error;
