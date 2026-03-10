@@ -12,8 +12,6 @@ import {
     getCopilotSDKService,
     CopilotSDKService,
     type SendMessageOptions,
-    type PermissionRequest,
-    type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { SeedsCommandOptions, ThemeSeed } from '../types';
 import { buildSeedsPrompt } from './prompts';
@@ -22,6 +20,7 @@ import { generateHeuristicSeeds } from './heuristic-fallback';
 import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
 import { resolveWorkingDirectory } from '../utils/resolve-working-directory';
+import { readOnlyPermissions } from '../utils/read-only-permissions';
 
 // ============================================================================
 // Retry Constants
@@ -49,21 +48,6 @@ const DEFAULT_SEEDS_TIMEOUT_MS = 1_800_000;
 
 /** Available tools for seeds (read-only file exploration) */
 const SEEDS_TOOLS = ['view', 'grep', 'glob'];
-
-// ============================================================================
-// Permission Handler
-// ============================================================================
-
-/**
- * Read-only permission handler for seeds sessions.
- * Allows file reads, denies everything else (writes, shell, MCP, URLs).
- */
-function readOnlyPermissions(request: PermissionRequest): PermissionRequestResult {
-    if (request.kind === 'read') {
-        return { kind: 'approved' };
-    }
-    return { kind: 'denied-by-rules' };
-}
 
 // ============================================================================
 // Retry Helper

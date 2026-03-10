@@ -10,8 +10,6 @@
 import {
     getCopilotSDKService,
     type SendMessageOptions,
-    type PermissionRequest,
-    type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     DiscoveryOptions,
@@ -35,6 +33,7 @@ import {
     getCachedDomainSubGraph,
     saveDomainSubGraph,
 } from '../cache';
+import { readOnlyPermissions } from '../utils/read-only-permissions';
 
 // ============================================================================
 // Constants
@@ -51,20 +50,6 @@ const PER_DOMAIN_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 /** Available tools for discovery (read-only file exploration) */
 const DISCOVERY_TOOLS = ['view', 'grep', 'glob'];
-
-// ============================================================================
-// Permission Handler
-// ============================================================================
-
-/**
- * Read-only permission handler.
- */
-function readOnlyPermissions(request: PermissionRequest): PermissionRequestResult {
-    if (request.kind === 'read') {
-        return { kind: 'approved' };
-    }
-    return { kind: 'denied-by-rules' };
-}
 
 // ============================================================================
 // File Count Estimation

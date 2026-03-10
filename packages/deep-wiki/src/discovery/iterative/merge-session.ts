@@ -10,8 +10,6 @@
 import {
     getCopilotSDKService,
     type SendMessageOptions,
-    type PermissionRequest,
-    type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ComponentGraph, ComponentInfo, CategoryInfo } from '../../types';
 import type { ThemeProbeResult, MergeResult } from './types';
@@ -21,6 +19,7 @@ import { parseMergeResponse } from './merge-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
 import { getErrorMessage } from '../../utils/error-utils';
 import { resolveWorkingDirectory } from '../../utils/resolve-working-directory';
+import { readOnlyPermissions } from '../../utils/read-only-permissions';
 
 // ============================================================================
 // Constants
@@ -31,21 +30,6 @@ const DEFAULT_MERGE_TIMEOUT_MS = 1_800_000;
 
 /** Available tools for merge (read-only file exploration) */
 const MERGE_TOOLS = ['view', 'grep', 'glob'];
-
-// ============================================================================
-// Permission Handler
-// ============================================================================
-
-/**
- * Read-only permission handler for merge sessions.
- * Allows file reads, denies everything else (writes, shell, MCP, URLs).
- */
-function readOnlyPermissions(request: PermissionRequest): PermissionRequestResult {
-    if (request.kind === 'read') {
-        return { kind: 'approved' };
-    }
-    return { kind: 'denied-by-rules' };
-}
 
 // ============================================================================
 // Merge Session

@@ -10,8 +10,6 @@
 import {
     getCopilotSDKService,
     type SendMessageOptions,
-    type PermissionRequest,
-    type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ThemeSeed } from '../../types';
 import type { ThemeProbeResult } from './types';
@@ -20,6 +18,7 @@ import { parseProbeResponse } from './probe-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
 import { getErrorMessage } from '../../utils/error-utils';
 import { resolveWorkingDirectory } from '../../utils/resolve-working-directory';
+import { readOnlyPermissions } from '../../utils/read-only-permissions';
 
 // ============================================================================
 // Constants
@@ -30,21 +29,6 @@ const DEFAULT_PROBE_TIMEOUT_MS = 1_800_000;
 
 /** Available tools for probe (read-only file exploration) */
 const PROBE_TOOLS = ['view', 'grep', 'glob'];
-
-// ============================================================================
-// Permission Handler
-// ============================================================================
-
-/**
- * Read-only permission handler for probe sessions.
- * Allows file reads, denies everything else (writes, shell, MCP, URLs).
- */
-function readOnlyPermissions(request: PermissionRequest): PermissionRequestResult {
-    if (request.kind === 'read') {
-        return { kind: 'approved' };
-    }
-    return { kind: 'denied-by-rules' };
-}
 
 // ============================================================================
 // Probe Session
