@@ -134,7 +134,7 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
         return { taskId, processId };
     }
 
-    it('creates a new process (cold resume) when sdkSessionId is null', async () => {
+    it('resumes via warm path even when sdkSessionId is null (session always alive)', async () => {
         const { taskId, processId } = await enqueueChatTask();
 
         // Override process: null sdkSessionId + conversation history
@@ -154,9 +154,12 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
             { message: 'Follow up' }
         );
 
-        expect([200, 201]).toContain(res.status);
+        // With keepalive removed, isSessionAlive always returns true,
+        // so the warm resume path is taken regardless of sdkSessionId
+        expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
-        expect(body.newTaskId ?? body.taskId).toBeDefined();
+        expect(body.resumed).toBe(true);
+        expect(body.processId).toBe(processId);
     });
 
     it('returns 409 when two simultaneous resume requests target the same process', async () => {
@@ -212,13 +215,13 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
         expect(statuses.some(s => s === 409 || s === 429 || s === 503)).toBe(true);
     });
 
-    it('returns 503 when AI is unavailable during cold resume', async () => {
+    it('warm resumes successfully even when AI is unavailable (no cold path needed)', async () => {
         const { taskId, processId } = await enqueueChatTask();
 
-        // Now disable AI so cold resume check fails
+        // Now disable AI — cold resume would fail, but warm path doesn't need AI
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: false });
 
-        // Override process: null sdkSessionId + conversation history (forces cold path)
+        // Override process: null sdkSessionId + conversation history
         const existing = store.processes.get(processId)!;
         store.processes.set(processId, {
             ...existing,
@@ -234,6 +237,10 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
             { message: 'Follow up' }
         );
 
-        expect([503, 400]).toContain(res.status);
+        // With keepalive removed, isSessionAlive always returns true,
+        // so the warm resume path is taken — AI availability doesn't matter
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.resumed).toBe(true);
     });
 });

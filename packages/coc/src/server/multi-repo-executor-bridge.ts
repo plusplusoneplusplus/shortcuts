@@ -201,31 +201,15 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * If no per-repo bridges exist yet, falls back to checking the store + AI service directly.
      */
     async isSessionAlive(processId: string): Promise<boolean> {
-        // First check all per-repo bridges
+        // With keepalive removed, follow-ups always create fresh sessions.
+        // Delegate to per-repo bridges (which now always return true).
         for (const { bridge } of this.bridges.values()) {
             if (await bridge.isSessionAlive(processId)) {
                 return true;
             }
         }
-        // If no bridges exist or none claim the session, check the store directly
-        // to avoid false negatives when the session was created before any repo bridge
-        if (this.bridges.size === 0) {
-            const proc = await this.store.getProcess(processId);
-            if (proc?.sdkSessionId) {
-                const aiService = this.defaultOptions.aiService;
-                if (aiService) {
-                    try {
-                        if (typeof (aiService as any).canResumeSession === 'function') {
-                            return await (aiService as any).canResumeSession(proc.sdkSessionId, {});
-                        }
-                        return aiService.hasKeptAliveSession(proc.sdkSessionId);
-                    } catch {
-                        return false;
-                    }
-                }
-            }
-        }
-        return false;
+        // If no bridges exist, follow-ups are still possible via fresh sessions
+        return this.bridges.size === 0;
     }
 
     /**

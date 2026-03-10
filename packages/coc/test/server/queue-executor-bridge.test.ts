@@ -505,11 +505,11 @@ describe('CLITaskExecutor', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            // executeFollowUp calls sendFollowUp on the AI service
-            expect(mockSendFollowUp).toHaveBeenCalledWith(
-                'sess-fu',
-                expect.stringContaining('What is the best approach?'),
-                expect.any(Object)
+            // executeFollowUp calls sendMessage on the AI service
+            expect(mockSendMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    prompt: expect.stringContaining('What is the best approach?'),
+                })
             );
         });
 
@@ -561,9 +561,7 @@ describe('CLITaskExecutor', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            expect(mockSendFollowUp).toHaveBeenCalledWith(
-                'sess-fu-mode',
-                expect.any(String),
+            expect(mockSendMessage).toHaveBeenCalledWith(
                 expect.objectContaining({ mode: 'interactive' }),
             );
         });
@@ -638,7 +636,7 @@ describe('CLITaskExecutor', () => {
             expect(task.displayName).toMatch(/Chat \(\d+ turns?\)/);
         });
 
-        it('should clear follow-up payload metadata after failed execution', async () => {
+        it('should clear follow-up payload metadata when sdkSessionId is missing', async () => {
             const executor = new CLITaskExecutor(store);
 
             const proc = createCompletedProcessWithSession('proc-fail-followup', '');
@@ -654,13 +652,13 @@ describe('CLITaskExecutor', () => {
                 payload: {
                     kind: 'chat',
                     processId: 'proc-fail-followup',
-                    prompt: 'This will fail',
+                    prompt: 'This will succeed',
                 } as any,
                 config: {},
             };
 
             const result = await executor.execute(task);
-            expect(result.success).toBe(false);
+            expect(result.success).toBe(true);
             expect((task.payload as any).processId).toBeUndefined();
             expect((task.payload as any).attachments).toBeUndefined();
             expect((task.payload as any).imageTempDir).toBeUndefined();
@@ -2789,11 +2787,10 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
-        mockSendFollowUp.mockResolvedValue({
+        mockSendMessage.mockResolvedValue({
             success: true,
             response: 'Follow-up response',
             sessionId: 'sess-follow',
@@ -2805,7 +2802,7 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         await expect(executor.executeFollowUp('nonexistent', 'msg')).rejects.toThrow('Process not found: nonexistent');
     });
 
-    it('should throw for process without sdkSessionId', async () => {
+    it('should succeed for process without sdkSessionId', async () => {
         const process: AIProcess = {
             id: 'proc-1',
             type: 'clarification',
@@ -2817,7 +2814,12 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         await store.addProcess(process);
 
         const executor = new CLITaskExecutor(store);
-        await expect(executor.executeFollowUp('proc-1', 'msg')).rejects.toThrow('Process proc-1 has no SDK session');
+        await executor.executeFollowUp('proc-1', 'msg');
+
+        const updated = await store.getProcess('proc-1');
+        expect(updated?.status).toBe('completed');
+        expect(updated?.conversationTurns).toHaveLength(1);
+        expect(updated?.conversationTurns![0].role).toBe('assistant');
     });
 
     it('should append assistant turn and set status to completed on success', async () => {
@@ -2839,7 +2841,8 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-2', 'follow up');
 
-        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-123', expect.stringContaining('follow up'), expect.objectContaining({
+        expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            prompt: expect.stringContaining('follow up'),
             workingDirectory: '/workspace/shortcuts',
             onPermissionRequest: expect.any(Function),
             onStreamingChunk: expect.any(Function),
@@ -2855,7 +2858,7 @@ describe('CLITaskExecutor.executeFollowUp', () => {
     });
 
     it('should append error turn and set status to failed on failure', async () => {
-        mockSendFollowUp.mockResolvedValue({
+        mockSendMessage.mockResolvedValueOnce({
             success: false,
             error: 'Session expired',
         });
@@ -2884,11 +2887,11 @@ describe('CLITaskExecutor.executeFollowUp', () => {
     });
 
     it('should stream chunks via store.emitProcessOutput', async () => {
-        mockSendFollowUp.mockImplementation(async (_sessionId: string, _prompt: string, options?: any) => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
             // Simulate streaming chunks
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('chunk1');
-                options.onStreamingChunk('chunk2');
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('chunk1');
+                opts.onStreamingChunk('chunk2');
             }
             return { success: true, response: 'chunk1chunk2', sessionId: 'sess-stream' };
         });
@@ -2924,10 +2927,14 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response text',
+            sessionId: 'session-123',
+        });
     });
 
     it('should accumulate turns across 3 sequential follow-ups', async () => {
@@ -2937,7 +2944,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         ]);
         await store.addProcess(process);
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: 'Reply 2' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 2', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
 
         // Follow-up 1
@@ -2952,7 +2959,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
             ],
         });
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: 'Reply 3' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 3', sessionId: 'session-123' });
         // Follow-up 2
         await executor.executeFollowUp('proc-multi', 'Question 3');
 
@@ -2965,7 +2972,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
             ],
         });
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: 'Reply 4' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: 'Reply 4', sessionId: 'session-123' });
         // Follow-up 3
         await executor.executeFollowUp('proc-multi', 'Question 4');
 
@@ -2982,15 +2989,15 @@ describe('executeFollowUp - chat conversation scenarios', () => {
             expect(final!.conversationTurns![i].turnIndex).toBe(i);
         }
 
-        expect(mockSendFollowUp).toHaveBeenCalledTimes(3);
-        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-multi', expect.any(String), expect.any(Object));
+        expect(mockSendMessage).toHaveBeenCalledTimes(3);
+        expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.any(String) }));
     });
 
     it('should use "(No text response)" fallback when SDK returns empty response', async () => {
         const process = createCompletedProcessWithSession('proc-empty', 'sess-empty');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: '' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: '', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-empty', 'What happened?');
 
@@ -3008,7 +3015,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const process = createCompletedProcessWithSession('proc-dying', 'sess-dying');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockRejectedValue(new Error('Session expired: connection reset'));
+        mockSendMessage.mockRejectedValueOnce(new Error('Session expired: connection reset'));
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-dying', 'Are you still there?');
 
@@ -3024,14 +3031,14 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const process = createCompletedProcessWithSession('proc-chunks', 'sess-chunks');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('Hello');
-                options.onStreamingChunk(' ');
-                options.onStreamingChunk('world');
-                options.onStreamingChunk('!');
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('Hello');
+                opts.onStreamingChunk(' ');
+                opts.onStreamingChunk('world');
+                opts.onStreamingChunk('!');
             }
-            return { success: true, response: 'Hello world!' };
+            return { success: true, response: 'Hello world!', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3052,9 +3059,9 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const process = createCompletedProcessWithSession('proc-concurrent', 'sess-concurrent');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string) => {
+        mockSendMessage.mockImplementation(async () => {
             await new Promise(r => setTimeout(r, 10));
-            return { success: true, response: 'concurrent reply' };
+            return { success: true, response: 'concurrent reply', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3065,7 +3072,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
 
         expect(resultA.status).toBe('fulfilled');
         expect(resultB.status).toBe('fulfilled');
-        expect(mockSendFollowUp).toHaveBeenCalledTimes(2);
+        expect(mockSendMessage).toHaveBeenCalledTimes(2);
 
         const final = await store.getProcess('proc-concurrent');
         expect(final!.status).toBe('completed');
@@ -3078,12 +3085,12 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const process = createCompletedProcessWithSession('proc-large', 'sess-large');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: 'ack' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: 'ack', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
         const longMsg = 'x'.repeat(100_000);
         await executor.executeFollowUp('proc-large', longMsg);
 
-        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-large', expect.stringContaining(longMsg), expect.any(Object));
+        expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining(longMsg) }));
         const updated = await store.getProcess('proc-large');
         expect(updated!.status).toBe('completed');
     });
@@ -3093,7 +3100,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         process.status = 'running';
         await store.addProcess(process);
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: 'done' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: 'done', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
 
         const before = await store.getProcess('proc-status-ok');
@@ -3112,7 +3119,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         process.status = 'running';
         await store.addProcess(process);
 
-        mockSendFollowUp.mockRejectedValue(new Error('SDK crash'));
+        mockSendMessage.mockRejectedValueOnce(new Error('SDK crash'));
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-status-fail', 'bad request');
 
@@ -3130,25 +3137,25 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         await store.addProcess(proc2);
 
         // First follow-up succeeds with streaming
-        mockSendFollowUp.mockImplementationOnce(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('old-data');
+        mockSendMessage.mockImplementationOnce(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('old-data');
             }
-            return { success: true, response: 'ok' };
+            return { success: true, response: 'ok', sessionId: 'session-123' };
         });
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-cleanup-ok', 'first call');
 
         // Second follow-up fails
-        mockSendFollowUp.mockRejectedValueOnce(new Error('boom'));
+        mockSendMessage.mockRejectedValueOnce(new Error('boom'));
         await executor.executeFollowUp('proc-cleanup-fail', 'fail call');
 
         // Verify buffer cleanup: a subsequent follow-up starts fresh
-        mockSendFollowUp.mockImplementationOnce(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('new-chunk');
+        mockSendMessage.mockImplementationOnce(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('new-chunk');
             }
-            return { success: true, response: 'fresh' };
+            return { success: true, response: 'fresh', sessionId: 'session-123' };
         });
         // Reset output tracking to isolate the 3rd call
         store.outputs.clear();
@@ -3163,7 +3170,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         const process = createCompletedProcessWithSession('proc-empty-turns', 'sess-empty-turns', []);
         await store.addProcess(process);
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: 'first reply' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: 'first reply', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-empty-turns', 'hello');
 
@@ -3189,7 +3196,7 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         };
         await store.addProcess(process);
 
-        mockSendFollowUp.mockResolvedValue({ success: true, response: 'reply' });
+        mockSendMessage.mockResolvedValueOnce({ success: true, response: 'reply', sessionId: 'session-123' });
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('proc-undef-turns', 'hi');
 
@@ -3210,7 +3217,6 @@ describe('session tracking and conversation turns', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
@@ -3266,7 +3272,7 @@ describe('session tracking and conversation turns', () => {
         expect(assistantTurn.turnIndex).toBe(1);
     });
 
-    it('should pass keepAlive: true to sendMessage', async () => {
+    it('should pass keepAlive: false to sendMessage', async () => {
         const executor = new CLITaskExecutor(store);
         const task: QueuedTask = {
             id: 'task-session-3',
@@ -3280,7 +3286,7 @@ describe('session tracking and conversation turns', () => {
         await executor.execute(task);
 
         expect(mockSendMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ keepAlive: true })
+            expect.objectContaining({ keepAlive: false })
         );
     });
 
@@ -3302,7 +3308,7 @@ describe('session tracking and conversation turns', () => {
         };
         await store.addProcess(process);
 
-        mockSendFollowUp.mockResolvedValue({
+        mockSendMessage.mockResolvedValueOnce({
             success: true,
             response: 'follow-up reply',
             sessionId: 'sess-existing',
@@ -3319,7 +3325,7 @@ describe('session tracking and conversation turns', () => {
         expect(updated?.conversationTurns![2].turnIndex).toBe(2);
     });
 
-    it('should throw if process has no sdkSessionId', async () => {
+    it('should succeed for process without sdkSessionId', async () => {
         const process: AIProcess = {
             id: 'proc-no-session',
             type: 'clarification',
@@ -3331,50 +3337,20 @@ describe('session tracking and conversation turns', () => {
         await store.addProcess(process);
 
         const executor = new CLITaskExecutor(store);
-        await expect(executor.executeFollowUp('proc-no-session', 'hi'))
-            .rejects.toThrow('no SDK session');
+        await executor.executeFollowUp('proc-no-session', 'hi');
+
+        const updated = await store.getProcess('proc-no-session');
+        expect(updated?.status).toBe('completed');
     });
 
-    it('should report session expired when SDK cannot resume the persisted session', async () => {
-        const process: AIProcess = {
-            id: 'proc-expired-session',
-            type: 'clarification',
-            promptPreview: 'test',
-            fullPrompt: 'test',
-            status: 'completed',
-            startTime: new Date(),
-            sdkSessionId: 'sess-missing-after-restart',
-            workingDirectory: '/workspace/repo',
-        };
-        await store.addProcess(process);
-
-        mockCanResumeSession.mockResolvedValueOnce(false);
-
+    it('should always report session as alive (keepalive removed)', async () => {
         const executor = new CLITaskExecutor(store);
-        await expect(executor.isSessionAlive('proc-expired-session')).resolves.toBe(false);
-        expect(mockCanResumeSession).toHaveBeenCalledWith('sess-missing-after-restart', expect.objectContaining({
-            workingDirectory: '/workspace/repo',
-            onPermissionRequest: expect.any(Function),
-        }));
+        await expect(executor.isSessionAlive('any-process-id')).resolves.toBe(true);
     });
 
-    it('should treat persisted session as alive when SDK can resume it', async () => {
-        const process: AIProcess = {
-            id: 'proc-resumable-session',
-            type: 'clarification',
-            promptPreview: 'test',
-            fullPrompt: 'test',
-            status: 'completed',
-            startTime: new Date(),
-            sdkSessionId: 'sess-resumable',
-            workingDirectory: '/workspace/repo',
-        };
-        await store.addProcess(process);
-
-        mockCanResumeSession.mockResolvedValueOnce(true);
-
+    it('should return true for isSessionAlive regardless of session state', async () => {
         const executor = new CLITaskExecutor(store);
-        await expect(executor.isSessionAlive('proc-resumable-session')).resolves.toBe(true);
+        await expect(executor.isSessionAlive('nonexistent-proc')).resolves.toBe(true);
     });
 });
 
@@ -3389,7 +3365,6 @@ describe('conversation history persistence during streaming', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
@@ -3516,11 +3491,11 @@ describe('conversation history persistence during streaming', () => {
         const process = createCompletedProcessWithSession('proc-first-chunk', 'sess-first-chunk');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('first chunk');
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('first chunk');
             }
-            return { success: true, response: 'first chunk' };
+            return { success: true, response: 'first chunk', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3546,13 +3521,13 @@ describe('conversation history persistence during streaming', () => {
         const process = createCompletedProcessWithSession('proc-50chunks', 'sess-50chunks');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
                 for (let i = 0; i < 150; i++) {
-                    options.onStreamingChunk(`c${i} `);
+                    opts.onStreamingChunk(`c${i} `);
                 }
             }
-            return { success: true, response: 'all chunks' };
+            return { success: true, response: 'all chunks', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3586,14 +3561,14 @@ describe('conversation history persistence during streaming', () => {
         const process = createCompletedProcessWithSession('proc-5sec', 'sess-5sec');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
                 for (let i = 0; i < 10; i++) {
-                    options.onStreamingChunk(`c${i} `);
+                    opts.onStreamingChunk(`c${i} `);
                     await vi.advanceTimersByTimeAsync(1000);
                 }
             }
-            return { success: true, response: 'all 10' };
+            return { success: true, response: 'all 10', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3626,13 +3601,13 @@ describe('conversation history persistence during streaming', () => {
         const process = createCompletedProcessWithSession('proc-update-turn', 'sess-update-turn');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
                 for (let i = 0; i < 100; i++) {
-                    options.onStreamingChunk(`c${i} `);
+                    opts.onStreamingChunk(`c${i} `);
                 }
             }
-            return { success: true, response: 'done' };
+            return { success: true, response: 'done', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3662,13 +3637,13 @@ describe('conversation history persistence during streaming', () => {
         const process = createCompletedProcessWithSession('proc-complete-flag', 'sess-complete-flag');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
                 for (let i = 0; i < 30; i++) {
-                    options.onStreamingChunk(`c${i} `);
+                    opts.onStreamingChunk(`c${i} `);
                 }
             }
-            return { success: true, response: 'final response' };
+            return { success: true, response: 'final response', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3696,13 +3671,13 @@ describe('conversation history persistence during streaming', () => {
             }
         });
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
                 for (let i = 0; i < 150; i++) {
-                    options.onStreamingChunk(`c${i} `);
+                    opts.onStreamingChunk(`c${i} `);
                 }
             }
-            return { success: true, response: 'completed despite errors' };
+            return { success: true, response: 'completed despite errors', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3718,11 +3693,11 @@ describe('conversation history persistence during streaming', () => {
         const process = createCompletedProcessWithSession('proc-cleanup', 'sess-cleanup');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('chunk');
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('chunk');
             }
-            return { success: true, response: 'done' };
+            return { success: true, response: 'done', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -3740,15 +3715,15 @@ describe('conversation history persistence during streaming', () => {
         await store.addProcess(process);
 
         let callCount = 0;
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
             callCount++;
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('chunk');
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('chunk');
             }
             if (callCount === 1) {
                 return { success: false, error: 'AI failed' };
             }
-            return { success: true, response: 'recovered' };
+            return { success: true, response: 'recovered', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -4474,10 +4449,14 @@ describe('tool event emission via onToolEvent', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response text',
+            sessionId: 'session-123',
+        });
     });
 
     it('should pass onToolEvent callback to sendMessage', async () => {
@@ -4702,15 +4681,15 @@ describe('tool event emission via onToolEvent', () => {
             initialProcesses: [createCompletedProcessWithSession('proc-tool-follow', 'sess-follow')],
         });
 
-        mockSendFollowUp.mockImplementation(async (_sessionId: string, _prompt: string, options?: any) => {
-            if (options?.onToolEvent) {
-                options.onToolEvent({
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onToolEvent) {
+                opts.onToolEvent({
                     type: 'tool-start',
                     toolCallId: 'tc-follow-1',
                     toolName: 'view',
                     parameters: { path: '/file.ts' },
                 });
-                options.onToolEvent({
+                opts.onToolEvent({
                     type: 'tool-complete',
                     toolCallId: 'tc-follow-1',
                     toolName: 'view',
@@ -4823,13 +4802,13 @@ describe('tool event emission via onToolEvent', () => {
         const process = createCompletedProcessWithSession('proc-tool-flush', 'sess-tool-flush');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onToolEvent) {
-                options.onToolEvent({ type: 'tool-start', toolCallId: 'tc-f1', toolName: 'bash', parameters: { cmd: 'npm test' } });
-                options.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-f1', toolName: 'bash', result: 'all passed' });
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onToolEvent) {
+                opts.onToolEvent({ type: 'tool-start', toolCallId: 'tc-f1', toolName: 'bash', parameters: { cmd: 'npm test' } });
+                opts.onToolEvent({ type: 'tool-complete', toolCallId: 'tc-f1', toolName: 'bash', result: 'all passed' });
             }
             // No onStreamingChunk — pure tool execution
-            return { success: true, response: '' };
+            return { success: true, response: '', sessionId: 'session-123' };
         });
 
         const executor = new CLITaskExecutor(store);
@@ -4865,10 +4844,14 @@ describe('conversation persistence mid-stream', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response text',
+            sessionId: 'session-123',
+        });
     });
 
     it('should persist conversation state mid-stream and restore on server restart', async () => {
@@ -4878,16 +4861,16 @@ describe('conversation persistence mid-stream', () => {
         await store.addProcess(process);
 
         let chunksSent = 0;
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
                 // Emit 6 chunks with 500ms gaps (3 seconds total)
                 for (let i = 0; i < 6; i++) {
-                    options.onStreamingChunk(`chunk${i} `);
+                    opts.onStreamingChunk(`chunk${i} `);
                     chunksSent++;
                     await vi.advanceTimersByTimeAsync(500);
                 }
             }
-            return { success: true, response: 'chunk0 chunk1 chunk2 chunk3 chunk4 chunk5 ' };
+            return { success: true, response: 'chunk0 chunk1 chunk2 chunk3 chunk4 chunk5 ', sessionId: 'session-123' };
         });
 
         const executor1 = new CLITaskExecutor(store);
@@ -4938,10 +4921,14 @@ describe('timeline population during execution', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response text',
+            sessionId: 'session-123',
+        });
     });
 
     it('should initialize timeline as empty array on new process', async () => {
@@ -5367,18 +5354,18 @@ describe('timeline population during execution', () => {
         const process = createCompletedProcessWithSession('proc-tl-follow', 'sess-tl-follow');
         await store.addProcess(process);
 
-        mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-            if (options?.onStreamingChunk) {
-                options.onStreamingChunk('follow-up text');
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts?.onStreamingChunk) {
+                opts.onStreamingChunk('follow-up text');
             }
-            if (options?.onToolEvent) {
-                options.onToolEvent({
+            if (opts?.onToolEvent) {
+                opts.onToolEvent({
                     type: 'tool-start',
                     toolCallId: 'tc-fu-1',
                     toolName: 'view',
                     parameters: { path: '/src/index.ts' },
                 });
-                options.onToolEvent({
+                opts.onToolEvent({
                     type: 'tool-complete',
                     toolCallId: 'tc-fu-1',
                     toolName: 'view',
@@ -6615,7 +6602,6 @@ describe('suggest_follow_ups tool wiring', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockCanResumeSession.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
@@ -6713,36 +6699,24 @@ describe('suggest_follow_ups tool wiring', () => {
     it('should NOT include suggest_follow_ups tool for follow-up messages (only first turn gets it)', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-1', 'sess-fu-1');
         store.processes.set(process.id, process);
-        mockCanResumeSession.mockResolvedValue(true);
-        mockSendFollowUp.mockResolvedValue({
-            success: true,
-            response: 'Follow-up response',
-            sessionId: 'sess-fu-1',
-        });
 
         const executor = new CLITaskExecutor(store);
         await executor.executeFollowUp('queue_suggest-fu-1', 'follow-up question');
 
-        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
-        const callOpts = mockSendFollowUp.mock.calls[0][2];
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeUndefined();
     });
 
     it('should NOT append follow-up suggestion instruction to follow-up messages', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-noinstr', 'sess-fu-noinstr');
         store.processes.set(process.id, process);
-        mockCanResumeSession.mockResolvedValue(true);
-        mockSendFollowUp.mockResolvedValue({
-            success: true,
-            response: 'Follow-up response',
-            sessionId: 'sess-fu-noinstr',
-        });
 
         const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: true, count: 3 } });
         await executor.executeFollowUp('queue_suggest-fu-noinstr', 'follow-up question');
 
-        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
-        const sentMessage = mockSendFollowUp.mock.calls[0][1];
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const sentMessage = mockSendMessage.mock.calls[0][0].prompt;
         expect(sentMessage).not.toContain('When suggesting follow-ups');
     });
 
@@ -6752,18 +6726,12 @@ describe('suggest_follow_ups tool wiring', () => {
             { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
         ]);
         store.processes.set(process.id, process);
-        mockCanResumeSession.mockResolvedValue(true);
-        mockSendFollowUp.mockResolvedValue({
-            success: true,
-            response: 'First response',
-            sessionId: 'sess-fu-first',
-        });
 
         const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: true, count: 3 } });
         await executor.executeFollowUp('queue_suggest-fu-first', 'first message');
 
-        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
-        const callOpts = mockSendFollowUp.mock.calls[0][2];
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
         expect(callOpts.tools).toHaveLength(1);
     });
@@ -6847,8 +6815,7 @@ describe('suggest_follow_ups tool wiring', () => {
     it('should store suggestions on follow-up ConversationTurn', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-persist', 'sess-persist');
         store.processes.set(process.id, process);
-        mockCanResumeSession.mockResolvedValue(true);
-        mockSendFollowUp.mockImplementation(async (_sid: string, _msg: string, opts: any) => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
             if (opts?.onToolEvent) {
                 opts.onToolEvent({
                     type: 'tool-complete',
@@ -7040,23 +7007,18 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.prompt).toContain('provide exactly 2 suggestions');
     });
 
-    it('should exclude suggestion tool from sendFollowUp when disabled', async () => {
+    it('should exclude suggestion tool from sendMessage on follow-up when disabled', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-disabled', 'sess-fu-disabled');
         store.processes.set(process.id, process);
-        mockSendFollowUp.mockResolvedValue({
-            success: true,
-            response: 'Follow-up response',
-            sessionId: 'sess-fu-disabled',
-        });
 
         const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: false, count: 3 } });
         await executor.executeFollowUp('queue_suggest-fu-disabled', 'follow-up question');
 
-        expect(mockSendFollowUp).toHaveBeenCalledTimes(1);
-        const callOpts = mockSendFollowUp.mock.calls[0][2];
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+        const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeUndefined();
         // Should NOT append count instruction when disabled
-        const sentMessage = mockSendFollowUp.mock.calls[0][1];
+        const sentMessage = mockSendMessage.mock.calls[0][0].prompt;
         expect(sentMessage).not.toContain('When suggesting follow-ups');
     });
 });

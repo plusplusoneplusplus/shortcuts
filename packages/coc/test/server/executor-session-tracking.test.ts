@@ -32,7 +32,7 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 // ============================================================================
 
 const sdkMocks = createMockSDKService();
-const { mockSendMessage, mockIsAvailable, mockSendFollowUp } = sdkMocks;
+const { mockSendMessage, mockIsAvailable } = sdkMocks;
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
@@ -53,7 +53,6 @@ describe('executor session tracking', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockSendFollowUp.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -178,7 +177,7 @@ describe('executor session tracking', () => {
             };
             await store.addProcess(proc);
 
-            mockSendFollowUp.mockResolvedValue({
+            mockSendMessage.mockResolvedValueOnce({
                 success: true,
                 response: 'Follow-up answer',
                 sessionId: 'sess-follow-1',
@@ -213,7 +212,7 @@ describe('executor session tracking', () => {
             };
             await store.addProcess(proc);
 
-            mockSendFollowUp.mockResolvedValue({
+            mockSendMessage.mockResolvedValueOnce({
                 success: true,
                 response: 'A2',
                 sessionId: 'sess-follow-2',
@@ -251,7 +250,7 @@ describe('executor session tracking', () => {
             };
             await store.addProcess(proc);
 
-            mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            mockSendMessage.mockImplementationOnce(async (options: any) => {
                 if (options?.onStreamingChunk) {
                     options.onStreamingChunk('chunk-A');
                     options.onStreamingChunk('chunk-B');
@@ -282,7 +281,7 @@ describe('executor session tracking', () => {
             };
             await store.addProcess(proc);
 
-            mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
+            mockSendMessage.mockImplementationOnce(async (options: any) => {
                 if (options?.onStreamingChunk) {
                     options.onStreamingChunk('Hello ');
                     options.onStreamingChunk('World');
@@ -319,7 +318,7 @@ describe('executor session tracking', () => {
             };
             await store.addProcess(proc);
 
-            mockSendFollowUp.mockResolvedValue({
+            mockSendMessage.mockResolvedValueOnce({
                 success: false,
                 error: 'Session timed out',
             });
@@ -348,7 +347,7 @@ describe('executor session tracking', () => {
             };
             await store.addProcess(proc);
 
-            mockSendFollowUp.mockResolvedValue({
+            mockSendMessage.mockResolvedValueOnce({
                 success: false,
                 error: 'AI backend unreachable',
             });

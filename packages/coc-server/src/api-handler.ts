@@ -1764,11 +1764,6 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 }
             }
 
-            // Validate the process has an SDK session to follow up on
-            if (!process.sdkSessionId) {
-                return handleAPIError(res, new APIError(409, 'Process has no SDK session — follow-up not supported', 'CONFLICT'));
-            }
-
             // Check session liveness before forwarding the prompt
             if (bridge && !(await bridge.isSessionAlive(id))) {
                 return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));

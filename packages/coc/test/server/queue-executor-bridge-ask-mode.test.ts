@@ -4,11 +4,11 @@
  * Tests for read-only system message injection in ask mode:
  * - Initial chat in ask mode includes READ_ONLY_SYSTEM_MESSAGE
  * - Initial chat in autopilot/plan mode does NOT include read-only message
- * - Follow-up with mode change ask → autopilot destroys session & omits read-only message
- * - Follow-up with mode change autopilot → ask destroys session & includes read-only message
- * - Follow-up with same ask mode does NOT destroy session
- * - Transitions between autopilot ↔ plan do NOT destroy session
- * - Multiple transitions: ask → autopilot → ask → plan → ask
+ * - Follow-up with mode change ask → autopilot creates fresh session via sendMessage
+ * - Follow-up with mode change autopilot → ask creates fresh session with read-only message
+ * - Follow-up with same ask mode creates fresh session (no special handling needed)
+ * - Transitions between autopilot ↔ plan do NOT need special handling
+ * - Multiple transitions: ask → autopilot → ask
  * - Process metadata is updated with current and previous mode
  */
 
@@ -184,14 +184,14 @@ describe('ask mode system message — follow-up transitions', () => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
-        sdkMocks.mockSendFollowUp.mockResolvedValue({
+        sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,
             response: 'Follow-up response',
             sessionId: 'sess-1',
         });
     });
 
-    it('should destroy session when transitioning from ask → autopilot', async () => {
+    it('should create fresh session via sendMessage when transitioning from ask → autopilot', async () => {
         const proc = createProcessWithMode('proc-1', 'sess-1', 'ask');
         await store.addProcess(proc);
 
@@ -200,16 +200,18 @@ describe('ask mode system message — follow-up transitions', () => {
 
         await executor.execute(task);
 
-        // Session should have been destroyed to force re-creation
-        expect(sdkMocks.mockDestroyKeptAliveSession).toHaveBeenCalledWith('sess-1');
-
-        // Follow-up should NOT include read-only system message
-        expect(sdkMocks.mockSendFollowUp).toHaveBeenCalledTimes(1);
-        const options = sdkMocks.mockSendFollowUp.mock.calls[0][2];
-        expect(options.systemMessage).toBeUndefined();
+        // Follow-up creates a fresh session via sendMessage — no session destroy needed
+        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.mode).toBe('autopilot');
+        // Should NOT include read-only system message for autopilot mode
+        if (callArgs.systemMessage) {
+            expect(callArgs.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
+        }
     });
 
-    it('should destroy session and inject read-only message when transitioning from autopilot → ask', async () => {
+    it('should create fresh session with read-only message when transitioning from autopilot → ask', async () => {
         const proc = createProcessWithMode('proc-1', 'sess-1', 'autopilot');
         await store.addProcess(proc);
 
@@ -218,16 +220,14 @@ describe('ask mode system message — follow-up transitions', () => {
 
         await executor.execute(task);
 
-        // Session should have been destroyed to force re-creation
-        expect(sdkMocks.mockDestroyKeptAliveSession).toHaveBeenCalledWith('sess-1');
-
-        // Follow-up should include read-only system message
-        expect(sdkMocks.mockSendFollowUp).toHaveBeenCalledTimes(1);
-        const options = sdkMocks.mockSendFollowUp.mock.calls[0][2];
-        expect(options.systemMessage).toEqual({
-            mode: 'append',
-            content: READ_ONLY_SYSTEM_MESSAGE,
-        });
+        // Follow-up creates a fresh session via sendMessage — no session destroy needed
+        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.mode).toBe('interactive');
+        // Should include read-only system message for ask mode
+        expect(callArgs.systemMessage).toBeDefined();
+        expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
     });
 
     it('should NOT destroy session when follow-up stays in ask mode', async () => {
@@ -290,20 +290,29 @@ describe('ask mode system message — follow-up transitions', () => {
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
 
-        // ask → autopilot
+        // ask → autopilot: fresh session, no read-only message
         const task1 = followUpTask('proc-1', 'implement', 'autopilot');
         await executor.execute(task1);
-        expect(sdkMocks.mockDestroyKeptAliveSession).toHaveBeenCalledWith('sess-1');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        let callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.mode).toBe('autopilot');
 
-        sdkMocks.mockDestroyKeptAliveSession.mockClear();
-        sdkMocks.mockSendFollowUp.mockResolvedValue({
-            success: true, response: 'ok', sessionId: 'sess-1',
+        sdkMocks.mockSendMessage.mockClear();
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true, response: 'ok', sessionId: 'sess-2',
         });
 
-        // autopilot → ask
+        // autopilot → ask: fresh session, read-only message injected
         const task2 = followUpTask('proc-1', 'explain', 'ask');
         await executor.execute(task2);
-        expect(sdkMocks.mockDestroyKeptAliveSession).toHaveBeenCalledWith('sess-1');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
+        callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.mode).toBe('interactive');
+        expect(callArgs.systemMessage).toBeDefined();
+        expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+
+        // No session destroy needed — each follow-up creates a fresh session
+        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
 
         // Verify final metadata
         const final = await store.getProcess('proc-1');

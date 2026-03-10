@@ -553,7 +553,7 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
 
     describe('error: no session', () => {
-        it('should return 409 when process has no sdkSessionId', async () => {
+        it('should accept follow-up even when process has no sdkSessionId', async () => {
             const proc: AIProcess = {
                 id: 'proc-6',
                 type: 'clarification',
@@ -561,7 +561,7 @@ describe('POST /api/processes/:id/message', () => {
                 fullPrompt: 'test prompt',
                 status: 'completed',
                 startTime: new Date(),
-                // No sdkSessionId
+                // No sdkSessionId — still allowed since follow-ups create fresh sessions
             };
             await store.addProcess(proc);
 
@@ -569,9 +569,7 @@ describe('POST /api/processes/:id/message', () => {
                 content: 'Hello',
             });
 
-            expect(res.status).toBe(409);
-            const body = JSON.parse(res.body);
-            expect(body.error).toMatch(/no SDK session/i);
+            expect(res.status).toBe(202);
         });
 
         it('should return 410 when sdkSessionId references expired/destroyed session', async () => {
@@ -939,9 +937,9 @@ describe('POST /api/processes/:id/message', () => {
             expect(typeof body.error).toBe('string');
         });
 
-        it('should return JSON error envelope on 409', async () => {
+        it('should return JSON success envelope on 202 when process has no sdkSessionId', async () => {
             const proc: AIProcess = {
-                id: 'proc-fmt-409',
+                id: 'proc-fmt-202',
                 type: 'clarification',
                 promptPreview: 'test',
                 fullPrompt: 'test',
@@ -950,14 +948,11 @@ describe('POST /api/processes/:id/message', () => {
             };
             await store.addProcess(proc);
 
-            const res = await postJSON(`${baseUrl}/api/processes/proc-fmt-409/message`, {
+            const res = await postJSON(`${baseUrl}/api/processes/proc-fmt-202/message`, {
                 content: 'Hello',
             });
-            expect(res.status).toBe(409);
+            expect(res.status).toBe(202);
             expect(res.headers['content-type']).toContain('application/json');
-            const body = JSON.parse(res.body);
-            expect(body).toHaveProperty('error');
-            expect(typeof body.error).toBe('string');
         });
 
         it('should include both error and message fields on 410', async () => {

@@ -420,7 +420,8 @@ describe('Tool Event Capture', () => {
             makeToolCall({ id: 'fu-tc-1', name: 'bash', result: 'test output' }),
         ];
 
-        mockSendFollowUp.mockResolvedValue({
+        // executeFollowUp now calls sendMessage (not sendFollowUp)
+        mockSendMessage.mockResolvedValue({
             success: true,
             response: 'Follow-up done',
             sessionId: 'sess-follow',

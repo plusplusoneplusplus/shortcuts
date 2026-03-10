@@ -1432,15 +1432,14 @@ describe('API Handler', () => {
             expect(body.error).toBe('Invalid JSON body');
         });
 
-        it('should return 409 for process without sdkSessionId', async () => {
+        it('should accept follow-up even for process without sdkSessionId', async () => {
             const srv = await startServer();
             const proc = makeProcess(); // no sdkSessionId
             await postJSON(`${srv.url}/api/processes`, proc);
 
             const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, { content: 'hello' });
-            expect(res.status).toBe(409);
-            const body = JSON.parse(res.body);
-            expect(body.error).toBe('Process has no SDK session — follow-up not supported');
+            // Follow-ups now create fresh sessions, so no sdkSessionId gate
+            expect(res.status).toBe(202);
         });
 
         it('should return 202 and append user turn', async () => {

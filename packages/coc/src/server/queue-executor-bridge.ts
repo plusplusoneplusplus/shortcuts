@@ -512,23 +512,11 @@ export class CLITaskExecutor implements TaskExecutor {
     /**
      * Check whether the SDK session for a process is still alive.
      */
-    async isSessionAlive(processId: string): Promise<boolean> {
-        const process = await this.store.getProcess(processId);
-        if (!process?.sdkSessionId) return false;
-        const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
-        const onPermissionRequest = this.approvePermissions ? approveAllPermissions : undefined;
-        try {
-            if (typeof (this.aiService as any).canResumeSession === 'function') {
-                return await (this.aiService as any).canResumeSession(process.sdkSessionId, {
-                    workingDirectory,
-                    onPermissionRequest,
-                });
-            }
-            return this.aiService.hasKeptAliveSession(process.sdkSessionId);
-        } catch {
-            // Safe fallback: if we cannot verify liveness, treat as unavailable.
-            return false;
-        }
+    async isSessionAlive(_processId: string): Promise<boolean> {
+        // With keepalive removed, follow-ups always create fresh sessions.
+        // Session liveness is no longer a constraint — return true so the
+        // API layer never blocks follow-up messages.
+        return true;
     }
 
     /**
@@ -583,16 +571,11 @@ export class CLITaskExecutor implements TaskExecutor {
         if (!process) {
             throw new Error(`Process not found: ${processId}`);
         }
-        if (!process.sdkSessionId) {
-            throw new Error(`Process ${processId} has no SDK session`);
-        }
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
         // Detect mode transitions involving ask mode
         const previousMode = process.metadata?.mode as ChatMode | undefined;
         const currentMode = mode ?? previousMode;
-        const enteringAsk = currentMode === 'ask' && previousMode !== 'ask';
-        const leavingAsk = currentMode !== 'ask' && previousMode === 'ask';
 
         // Update process metadata with current mode when it changes
         if (mode && mode !== previousMode) {
@@ -606,17 +589,13 @@ export class CLITaskExecutor implements TaskExecutor {
             });
         }
 
-        // Force session re-creation when transitioning to/from ask mode
-        // so the system message can be updated on the resumed session
-        if (enteringAsk || leavingAsk) {
-            logger.debug(LogCategory.AI, `[FollowUp] Mode transition ${previousMode} → ${currentMode}, forcing session refresh`);
-            await this.aiService.destroyKeptAliveSession(process.sdkSessionId);
-        }
-
-        // Inject read-only system message for ask mode (used when session is resumed)
+        // Inject read-only system message for ask mode
         const systemMessage = currentMode === 'ask'
             ? { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE }
             : undefined;
+
+        // Build conversation history context for the fresh session
+        const historyContext = this.buildConversationHistoryContext(process.conversationTurns);
 
         // Initialize output buffer for this follow-up
         this.outputBuffers.set(processId, '');
@@ -630,13 +609,24 @@ export class CLITaskExecutor implements TaskExecutor {
                 ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : message;
             const agentMode = toAgentMode(currentMode);
-            const result = await this.aiService.sendFollowUp(process.sdkSessionId, followUpMessage, {
-                workingDirectory,
+
+            // Build system message: combine conversation history + mode-specific instructions
+            const historySystemMessage = historyContext
+                ? { mode: 'append' as const, content: historyContext + (systemMessage ? '\n\n' + systemMessage.content : '') }
+                : systemMessage;
+
+            const result = await this.aiService.sendMessage({
+                prompt: followUpMessage,
                 mode: agentMode,
-                systemMessage,
+                workingDirectory,
+                keepAlive: false,
+                systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
                 tools: suggestTools.length > 0 ? suggestTools : undefined,
+                onSessionCreated: (sessionId: string) => {
+                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {});
+                },
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate for persistence
                     const existing = this.outputBuffers.get(processId) ?? '';
@@ -827,6 +817,32 @@ export class CLITaskExecutor implements TaskExecutor {
             // Append to existing output file rather than overwriting
             await this.persistOutput(processId, buffer);
         }
+    }
+
+    // ========================================================================
+    // Private — Conversation History
+    // ========================================================================
+
+    /**
+     * Build a conversation history context string from prior turns.
+     * This is injected as a system message so the fresh session has context
+     * from earlier turns in the conversation.
+     */
+    private buildConversationHistoryContext(turns?: ConversationTurn[]): string | undefined {
+        if (!turns || turns.length === 0) return undefined;
+
+        const lines: string[] = ['<conversation_history>'];
+        for (const turn of turns) {
+            const role = turn.role === 'user' ? 'User' : 'Assistant';
+            // Trim long assistant responses to avoid blowing up the context window
+            const content = turn.role === 'assistant' && turn.content.length > 2000
+                ? turn.content.slice(0, 2000) + '… (truncated)'
+                : turn.content;
+            lines.push(`[${role}]: ${content}`);
+        }
+        lines.push('</conversation_history>');
+        lines.push('Continue this conversation. The user\'s next message follows.');
+        return lines.join('\n');
     }
 
     // ========================================================================
@@ -1231,7 +1247,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 model: task.config.model,
                 workingDirectory,
                 timeoutMs,
-                keepAlive: true,
+                keepAlive: false,
                 attachments,
                 tools: options?.tools,
                 systemMessage: options?.systemMessage,
