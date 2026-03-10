@@ -31,13 +31,8 @@ export type IsCancelledFn = () => boolean;
  * Check if an error is a cancellation error
  */
 export function isCancellationError(error: unknown): error is CancellationError {
-    if (error instanceof CancellationError) {
-        return true;
-    }
-    if (error instanceof PipelineCoreError && error.code === ErrorCode.CANCELLED) {
-        return true;
-    }
-    return false;
+    return error instanceof CancellationError
+        || (error instanceof PipelineCoreError && error.code === ErrorCode.CANCELLED);
 }
 
 /**
