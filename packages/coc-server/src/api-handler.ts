@@ -1799,9 +1799,6 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 conversationTurns: updatedTurns,
                 status: 'running',
             };
-            if (modeOverride) {
-                processUpdate.metadata = { ...(process.metadata || {}), mode: modeOverride };
-            }
             await store.updateProcess(id, processUpdate);
 
             // Delegate AI execution to the queue executor bridge

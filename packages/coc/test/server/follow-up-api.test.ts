@@ -357,7 +357,7 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
 
     describe('mode override', () => {
-        it('should update process metadata.mode when valid mode is provided', async () => {
+        it('should not eagerly write metadata.mode; mode is passed to dispatch instead', async () => {
             const proc: AIProcess = {
                 id: 'proc-mode',
                 type: 'clarification',
@@ -377,8 +377,9 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
+            // The handler no longer pre-writes mode to metadata; executeFollowUp owns that write.
             const updated = await store.getProcess('proc-mode');
-            expect(updated?.metadata?.mode).toBe('ask');
+            expect(updated?.metadata?.mode).toBe('autopilot');
         });
 
         it('should pass mode to enqueue payload when no parent task exists', async () => {
