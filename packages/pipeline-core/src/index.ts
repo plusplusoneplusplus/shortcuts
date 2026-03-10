@@ -44,6 +44,19 @@ export {
 } from './logger';
 
 // ============================================================================
+// Pino Logger (structured logging)
+// ============================================================================
+
+export {
+    PinoLoggerOptions,
+    LogStoreName,
+    createRootPinoLogger,
+    createLogStore,
+    createPinoAdapter,
+    createPinoNullLogger,
+} from './pino-logger';
+
+// ============================================================================
 // Errors
 // ============================================================================
 
