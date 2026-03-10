@@ -16,6 +16,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/pipeline-core';
+import { getServerLogger } from './server-logger';
 
 // ============================================================================
 // Types
@@ -183,8 +184,9 @@ export class ProcessWebSocketServer {
             });
         });
 
-        this.wss.on('connection', (ws: WebSocket) => {
+        this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
             const clientId = crypto.randomUUID();
+            const remoteAddress = req.socket?.remoteAddress;
             (ws as any).isAlive = true;
 
             const client: WSClient = {
@@ -203,6 +205,7 @@ export class ProcessWebSocketServer {
             };
 
             this.clients.add(client);
+            getServerLogger().info({ clientId, remoteAddress }, 'WebSocket connected');
 
             // Send welcome message
             client.send(JSON.stringify({
@@ -219,12 +222,18 @@ export class ProcessWebSocketServer {
                     const parsed = JSON.parse(text) as ClientMessage;
                     this.handleClientMessage(client, parsed);
                 } catch {
-                    // Ignore parse errors
+                    getServerLogger().debug({ clientId }, 'WebSocket message parse error');
                 }
             });
 
-            ws.on('close', () => this.clients.delete(client));
-            ws.on('error', () => this.clients.delete(client));
+            ws.on('close', (code: number, reason: Buffer) => {
+                this.clients.delete(client);
+                getServerLogger().debug({ clientId, reason: reason.toString() }, 'WebSocket disconnected');
+            });
+            ws.on('error', (err: Error) => {
+                this.clients.delete(client);
+                getServerLogger().warn({ clientId, err }, 'WebSocket error');
+            });
         });
 
         // Start heartbeat check
@@ -337,6 +346,7 @@ export class ProcessWebSocketServer {
             case 'subscribe':
                 client.lastSeen = Date.now();
                 client.workspaceId = message.workspaceId;
+                getServerLogger().debug({ clientId: client.id, channel: `workspace:${message.workspaceId}` }, 'WebSocket subscribed');
                 break;
             case 'subscribe-wiki':
                 client.lastSeen = Date.now();
@@ -344,6 +354,7 @@ export class ProcessWebSocketServer {
                     client.subscribedWikiIds = new Set();
                 }
                 client.subscribedWikiIds.add(message.wikiId);
+                getServerLogger().debug({ clientId: client.id, channel: `wiki:${message.wikiId}` }, 'WebSocket subscribed');
                 break;
             case 'subscribe-file':
                 client.lastSeen = Date.now();
@@ -351,6 +362,7 @@ export class ProcessWebSocketServer {
                     client.subscribedFiles = new Set();
                 }
                 client.subscribedFiles.add(message.filePath);
+                getServerLogger().debug({ clientId: client.id, channel: `file:${message.filePath}` }, 'WebSocket subscribed');
                 break;
             case 'unsubscribe-file':
                 client.lastSeen = Date.now();
@@ -361,15 +373,20 @@ export class ProcessWebSocketServer {
 
     private startHeartbeat(): void {
         this.heartbeatTimer = setInterval(() => {
+            let prunedCount = 0;
             for (const client of this.clients) {
                 const ws = client.socket;
                 if (!(ws as any).isAlive) {
                     client.close();
                     ws.terminate();
+                    prunedCount++;
                     continue;
                 }
                 (ws as any).isAlive = false;
                 ws.ping();
+            }
+            if (prunedCount > 0) {
+                getServerLogger().debug({ prunedCount }, 'Heartbeat pruned dead connections');
             }
         }, HEARTBEAT_INTERVAL_MS);
 

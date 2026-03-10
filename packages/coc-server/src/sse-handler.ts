@@ -12,6 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
+import { getServerLogger } from './server-logger';
 
 /**
  * Handle SSE streaming for a single process.
@@ -41,6 +42,7 @@ export async function handleProcessStream(
     // 1. Look up the process — 404 if not found
     let process = await store.getProcess(processId);
     if (!process) {
+        getServerLogger().warn({ processId }, 'SSE: process not found');
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Process not found' }));
         return;
@@ -54,6 +56,7 @@ export async function handleProcessStream(
         'X-Accel-Buffering': 'no',
     });
     res.flushHeaders();
+    getServerLogger().debug({ processId }, 'SSE stream started');
 
     // 3. For running processes, flush buffered content before replay
     if ((process.status === 'running') && store.requestFlush) {
@@ -74,19 +77,23 @@ export async function handleProcessStream(
         });
         sendEvent(res, 'done', { processId });
         res.end();
+        getServerLogger().debug({ processId, eventCount: 0 }, 'SSE stream ended');
         return;
     }
 
     // 6. Subscribe to output chunks via store.onProcessOutput
     let cleaned = false;
+    let eventCount = 0;
     const cleanup = () => {
         if (cleaned) { return; }
         cleaned = true;
         clearInterval(heartbeat);
         unsubscribe();
+        getServerLogger().debug({ processId, eventCount }, 'SSE stream ended');
     };
 
     const unsubscribe = store.onProcessOutput(processId, (event) => {
+        eventCount++;
         if (event.type === 'chunk') {
             sendEvent(res, 'chunk', { content: event.content });
         } else if (event.type === 'tool-start') {

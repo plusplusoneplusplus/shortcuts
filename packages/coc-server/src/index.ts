@@ -158,6 +158,9 @@ export {
     internalError,
 } from './errors';
 
+// Server logger (injection point for Pino)
+export { setServerLogger, getServerLogger, createRequestLogger, createWSLogger, createQueueLogger } from './server-logger';
+
 // Skill management
 export { registerSkillRoutes, sortSkillsByUsage } from './skill-handler';
 export { registerGlobalSkillRoutes } from './global-skill-handler';

@@ -265,13 +265,16 @@ describe('handleAPIError', () => {
         });
     });
 
-    it('should log unknown errors to console.error', () => {
+    it('should NOT log unknown errors to console.error (replaced by pino logger)', () => {
         const { res } = createMockResponse();
         const err = new Error('Unexpected crash');
 
+        // console.error is no longer used — pino handles logging.
+        // Verify no console.error is called.
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         handleAPIError(res, err);
-
-        expect(consoleSpy).toHaveBeenCalledWith('Unexpected API error:', err);
+        expect(consoleSpy).not.toHaveBeenCalled();
+        consoleSpy.mockRestore();
     });
 
     it('should NOT log APIError instances to console.error', () => {

@@ -25,6 +25,7 @@ import { gitCache } from './git-cache';
 import { registerSkillRoutes } from './skill-handler';
 import { registerGlobalSkillRoutes } from './global-skill-handler';
 import type { ProcessWebSocketServer } from './websocket';
+import { getServerLogger } from './server-logger';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -198,9 +199,38 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
  * Mutates the `routes` array in-place.
  */
 export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge, dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined): void {
-    // ------------------------------------------------------------------
-    // Workspace endpoints
-    // ------------------------------------------------------------------
+    // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).
+    // This is done once here so all 54 route registrations below get audit logging
+    // without touching each handler individually.
+    const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
+    const _origPush = routes.push.bind(routes);
+    (routes as any).push = (...items: Route[]) => {
+        for (const route of items) {
+            const method = (route.method || 'GET').toUpperCase();
+            if (MUTATION_METHODS.has(method)) {
+                const orig = route.handler;
+                _origPush({
+                    ...route,
+                    handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+                        const pathname = url.parse(req.url || '/').pathname || '/';
+                        const parts = pathname.split('/').filter(Boolean);
+                        const resource = parts[1] || 'unknown';
+                        const id = parts[2] ? decodeURIComponent(parts[2]) : undefined;
+                        getServerLogger().info(
+                            { method, resource, ...(id !== undefined ? { id } : {}) },
+                            'API mutation'
+                        );
+                        return orig(req, res, match);
+                    },
+                });
+            } else {
+                _origPush(route);
+            }
+        }
+        return routes.length;
+    };
+
+    try {
 
     // POST /api/workspaces — Register a workspace
     routes.push({
@@ -1899,6 +1929,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
     // Register repo skill management routes
     registerSkillRoutes(routes, store, dataDir);
+    } finally {
+        // Restore original push so that external callers are unaffected
+        (routes as any).push = _origPush;
+    }
 }
 
 // ============================================================================

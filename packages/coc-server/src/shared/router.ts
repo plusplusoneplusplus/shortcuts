@@ -12,6 +12,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
+import { getServerLogger } from '../server-logger';
 
 // ============================================================================
 // Constants
@@ -105,6 +106,7 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
     const { routes, spaHtml, staticHandlers = [], spaETag } = options;
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
+        const startTime = Date.now();
         const parsedUrl = url.parse(req.url || '/', true);
         // Keep raw (percent-encoded) pathname for API route matching so that
         // workspace IDs containing '/' (encoded as %2F) don't corrupt the path
@@ -118,6 +120,18 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        // Log every completed request (static 404s at debug to avoid noise)
+        res.on('finish', () => {
+            const durationMs = Date.now() - startTime;
+            const log = getServerLogger();
+            const isStaticNotFound = res.statusCode === 404 && !rawPathname.startsWith('/api/');
+            if (isStaticNotFound) {
+                log.debug({ method, path: rawPathname, status: res.statusCode, durationMs }, 'request');
+            } else {
+                log.info({ method, path: rawPathname, status: res.statusCode, durationMs }, 'request');
+            }
+        });
 
         // Handle CORS preflight
         if (method === 'OPTIONS') {
@@ -138,7 +152,8 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
 
                 if (typeof route.pattern === 'string') {
                     if (route.pattern === rawPathname) {
-                        Promise.resolve(route.handler(req, res)).catch(() => {
+                        Promise.resolve(route.handler(req, res)).catch((err) => {
+                            getServerLogger().error({ method: req.method, url: pathname, err }, 'Route handler error');
                             if (!res.headersSent) {
                                 send500(res);
                             }
@@ -148,7 +163,8 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
                 } else {
                     const match = rawPathname.match(route.pattern);
                     if (match) {
-                        Promise.resolve(route.handler(req, res, match)).catch(() => {
+                        Promise.resolve(route.handler(req, res, match)).catch((err) => {
+                            getServerLogger().error({ method: req.method, url: pathname, err }, 'Route handler error');
                             if (!res.headersSent) {
                                 send500(res);
                             }

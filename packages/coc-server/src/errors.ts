@@ -10,6 +10,7 @@
 
 import * as http from 'http';
 import { sendJSON } from './api-handler';
+import { getServerLogger } from './server-logger';
 
 /**
  * Structured API error with HTTP status code and optional metadata.
@@ -73,9 +74,14 @@ export function handleAPIError(res: http.ServerResponse, error: unknown): void {
         if (error.details !== undefined) {
             body.details = error.details;
         }
+        if (error.statusCode >= 500) {
+            getServerLogger().error({ statusCode: error.statusCode, code: error.code, err: error }, error.message);
+        } else {
+            getServerLogger().warn({ statusCode: error.statusCode, code: error.code }, error.message);
+        }
         sendJSON(res, error.statusCode, body);
     } else {
-        console.error('Unexpected API error:', error);
+        getServerLogger().error({ err: error }, 'Unexpected API error');
         sendJSON(res, 500, { error: 'Internal server error', code: 'INTERNAL_ERROR' });
     }
 }
