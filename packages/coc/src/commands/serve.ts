@@ -20,7 +20,9 @@ import {
     bold,
     cyan,
 } from '../logger';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
+import { FileProcessStore, setLogger } from '@plusplusoneplusplus/pipeline-core';
+import { setServerLogger } from '@plusplusoneplusplus/coc-server';
 import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -41,6 +43,15 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
     const drainTimeoutMs = options.drainTimeout !== undefined && options.drainTimeout > 0
         ? options.drainTimeout * 1000
         : undefined; // undefined = infinite
+
+    // Set up Pino loggers before anything else
+    const logDir = options.logDir ?? path.join(dataDir, 'logs');
+    const { ai, coc } = createCLIPinoLogger({
+        level: options.logLevel,
+        logDir,
+    });
+    setLogger(pinoAdapterForPipelineCore(ai));
+    setServerLogger(coc);
 
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
@@ -72,6 +83,9 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
             dataDir,
             processCount,
         });
+
+        // Structured log for tooling/file consumers
+        coc.info({ url: server.url, dataDir, port }, 'Server started');
 
         // Open browser unless disabled
         if (options.open !== false) {

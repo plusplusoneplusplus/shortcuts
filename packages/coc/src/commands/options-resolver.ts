@@ -36,6 +36,8 @@ export function resolveRunOptions(
         approvePermissions: Boolean(opts.approvePermissions) || config.approvePermissions,
         persist: (opts.persist as boolean) ?? config.persist,
         dataDir: config.serve?.dataDir,
+        logLevel: opts.verbose ? 'debug' : (opts.logLevel as string | undefined),
+        logDir: opts.logDir as string | undefined,
     };
 }
 
@@ -69,6 +71,8 @@ export function resolveServeOptions(
         noDrain: opts.drain === false,
         queueRestartPolicy: (opts.queueRestartPolicy as ServeCommandOptions['queueRestartPolicy'] | undefined) ?? config.queue?.restartPolicy,
         queueHistoryLimit: (opts.queueHistoryLimit as number | undefined) ?? config.queue?.historyLimit,
+        logLevel: opts.logLevel as string | undefined,
+        logDir: opts.logDir as string | undefined,
     };
 }
 

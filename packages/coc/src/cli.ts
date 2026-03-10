@@ -13,7 +13,7 @@ import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
-import { setColorEnabled, setVerbosity } from './logger';
+import { setColorEnabled } from './logger';
 import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete } from './commands/skills';
 
 // ============================================================================
@@ -58,7 +58,9 @@ export function createProgram(): Command {
         .option('-f, --output-file <path>', 'Write results to file instead of stdout')
         .option('-w, --workspace-root <path>', 'Workspace root for skill resolution')
         .option('--param <key=value...>', 'Workflow parameters (repeatable)', collectParams, {})
-        .option('-v, --verbose', 'Verbose logging with per-item progress', false)
+        .option('-v, --verbose', 'Verbose logging (shorthand for --log-level debug)', false)
+        .option('--log-level <level>', 'Log level: trace, debug, info, warn, error, fatal', 'info')
+        .option('--log-dir <path>', 'Directory for .ndjson log files (default: no file logging)')
         .option('--dry-run', 'Parse and validate without executing', false)
         .option('--timeout <seconds>', 'Overall execution timeout in seconds', parseInt)
         .option('--no-color', 'Disable colored output')
@@ -125,6 +127,8 @@ export function createProgram(): Command {
         .option('--no-drain', 'Skip graceful queue draining on shutdown')
         .option('--queue-restart-policy <policy>', 'Policy for tasks running at restart: fail, requeue, requeue-if-retriable')
         .option('--queue-history-limit <number>', 'Max history entries to persist per repo', (v: string) => parseInt(v, 10))
+        .option('--log-level <level>', 'Log level: trace, debug, info, warn, error, fatal', 'info')
+        .option('--log-dir <path>', 'Directory for .ndjson log files (default: <data-dir>/logs)')
         .option('--no-color', 'Disable colored output')
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
@@ -268,10 +272,5 @@ function applyGlobalOptions(opts: Record<string, unknown>): void {
     // Also respect NO_COLOR env variable
     if (process.env.NO_COLOR !== undefined) {
         setColorEnabled(false);
-    }
-
-    // Set verbosity
-    if (opts.verbose) {
-        setVerbosity('verbose');
     }
 }

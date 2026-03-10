@@ -2,13 +2,8 @@
  * CLI Logger
  *
  * Provides colored console output with spinner/progress support for the CLI.
- * Implements the pipeline-core Logger interface and adds CLI-specific features
- * like progress bars, spinners, and color-coded output.
- *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
-
-import { type Logger, formatTimestamp } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // ANSI Color Codes
@@ -254,58 +249,6 @@ export class ProgressDisplay {
             process.stderr.write(`${msg}\n`);
         }
     }
-}
-
-// ============================================================================
-// CLI Logger (implements pipeline-core Logger interface)
-// ============================================================================
-
-/**
- * Verbosity level for CLI output
- */
-export type VerbosityLevel = 'quiet' | 'normal' | 'verbose';
-
-let verbosity: VerbosityLevel = 'normal';
-
-/**
- * Set the CLI verbosity level
- */
-export function setVerbosity(level: VerbosityLevel): void {
-    verbosity = level;
-}
-
-/**
- * Get the current verbosity level
- */
-export function getVerbosity(): VerbosityLevel {
-    return verbosity;
-}
-
-/**
- * Create a pipeline-core compatible Logger for CLI usage
- */
-export function createCLILogger(): Logger {
-    return {
-        debug(category: string, message: string): void {
-            if (verbosity === 'verbose') {
-                process.stderr.write(`${gray(`${formatTimestamp()} [DEBUG] [${category}]`)} ${message}\n`);
-            }
-        },
-        info(category: string, message: string): void {
-            if (verbosity !== 'quiet') {
-                process.stderr.write(`${gray(formatTimestamp())} ${blue(`[${category}]`)} ${message}\n`);
-            }
-        },
-        warn(category: string, message: string): void {
-            process.stderr.write(`${gray(formatTimestamp())} ${yellow(`[WARN] [${category}]`)} ${message}\n`);
-        },
-        error(category: string, message: string, error?: Error): void {
-            process.stderr.write(`${gray(formatTimestamp())} ${red(`[ERROR] [${category}]`)} ${message}\n`);
-            if (error && verbosity === 'verbose') {
-                process.stderr.write(`${gray(error.stack || error.message)}\n`);
-            }
-        },
-    };
 }
 
 // ============================================================================

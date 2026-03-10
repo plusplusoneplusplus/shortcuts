@@ -32,6 +32,10 @@ export interface ServeCommandOptions {
     queueRestartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
     /** Maximum number of history entries to persist per repo (default: 100). */
     queueHistoryLimit?: number;
+    /** Log level for Pino logger (default: 'info'). */
+    logLevel?: string;
+    /** Directory for .ndjson log files. Defaults to <dataDir>/logs for serve. */
+    logDir?: string;
 }
 
 /** Options for the wiki module within the execution server. */

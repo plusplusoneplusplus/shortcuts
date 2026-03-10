@@ -30,7 +30,6 @@ import type { CLIAIInvokerOptions } from '../ai-invoker';
 import {
     Spinner,
     ProgressDisplay,
-    createCLILogger,
     printSuccess,
     printError,
     printInfo,
@@ -39,6 +38,7 @@ import {
     green,
     bold,
 } from '../logger';
+import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 import { formatResults, formatSummary, formatDuration } from '../output-formatter';
 import type { OutputFormat } from '../output-formatter';
 import { resolvePipelinePath } from './validate';
@@ -77,6 +77,10 @@ export interface RunCommandOptions {
     persist: boolean;
     /** Data directory for process store (overrides config) */
     dataDir?: string;
+    /** Log level (default: 'info'). Overridden by verbose: true → 'debug'. */
+    logLevel?: string;
+    /** Directory for .ndjson log files. No file logging when undefined. */
+    logDir?: string;
 }
 
 // ============================================================================
@@ -128,7 +132,12 @@ export async function executeRun(
     process.stderr.write('\n');
 
     // 4. Set up logger
-    setLogger(createCLILogger());
+    const { ai } = createCLIPinoLogger({
+        level: options.logLevel,
+        logDir: options.logDir,
+        verbose: options.verbose,
+    });
+    setLogger(pinoAdapterForPipelineCore(ai));
 
     // 5. Create AI invoker
     // Working directory priority:

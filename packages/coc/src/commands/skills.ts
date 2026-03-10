@@ -21,11 +21,11 @@ import {
     installBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
     setLogger,
-    consoleLogger,
 } from '@plusplusoneplusplus/pipeline-core';
+import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 
-// Ensure console logger is active for standalone CLI usage
-setLogger(consoleLogger);
+// Wire a basic Pino-backed logger for pipeline-core operations in skills commands
+setLogger(pinoAdapterForPipelineCore(createCLIPinoLogger({}).ai));
 
 // ============================================================================
 // Helpers
