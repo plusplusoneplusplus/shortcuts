@@ -127,7 +127,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         };
     }, [task, processId, processDetails]);
 
-    const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
+    const sessionModel = metadataProcess?.metadata?.model as string | undefined;
+
+    const setTurnsAndRef= useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
         turnsRef.current = resolved;
         setTurns(resolved);
@@ -715,6 +717,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     <ContextWindowIndicator
                         tokenLimit={sessionTokenLimit}
                         currentTokens={sessionCurrentTokens}
+                        modelName={sessionModel}
                         className="hidden sm:flex ml-2 max-w-[180px]"
                     />
                 </div>

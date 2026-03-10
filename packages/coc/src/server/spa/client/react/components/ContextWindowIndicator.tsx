@@ -17,6 +17,8 @@ interface ContextWindowIndicatorProps {
     tokenLimit?: number;
     /** Tokens currently occupying the context */
     currentTokens?: number;
+    /** Optional model name to display to the left of the ctx label */
+    modelName?: string;
     className?: string;
 }
 
@@ -26,7 +28,7 @@ function formatTokenCount(n: number): string {
     return String(n);
 }
 
-export function ContextWindowIndicator({ tokenLimit, currentTokens, className }: ContextWindowIndicatorProps) {
+export function ContextWindowIndicator({ tokenLimit, currentTokens, modelName, className }: ContextWindowIndicatorProps) {
     if (!tokenLimit || tokenLimit <= 0) return null;
 
     const used = currentTokens ?? 0;
@@ -46,6 +48,7 @@ export function ContextWindowIndicator({ tokenLimit, currentTokens, className }:
             title={ariaLabel}
             aria-label={ariaLabel}
         >
+            {modelName && <span className="shrink-0 whitespace-nowrap">{modelName}</span>}
             <span className="shrink-0 whitespace-nowrap">ctx</span>
             <div className="relative flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden min-w-[60px]">
                 <div
