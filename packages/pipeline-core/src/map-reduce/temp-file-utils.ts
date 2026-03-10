@@ -15,7 +15,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getLogger, LogCategory } from '../logger';
+import { getAIServiceLogger } from '../ai-logger';
 
 /** Directory name for map-reduce temp files */
 const TEMP_DIR_NAME = 'vscode-shortcuts-mapreduce';
@@ -42,7 +42,7 @@ export function ensureTempDir(): string | undefined {
         }
         return tempDir;
     } catch (error) {
-        getLogger().error(LogCategory.UTILS, 'Failed to create temp directory', error instanceof Error ? error : undefined);
+        getAIServiceLogger().error({ err: error instanceof Error ? error : undefined }, 'Failed to create temp directory');
         return undefined;
     }
 }
@@ -89,7 +89,7 @@ export function writeTempFile(
             cleanup: () => cleanupTempFile(filePath)
         };
     } catch (error) {
-        getLogger().error(LogCategory.UTILS, 'Failed to write temp file', error instanceof Error ? error : undefined);
+        getAIServiceLogger().error({ err: error instanceof Error ? error : undefined }, 'Failed to write temp file');
         return undefined;
     }
 }
@@ -106,7 +106,7 @@ export function cleanupTempFile(filePath: string): boolean {
         }
         return true;
     } catch (error) {
-        getLogger().error(LogCategory.UTILS, 'Failed to cleanup temp file', error instanceof Error ? error : undefined);
+        getAIServiceLogger().error({ err: error instanceof Error ? error : undefined }, 'Failed to cleanup temp file');
         return false;
     }
 }
@@ -136,7 +136,7 @@ export function cleanupAllTempFiles(): number {
             }
         }
     } catch (error) {
-        getLogger().error(LogCategory.UTILS, 'Failed to cleanup temp directory', error instanceof Error ? error : undefined);
+        getAIServiceLogger().error({ err: error instanceof Error ? error : undefined }, 'Failed to cleanup temp directory');
     }
 
     return count;
@@ -151,7 +151,7 @@ export function readTempFile(filePath: string): string | undefined {
     try {
         return fs.readFileSync(filePath, { encoding: 'utf8' });
     } catch (error) {
-        getLogger().error(LogCategory.UTILS, 'Failed to read temp file', error instanceof Error ? error : undefined);
+        getAIServiceLogger().error({ err: error instanceof Error ? error : undefined }, 'Failed to read temp file');
         return undefined;
     }
 }

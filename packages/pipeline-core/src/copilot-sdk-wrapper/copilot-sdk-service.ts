@@ -18,7 +18,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { AIInvocationResult } from '../ai/types';
 import { ToolCall, ToolCallPermissionRequest, ToolCallPermissionResult } from '../ai/process-types';
-import { getLogger, LogCategory } from '../logger';
+import { getAIServiceLogger, createSessionLogger } from '../ai-logger';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
 import { ensureFolderTrusted } from './trusted-folder';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
@@ -348,8 +348,8 @@ export class CopilotSDKService {
             return this.availabilityCache;
         }
 
-        const logger = getLogger();
-        logger.debug(LogCategory.AI, 'CopilotSDKService: Checking SDK availability');
+        const aiLog = getAIServiceLogger();
+        aiLog.debug('Checking SDK availability');
 
         try {
             const sdkPath = this.findSDKPath();
@@ -358,7 +358,7 @@ export class CopilotSDKService {
                     available: false,
                     error: 'Copilot SDK not found. Please ensure @github/copilot-sdk is installed.'
                 };
-                logger.debug(LogCategory.AI, 'CopilotSDKService: SDK not found');
+                aiLog.debug('SDK not found');
                 return this.availabilityCache;
             }
 
@@ -369,7 +369,7 @@ export class CopilotSDKService {
                 available: true,
                 sdkPath
             };
-            logger.debug(LogCategory.AI, `CopilotSDKService: SDK available at: ${sdkPath}`);
+            aiLog.debug({ sdkPath }, 'SDK available');
             return this.availabilityCache;
 
         } catch (error) {
@@ -378,7 +378,7 @@ export class CopilotSDKService {
                 available: false,
                 error: `Failed to load Copilot SDK: ${errorMessage}`
             };
-            logger.error(LogCategory.AI, 'CopilotSDKService: SDK availability check failed', error instanceof Error ? error : undefined);
+            aiLog.error({ err: error instanceof Error ? error : undefined }, 'SDK availability check failed');
             return this.availabilityCache;
         }
     }
@@ -429,13 +429,13 @@ export class CopilotSDKService {
             throw new Error('Failed to load Copilot SDK module');
         }
 
-        const logger = getLogger();
+        const aiLog = getAIServiceLogger();
 
         const options: ICopilotClientOptions = {};
         if (cwd) {
             if (!fs.existsSync(cwd)) {
-                logger.warn(LogCategory.AI,
-                    `CopilotSDKService: Working directory does not exist: ${cwd}. ` +
+                aiLog.warn({ cwd },
+                    'Working directory does not exist. ' +
                     'The SDK will fail with ERR_STREAM_DESTROYED because child_process.spawn ' +
                     'requires an existing cwd. Ensure the caller passes a valid directory.');
             }
@@ -447,7 +447,7 @@ export class CopilotSDKService {
             }
         }
 
-        logger.debug(LogCategory.AI, `CopilotSDKService: Creating new CopilotClient with options: ${JSON.stringify(options)}`);
+        aiLog.debug({ clientOptions: options }, 'Creating new CopilotClient');
         const client = new this.sdkModule.CopilotClient(options);
         return client;
     }
@@ -460,7 +460,7 @@ export class CopilotSDKService {
      * @returns Invocation result with response or error
      */
     public async sendMessage(options: SendMessageOptions): Promise<SDKInvocationResult> {
-        const logger = getLogger();
+        const aiLog = getAIServiceLogger();
         const startTime = Date.now();
 
         // Check availability first
@@ -520,12 +520,12 @@ export class CopilotSDKService {
                 if (shouldLoadDefaultMcp) {
                     // Load default config from ~/.copilot/mcp-config.json
                     const defaultConfig = loadDefaultMcpConfig();
-                    logger.debug(LogCategory.AI, `CopilotSDKService: Default MCP config load result: success=${defaultConfig.success}, fileExists=${defaultConfig.fileExists}, serverCount=${Object.keys(defaultConfig.mcpServers).length}`);
+                    aiLog.debug({ success: defaultConfig.success, fileExists: defaultConfig.fileExists, serverCount: Object.keys(defaultConfig.mcpServers).length }, 'Default MCP config loaded');
                     if (defaultConfig.error) {
-                        logger.debug(LogCategory.AI, `CopilotSDKService: Default MCP config error: ${defaultConfig.error}`);
+                        aiLog.debug({ error: defaultConfig.error }, 'Default MCP config error');
                     }
                     if (defaultConfig.success && Object.keys(defaultConfig.mcpServers).length > 0) {
-                        logger.debug(LogCategory.AI, `CopilotSDKService: Loaded ${Object.keys(defaultConfig.mcpServers).length} default MCP server(s): ${JSON.stringify(defaultConfig.mcpServers)}`);
+                        aiLog.debug({ serverCount: Object.keys(defaultConfig.mcpServers).length }, 'Default MCP servers loaded');
                     }
                     // Merge with explicit config (explicit takes precedence)
                     finalMcpServers = mergeMcpConfigs(defaultConfig.mcpServers, options.mcpServers);
@@ -536,12 +536,11 @@ export class CopilotSDKService {
 
                 if (finalMcpServers && Object.keys(finalMcpServers).length > 0) {
                     sessionOptions.mcpServers = finalMcpServers;
-                    logger.debug(LogCategory.AI, `CopilotSDKService: Using ${Object.keys(finalMcpServers).length} MCP server(s): ${Object.keys(finalMcpServers).join(', ')}`);
-                    logger.debug(LogCategory.AI, `CopilotSDKService: MCP servers config: ${JSON.stringify(finalMcpServers)}`);
+                    aiLog.debug({ serverCount: Object.keys(finalMcpServers).length, serverNames: Object.keys(finalMcpServers) }, 'Using MCP servers');
                 } else if (options.mcpServers !== undefined && Object.keys(options.mcpServers).length === 0) {
                     // Explicit empty object means disable all MCP servers
                     sessionOptions.mcpServers = {};
-                    logger.debug(LogCategory.AI, 'CopilotSDKService: MCP servers explicitly disabled');
+                    aiLog.debug('MCP servers explicitly disabled');
                 }
             }
 
@@ -552,7 +551,8 @@ export class CopilotSDKService {
             // The SDK requires onPermissionRequest; default to denyAll when none is provided.
             const effectiveHandler = options.onPermissionRequest || denyAllPermissions;
             sessionOptions.onPermissionRequest = (request, invocation) => {
-                logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission request: kind=${request.kind}, toolCallId=${request.toolCallId || '(none)'}`);
+                const sessionLog = createSessionLogger(invocation.sessionId);
+                sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as any).resource, operation: (request as any).operation }, 'Permission request');
                 const capturePermission = (permResult: PermissionRequestResult) => {
                     if (request.toolCallId) {
                         const tc = toolCallsMap.get(request.toolCallId);
@@ -575,12 +575,12 @@ export class CopilotSDKService {
                 // Handle both sync and async permission handlers
                 if (result && typeof (result as Promise<PermissionRequestResult>).then === 'function') {
                     return (result as Promise<PermissionRequestResult>).then(r => {
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${r.kind} (for ${request.kind})`);
+                        createSessionLogger(invocation.sessionId).debug({ kind: r.kind, requestKind: request.kind }, 'Permission result');
                         capturePermission(r);
                         return r;
                     });
                 }
-                logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${(result as PermissionRequestResult).kind} (for ${request.kind})`);
+                createSessionLogger(invocation.sessionId).debug({ kind: (result as PermissionRequestResult).kind, requestKind: request.kind }, 'Permission result');
                 capturePermission(result as PermissionRequestResult);
                 return result;
             };
@@ -588,16 +588,17 @@ export class CopilotSDKService {
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0 
                 ? JSON.stringify(sessionOptions) 
                 : '(default)';
-            logger.debug(LogCategory.AI, `CopilotSDKService: Creating session (cwd: ${options.workingDirectory || '(default)'}, options: ${sessionOptionsStr})`);
+            aiLog.debug({ cwd: options.workingDirectory, sessionOptionsStr }, 'Creating session');
 
             session = await client.createSession(sessionOptions);
-            logger.debug(LogCategory.AI, `CopilotSDKService: Session created: ${session.sessionId}`);
+            const sessionLog = createSessionLogger(session.sessionId);
+            aiLog.debug({ sessionId: session.sessionId }, 'Session created');
             options.onSessionCreated?.(session.sessionId);
 
             // Set agent mode if specified
             if (options.mode && session.rpc?.mode) {
                 await session.rpc.mode.set({ mode: options.mode });
-                logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Mode set to '${options.mode}'`);
+                sessionLog.debug({ mode: options.mode }, 'Mode set');
             }
 
             // Track the session for potential cancellation
@@ -627,7 +628,7 @@ export class CopilotSDKService {
 
             const durationMs = Date.now() - startTime;
 
-            logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Request completed in ${durationMs}ms`);
+            sessionLog.debug({ durationMs }, 'Request completed');
 
             if (!response) {
                 // For tool-heavy sessions (e.g., impl skill), the AI may complete
@@ -635,7 +636,7 @@ export class CopilotSDKService {
                 // producing a text summary. If turns occurred, the work was done
                 // successfully — treat empty text as success, not failure.
                 if (turnCount > 0) {
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Empty text response but ${turnCount} turns completed — treating as success (tool-based execution)`);
+                    sessionLog.debug({ durationMs, turnCount }, 'Empty text response — treating as success (tool-based execution)');
                     result = {
                         success: true,
                         response: '',
@@ -668,12 +669,16 @@ export class CopilotSDKService {
             const errorMessage = error instanceof Error ? error.message : String(error);
             const durationMs = Date.now() - startTime;
 
-            logger.error(LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? 'no-session'}]: Request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
+            if (session) {
+                createSessionLogger(session.sessionId).error({ durationMs, err: error instanceof Error ? error : undefined }, 'Request failed');
+            } else {
+                aiLog.error({ durationMs, err: error instanceof Error ? error : undefined }, 'Request failed (no session)');
+            }
 
             // When the underlying JSON-RPC stream is destroyed, the client is
             // no longer usable. Invalidate it so it doesn't leak.
             if (CopilotSDKService.isStreamDestroyedError(errorMessage) && client) {
-                logger.debug(LogCategory.AI, 'CopilotSDKService: Stream destroyed — invalidating client');
+                aiLog.debug('Stream destroyed — invalidating client');
                 this.invalidateClient(client);
                 client = null; // prevent double-stop in finally
             }
@@ -689,11 +694,12 @@ export class CopilotSDKService {
             // Clean up session
             if (session) {
                 this.untrackSession(session.sessionId);
+                const finalSessionLog = createSessionLogger(session.sessionId);
                 try {
                     await session.destroy();
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed`);
+                    finalSessionLog.debug('Session destroyed');
                 } catch (destroyError) {
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
+                    finalSessionLog.debug({ err: destroyError }, 'Warning: Error destroying session');
                 }
                 // Stop the per-session client
                 if (client) {
@@ -723,23 +729,23 @@ export class CopilotSDKService {
      * @returns True if the session was found and aborted, false otherwise
      */
     public async abortSession(sessionId: string): Promise<boolean> {
-        const logger = getLogger();
+        const sessionLog = createSessionLogger(sessionId);
         
         const session = this.activeSessions.get(sessionId);
         if (!session) {
-            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Session not found for abort`);
+            sessionLog.debug('Session not found for abort');
             return false;
         }
 
-        logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Aborting session`);
+        sessionLog.debug('Aborting session');
 
         try {
             await session.destroy();
             this.activeSessions.delete(sessionId);
-            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Session aborted successfully`);
+            sessionLog.debug('Session aborted successfully');
             return true;
         } catch (error) {
-            logger.error(LogCategory.AI, `CopilotSDKService [${sessionId}]: Error aborting session`, error instanceof Error ? error : undefined);
+            sessionLog.error({ err: error instanceof Error ? error : undefined }, 'Error aborting session');
             // Still remove from tracking even if destroy failed
             this.activeSessions.delete(sessionId);
             return false;
@@ -804,8 +810,8 @@ export class CopilotSDKService {
      * Clean up resources. Should be called when the extension deactivates.
      */
     public async cleanup(): Promise<void> {
-        const logger = getLogger();
-        logger.debug(LogCategory.AI, 'CopilotSDKService: Cleaning up SDK service');
+        const aiLog = getAIServiceLogger();
+        aiLog.debug('Cleaning up SDK service');
 
         // Abort all active sessions first
         const abortPromises: Promise<void>[] = [];
@@ -833,7 +839,7 @@ export class CopilotSDKService {
         parse?: (raw: string) => T,
         options?: { model?: string; timeoutMs?: number; cwd?: string },
     ): Promise<T> {
-        const logger = getLogger();
+        const aiLog = getAIServiceLogger();
         try {
             const result = await this.sendMessage({
                 prompt,
@@ -850,7 +856,7 @@ export class CopilotSDKService {
             return parse ? parse(raw) : raw as unknown as T;
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            logger.error(LogCategory.AI, `CopilotSDKService.transform: ${msg}`);
+            aiLog.error({ err: error instanceof Error ? error : undefined }, `transform: ${msg}`);
             throw error instanceof Error ? error : new Error(msg);
         }
     }
@@ -977,11 +983,10 @@ export class CopilotSDKService {
     private installStreamErrorGuard(): void {
         this.removeStreamErrorGuard();
 
-        const logger = getLogger();
+        const aiLog = getAIServiceLogger();
         this.streamErrorGuardHandler = (err: Error) => {
             if (CopilotSDKService.isStreamDestroyedError(err.message || String(err))) {
-                logger.debug(LogCategory.AI,
-                    `CopilotSDKService: Absorbed uncaught stream error: ${err.message}`);
+                aiLog.debug({ errMessage: err.message }, 'Absorbed uncaught stream error');
                 return; // Swallow — per-session error path already handles this
             }
             // Not ours — re-throw so the default handler picks it up
@@ -1049,8 +1054,7 @@ export class CopilotSDKService {
         attachments?: Attachment[]
     ): Promise<StreamingResult> {
         return new Promise((resolve, reject) => {
-            const logger = getLogger();
-            const sid = session.sessionId;
+            const sessionLog = createSessionLogger(session.sessionId);
             const streamingStartTime = Date.now();
             let response = '';
             // Accumulate ALL assistant.message content across turns.
@@ -1138,10 +1142,10 @@ export class CopilotSDKService {
                     : '';
                 const result = joinedMessages || response;
                 const elapsedMs = Date.now() - streamingStartTime;
-                logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Streaming completed (${result.length} chars, ${turnCount} turns, ${allMessages.length} messages, ${elapsedMs}ms elapsed)`);
+                sessionLog.info({ totalChars: result.length, turns: turnCount, messages: allMessages.length, elapsedMs }, 'Streaming completed');
                 if (activeToolCalls.size > 0) {
                     const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: WARNING: ${activeToolCalls.size} tool call(s) still active at settle: ${staleTools.join(', ')}`);
+                    sessionLog.debug({ activeToolCount: activeToolCalls.size, staleTools }, 'WARNING: tool call(s) still active at settle');
                 }
                 const capturedToolCalls = toolCallsMap!.size > 0 ? Array.from(toolCallsMap!.values()) : undefined;
                 settle(resolve, { response: result, tokenUsage: buildTokenUsage(), turnCount, toolCalls: capturedToolCalls });
@@ -1150,9 +1154,9 @@ export class CopilotSDKService {
             const timeoutId = setTimeout(() => {
                 if (activeToolCalls.size > 0) {
                     const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
-                    logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Timeout with ${activeToolCalls.size} active tool call(s): ${staleTools.join(', ')}`);
+                    sessionLog.error({ activeToolCount: activeToolCalls.size, activeTools: staleTools }, 'Timeout with active tool call(s)');
                 }
-                logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Force-destroying session due to timeout after ${timeoutMs}ms`);
+                sessionLog.error({ elapsedMs: timeoutMs, activeTools: [...activeToolCalls.keys()] }, 'Force-destroying session due to timeout');
                 session.destroy().catch(() => {});
                 settleError(new Error(`Request timed out after ${timeoutMs}ms`));
             }, timeoutMs);
@@ -1166,7 +1170,7 @@ export class CopilotSDKService {
                 if (effectiveIdleMs <= 0) { return; }
                 if (idleTimerId !== undefined) { clearTimeout(idleTimerId); }
                 idleTimerId = setTimeout(() => {
-                    logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Force-destroying session due to idle timeout after ${effectiveIdleMs}ms with no activity`);
+                    sessionLog.error({ elapsedMs: effectiveIdleMs }, 'Force-destroying session due to idle timeout');
                     session.destroy().catch(() => {});
                     settleError(new Error(`Request idle-timed out after ${effectiveIdleMs}ms with no activity`));
                 }, effectiveIdleMs);
@@ -1191,7 +1195,7 @@ export class CopilotSDKService {
                         try {
                             onStreamingChunk(delta);
                         } catch (cbError) {
-                            logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: onStreamingChunk callback error: ${cbError}`);
+                            sessionLog.debug({ err: cbError }, 'onStreamingChunk callback error');
                         }
                     }
                 } else if (eventType === 'assistant.message') {
@@ -1203,11 +1207,11 @@ export class CopilotSDKService {
                     if (messageContent) {
                         allMessages.push(messageContent);
                     }
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Received message #${allMessages.length} (${messageContent.length} chars)`);
+                    sessionLog.debug({ messageNum: allMessages.length, chars: messageContent.length }, 'Received message');
                     // Log tool requests if present — shows which tools the AI wants to invoke
                     if (event.data?.toolRequests?.length) {
-                        const toolNames = event.data.toolRequests.map(t => t.name).join(', ');
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Message includes ${event.data.toolRequests.length} tool request(s): ${toolNames}`);
+                        const toolNames = event.data.toolRequests.map(t => t.name);
+                        sessionLog.debug({ toolRequestCount: event.data.toolRequests.length, toolNames }, 'Message includes tool requests');
                     }
                     // If no delta chunks were received but we have a streaming callback,
                     // emit the message as a single chunk so SSE consumers get content
@@ -1217,7 +1221,7 @@ export class CopilotSDKService {
                         try {
                             onStreamingChunk(messageContent);
                         } catch (cbError) {
-                            logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: onStreamingChunk callback error: ${cbError}`);
+                            sessionLog.debug({ err: cbError }, 'onStreamingChunk callback error');
                         }
                     }
                 } else if (eventType === 'assistant.turn_start') {
@@ -1228,11 +1232,11 @@ export class CopilotSDKService {
                     // don't cancel the grace timer, we'd settle with just the intent
                     // message from the first turn instead of waiting for the full response.
                     const elapsedMs = Date.now() - streamingStartTime;
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Turn starting (${elapsedMs}ms elapsed, ${activeToolCalls.size} active tool calls)`);
+                    sessionLog.debug({ elapsedMs, activeToolCalls: activeToolCalls.size }, 'Turn starting');
                     if (turnEndGraceTimer) {
                         clearTimeout(turnEndGraceTimer);
                         turnEndGraceTimer = null;
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Cancelled turn_end grace timer — new turn starting`);
+                        sessionLog.debug('Cancelled turn_end grace timer — new turn starting');
                     }
                 } else if (eventType === 'assistant.turn_end') {
                     // Turn ended — the assistant finished its current turn.
@@ -1246,7 +1250,7 @@ export class CopilotSDKService {
                     // is done. The turn_end grace period is only a safety net for sessions
                     // that don't fire session.idle.
                     turnCount++;
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Turn ${turnCount} ended (${allMessages.length} messages so far)`);
+                    sessionLog.debug({ turn: turnCount, messages: allMessages.length }, 'Turn ended');
 
                     // Start a grace timer. If a new turn starts (turn_start), this timer
                     // will be cancelled. If nothing else happens, we settle after the grace period.
@@ -1254,19 +1258,19 @@ export class CopilotSDKService {
                         turnEndGraceTimer = setTimeout(() => {
                             turnEndGraceTimer = null;
                             if (!settled && (allMessages.length > 0 || response)) {
-                                logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Settling after turn_end grace period (turn ${turnCount})`);
+                                sessionLog.debug({ turn: turnCount }, 'Settling after turn_end grace period');
                                 settleWithResult();
                             }
                         }, 2000); // 2 second grace period to allow tool execution + new turn
                     }
                 } else if (eventType === 'session.idle') {
                     // Session finished processing — settle immediately
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session idle after ${turnCount} turns`);
+                    sessionLog.debug({ turns: turnCount }, 'Session idle');
                     settleWithResult();
                 } else if (eventType === 'session.error') {
                     // Session error
                     const errorMessage = event.data?.message || 'Unknown session error';
-                    logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Session error: ${errorMessage}`);
+                    sessionLog.error({ errorMessage }, 'Session error');
                     settleError(new Error(`Copilot session error: ${errorMessage}`));
                 } else if (eventType === 'assistant.usage') {
                     // Per-turn token usage — accumulate across turns
@@ -1281,7 +1285,7 @@ export class CopilotSDKService {
                     if (event.data?.duration != null) {
                         usageDuration = (usageDuration ?? 0) + event.data.duration;
                     }
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Usage turn ${usageTurnCount}: in=${event.data?.inputTokens ?? 0} out=${event.data?.outputTokens ?? 0}`);
+                    sessionLog.debug({ turn: usageTurnCount, inputTokens: event.data?.inputTokens ?? 0, outputTokens: event.data?.outputTokens ?? 0 }, 'Token usage');
                 } else if (eventType === 'session.usage_info') {
                     // Session-level quota info — store last-seen values
                     if (event.data?.tokenLimit != null) {
@@ -1290,7 +1294,7 @@ export class CopilotSDKService {
                     if (event.data?.currentTokens != null) {
                         usageCurrentTokens = event.data.currentTokens;
                     }
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session usage info: limit=${usageTokenLimit} current=${usageCurrentTokens}`);
+                    sessionLog.debug({ tokenLimit: usageTokenLimit, currentTokens: usageCurrentTokens }, 'Session usage info');
                 } else if (eventType === 'tool.execution_start') {
                     // Tool execution is starting — track it for debugging stuck sessions
                     // Reset idle timer — tool execution is legitimate activity
@@ -1299,8 +1303,10 @@ export class CopilotSDKService {
                     const toolName = event.data?.toolName || '(unknown)';
                     const parentToolCallId = event.data?.parentToolCallId;
                     activeToolCalls.set(toolCallId, { toolName, startTime: Date.now() });
-                    const argsStr = event.data?.arguments ? ` args=${JSON.stringify(event.data.arguments).substring(0, 200)}` : '';
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution started: ${toolName} [${toolCallId}]${argsStr}`);
+                    const truncatedArgs = event.data?.arguments
+                        ? JSON.stringify(event.data.arguments).substring(0, 200)
+                        : undefined;
+                    sessionLog.debug({ toolName, toolCallId, args: truncatedArgs }, 'Tool execution started');
                     // Build a ToolCall object for downstream consumption
                     const toolCall: ToolCall = {
                         id: toolCallId !== '(unknown)' ? toolCallId : `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1329,15 +1335,15 @@ export class CopilotSDKService {
                     resetIdleTimer();
                     const toolCallId = event.data?.toolCallId || '(unknown)';
                     const tracked = activeToolCalls.get(toolCallId);
-                    const durationStr = tracked ? ` (${Date.now() - tracked.startTime}ms)` : '';
+                    const durationMs = tracked ? Date.now() - tracked.startTime : undefined;
                     activeToolCalls.delete(toolCallId);
                     const toolSuccess = event.data?.success;
                     if (toolSuccess) {
-                        const resultLen = event.data?.result?.content?.length ?? 0;
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution completed: ${tracked?.toolName || '?'} [${toolCallId}] success${durationStr} (${resultLen} chars)`);
+                        const resultChars = event.data?.result?.content?.length ?? 0;
+                        sessionLog.debug({ toolName: tracked?.toolName, toolCallId, durationMs, resultChars, success: true }, 'Tool execution completed');
                     } else {
                         const errorMsg = event.data?.error?.message || '(no error message)';
-                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution FAILED: ${tracked?.toolName || '?'} [${toolCallId}]${durationStr} error=${errorMsg}`);
+                        sessionLog.debug({ toolName: tracked?.toolName, toolCallId, durationMs, success: false, errorMsg }, 'Tool execution failed');
                     }
                     // Update the captured ToolCall object
                     const capturedTool = toolCallsMap!.get(toolCallId);
@@ -1400,18 +1406,18 @@ export class CopilotSDKService {
                 } else if (eventType === 'tool.execution_progress') {
                     const toolCallId = event.data?.toolCallId || '(unknown)';
                     const tracked = activeToolCalls.get(toolCallId);
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool progress: ${tracked?.toolName || '?'} [${toolCallId}]: ${event.data?.progressMessage || ''}`);
+                    sessionLog.debug({ toolName: tracked?.toolName, toolCallId, progressMessage: event.data?.progressMessage }, 'Tool progress');
                     // Capture progress message in the ToolCall object (latest wins)
                     const capturedProgress = toolCallsMap!.get(toolCallId);
                     if (capturedProgress && event.data?.progressMessage) {
                         (capturedProgress as any).progressMessage = event.data.progressMessage;
                     }
                 } else if (eventType === 'assistant.intent') {
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Assistant intent: ${event.data?.intent || '(none)'}`);
+                    sessionLog.debug({ intent: event.data?.intent }, 'Assistant intent');
                 } else if (eventType === 'session.info') {
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session info [${event.data?.infoType || '?'}]: ${event.data?.message || ''}`);
+                    sessionLog.debug({ infoType: event.data?.infoType, message: event.data?.message }, 'Session info');
                 } else if (eventType === 'abort') {
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session aborted: ${event.data?.reason || '(no reason)'}`);
+                    sessionLog.debug({ reason: event.data?.reason }, 'Session aborted');
                 }
             });
 

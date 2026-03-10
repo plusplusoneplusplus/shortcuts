@@ -12,7 +12,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { getLogger, LogCategory } from '../logger';
+import { getAIServiceLogger } from '../ai-logger';
 
 /** Config directory name under home */
 const CONFIG_DIR = '.copilot';
@@ -115,7 +115,7 @@ export function isFolderTrusted(folder: string): boolean {
  * @param folder - The folder path to trust
  */
 export function ensureFolderTrusted(folder: string): void {
-    const logger = getLogger();
+    const aiLog = getAIServiceLogger();
     const normalized = normalizeFolderPath(folder);
     const configPath = getCopilotConfigPath();
 
@@ -125,7 +125,7 @@ export function ensureFolderTrusted(folder: string): void {
 
         // Check if already trusted
         if (trustedFolders.some(f => normalizeFolderPath(f) === normalized)) {
-            logger.debug(LogCategory.AI, `TrustedFolder: '${normalized}' is already trusted`);
+            aiLog.debug({ folder: normalized }, 'Folder is already trusted');
             return;
         }
 
@@ -133,9 +133,9 @@ export function ensureFolderTrusted(folder: string): void {
         trustedFolders.push(normalized);
         config['trusted_folders'] = trustedFolders;
         writeConfig(configPath, config);
-        logger.debug(LogCategory.AI, `TrustedFolder: Added '${normalized}' to trusted_folders`);
+        aiLog.debug({ folder: normalized }, 'Added folder to trusted_folders');
     } catch (error) {
         // Non-fatal: if we can't update config, the trust dialog will appear
-        logger.debug(LogCategory.AI, `TrustedFolder: Failed to update config: ${error}`);
+        aiLog.debug({ err: error }, 'Failed to update trusted folder config');
     }
 }

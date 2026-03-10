@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
 import { setLogger, nullLogger } from '../../src/logger';
+import { initAIServiceLogger } from '../../src/ai-logger';
 import * as trustedFolder from '../../src/copilot-sdk-wrapper/trusted-folder';
 import {
     createMockSDKModule,
@@ -1982,18 +1983,41 @@ describe('CopilotSDKService - Empty response with tool activity', () => {
 
 /**
  * Create a capturing logger that records all log calls for assertions.
+ * Handles Pino-style calls: logger.debug(fields, message) or logger.debug(message).
+ * The stored `message` field combines JSON-serialized fields + message text for easy searching.
  */
 function createCapturingLogger() {
-    const logs: Array<{ level: string; category: string; message: string }> = [];
+    const logs: Array<{ level: string; message: string }> = [];
+
+    function makeCapture(bindings: Record<string, unknown> = {}): any {
+        function capture(level: string, firstArg: any, secondArg?: string) {
+            let fields: Record<string, unknown> = { ...bindings };
+            let msg: string;
+            if (firstArg !== null && typeof firstArg === 'object' && typeof secondArg === 'string') {
+                // Pino style: (fields, message)
+                fields = { ...fields, ...firstArg };
+                msg = secondArg;
+            } else if (typeof firstArg === 'string') {
+                msg = firstArg;
+            } else {
+                msg = String(firstArg ?? '');
+            }
+            // Store combined form: JSON fields + message text so substring searches work
+            logs.push({ level, message: JSON.stringify(fields) + ' ' + msg });
+        }
+        return {
+            debug: (a: any, b?: string) => capture('debug', a, b),
+            info: (a: any, b?: string) => capture('info', a, b),
+            warn: (a: any, b?: string) => capture('warn', a, b),
+            error: (a: any, b?: string) => capture('error', a, b),
+            child: (childBindings: Record<string, unknown>) => makeCapture({ ...bindings, ...childBindings }),
+        };
+    }
+
     return {
         logs,
-        logger: {
-            debug: (category: string, message: string) => logs.push({ level: 'debug', category, message }),
-            info: (category: string, message: string) => logs.push({ level: 'info', category, message }),
-            warn: (category: string, message: string) => logs.push({ level: 'warn', category, message }),
-            error: (category: string, message: string) => logs.push({ level: 'error', category, message }),
-        },
-        /** Filter logs by substring match on message */
+        logger: makeCapture(),
+        /** Filter logs by substring match on the combined fields+message string */
         matching: (substr: string) => logs.filter(l => l.message.includes(substr)),
     };
 }
@@ -2006,12 +2030,12 @@ describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
         resetCopilotSDKService();
         service = CopilotSDKService.getInstance();
         capLogger = createCapturingLogger();
-        setLogger(capLogger.logger);
+        initAIServiceLogger(capLogger.logger as any);
         vi.clearAllMocks();
     });
 
     afterEach(async () => {
-        setLogger(nullLogger);
+        initAIServiceLogger({ level: 'silent' });
         service.dispose();
         resetCopilotSDKService();
     });
@@ -2080,7 +2104,7 @@ describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
         expect(completeLogs[0].message).toContain('glob');
         expect(completeLogs[0].message).toContain('tc-1');
         expect(completeLogs[0].message).toContain('success');
-        expect(completeLogs[0].message).toContain('chars');
+        expect(completeLogs[0].message).toContain('resultChars');
     });
 
     it('should log tool.execution_complete failure with error message', async () => {
@@ -2100,7 +2124,7 @@ describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
 
         await resultPromise;
 
-        const failLogs = capLogger.matching('Tool execution FAILED');
+        const failLogs = capLogger.matching('Tool execution failed');
         expect(failLogs.length).toBe(1);
         expect(failLogs[0].message).toContain('view');
         expect(failLogs[0].message).toContain('File not found');
@@ -2217,11 +2241,11 @@ describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
 
         await resultPromise;
 
-        const toolReqLogs = capLogger.matching('tool request(s)');
+        const toolReqLogs = capLogger.matching('tool requests');
         expect(toolReqLogs.length).toBe(1);
         expect(toolReqLogs[0].message).toContain('view');
         expect(toolReqLogs[0].message).toContain('grep');
-        expect(toolReqLogs[0].message).toContain('2 tool request(s)');
+        expect(toolReqLogs[0].message).toContain('toolRequestCount":2');
     });
 
     it('should log turn_start with elapsed time and active tool count', async () => {
@@ -2243,7 +2267,7 @@ describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
         const turnStartLogs = capLogger.matching('Turn starting');
         expect(turnStartLogs.length).toBe(1);
         expect(turnStartLogs[0].message).toContain('elapsed');
-        expect(turnStartLogs[0].message).toContain('active tool calls');
+        expect(turnStartLogs[0].message).toContain('activeToolCalls');
     });
 
     it('should log elapsed time in settle message', async () => {
@@ -2330,12 +2354,12 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         resetCopilotSDKService();
         service = CopilotSDKService.getInstance();
         capLogger = createCapturingLogger();
-        setLogger(capLogger.logger);
+        initAIServiceLogger(capLogger.logger as any);
         vi.clearAllMocks();
     });
 
     afterEach(async () => {
-        setLogger(nullLogger);
+        initAIServiceLogger({ level: 'silent' });
         service.dispose();
         resetCopilotSDKService();
     });
@@ -2385,8 +2409,8 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         // Verify logs
         const permReqLogs = capLogger.matching('Permission request');
         expect(permReqLogs.length).toBe(2);
-        expect(permReqLogs[0].message).toContain('kind=read');
-        expect(permReqLogs[1].message).toContain('kind=write');
+        expect(permReqLogs[0].message).toContain('"kind":"read"');
+        expect(permReqLogs[1].message).toContain('"kind":"write"');
 
         const permResultLogs = capLogger.matching('Permission result');
         expect(permResultLogs.length).toBe(2);

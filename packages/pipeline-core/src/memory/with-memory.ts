@@ -3,7 +3,7 @@ import type { MemoryStore, MemoryLevel } from './types';
 import { MemoryRetriever } from './memory-retriever';
 import { createWriteMemoryTool } from './write-memory-tool';
 import { MemoryAggregator } from './memory-aggregator';
-import { getLogger, LogCategory } from '../logger';
+import { getAIServiceLogger } from '../ai-logger';
 
 export interface WithMemoryOptions {
     store: MemoryStore;
@@ -32,7 +32,7 @@ export async function withMemory(
             enrichedPrompt = context + '\n\n' + prompt;
         }
     } catch (err) {
-        getLogger().warn(LogCategory.Memory, `withMemory: retrieve failed, proceeding without context: ${err}`);
+        getAIServiceLogger().warn({ err }, 'withMemory: retrieve failed, proceeding without context');
     }
 
     // 2. Create write_memory tool and merge with existing tools
@@ -59,7 +59,7 @@ export async function withMemory(
         });
         await aggregator.aggregateIfNeeded(aiInvoker, level, memoryOptions.repoHash);
     } catch (err) {
-        getLogger().warn(LogCategory.Memory, `withMemory: aggregation check failed: ${err}`);
+        getAIServiceLogger().warn({ err }, 'withMemory: aggregation check failed');
     }
 
     // 5. Return original AI result unchanged

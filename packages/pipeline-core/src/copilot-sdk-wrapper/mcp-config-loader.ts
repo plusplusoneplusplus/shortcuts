@@ -16,7 +16,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MCPServerConfig } from './types';
-import { getLogger, LogCategory } from '../logger';
+import { getAIServiceLogger } from '../ai-logger';
 
 /**
  * Structure of the MCP config file (~/.copilot/mcp-config.json)
@@ -98,20 +98,20 @@ export function getMcpConfigPath(): string {
  * @returns The load result with MCP server configurations
  */
 export function loadDefaultMcpConfig(forceReload = false): MCPConfigLoadResult {
-    const logger = getLogger();
+    const aiLog = getAIServiceLogger();
     const configPath = getMcpConfigPath();
 
     // Return cached config if available and not forcing reload
     if (cachedConfig && !forceReload) {
-        logger.debug(LogCategory.AI, 'MCPConfigLoader: Returning cached config');
+        aiLog.debug('Returning cached MCP config');
         return cachedConfig;
     }
 
-    logger.debug(LogCategory.AI, `MCPConfigLoader: Loading config from ${configPath}`);
+    aiLog.debug({ configPath }, 'Loading MCP config');
 
     // Check if file exists
     if (!fs.existsSync(configPath)) {
-        logger.debug(LogCategory.AI, 'MCPConfigLoader: Config file not found (this is normal if not configured)');
+        aiLog.debug({ fileExists: false }, 'MCP config file not found (this is normal if not configured)');
         cachedConfig = {
             success: true,
             mcpServers: {},
@@ -131,7 +131,7 @@ export function loadDefaultMcpConfig(forceReload = false): MCPConfigLoadResult {
         
         // Log what we found
         const serverCount = Object.keys(mcpServers).length;
-        logger.debug(LogCategory.AI, `MCPConfigLoader: Loaded ${serverCount} MCP server(s) from config`);
+        aiLog.debug({ serverCount, fileExists: true, success: true }, 'MCP config loaded');
 
         cachedConfig = {
             success: true,
@@ -143,7 +143,7 @@ export function loadDefaultMcpConfig(forceReload = false): MCPConfigLoadResult {
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.warn(LogCategory.AI, `MCPConfigLoader: Failed to parse config file: ${errorMessage}`);
+        aiLog.warn({ err: error instanceof Error ? error : undefined, fileExists: true, success: false }, 'Failed to parse MCP config file');
 
         cachedConfig = {
             success: false,
@@ -202,8 +202,8 @@ export function mergeMcpConfigs(
  * Useful for testing or when the config file might have changed.
  */
 export function clearMcpConfigCache(): void {
-    const logger = getLogger();
-    logger.debug(LogCategory.AI, 'MCPConfigLoader: Clearing config cache');
+    const aiLog = getAIServiceLogger();
+    aiLog.debug('Clearing MCP config cache');
     cachedConfig = null;
 }
 

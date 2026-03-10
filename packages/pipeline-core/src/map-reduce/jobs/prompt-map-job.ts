@@ -27,7 +27,7 @@ import {
     parseAIResponse as sharedParseAIResponse 
 } from '../../utils/ai-response-parser';
 import { writeTempFile, TempFileResult } from '../temp-file-utils';
-import { getLogger, LogCategory } from '../../logger';
+import { getAIServiceLogger } from '../../ai-logger';
 
 /**
  * A generic item with string key-value pairs for template substitution
@@ -269,8 +269,8 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                     const output = parseAIResponse(result.response, outputFields);
                     return { item, output, success: true, rawResponse: result.response, sessionId: result.sessionId, tokenUsage: result.tokenUsage };
                 } catch (parseError) {
-                    const logger = getLogger();
-                    logger.debug(LogCategory.MAP_REDUCE, `PromptMapMapper: Failed to parse AI response for item ${workItem.id}. Response (${result.response.length} chars): ${result.response.substring(0, 500)}`);
+                    const aiLog = getAIServiceLogger();
+                    aiLog.debug({ itemId: workItem.id, responseChars: result.response.length }, 'PromptMapMapper: Failed to parse AI response');
                     return {
                         item,
                         output: this.emptyOutput(outputFields),
@@ -539,7 +539,7 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
                 prompt = prompt.replace(/\{\{RESULTS_FILE\}\}/g, tempFileResult.filePath);
             } else {
                 // Fallback to inline if temp file creation fails
-                getLogger().warn(LogCategory.MAP_REDUCE, 'Failed to create temp file for RESULTS_FILE, falling back to inline RESULTS');
+                getAIServiceLogger().warn('Failed to create temp file for RESULTS_FILE, falling back to inline RESULTS');
                 prompt = prompt.replace(/\{\{RESULTS_FILE\}\}/g, resultsString);
             }
         }

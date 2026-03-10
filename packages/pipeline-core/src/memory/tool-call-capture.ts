@@ -9,7 +9,7 @@
 
 import { ToolCallCacheStore, ToolCallFilter, ToolCallQAEntry } from './tool-call-cache-types';
 import { ToolEvent } from '../copilot-sdk-wrapper/types';
-import { getLogger, LogCategory } from '../logger';
+import { getAIServiceLogger } from '../ai-logger';
 
 export interface ToolCallCaptureOptions {
     /** Stable hash of the repository root. Used to tag entries. */
@@ -66,7 +66,7 @@ export class ToolCallCapture {
                         break;
                 }
             } catch (err) {
-                getLogger().warn(LogCategory.Memory, `ToolCallCapture: error handling ${event.type} for ${event.toolName ?? '?'}: ${err}`);
+                getAIServiceLogger().warn({ err, eventType: event.type, toolName: event.toolName }, `ToolCallCapture: error handling event`);
             }
         };
     }
@@ -145,7 +145,7 @@ export class ToolCallCapture {
         this.pending.delete(event.toolCallId);
 
         if (!pendingEntry) {
-            getLogger().debug(LogCategory.Memory, `ToolCallCapture: no pending tool-start for ${event.toolCallId}, skipping`);
+            getAIServiceLogger().debug({ toolCallId: event.toolCallId, cacheHit: false }, 'ToolCallCapture: no pending tool-start, skipping');
             return;
         }
 
@@ -167,7 +167,7 @@ export class ToolCallCapture {
 
         this.store.writeRaw(entry).then(
             () => { this._capturedCount++; },
-            (err) => { getLogger().warn(LogCategory.Memory, `ToolCallCapture: failed to write entry ${event.toolCallId}: ${err}`); },
+            (err) => { getAIServiceLogger().warn({ err, toolCallId: event.toolCallId, toolName }, 'ToolCallCapture: failed to write entry'); },
         );
     }
 
@@ -194,7 +194,7 @@ export class ToolCallCapture {
 
         this.store.writeRaw(entry).then(
             () => { this._capturedCount++; },
-            (err) => { getLogger().warn(LogCategory.Memory, `ToolCallCapture: failed to write failed entry ${event.toolCallId}: ${err}`); },
+            (err) => { getAIServiceLogger().warn({ err, toolCallId: event.toolCallId, toolName }, 'ToolCallCapture: failed to write failed entry'); },
         );
     }
 }

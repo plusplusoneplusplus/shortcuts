@@ -5,10 +5,12 @@ import type { ToolEvent } from '../../src/copilot-sdk-wrapper/types';
 
 vi.mock('../../src/memory/tool-call-capture');
 vi.mock('../../src/memory/tool-call-cache-aggregator');
-const mockLoggerInstance = { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() };
-vi.mock('../../src/logger', () => ({
-    getLogger: vi.fn(() => mockLoggerInstance),
-    LogCategory: { Memory: 'Memory' },
+const mockWarnFn = vi.fn();
+const mockLoggerInstance = { warn: mockWarnFn, debug: vi.fn(), info: vi.fn(), error: vi.fn() };
+vi.mock('../../src/ai-logger', () => ({
+    getAIServiceLogger: vi.fn(() => mockLoggerInstance),
+    createSessionLogger: vi.fn(() => mockLoggerInstance),
+    initAIServiceLogger: vi.fn(),
 }));
 
 import { withToolCallCache, type WithToolCallCacheOptions } from '../../src/memory/with-tool-call-cache';
@@ -149,7 +151,7 @@ describe('withToolCallCache', () => {
 
         expect(result).toBe(expectedResult);
         expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
-            'Memory',
+            expect.objectContaining({ err: expect.any(Error) }),
             expect.stringContaining('capture setup failed'),
         );
         // onToolEvent should not be set since capture failed
@@ -166,7 +168,7 @@ describe('withToolCallCache', () => {
 
         expect(result).toBe(expectedResult);
         expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
-            'Memory',
+            expect.objectContaining({ err: expect.any(Error) }),
             expect.stringContaining('aggregation check failed'),
         );
     });
@@ -192,12 +194,8 @@ describe('withToolCallCache', () => {
             });
 
             expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
-                'Memory',
+                expect.objectContaining({ level: 'git-remote' }),
                 expect.stringContaining('git-remote'),
-            );
-            expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
-                'Memory',
-                expect.stringContaining('remoteHash'),
             );
         });
 

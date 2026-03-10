@@ -6,7 +6,7 @@
  */
 
 import { execSync } from 'child_process';
-import { getLogger } from '../logger';
+import { getAIServiceLogger } from '../ai-logger';
 
 /** Cache for program existence checks to avoid repeated lookups */
 const programExistsCache = new Map<string, { exists: boolean; path?: string; error?: string }>();
@@ -41,7 +41,7 @@ export function checkProgramExists(
 
     let result: { exists: boolean; path?: string; error?: string };
 
-    const logger = getLogger();
+    const aiLog = getAIServiceLogger();
     
     try {
         const output = execSync(checkCommand, {
@@ -58,7 +58,7 @@ export function checkProgramExists(
             path: programPath
         };
         
-        logger.debug('ProgramCheck', `Program '${programName}' found at: ${programPath}`);
+        aiLog.debug({ programName, programPath }, 'Program found');
     } catch (error) {
         // Command failed - program not found
         const errorMsg = `'${programName}' is not installed or not found in PATH. Please install it first.`;
@@ -67,7 +67,7 @@ export function checkProgramExists(
             error: errorMsg
         };
         
-        logger.debug('ProgramCheck', `Program '${programName}' not found: ${errorMsg}`);
+        aiLog.debug({ programName }, 'Program not found');
     }
 
     // Cache the result

@@ -5,10 +5,12 @@ import type { MemoryStore, MemoryLevel } from '../../src/memory/types';
 vi.mock('../../src/memory/memory-retriever');
 vi.mock('../../src/memory/write-memory-tool');
 vi.mock('../../src/memory/memory-aggregator');
-const mockLoggerInstance = { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() };
-vi.mock('../../src/logger', () => ({
-    getLogger: vi.fn(() => mockLoggerInstance),
-    LogCategory: { Memory: 'Memory' },
+const mockWarnFn = vi.fn();
+const mockLoggerInstance = { warn: mockWarnFn, debug: vi.fn(), info: vi.fn(), error: vi.fn() };
+vi.mock('../../src/ai-logger', () => ({
+    getAIServiceLogger: vi.fn(() => mockLoggerInstance),
+    createSessionLogger: vi.fn(() => mockLoggerInstance),
+    initAIServiceLogger: vi.fn(),
 }));
 
 import { withMemory, type WithMemoryOptions } from '../../src/memory/with-memory';
@@ -149,7 +151,7 @@ describe('withMemory', () => {
         expect(result).toBeDefined();
         expect(mockInvoker).toHaveBeenCalledWith('original prompt', expect.any(Object));
         expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
-            'Memory',
+            expect.objectContaining({ err: expect.any(Error) }),
             expect.stringContaining('retrieve failed'),
         );
     });
@@ -163,7 +165,7 @@ describe('withMemory', () => {
 
         expect(result).toBe(expectedResult);
         expect(mockLoggerInstance.warn).toHaveBeenCalledWith(
-            'Memory',
+            expect.objectContaining({ err: expect.any(Error) }),
             expect.stringContaining('aggregation check failed'),
         );
     });
