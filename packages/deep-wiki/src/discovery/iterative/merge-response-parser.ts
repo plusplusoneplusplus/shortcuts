@@ -13,6 +13,7 @@ import { parseComponentGraphResponse } from '../response-parser';
 import { normalizeComponentId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 import { getErrorMessage } from '../../utils/error-utils';
+import { parseStringArray } from '../../utils/parse-string-array';
 
 // ============================================================================
 // Merge Response Parsing
@@ -84,14 +85,4 @@ export function parseMergeResponse(response: string): MergeResult {
 // Helpers
 // ============================================================================
 
-/**
- * Safely parse an unknown value as a string array.
- */
-function parseStringArray(raw: unknown): string[] {
-    if (!Array.isArray(raw)) {
-        return [];
-    }
-    return raw
-        .filter(item => typeof item === 'string')
-        .map(item => String(item));
-}
+

@@ -10,6 +10,7 @@
 import type { ThemeProbeResult, ProbeFoundComponent, DiscoveredTheme } from './types';
 import { normalizeComponentId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';
+import { parseStringArray } from '../../utils/parse-string-array';
 
 // ============================================================================
 // Probe Response Parsing
@@ -120,14 +121,4 @@ export function parseProbeResponse(response: string, theme: string): ThemeProbeR
 // Helpers
 // ============================================================================
 
-/**
- * Safely parse an unknown value as a string array.
- */
-function parseStringArray(raw: unknown): string[] {
-    if (!Array.isArray(raw)) {
-        return [];
-    }
-    return raw
-        .filter(item => typeof item === 'string')
-        .map(item => String(item));
-}
+

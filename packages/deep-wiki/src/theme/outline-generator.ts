@@ -17,6 +17,7 @@ import { buildOutlinePrompt } from './outline-prompts';
 import { parseAIJsonResponse } from '../utils/parse-ai-response';
 import { printInfo, printWarning, gray } from '../logger';
 import { getErrorMessage } from '../utils/error-utils';
+import { parseStringArray } from '../utils/parse-string-array';
 import { resolveWorkingDirectory } from '../utils/resolve-working-directory';
 
 // ============================================================================
@@ -250,10 +251,4 @@ function formatThemeTitle(themeId: string): string {
         .join(' ');
 }
 
-/**
- * Safely parse an unknown value as a string array.
- */
-function parseStringArray(raw: unknown): string[] {
-    if (!Array.isArray(raw)) return [];
-    return raw.filter(item => typeof item === 'string').map(item => String(item));
-}
+

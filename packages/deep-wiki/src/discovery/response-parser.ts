@@ -9,6 +9,7 @@
  */
 
 import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
+import { parseStringArray } from '../utils/parse-string-array';
 import type { ComponentGraph, ComponentInfo, ProjectInfo, CategoryInfo, TopLevelDomain, StructuralScanResult } from '../types';
 import {
     COMPONENT_GRAPH_REQUIRED_FIELDS,
@@ -348,16 +349,6 @@ function parsePartialProjectInfo(raw: unknown): Partial<ProjectInfo> {
 // ============================================================================
 // Utility Helpers
 // ============================================================================
-
-/**
- * Safely parse an unknown value as a string array.
- */
-function parseStringArray(raw: unknown): string[] {
-    if (!Array.isArray(raw)) { return []; }
-    return raw
-        .filter(item => typeof item === 'string')
-        .map(item => String(item));
-}
 
 /**
  * Normalize a file path: remove leading ./, convert backslashes to forward slashes.
