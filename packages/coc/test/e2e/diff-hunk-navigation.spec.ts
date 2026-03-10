@@ -149,7 +149,8 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         await page.setViewportSize({ width: 1280, height: 400 });
 
         // Verify the diff is actually taller than the viewport (i.e. scrolling is required)
-        const scrollContainer = page.getByTestId('commit-detail');
+        // diff-section is the actual scrollable container (overflow-auto); commit-detail is overflow-hidden
+        const scrollContainer = page.getByTestId('diff-section');
         const metrics = await scrollContainer.evaluate((el: HTMLElement) => ({
             scrollHeight: el.scrollHeight,
             clientHeight: el.clientHeight,

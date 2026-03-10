@@ -54,13 +54,17 @@ test.describe('Desktop Regression', () => {
         expect(box!.width).toBeGreaterThan(100);
     });
 
-    test('desktop: ReposView sidebar collapses to 48px', async ({ page, serverUrl }) => {
+    test('desktop: ReposView sidebar collapses to mini sidebar', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-desk-col', 'desk-col-repo');
         await page.goto(`${serverUrl}/#repos`);
 
         // Ensure repos tab is active (hamburger only works on repos tab)
         await page.click('[data-tab="repos"]');
         await expect(page.locator('#repos-sidebar')).toBeVisible({ timeout: 10000 });
+
+        // Get expanded width before collapsing
+        const expandedBox = await page.locator('#repos-sidebar').boundingBox();
+
         await page.click('#hamburger-btn');
 
         // Wait for CSS transition (150ms)
@@ -68,8 +72,11 @@ test.describe('Desktop Regression', () => {
 
         const sidebar = page.locator('#repos-sidebar');
         await expect(sidebar).toBeVisible();
-        // Collapsed sidebar should have w-12 class (48px)
-        await expect(sidebar).toHaveClass(/w-12/);
+        // Collapsed sidebar should have w-44 class (MiniReposSidebar)
+        await expect(sidebar).toHaveClass(/w-44/);
+        // Collapsed sidebar should be narrower than expanded
+        const collapsedBox = await sidebar.boundingBox();
+        expect(collapsedBox!.width).toBeLessThan(expandedBox!.width);
     });
 
     test('desktop: ReposView two-pane layout with repo selected', async ({ page, serverUrl }) => {
