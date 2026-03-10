@@ -16,6 +16,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { WikiData } from './wiki-data';
 import { sendSSE } from './dw-ask-handler';
 import type { AskAIFunction } from './dw-ask-handler';
+import { readBody } from './router';
 
 // ============================================================================
 // Types
@@ -189,15 +190,4 @@ export function buildExplorePrompt(
     return parts.join('\n');
 }
 
-// ============================================================================
-// Utilities
-// ============================================================================
 
-function readBody(req: IncomingMessage): Promise<string> {
-    return new Promise((resolve, reject) => {
-        let body = '';
-        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-        req.on('end', () => resolve(body));
-        req.on('error', reject);
-    });
-}

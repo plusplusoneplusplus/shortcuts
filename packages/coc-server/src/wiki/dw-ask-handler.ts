@@ -16,6 +16,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { ContextBuilder } from './context-builder';
 import type { ConversationSessionManager } from './conversation-session-manager';
+import { readBody } from './router';
 
 // ============================================================================
 // Types
@@ -259,19 +260,4 @@ export function buildAskPrompt(
  */
 export function sendSSE(res: ServerResponse, data: Record<string, unknown>): void {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-// ============================================================================
-// Body Reader
-// ============================================================================
-
-function readBody(req: IncomingMessage): Promise<string> {
-    return new Promise((resolve, reject) => {
-        let body = '';
-        req.on('data', (chunk: Buffer) => {
-            body += chunk.toString();
-        });
-        req.on('end', () => resolve(body));
-        req.on('error', reject);
-    });
 }
