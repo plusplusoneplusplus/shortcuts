@@ -243,4 +243,41 @@ describe('CLITaskExecutor — Title Generation', () => {
         const promptArg = mockTransform.mock.calls[0]?.[0] as string;
         expect(promptArg).toContain(userMessage);
     });
+
+    it('should propagate generated title to queue task displayName', async () => {
+        mockTransform.mockResolvedValue('AI Generated Title');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+
+        const mockQueueManager = {
+            updateTask: vi.fn(),
+        } as unknown as TaskQueueManager;
+        executor.setQueueManager(mockQueueManager);
+
+        const task = makeChatTask('title-qm-1', 'Explain how the auth module works');
+        await executor.execute(task);
+
+        await delay(50);
+
+        expect(mockQueueManager.updateTask).toHaveBeenCalledWith(
+            'title-qm-1',
+            expect.objectContaining({ displayName: 'AI Generated Title' }),
+        );
+    });
+
+    it('should not call updateTask when queueManager is not set', async () => {
+        mockTransform.mockResolvedValue('Some Title');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+        // No setQueueManager call
+
+        const task = makeChatTask('title-noqm-1', 'A prompt without queue manager');
+        // Should not throw even though queueManager is undefined
+        await expect(executor.execute(task)).resolves.toBeTruthy();
+        await delay(50);
+
+        // Title is still persisted to the process store
+        expect(store.updateProcess).toHaveBeenCalledWith(
+            'queue_title-noqm-1',
+            expect.objectContaining({ title: 'Some Title' }),
+        );
+    });
 });

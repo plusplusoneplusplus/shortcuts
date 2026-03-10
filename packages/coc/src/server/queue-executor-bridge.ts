@@ -564,6 +564,10 @@ export class CLITaskExecutor implements TaskExecutor {
                 );
                 if (title) {
                     await this.store.updateProcess(processId, { title });
+                    if (processId.startsWith('queue_') && this.queueManager) {
+                        const taskId = processId.replace('queue_', '');
+                        this.queueManager.updateTask(taskId, { displayName: title });
+                    }
                 }
             } catch (err) {
                 const errMsg = err instanceof Error ? err.message : String(err);
