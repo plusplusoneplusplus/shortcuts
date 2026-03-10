@@ -313,11 +313,6 @@ async function executeSingleJob(
             )
         ]);
 
-        // Retry on timeout with doubled timeout
-        if (!aiResult.success) {
-            // Not a timeout, just a failure - fall through
-        }
-
         // 6. Process result
         const jobProcessId = `${config.name}-job-${startTime}`;
         if (!aiResult.success || !aiResult.response) {
