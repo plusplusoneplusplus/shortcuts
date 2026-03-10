@@ -16,3 +16,10 @@ export function resolveMaxComplexity(components: { complexity: string }[]): 'low
     }
     return (COMPLEXITY_NAMES[max] ?? 'low') as 'low' | 'medium' | 'high';
 }
+
+/**
+ * Deduplicate an array of strings preserving insertion order.
+ */
+export function deduplicateStrings(arr: string[]): string[] {
+    return [...new Set(arr)];
+}

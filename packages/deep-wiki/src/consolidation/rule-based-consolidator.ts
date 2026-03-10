@@ -16,7 +16,7 @@
 import * as path from 'path';
 import type { ComponentInfo, ComponentGraph, CategoryInfo } from '../types';
 import { normalizeComponentId } from '../schemas';
-import { resolveMaxComplexity } from './constants';
+import { resolveMaxComplexity, deduplicateStrings } from './constants';
 
 // ============================================================================
 // Types
@@ -245,10 +245,6 @@ function deriveCategories(components: ComponentInfo[]): CategoryInfo[] {
 // ============================================================================
 // Utility Helpers
 // ============================================================================
-
-function deduplicateStrings(arr: string[]): string[] {
-    return [...new Set(arr)];
-}
 
 function pickHighestComplexity(components: ComponentInfo[]): 'low' | 'medium' | 'high' {
     return resolveMaxComplexity(components);

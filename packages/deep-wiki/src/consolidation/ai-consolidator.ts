@@ -16,7 +16,7 @@ import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
 import type { ComponentInfo, ComponentGraph, CategoryInfo } from '../types';
 import type { ClusterGroup } from './types';
 import { normalizeComponentId } from '../schemas';
-import { resolveMaxComplexity } from './constants';
+import { resolveMaxComplexity, deduplicateStrings } from './constants';
 
 // ============================================================================
 // Constants
@@ -263,12 +263,12 @@ export function applyClusterMerge(
     const componentIds = new Set(mergedComponents.map(m => m.id));
     const fixedComponents = mergedComponents.map(comp => ({
         ...comp,
-        dependencies: dedup(
+        dependencies: deduplicateStrings(
             comp.dependencies
                 .map(d => idMapping.get(d) || d)
                 .filter(d => d !== comp.id && componentIds.has(d))
         ),
-        dependents: dedup(
+        dependents: deduplicateStrings(
             comp.dependents
                 .map(d => idMapping.get(d) || d)
                 .filter(d => d !== comp.id && componentIds.has(d))
@@ -292,11 +292,11 @@ export function applyClusterMerge(
 function mergeClusterMembers(cluster: ClusterGroup, members: ComponentInfo[]): ComponentInfo {
     const selfIds = new Set(members.map(m => m.id));
 
-    const keyFiles = dedup(members.flatMap(m => m.keyFiles));
-    const dependencies = dedup(
+    const keyFiles = deduplicateStrings(members.flatMap(m => m.keyFiles));
+    const dependencies = deduplicateStrings(
         members.flatMap(m => m.dependencies).filter(d => !selfIds.has(d))
     );
-    const dependents = dedup(
+    const dependents = deduplicateStrings(
         members.flatMap(m => m.dependents).filter(d => !selfIds.has(d))
     );
 
@@ -320,7 +320,7 @@ function mergeClusterMembers(cluster: ClusterGroup, members: ComponentInfo[]): C
         .sort((a, b) => a.length - b.length)[0];
 
     // Collect all mergedFrom (flatten if already merged)
-    const mergedFrom = dedup(
+    const mergedFrom = deduplicateStrings(
         members.flatMap(m => m.mergedFrom || [m.id])
     );
 
@@ -341,10 +341,6 @@ function mergeClusterMembers(cluster: ClusterGroup, members: ComponentInfo[]): C
         domain,
         mergedFrom,
     };
-}
-
-function dedup(arr: string[]): string[] {
-    return [...new Set(arr)];
 }
 
 function deriveFreshCategories(components: ComponentInfo[]): CategoryInfo[] {
