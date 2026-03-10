@@ -82,15 +82,6 @@ export function discoverConfigFile(dir: string): string | undefined {
 // ============================================================================
 
 /**
- * Sentinel value indicating a CLI flag was explicitly set.
- * Used to distinguish "user passed --model X" from "model was never set".
- */
-interface CLIOverrides {
-    /** Fields explicitly set via CLI flags (not defaults) */
-    explicitFields: Set<string>;
-}
-
-/**
  * Merge a config file with CLI options.
  * CLI flags override config file values. Config file fills in unset fields.
  *
