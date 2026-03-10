@@ -21,7 +21,11 @@ function loadSeenMap(storageKey: string): Record<string, string> | null {
 }
 
 function persistSeenMap(storageKey: string, map: Record<string, string>): void {
-    try { localStorage.setItem(storageKey, JSON.stringify(map)); }
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(map));
+        // Notify same-tab listeners (e.g. sidebar badge) that seen state changed.
+        window.dispatchEvent(new CustomEvent('coc-seen-updated', { detail: { storageKey } }));
+    }
     catch { /* quota or unavailable */ }
 }
 

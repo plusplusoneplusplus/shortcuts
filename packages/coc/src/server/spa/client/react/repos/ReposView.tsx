@@ -55,6 +55,15 @@ export function ReposView() {
 
     const isCollapsed = state.reposSidebarCollapsed && !tempExpanded;
 
+    // Bump this counter whenever the user marks tasks as read/unread so the
+    // useMemo below re-evaluates (localStorage changes don't update queueState).
+    const [seenVersion, setSeenVersion] = useState(0);
+    useEffect(() => {
+        const handler = () => setSeenVersion(v => v + 1);
+        window.addEventListener('coc-seen-updated', handler);
+        return () => window.removeEventListener('coc-seen-updated', handler);
+    }, []);
+
     // Compute per-repo unseen counts for the mini sidebar badge.
     const unseenCounts = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -63,7 +72,7 @@ export function ReposView() {
             if (count > 0) counts[repoId] = count;
         }
         return counts;
-    }, [queueState.repoQueueMap]);
+    }, [queueState.repoQueueMap, seenVersion]);
 
     const handleBack = useCallback(() => {
         dispatch({ type: 'SET_SELECTED_REPO', id: null });

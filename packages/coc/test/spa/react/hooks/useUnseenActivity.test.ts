@@ -312,4 +312,55 @@ describe('useUnseenActivity', () => {
 
         expect(result.current.unseenTaskIds.has('a')).toBe(true);
     });
+
+    it('dispatches coc-seen-updated custom event when markSeen is called', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a');
+        const events: Event[] = [];
+        const handler = (e: Event) => events.push(e);
+        window.addEventListener('coc-seen-updated', handler);
+
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        act(() => {
+            result.current.markSeen('a');
+        });
+
+        window.removeEventListener('coc-seen-updated', handler);
+        expect(events.length).toBeGreaterThan(0);
+    });
+
+    it('dispatches coc-seen-updated when markAllSeen is called', () => {
+        localStorage.setItem('coc-unseen-ws1', JSON.stringify({}));
+        const history = makeTasks('a', 'b');
+        const events: Event[] = [];
+        const handler = (e: Event) => events.push(e);
+        window.addEventListener('coc-seen-updated', handler);
+
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        act(() => {
+            result.current.markAllSeen();
+        });
+
+        window.removeEventListener('coc-seen-updated', handler);
+        expect(events.length).toBeGreaterThan(0);
+    });
+
+    it('dispatches coc-seen-updated when markUnseen is called', () => {
+        const history = makeTasks('a');
+        const events: Event[] = [];
+        const handler = (e: Event) => events.push(e);
+        window.addEventListener('coc-seen-updated', handler);
+
+        // Seed first visit (all seen), then mark unseen
+        const { result } = renderHook(() => useUnseenActivity('ws1', history, null));
+
+        act(() => {
+            result.current.markUnseen('a');
+        });
+
+        window.removeEventListener('coc-seen-updated', handler);
+        expect(events.length).toBeGreaterThan(0);
+    });
 });
