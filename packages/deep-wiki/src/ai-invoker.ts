@@ -61,11 +61,8 @@ export interface AIAvailabilityResult {
 // Constants
 // ============================================================================
 
-/** Default timeout for analysis per component (30 minutes) */
-const DEFAULT_ANALYSIS_TIMEOUT_MS = 1_800_000;
-
-/** Default timeout for writing per article (30 minutes) */
-const DEFAULT_WRITING_TIMEOUT_MS = 1_800_000;
+/** Default timeout for AI sessions (30 minutes) */
+const DEFAULT_TIMEOUT_MS = 1_800_000;
 
 /** MCP tools available during analysis */
 const ANALYSIS_TOOLS = ['view', 'grep', 'glob'];
@@ -110,7 +107,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
     return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
         try {
             const model = invokerOptions?.model || options.model;
-            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_ANALYSIS_TIMEOUT_MS;
+            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_TIMEOUT_MS;
 
             const sendOptions: SendMessageOptions = {
                 prompt,
@@ -158,7 +155,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
     return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
         try {
             const model = invokerOptions?.model || options.model;
-            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_WRITING_TIMEOUT_MS;
+            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_TIMEOUT_MS;
 
             const sendOptions: SendMessageOptions = {
                 prompt,
@@ -203,8 +200,6 @@ export interface ConsolidationInvokerOptions {
     timeoutMs?: number;
 }
 
-/** Default timeout for consolidation clustering (30 minutes) */
-const DEFAULT_CONSOLIDATION_TIMEOUT_MS = 1_800_000;
 
 /**
  * Create an AIInvoker for Phase 2 (Component Consolidation).
@@ -218,7 +213,7 @@ export function createConsolidationInvoker(options: ConsolidationInvokerOptions)
     return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
         try {
             const model = invokerOptions?.model || options.model;
-            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_CONSOLIDATION_TIMEOUT_MS;
+            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_TIMEOUT_MS;
 
             const sendOptions: SendMessageOptions = {
                 prompt,
