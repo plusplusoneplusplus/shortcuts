@@ -119,6 +119,11 @@ export interface SendFollowUpOptions {
      * Controls how the AI interacts: 'interactive' (ask), 'plan', or 'autopilot'.
      */
     mode?: AgentMode;
+    /**
+     * Switch the model before sending this follow-up message.
+     * Issues a `session.model.switchTo` RPC call; conversation history is preserved.
+     */
+    model?: string;
 }
 
 /**
@@ -194,11 +199,14 @@ interface ICopilotSession {
     on?(handler: (event: ISessionEvent) => void): (() => void);
     /** Send a message without waiting (for streaming) */
     send?(options: { prompt: string; attachments?: Attachment[] }): Promise<void>;
-    /** RPC API for session control (mode, etc.) */
+    /** RPC API for session control (mode, model, etc.) */
     rpc?: {
         mode: {
             get(): Promise<{ mode: string }>;
             set(options: { mode: string }): Promise<void>;
+        };
+        model: {
+            switchTo(options: { modelId: string }): Promise<void>;
         };
     };
 }
@@ -894,6 +902,12 @@ export class CopilotSDKService {
             logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Mode set to '${options.mode}'`);
         }
 
+        // Switch model if specified
+        if (options?.model && session.rpc?.model) {
+            await session.rpc.model.switchTo({ modelId: options.model });
+            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Model switched to '${options.model}'`);
+        }
+
         // Track for cancellation during the call
         this.trackSession(session);
 
@@ -1016,6 +1030,27 @@ export class CopilotSDKService {
         }
         await entry.session.rpc.mode.set({ mode });
         logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Mode set to '${mode}'`);
+    }
+
+    /**
+     * Switch the AI model on a kept-alive session.
+     * Takes effect for the next message; conversation history is preserved.
+     *
+     * @param sessionId - The session ID of a kept-alive session
+     * @param model - The model ID to switch to (e.g., 'gpt-4.1', 'claude-sonnet-4.6')
+     * @throws If the session is not found or doesn't support rpc.model
+     */
+    public async setSessionModel(sessionId: string, model: string): Promise<void> {
+        const logger = getLogger();
+        const entry = this.keptAliveSessions.get(sessionId);
+        if (!entry) {
+            throw new Error(`Session ${sessionId} not found or has expired`);
+        }
+        if (!entry.session.rpc?.model) {
+            throw new Error(`Session ${sessionId} does not support rpc.model`);
+        }
+        await entry.session.rpc.model.switchTo({ modelId: model });
+        logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Model switched to '${model}'`);
     }
 
     /**
