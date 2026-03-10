@@ -191,6 +191,10 @@ describe('FloatingChatManager: structure', () => {
         expect(FLOATING_MANAGER_SOURCE).toContain('noPadding');
     });
 
+    it('constrains dialog height to 80vh by default', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain('max-h-[80vh]');
+    });
+
     it('uses resizable FloatingDialog', () => {
         expect(FLOATING_MANAGER_SOURCE).toContain('resizable');
     });
