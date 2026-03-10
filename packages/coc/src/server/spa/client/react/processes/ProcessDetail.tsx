@@ -240,6 +240,7 @@ export function ProcessDetail() {
             ? formatDuration(process.duration)
             : '';
     const resumeSessionId = getSessionIdFromProcess(metadataProcess);
+    const model = metadataProcess?.metadata?.model || metadataProcess?.config?.model || (metadataProcess as any)?.model;
 
     const launchInteractiveResume = async () => {
         if (!selectedId || !resumeSessionId) return;
@@ -292,6 +293,11 @@ export function ProcessDetail() {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            {model && (
+                                <span className="text-xs text-[#848484] px-1.5 py-0.5 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] font-mono max-w-[180px] truncate" title={model}>
+                                    {model}
+                                </span>
+                            )}
                             {(metadataProcess?.metadata?.workflowName || metadataProcess?.type === 'run-workflow') && wsId && (
                                 <Button
                                     variant="secondary"

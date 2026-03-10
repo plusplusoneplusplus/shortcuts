@@ -256,7 +256,7 @@ describe('ProcessDetail', () => {
 
         expect(screen.getByText('Conversation metadata')).toBeDefined();
         expect(screen.getByText('Model')).toBeDefined();
-        expect(screen.getByText('claude-haiku-4.5')).toBeDefined();
+        expect(screen.getAllByText('claude-haiku-4.5').length).toBeGreaterThan(0);
         expect(screen.getByText('Session ID')).toBeDefined();
         expect(screen.getByText('sess-meta-123')).toBeDefined();
     });
