@@ -953,11 +953,10 @@ function navigateToDiff(direction: 'prev' | 'next'): void {
     } else {
         // Find the first visible line
         const containerRect = container.getBoundingClientRect();
-        const scrollTop = container.scrollTop;
 
         for (let i = 0; i < allLines.length; i++) {
             const line = allLines[i];
-            const lineTop = line.offsetTop - scrollTop;
+            const lineTop = line.getBoundingClientRect().top - containerRect.top;
             if (lineTop >= 0 && lineTop < containerRect.height) {
                 currentLineIndex = i;
                 break;
@@ -983,7 +982,7 @@ function navigateToDiff(direction: 'prev' | 'next'): void {
     } else {
         // Find the previous change block before current position
         for (let i = changeBlocks.length - 1; i >= 0; i--) {
-            if (changeBlocks[i].startIndex < currentLineIndex) {
+            if (changeBlocks[i].endIndex < currentLineIndex) {
                 targetBlockIndex = i;
                 break;
             }
