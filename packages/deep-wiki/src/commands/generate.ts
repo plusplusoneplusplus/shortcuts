@@ -17,6 +17,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ComponentGraph, ComponentAnalysis } from '../types';
 import { checkAIAvailability } from '../ai-invoker';
+import { formatDuration } from '../utils/format-duration';
 import { UsageTracker } from '../usage-tracker';
 import type { TrackedPhase } from '../usage-tracker';
 import {
@@ -387,18 +388,7 @@ function printPhaseStopped(lastPhaseRun: number, endPhase: number): void {
 /**
  * Format a duration in milliseconds to a human-readable string.
  */
-function formatDuration(ms: number): string {
-    if (ms < 1000) {
-        return `${ms}ms`;
-    }
-    const seconds = Math.round(ms / 1000);
-    if (seconds < 60) {
-        return `${seconds}s`;
-    }
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
-}
+
 
 /**
  * Print a token usage summary table to stderr.
