@@ -482,7 +482,7 @@ describe('ConversationTurnBubble', () => {
     it('renders role label and message content', () => {
         render(
             <Wrap>
-                <ConversationTurnBubble turn={{ role: 'user', content: '<p>Hello</p>', timeline: [] }} />
+                <ConversationTurnBubble turn={{ role: 'user', content: 'Hello', timeline: [] }} />
             </Wrap>
         );
         expect(screen.getByText('You')).toBeDefined();
