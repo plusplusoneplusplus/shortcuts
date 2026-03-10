@@ -10,8 +10,10 @@
 import * as path from 'path';
 import { Command } from 'commander';
 import { getErrorMessage } from './utils/error-utils';
-import { setColorEnabled, setVerbosity, getVerbosity, printInfo } from './logger';
+import { setColorEnabled, printInfo } from './logger';
 import { loadConfig, mergeConfigWithCLI, discoverConfigFile } from './config-loader';
+import { createDeepWikiPinoLogger, pinoAdapterForPipelineCore } from './pino-setup';
+import { setLogger } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Exit Codes
@@ -84,7 +86,7 @@ export function createProgram(): Command {
                 process.exit(EXIT_CODES.CONFIG_ERROR);
             }
             if (resolvedRepoPath !== repoPath) {
-                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config: ${resolvedRepoPath}`);
+                opts.verbose && printInfo(`Using repoPath from config: ${resolvedRepoPath}`);
             }
             const { executeSeeds } = await import('./commands/seeds');
             const exitCode = await executeSeeds(resolvedRepoPath, {
@@ -123,7 +125,7 @@ export function createProgram(): Command {
                 process.exit(EXIT_CODES.CONFIG_ERROR);
             }
             if (resolvedRepoPath !== repoPath) {
-                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config: ${resolvedRepoPath}`);
+                opts.verbose && printInfo(`Using repoPath from config: ${resolvedRepoPath}`);
             }
 
             // Lazy-load to avoid loading heavy deps when just checking --help
@@ -232,7 +234,7 @@ export function createProgram(): Command {
                 process.exit(EXIT_CODES.CONFIG_ERROR);
             }
             if (!repoPath && cliOptions.repoPath) {
-                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config: ${cliOptions.repoPath}`);
+                opts.verbose && printInfo(`Using repoPath from config: ${cliOptions.repoPath}`);
             }
 
             const { executeGenerate } = await import('./commands/generate');
@@ -336,10 +338,12 @@ function applyGlobalOptions(opts: Record<string, unknown>): void {
         setColorEnabled(false);
     }
 
-    // Set verbosity
-    if (opts.verbose) {
-        setVerbosity('verbose');
-    }
+    // Set up Pino logger
+    const pinoLogger = createDeepWikiPinoLogger({
+        level: opts.verbose ? 'debug' : 'info',
+        pretty: 'auto',
+    });
+    setLogger(pinoAdapterForPipelineCore(pinoLogger));
 }
 
 /**

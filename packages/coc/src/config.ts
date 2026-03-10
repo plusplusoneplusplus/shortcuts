@@ -59,6 +59,44 @@ export interface CLIConfig {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
     };
+    /** Logging configuration */
+    logging?: LoggingConfig;
+}
+
+// ============================================================================
+// Logging Types
+// ============================================================================
+
+/** Per-store logging overrides */
+export interface LoggingStoreConfig {
+    level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+    file?: boolean;
+}
+
+/** Logging section of the config file */
+export interface LoggingConfig {
+    level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+    /** Log file directory, default '~/.coc/logs' */
+    dir?: string;
+    /** 'auto' = true if TTY, true/false to force */
+    pretty?: 'auto' | boolean;
+    stores?: {
+        [store: string]: LoggingStoreConfig | undefined;
+    };
+}
+
+/** Fully resolved logging configuration with defaults applied */
+export interface ResolvedLoggingConfig {
+    /** Effective log level */
+    level: string;
+    /** Log file directory. No file logging when undefined. */
+    dir?: string;
+    /** Pretty mode: 'auto' means use TTY detection at logger creation time */
+    pretty: 'auto' | boolean;
+    /** Per-store level/file overrides */
+    stores: {
+        [store: string]: LoggingStoreConfig | undefined;
+    };
 }
 
 /**
@@ -91,6 +129,8 @@ export interface ResolvedCLIConfig {
         historyLimit?: number;
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
     };
+    /** Logging config passed through from file (not fully resolved — use resolveLoggingConfig) */
+    logging?: LoggingConfig;
 }
 
 // ============================================================================
@@ -267,6 +307,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
             historyLimit: override.queue?.historyLimit ?? base.queue?.historyLimit,
             restartPolicy: override.queue?.restartPolicy ?? base.queue?.restartPolicy,
         } : undefined,
+        logging: override.logging ?? base.logging,
     };
 }
 
@@ -309,4 +350,28 @@ function getFieldSource(key: ConfigSourceKey, fileConfig: CLIConfig | undefined)
     }
 
     return (fileConfig as Record<string, unknown>)[key] !== undefined ? 'file' : 'default';
+}
+
+// ============================================================================
+// Logging Config Resolution
+// ============================================================================
+
+/**
+ * Resolve logging configuration by merging CLI flags with config file values and defaults.
+ *
+ * Precedence: CLI flag > config file logging section > defaults
+ *
+ * @param cliFlags - CLI flag values (--log-level, --log-dir, --verbose)
+ * @param loggingConfig - The `logging:` section from the loaded config file
+ */
+export function resolveLoggingConfig(
+    cliFlags: { logLevel?: string; logDir?: string; verbose?: boolean },
+    loggingConfig?: LoggingConfig
+): ResolvedLoggingConfig {
+    const fileLevel = loggingConfig?.level;
+    const level = cliFlags.verbose ? 'debug' : (cliFlags.logLevel ?? fileLevel ?? 'info');
+    const dir = cliFlags.logDir ?? loggingConfig?.dir;
+    const pretty = loggingConfig?.pretty ?? 'auto';
+    const stores = loggingConfig?.stores ?? {};
+    return { level, dir, pretty, stores };
 }

@@ -25,7 +25,7 @@ import {
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 
 // Wire a basic Pino-backed logger for pipeline-core operations in skills commands
-setLogger(pinoAdapterForPipelineCore(createCLIPinoLogger({}).ai));
+setLogger(pinoAdapterForPipelineCore(createCLIPinoLogger({ level: 'info', pretty: 'auto', stores: {} }).ai));
 
 // ============================================================================
 // Helpers

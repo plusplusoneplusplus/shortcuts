@@ -26,6 +26,7 @@ import {
     mergeConfig,
     getResolvedConfigWithSource,
     writeConfigFile,
+    resolveLoggingConfig,
 } from '../src/config';
 import type { CLIConfig, ResolvedCLIConfig, ConfigSourceKey } from '../src/config';
 
@@ -608,6 +609,141 @@ timeout: 300
             expect(loaded!.serve?.host).toBe('0.0.0.0');
             expect(loaded!.serve?.dataDir).toBe('/tmp/coc');
             expect(loaded!.serve?.theme).toBe('dark');
+        });
+    });
+
+    // ========================================================================
+    // resolveLoggingConfig
+    // ========================================================================
+
+    describe('resolveLoggingConfig', () => {
+        it('defaults to info level and auto pretty when no overrides', () => {
+            const result = resolveLoggingConfig({});
+            expect(result.level).toBe('info');
+            expect(result.pretty).toBe('auto');
+            expect(result.dir).toBeUndefined();
+            expect(result.stores).toEqual({});
+        });
+
+        it('CLI logLevel overrides file config level', () => {
+            const result = resolveLoggingConfig(
+                { logLevel: 'warn' },
+                { level: 'debug' }
+            );
+            expect(result.level).toBe('warn');
+        });
+
+        it('file config level is used when CLI logLevel is absent', () => {
+            const result = resolveLoggingConfig({}, { level: 'debug' });
+            expect(result.level).toBe('debug');
+        });
+
+        it('verbose: true forces level to debug', () => {
+            const result = resolveLoggingConfig({ verbose: true }, { level: 'warn' });
+            expect(result.level).toBe('debug');
+        });
+
+        it('verbose: true overrides CLI logLevel', () => {
+            const result = resolveLoggingConfig({ logLevel: 'error', verbose: true });
+            expect(result.level).toBe('debug');
+        });
+
+        it('CLI logDir overrides file config dir', () => {
+            const result = resolveLoggingConfig(
+                { logDir: '/tmp/cli-logs' },
+                { dir: '/tmp/file-logs' }
+            );
+            expect(result.dir).toBe('/tmp/cli-logs');
+        });
+
+        it('file config dir is used when CLI logDir is absent', () => {
+            const result = resolveLoggingConfig({}, { dir: '/tmp/file-logs' });
+            expect(result.dir).toBe('/tmp/file-logs');
+        });
+
+        it('file config pretty is used', () => {
+            const result = resolveLoggingConfig({}, { pretty: true });
+            expect(result.pretty).toBe(true);
+        });
+
+        it('file config pretty: false is used', () => {
+            const result = resolveLoggingConfig({}, { pretty: false });
+            expect(result.pretty).toBe(false);
+        });
+
+        it('file config stores are passed through', () => {
+            const stores = { 'ai-service': { level: 'debug' as const, file: true } };
+            const result = resolveLoggingConfig({}, { stores });
+            expect(result.stores).toEqual(stores);
+        });
+
+        it('returns empty stores when not configured', () => {
+            const result = resolveLoggingConfig({});
+            expect(result.stores).toEqual({});
+        });
+
+        it('full config: CLI flags take precedence over file', () => {
+            const result = resolveLoggingConfig(
+                { logLevel: 'trace', logDir: '/cli/logs' },
+                { level: 'info', dir: '/file/logs', pretty: false, stores: { 'coc-service': { level: 'warn' } } }
+            );
+            expect(result.level).toBe('trace');
+            expect(result.dir).toBe('/cli/logs');
+            expect(result.pretty).toBe(false);  // from file (not overrideable by CLI)
+            expect(result.stores?.['coc-service']?.level).toBe('warn');
+        });
+    });
+
+    // ========================================================================
+    // Config file: logging section is parsed and passed through mergeConfig
+    // ========================================================================
+
+    describe('logging config file round-trip', () => {
+        let tmpDir: string;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-logging-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('parses logging section from YAML config', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, [
+                'logging:',
+                '  level: debug',
+                '  dir: ~/.coc/logs',
+                '  pretty: auto',
+                '  stores:',
+                '    ai-service:',
+                '      level: trace',
+                '      file: true',
+            ].join('\n'));
+
+            const result = loadConfigFile(configPath);
+            expect(result?.logging?.level).toBe('debug');
+            expect(result?.logging?.dir).toBe('~/.coc/logs');
+            expect(result?.logging?.pretty).toBe('auto');
+            expect(result?.logging?.stores?.['ai-service']?.level).toBe('trace');
+            expect(result?.logging?.stores?.['ai-service']?.file).toBe(true);
+        });
+
+        it('mergeConfig passes logging through to ResolvedCLIConfig', () => {
+            const fileConfig: CLIConfig = {
+                logging: { level: 'warn', stores: { 'coc-service': { level: 'info' } } },
+            };
+            const resolved = mergeConfig(DEFAULT_CONFIG, fileConfig);
+            expect(resolved.logging?.level).toBe('warn');
+            expect(resolved.logging?.stores?.['coc-service']?.level).toBe('info');
+        });
+
+        it('resolveConfig includes logging from file', () => {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'logging:\n  level: error\n');
+            const resolved = resolveConfig(configPath);
+            expect(resolved.logging?.level).toBe('error');
         });
     });
 });

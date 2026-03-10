@@ -39,6 +39,7 @@ import {
     bold,
 } from '../logger';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
+import { resolveLoggingConfig, loadConfigFile } from '../config';
 import { formatResults, formatSummary, formatDuration } from '../output-formatter';
 import type { OutputFormat } from '../output-formatter';
 import { resolvePipelinePath } from './validate';
@@ -132,11 +133,11 @@ export async function executeRun(
     process.stderr.write('\n');
 
     // 4. Set up logger
-    const { ai } = createCLIPinoLogger({
-        level: options.logLevel,
-        logDir: options.logDir,
-        verbose: options.verbose,
-    });
+    const fileConfig = loadConfigFile();
+    const { ai } = createCLIPinoLogger(resolveLoggingConfig(
+        { logLevel: options.logLevel, logDir: options.logDir, verbose: options.verbose },
+        fileConfig?.logging
+    ));
     setLogger(pinoAdapterForPipelineCore(ai));
 
     // 5. Create AI invoker

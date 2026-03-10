@@ -303,3 +303,81 @@ describe('validateConfigWithSchema', () => {
         }
     });
 });
+
+// ============================================================================
+// logging: section schema
+// ============================================================================
+
+describe('logging schema validation', () => {
+    it('accepts empty logging section', () => {
+        const result = CLIConfigSchema.parse({ logging: {} });
+        expect(result.logging).toEqual({});
+    });
+
+    it('accepts full logging config', () => {
+        const config = {
+            logging: {
+                level: 'debug' as const,
+                dir: '~/.coc/logs',
+                pretty: 'auto' as const,
+                stores: {
+                    'ai-service': { level: 'trace' as const, file: true },
+                    'coc-service': { level: 'info' as const, file: false },
+                },
+            },
+        };
+        const result = CLIConfigSchema.parse(config);
+        expect(result.logging?.level).toBe('debug');
+        expect(result.logging?.dir).toBe('~/.coc/logs');
+        expect(result.logging?.pretty).toBe('auto');
+        expect(result.logging?.stores?.['ai-service']?.level).toBe('trace');
+        expect(result.logging?.stores?.['ai-service']?.file).toBe(true);
+    });
+
+    it('accepts all valid log levels', () => {
+        for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'fatal']) {
+            const result = CLIConfigSchema.parse({ logging: { level } });
+            expect(result.logging?.level).toBe(level);
+        }
+    });
+
+    it('rejects invalid log level', () => {
+        expect(() => CLIConfigSchema.parse({ logging: { level: 'verbose' } })).toThrow();
+    });
+
+    it('accepts pretty: true', () => {
+        const result = CLIConfigSchema.parse({ logging: { pretty: true } });
+        expect(result.logging?.pretty).toBe(true);
+    });
+
+    it('accepts pretty: false', () => {
+        const result = CLIConfigSchema.parse({ logging: { pretty: false } });
+        expect(result.logging?.pretty).toBe(false);
+    });
+
+    it('accepts pretty: "auto"', () => {
+        const result = CLIConfigSchema.parse({ logging: { pretty: 'auto' } });
+        expect(result.logging?.pretty).toBe('auto');
+    });
+
+    it('rejects pretty: "always" (unknown string)', () => {
+        expect(() => CLIConfigSchema.parse({ logging: { pretty: 'always' } })).toThrow();
+    });
+
+    it('rejects unknown fields inside logging (strict mode)', () => {
+        expect(() => CLIConfigSchema.parse({ logging: { unknownField: true } })).toThrow();
+    });
+
+    it('rejects unknown fields inside logging.stores[name] (strict mode)', () => {
+        expect(() => CLIConfigSchema.parse({ logging: { stores: { 'ai-service': { unknownField: true } } } })).toThrow();
+    });
+
+    it('accepts stores with undefined values', () => {
+        const result = CLIConfigSchema.parse({ logging: { stores: { 'ai-service': undefined } } });
+        expect(result.logging?.stores?.['ai-service']).toBeUndefined();
+    });
+
+    it('rejects invalid store level', () => {
+        expect(() => CLIConfigSchema.parse({ logging: { stores: { 'ai-service': { level: 'verbose' } } } })).toThrow();
+    });
+});

@@ -22,6 +22,7 @@ import {
 } from '../logger';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 import { FileProcessStore, setLogger } from '@plusplusoneplusplus/pipeline-core';
+import { resolveLoggingConfig, loadConfigFile } from '../config';
 import { setServerLogger } from '@plusplusoneplusplus/coc-server';
 import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';
 
@@ -46,10 +47,11 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
 
     // Set up Pino loggers before anything else
     const logDir = options.logDir ?? path.join(dataDir, 'logs');
-    const { ai, coc } = createCLIPinoLogger({
-        level: options.logLevel,
-        logDir,
-    });
+    const fileConfig = loadConfigFile();
+    const { ai, coc } = createCLIPinoLogger(resolveLoggingConfig(
+        { logLevel: options.logLevel, logDir },
+        fileConfig?.logging
+    ));
     setLogger(pinoAdapterForPipelineCore(ai));
     setServerLogger(coc);
 

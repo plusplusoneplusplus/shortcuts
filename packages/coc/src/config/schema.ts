@@ -7,6 +7,24 @@
 
 import { z } from 'zod';
 
+// ============================================================================
+// Logging sub-schemas
+// ============================================================================
+
+const loggingLevelEnum = z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
+
+const loggingStoreSchema = z.object({
+    level: loggingLevelEnum.optional(),
+    file: z.boolean().optional(),
+}).strict();
+
+const loggingConfigSchema = z.object({
+    level: loggingLevelEnum.optional(),
+    dir: z.string().optional(),
+    pretty: z.union([z.literal('auto'), z.boolean()]).optional(),
+    stores: z.record(z.string(), loggingStoreSchema.optional()).optional(),
+}).strict();
+
 /**
  * Zod schema for CLI configuration file
  */
@@ -40,6 +58,7 @@ export const CLIConfigSchema = z.object({
         historyLimit: z.number().int().positive().optional(),
         restartPolicy: z.enum(['fail', 'requeue', 'requeue-if-retriable']).optional(),
     }).strict().optional(),
+    logging: loggingConfigSchema.optional(),
 }).strict();
 
 /**

@@ -14,21 +14,11 @@ import pino from 'pino';
 import { createPinoAdapter } from '@plusplusoneplusplus/pipeline-core';
 import type { Logger } from '@plusplusoneplusplus/pipeline-core';
 import { isColorEnabled } from './logger';
+import type { ResolvedLoggingConfig } from './config';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-export interface CLIPinoOptions {
-    /** Explicit log level (default: 'info'). Overridden by verbose: true → 'debug'. */
-    level?: string;
-    /** Directory for .ndjson log files. No file logging when undefined. */
-    logDir?: string;
-    /** Force pino-pretty formatting. Defaults to process.stderr.isTTY. */
-    pretty?: boolean;
-    /** Shorthand: sets level to 'debug'. */
-    verbose?: boolean;
-}
 
 export interface CLIPinoLoggers {
     /** Root Pino logger. */
@@ -46,13 +36,15 @@ export interface CLIPinoLoggers {
 /**
  * Create a root CLI Pino logger plus ai and coc child loggers.
  *
- * Level precedence: verbose → 'debug', level option, default 'info'.
- * Pretty mode: enabled when pretty option is true, or stderr is a TTY.
- * File logging: opt-in via logDir.
+ * Level is taken from resolved.level. Pretty mode resolves 'auto' via TTY detection.
+ * File logging is opt-in via resolved.dir. Per-store level overrides are applied
+ * to child loggers via resolved.stores.
  */
-export function createCLIPinoLogger(options: CLIPinoOptions): CLIPinoLoggers {
-    const level = options.verbose ? 'debug' : (options.level ?? 'info');
-    const usePretty = options.pretty ?? (process.stderr.isTTY === true);
+export function createCLIPinoLogger(resolved: ResolvedLoggingConfig): CLIPinoLoggers {
+    const level = resolved.level ?? 'info';
+    const usePretty = resolved.pretty === 'auto'
+        ? process.stderr.isTTY === true
+        : (resolved.pretty as boolean);
     const colorize = isColorEnabled() && (process.stderr.isTTY === true);
 
     const pinoOpts: pino.LoggerOptions = {
@@ -70,13 +62,36 @@ export function createCLIPinoLogger(options: CLIPinoOptions): CLIPinoLoggers {
 
     let root: pino.Logger;
 
-    if (options.logDir) {
+    if (resolved.dir) {
         // Ensure log directory exists before opening file streams
-        fs.mkdirSync(options.logDir, { recursive: true });
+        fs.mkdirSync(resolved.dir, { recursive: true });
     }
 
-    if (usePretty && options.logDir) {
+    // Determine which store files to create (defaults to both when dir is set)
+    const aiFile = resolved.dir && resolved.stores?.['ai-service']?.file !== false
+        ? path.join(resolved.dir, 'ai-service.ndjson')
+        : undefined;
+    const cocFile = resolved.dir && resolved.stores?.['coc-service']?.file !== false
+        ? path.join(resolved.dir, 'coc-service.ndjson')
+        : undefined;
+
+    if (usePretty && (aiFile || cocFile)) {
         // Pretty stderr + file destinations via multi-target transport
+        const fileTargets: pino.TransportTargetOptions[] = [];
+        if (aiFile) {
+            fileTargets.push({
+                target: 'pino/file',
+                options: { destination: aiFile },
+                level,
+            });
+        }
+        if (cocFile) {
+            fileTargets.push({
+                target: 'pino/file',
+                options: { destination: cocFile },
+                level,
+            });
+        }
         root = pino({
             ...pinoOpts,
             transport: {
@@ -86,16 +101,7 @@ export function createCLIPinoLogger(options: CLIPinoOptions): CLIPinoLoggers {
                         options: { ...prettyTransportOptions, destination: 2 },
                         level,
                     },
-                    {
-                        target: 'pino/file',
-                        options: { destination: path.join(options.logDir, 'ai-service.ndjson') },
-                        level,
-                    },
-                    {
-                        target: 'pino/file',
-                        options: { destination: path.join(options.logDir, 'coc-service.ndjson') },
-                        level,
-                    },
+                    ...fileTargets,
                 ],
             },
         });
@@ -108,36 +114,39 @@ export function createCLIPinoLogger(options: CLIPinoOptions): CLIPinoLoggers {
                 options: prettyTransportOptions,
             },
         });
-    } else if (options.logDir) {
+    } else if (aiFile || cocFile) {
         // JSON to stderr + .ndjson files via multistream
         const streams: pino.StreamEntry[] = [
             { level: level as pino.Level, stream: process.stderr },
-            {
-                level: level as pino.Level,
-                stream: pino.destination({
-                    dest: path.join(options.logDir, 'ai-service.ndjson'),
-                    sync: false,
-                }),
-            },
-            {
-                level: level as pino.Level,
-                stream: pino.destination({
-                    dest: path.join(options.logDir, 'coc-service.ndjson'),
-                    sync: false,
-                }),
-            },
         ];
+        if (aiFile) {
+            streams.push({
+                level: level as pino.Level,
+                stream: pino.destination({ dest: aiFile, sync: false }),
+            });
+        }
+        if (cocFile) {
+            streams.push({
+                level: level as pino.Level,
+                stream: pino.destination({ dest: cocFile, sync: false }),
+            });
+        }
         root = pino(pinoOpts, pino.multistream(streams));
     } else {
         // JSON to stderr only
         root = pino(pinoOpts, process.stderr);
     }
 
-    return {
-        root,
-        ai: root.child({ store: 'ai-service' }),
-        coc: root.child({ store: 'coc-service' }),
-    };
+    // Create child loggers and apply per-store level overrides
+    const ai = root.child({ store: 'ai-service' });
+    const aiStoreLevel = resolved.stores?.['ai-service']?.level;
+    if (aiStoreLevel) { ai.level = aiStoreLevel; }
+
+    const coc = root.child({ store: 'coc-service' });
+    const cocStoreLevel = resolved.stores?.['coc-service']?.level;
+    if (cocStoreLevel) { coc.level = cocStoreLevel; }
+
+    return { root, ai, coc };
 }
 
 // ============================================================================
