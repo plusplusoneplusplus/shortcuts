@@ -13,7 +13,6 @@ import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
-import type { ResolvedCLIConfig } from './config';
 import { setColorEnabled, setVerbosity } from './logger';
 import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete } from './commands/skills';
 
@@ -67,7 +66,7 @@ export function createProgram(): Command {
         .option('--no-persist', 'Do not save run results to process store')
         .action(async (pipelinePath: string, opts: Record<string, unknown>) => {
             const config = resolveConfig();
-            applyGlobalOptions(opts, config);
+            applyGlobalOptions(opts);
             const options = resolveRunOptions(opts, config);
 
             const exitCode = await executeRun(pipelinePath, options);
@@ -85,7 +84,7 @@ export function createProgram(): Command {
         .option('--no-color', 'Disable colored output')
         .action((pipelinePath: string, opts: Record<string, unknown>) => {
             const config = resolveConfig();
-            applyGlobalOptions(opts, config);
+            applyGlobalOptions(opts);
 
             const exitCode = executeValidate(pipelinePath);
             process.exit(exitCode);
@@ -103,7 +102,7 @@ export function createProgram(): Command {
         .option('--no-color', 'Disable colored output')
         .action((dirPath: string, opts: Record<string, unknown>) => {
             const config = resolveConfig();
-            applyGlobalOptions(opts, config);
+            applyGlobalOptions(opts);
             const { format } = resolveListOptions(opts, config);
 
             const exitCode = executeList(dirPath, format);
@@ -129,7 +128,7 @@ export function createProgram(): Command {
         .option('--no-color', 'Disable colored output')
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
-            applyGlobalOptions(opts, config);
+            applyGlobalOptions(opts);
             const options = resolveServeOptions(opts, config);
 
             const { executeServe } = await import('./commands/serve');
@@ -155,7 +154,7 @@ export function createProgram(): Command {
         .option('--no-color', 'Disable colored output')
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
-            applyGlobalOptions(opts, config);
+            applyGlobalOptions(opts);
             const options = resolveWipeDataOptions(opts, config);
 
             const { executeWipeData } = await import('./commands/wipe-data');
@@ -179,7 +178,7 @@ export function createProgram(): Command {
         .option('-a, --all', 'List both global and repo skills')
         .option('--no-color', 'Disable colored output')
         .action(async (opts: Record<string, unknown>) => {
-            applyGlobalOptions(opts, resolveConfig());
+            applyGlobalOptions(opts);
             const exitCode = await executeSkillList({
                 workspace: opts.workspace as string | undefined,
                 global: opts.global as boolean | undefined,
@@ -196,7 +195,7 @@ export function createProgram(): Command {
         .option('--replace', 'Replace existing skills', false)
         .option('--no-color', 'Disable colored output')
         .action(async (names: string[], opts: Record<string, unknown>) => {
-            applyGlobalOptions(opts, resolveConfig());
+            applyGlobalOptions(opts);
             const exitCode = await executeSkillInstallBundled(names, {
                 workspace: opts.workspace as string | undefined,
                 replace: opts.replace as boolean | undefined,
@@ -214,7 +213,7 @@ export function createProgram(): Command {
         .option('--select <names>', 'Comma-separated list of skill names to install')
         .option('--no-color', 'Disable colored output')
         .action(async (githubUrl: string, opts: Record<string, unknown>) => {
-            applyGlobalOptions(opts, resolveConfig());
+            applyGlobalOptions(opts);
             const exitCode = await executeSkillInstall(githubUrl, {
                 workspace: opts.workspace as string | undefined,
                 replace: opts.replace as boolean | undefined,
@@ -231,7 +230,7 @@ export function createProgram(): Command {
         .option('-g, --global', 'Delete from global ~/.coc/skills/ directory')
         .option('--no-color', 'Disable colored output')
         .action(async (name: string, opts: Record<string, unknown>) => {
-            applyGlobalOptions(opts, resolveConfig());
+            applyGlobalOptions(opts);
             const exitCode = await executeSkillDelete(name, {
                 workspace: opts.workspace as string | undefined,
                 global: opts.global as boolean | undefined,
@@ -260,7 +259,7 @@ function collectParams(value: string, previous: Record<string, string>): Record<
 /**
  * Apply global options (colors, verbosity) based on CLI flags and config
  */
-function applyGlobalOptions(opts: Record<string, unknown>, config: ResolvedCLIConfig): void {
+function applyGlobalOptions(opts: Record<string, unknown>): void {
     // Handle --no-color: commander sets color: false when --no-color is used
     if (opts.color === false) {
         setColorEnabled(false);
