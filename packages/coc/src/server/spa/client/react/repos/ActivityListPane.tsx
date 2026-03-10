@@ -43,6 +43,7 @@ export function taskMatchesFilter(task: any, filter: string): boolean {
 export function getTaskTypeIcon(task: any): string {
     const type = task.type as string;
     const payload = task.payload || {};
+    if (payload.scheduleId) return '📅';
     if (type === 'chat') {
         if (payload.mode === 'ask') return '💡';
         if (payload.mode === 'plan') return '📋';

@@ -376,6 +376,10 @@ describe('ActivityListPane: shared list component', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain("type === 'run-script') return '⚡'");
     });
 
+    it('getTaskTypeIcon returns 📅 for scheduled tasks (payload.scheduleId present)', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("payload.scheduleId) return '📅'");
+    });
+
     it('getTaskTypeIcon uses mode as primary icon for chat tasks without context overrides', () => {
         // The function should NOT override mode-based icons with context-based icons
         // (e.g., skills, taskGeneration, resolveComments, files should not change the icon)
