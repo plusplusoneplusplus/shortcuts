@@ -168,7 +168,7 @@ function mergeComponentGroup(group: DirectoryGroup): ComponentInfo {
     const dependents = allDependents.filter(d => !selfIds.has(d));
 
     // Pick highest complexity
-    const complexity = pickHighestComplexity(comps);
+    const complexity = resolveMaxComplexity(comps);
 
     // Pick most common category
     const category = pickMostCommonCategory(comps);
@@ -245,10 +245,6 @@ function deriveCategories(components: ComponentInfo[]): CategoryInfo[] {
 // ============================================================================
 // Utility Helpers
 // ============================================================================
-
-function pickHighestComplexity(components: ComponentInfo[]): 'low' | 'medium' | 'high' {
-    return resolveMaxComplexity(components);
-}
 
 function pickMostCommonCategory(components: ComponentInfo[]): string {
     const counts = new Map<string, number>();
