@@ -32,7 +32,7 @@ import type { ProcessWebSocketServer } from './websocket';
  * and will be moved in a later commit.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
@@ -1845,7 +1845,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                     });
                 }
             } else {
-                bridge.executeFollowUp(id, messageContent, attachments).catch(() => {
+                bridge.executeFollowUp(id, messageContent, attachments, modeOverride).catch(() => {
                     // Error handling is done inside executeFollowUp
                 }).finally(() => {
                     if (imageTempDir) { cleanupTempDir(imageTempDir); }

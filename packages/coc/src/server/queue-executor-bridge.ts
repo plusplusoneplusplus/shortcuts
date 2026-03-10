@@ -134,7 +134,7 @@ export interface QueueExecutorBridgeOptions {
  * Implemented by CLITaskExecutor, surfaced via the bridge factory.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[]): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string): Promise<void>;
     /** Check whether the underlying SDK session for a process is still alive. */
     isSessionAlive(processId: string): Promise<boolean>;
     /** Requeue an existing completed task for a follow-up message. */
