@@ -100,6 +100,7 @@ export {
     // Task prompt builders (pure Node.js, no VS Code deps)
     AUTO_FOLDER_SENTINEL,
     AutoFolderContext,
+    buildAutoFolderLocationBlock,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,

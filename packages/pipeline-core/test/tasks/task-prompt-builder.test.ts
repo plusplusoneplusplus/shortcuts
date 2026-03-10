@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 import {
     applyDeepModePrefix,
+    buildAutoFolderLocationBlock,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,
@@ -512,6 +513,49 @@ describe('buildPlanGenerationSystemPrompt', () => {
         });
         expect(prompt).toContain('C:/Users/dev/data/tasks');
         expect(prompt).not.toContain('dev\\data');
+    });
+});
+
+// ============================================================================
+// buildAutoFolderLocationBlock
+// ============================================================================
+
+describe('buildAutoFolderLocationBlock', () => {
+    it('should include tasksRoot in the save location line', () => {
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc', 'deep-wiki']);
+        expect(block).toContain('/tmp/tasks/<chosen-folder>/<descriptive-name>.plan.md');
+    });
+
+    it('should list existing folders', () => {
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc', 'deep-wiki']);
+        expect(block).toContain('coc, deep-wiki');
+    });
+
+    it('should show (none yet) when existingFolders is empty', () => {
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', []);
+        expect(block).toContain('(none yet)');
+    });
+
+    it('should exclude archive folders', () => {
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc', 'archive', 'archive/old-tasks']);
+        expect(block).toContain('coc');
+        expect(block).not.toContain('archive');
+    });
+
+    it('should show (none yet) when only archive folders exist', () => {
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['archive', 'archive/old']);
+        expect(block).toContain('(none yet)');
+    });
+
+    it('should include folder selection rules', () => {
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', []);
+        expect(block).toContain('kebab-case');
+        expect(block).toContain('do not save to the tasks root directly');
+    });
+
+    it('should use forward slashes in the save location path', () => {
+        const block = buildAutoFolderLocationBlock('C:/Users/dev/tasks', ['coc']);
+        expect(block).toContain('C:/Users/dev/tasks/<chosen-folder>');
     });
 });
 

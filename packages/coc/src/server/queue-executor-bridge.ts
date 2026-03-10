@@ -40,6 +40,7 @@ import {
     approveAllPermissions,
     applyDeepModePrefix,
     AUTO_FOLDER_SENTINEL,
+    buildAutoFolderLocationBlock,
     buildCreateFromFeaturePrompt,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
@@ -65,6 +66,7 @@ import {
     TaskExecutionResult,
     TaskExecutor,
     TaskQueueManager,
+    toForwardSlashes,
     toNativePath,
     ToolCallCapture,
     DEFAULT_SKILLS_SETTINGS,
@@ -104,12 +106,12 @@ function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
  * optional directive to save plan files in the repo's task folder.
  * `autopilot` (and any unknown mode) returns `undefined`.
  */
-function buildModeSystemMessage(mode: ChatMode | undefined, taskFolderPath?: string): SystemMessageConfig | undefined {
+function buildModeSystemMessage(mode: ChatMode | undefined, autoFolderContext?: AutoFolderContext): SystemMessageConfig | undefined {
     if (mode !== 'ask' && mode !== 'plan') {
         return undefined;
     }
-    const planFolderSuffix = taskFolderPath
-        ? `\n\nWhen creating or saving plan files, store them in the repo's task folder: ${taskFolderPath}`
+    const planFolderSuffix = autoFolderContext
+        ? `\n\n${buildAutoFolderLocationBlock(toForwardSlashes(autoFolderContext.tasksRoot), autoFolderContext.existingFolders)}`
         : '';
     return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE + planFolderSuffix };
 }
@@ -609,10 +611,14 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         // Inject read-only system message for ask/plan modes
-        const followUpTaskFolder = workingDirectory
-            ? resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: workingDirectory }).absolutePath
-            : undefined;
-        const systemMessage = buildModeSystemMessage(currentMode, followUpTaskFolder);
+        let autoFolderContextForFollowUp: AutoFolderContext | undefined;
+        if (workingDirectory) {
+            const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: workingDirectory }).absolutePath;
+            const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
+            const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
+            autoFolderContextForFollowUp = { tasksRoot, existingFolders };
+        }
+        const systemMessage = buildModeSystemMessage(currentMode, autoFolderContextForFollowUp);
 
         // Build conversation history context for the fresh session
         const historyContext = this.buildConversationHistoryContext(process.conversationTurns);
@@ -998,10 +1004,14 @@ export class CLITaskExecutor implements TaskExecutor {
             // Standard chat: send to AI with optional follow-up suggestions
             const { tools, suffix: countSuffix } = this.buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled);
             const chatWorkingDir = this.getWorkingDirectory(task);
-            const chatTaskFolderPath = chatWorkingDir
-                ? resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: chatWorkingDir, workspaceId: payload.workspaceId || chatWorkingDir }).absolutePath
-                : undefined;
-            const systemMessage = buildModeSystemMessage(payload.mode, chatTaskFolderPath);
+            let autoFolderContextForChat: AutoFolderContext | undefined;
+            if (chatWorkingDir) {
+                const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: chatWorkingDir, workspaceId: payload.workspaceId || chatWorkingDir }).absolutePath;
+                const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
+                const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
+                autoFolderContextForChat = { tasksRoot, existingFolders };
+            }
+            const systemMessage = buildModeSystemMessage(payload.mode, autoFolderContextForChat);
             return this.executeWithAI(task, prompt + countSuffix, { tools: tools.length > 0 ? tools : undefined, systemMessage });
         }
 

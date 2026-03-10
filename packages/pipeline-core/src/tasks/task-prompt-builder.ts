@@ -438,7 +438,7 @@ function buildFixedLocationBlock(targetPath: string): string {
     return `- Save the file to this EXACT directory: \`${targetPath}\``;
 }
 
-function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders: string[]): string {
+export function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders: string[]): string {
     const filtered = existingFolders.filter(f => f !== 'archive' && !f.startsWith('archive/'));
     const folderList = filtered.length > 0 ? filtered.join(', ') : '(none yet)';
     return `- Save location: \`${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md\`

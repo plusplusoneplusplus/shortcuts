@@ -781,6 +781,7 @@ export {
     // Task prompt builders
     AUTO_FOLDER_SENTINEL,
     AutoFolderContext,
+    buildAutoFolderLocationBlock,
     buildCreateTaskPrompt,
     buildCreateTaskPromptWithName,
     buildCreateFromFeaturePrompt,

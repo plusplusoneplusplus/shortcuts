@@ -340,3 +340,93 @@ describe('READ_ONLY_SYSTEM_MESSAGE constant', () => {
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('plan file');
     });
 });
+
+// ============================================================================
+// Tests — Plan-Folder Auto-Folder Location Block in System Message
+// ============================================================================
+
+describe('ask mode system message — auto-folder location block', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI response',
+            sessionId: 'sess-1',
+        });
+    });
+
+    it('should NOT include auto-folder block when task has no workingDirectory', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('ask');
+
+        await executor.execute(task);
+
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.systemMessage?.content).toBe(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.systemMessage?.content).not.toContain('<chosen-folder>');
+    });
+
+    it('should include auto-folder location block when task has workingDirectory in ask mode', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task: QueuedTask = {
+            id: 'task-wd',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Hello', workingDirectory: '/fake/workspace' },
+            config: {},
+            displayName: 'Hello',
+        };
+
+        await executor.execute(task);
+
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
+        expect(callArgs.systemMessage?.content).toContain('<descriptive-name>.plan.md');
+    });
+
+    it('should include auto-folder location block in plan mode when workingDirectory is set', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task: QueuedTask = {
+            id: 'task-plan-wd',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat', mode: 'plan', prompt: 'Plan something', workingDirectory: '/fake/workspace' },
+            config: {},
+            displayName: 'Plan something',
+        };
+
+        await executor.execute(task);
+
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
+    });
+
+    it('should NOT include auto-folder block in autopilot mode even with workingDirectory', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task: QueuedTask = {
+            id: 'task-auto-wd',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Do stuff', workingDirectory: '/fake/workspace' },
+            config: {},
+            displayName: 'Do stuff',
+        };
+
+        await executor.execute(task);
+
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.systemMessage).toBeUndefined();
+    });
+});
