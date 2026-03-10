@@ -224,3 +224,8 @@ export function readBody(req: http.IncomingMessage): Promise<string> {
         req.on('error', reject);
     });
 }
+
+/** Safely extract error message from unknown thrown value. */
+export function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}

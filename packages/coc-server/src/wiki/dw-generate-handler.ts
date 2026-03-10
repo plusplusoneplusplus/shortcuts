@@ -18,9 +18,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import { sendSSE } from './dw-ask-handler';
-import { sendJson, send400, send404, send500, readBody } from './router';
-/** Safely extract error message. */
-function getErrorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+import { sendJson, send400, send404, send500, readBody, getErrorMessage } from './router';
 import type { GenerateCommandOptions, ComponentGraph, ComponentAnalysis, GeneratedArticle } from './dw-types';
 import type { WikiData } from './wiki-data';
 import type { WebSocketServer } from './websocket';

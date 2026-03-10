@@ -9,7 +9,7 @@
 
 import * as http from 'http';
 import type { WikiData } from './wiki-data';
-import { sendJson, send404, send400 } from './router';
+import { sendJson, send404, send400, getErrorMessage } from './router';
 import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './dw-ask-handler';
 import { handleAskRequest } from './dw-ask-handler';
@@ -17,11 +17,6 @@ import { handleExploreRequest } from './dw-explore-handler';
 import { handleAdminRequest } from './dw-admin-handlers';
 import type { ConversationSessionManager } from './conversation-session-manager';
 import type { WebSocketServer } from './websocket';
-
-/** Safely extract error message from unknown thrown value. */
-function getErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
 
 // ============================================================================
 // Types

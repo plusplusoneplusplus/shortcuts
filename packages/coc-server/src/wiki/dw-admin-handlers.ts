@@ -17,9 +17,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJson, send404, send400, send500, readBody } from './router';
-/** Safely extract error message. */
-function getErrorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+import { sendJson, send404, send400, send500, readBody, getErrorMessage } from './router';
 import { validateConfig, discoverConfigFile } from './dw-config-loader';
 import { handleGenerateRequest } from './dw-generate-handler';
 import type { GenerateHandlerContext } from './dw-generate-handler';
