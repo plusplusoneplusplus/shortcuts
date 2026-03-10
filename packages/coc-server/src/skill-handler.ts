@@ -51,7 +51,7 @@ export function sortSkillsByUsage(
 }
 
 /** Enriched skill info returned by the list/detail endpoints */
-interface SkillInfo {
+export interface SkillInfo {
     name: string;
     description?: string;
     version?: string;
@@ -61,13 +61,14 @@ interface SkillInfo {
     references?: string[];
     scripts?: string[];
     relativePath?: string;
+    source?: 'global' | 'repo' | 'bundled';
 }
 
-const VERSION_REGEX = /^version:\s*["']?(.+?)["']?\s*$/m;
-const VARIABLES_REGEX = /^variables:\s*\[([^\]]+)\]/m;
-const OUTPUT_REGEX = /^output:\s*\[([^\]]+)\]/m;
+export const VERSION_REGEX = /^version:\s*["']?(.+?)["']?\s*$/m;
+export const VARIABLES_REGEX = /^variables:\s*\[([^\]]+)\]/m;
+export const OUTPUT_REGEX = /^output:\s*\[([^\]]+)\]/m;
 
-function parseSkillMd(content: string): {
+export function parseSkillMd(content: string): {
     description?: string;
     version?: string;
     variables?: string[];
@@ -105,7 +106,7 @@ function parseSkillMd(content: string): {
     return { description, version, variables, output, promptBody };
 }
 
-function listDirectoryFiles(dirPath: string): string[] {
+export function listDirectoryFiles(dirPath: string): string[] {
     if (!fs.existsSync(dirPath)) return [];
     try {
         return fs.readdirSync(dirPath).filter(f => {
@@ -114,7 +115,7 @@ function listDirectoryFiles(dirPath: string): string[] {
     } catch { return []; }
 }
 
-function listInstalledSkills(installPath: string): SkillInfo[] {
+export function listInstalledSkills(installPath: string): SkillInfo[] {
     if (!fs.existsSync(installPath)) {
         return [];
     }
@@ -154,7 +155,7 @@ function listInstalledSkills(installPath: string): SkillInfo[] {
     return skills;
 }
 
-function getSkillDetail(installPath: string, skillName: string): SkillInfo | null {
+export function getSkillDetail(installPath: string, skillName: string): SkillInfo | null {
     const skillDir = path.join(installPath, skillName);
     const skillMdPath = path.join(skillDir, 'SKILL.md');
     if (!fs.existsSync(skillMdPath)) return null;
@@ -173,15 +174,14 @@ function getSkillDetail(installPath: string, skillName: string): SkillInfo | nul
     }
     skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
     skill.scripts = listDirectoryFiles(path.join(skillDir, 'scripts'));
-    skill.relativePath = path.join(DEFAULT_SKILLS_SETTINGS.installPath, skillName);
 
     return skill;
 }
 
-const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
-const DESCRIPTION_REGEX = /^description:\s*["']?(.+?)["']?\s*$/m;
+export const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
+export const DESCRIPTION_REGEX = /^description:\s*["']?(.+?)["']?\s*$/m;
 
-function extractDescriptionFromMarkdown(content: string): string | undefined {
+export function extractDescriptionFromMarkdown(content: string): string | undefined {
     // Try YAML frontmatter first
     const fmMatch = content.match(FRONTMATTER_REGEX);
     if (fmMatch) {
@@ -399,6 +399,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             if (!skill) {
                 return handleAPIError(res, notFound('Skill'));
             }
+            skill.relativePath = path.join(DEFAULT_SKILLS_SETTINGS.installPath, skillName);
             sendJSON(res, 200, { skill });
         },
     });

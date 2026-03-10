@@ -21,7 +21,8 @@ import {
 } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, parseBody } from './api-handler';
 import { handleAPIError, notFound, invalidJSON, badRequest, internalError } from './errors';
-import { sortSkillsByUsage } from './skill-handler';
+import { sortSkillsByUsage, listInstalledSkills, getSkillDetail } from './skill-handler';
+import type { SkillInfo } from './skill-handler';
 import type { Route } from './types';
 
 // ============================================================================
@@ -30,148 +31,6 @@ import type { Route } from './types';
 
 function getGlobalSkillsDir(dataDir: string): string {
     return path.join(dataDir, 'skills');
-}
-
-/** Enriched skill info returned by the list/detail endpoints */
-interface SkillInfo {
-    name: string;
-    description?: string;
-    version?: string;
-    variables?: string[];
-    output?: string[];
-    promptBody?: string;
-    references?: string[];
-    scripts?: string[];
-    source?: 'global' | 'repo' | 'bundled';
-}
-
-const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
-const DESCRIPTION_REGEX = /^description:\s*["']?(.+?)["']?\s*$/m;
-const VERSION_REGEX = /^version:\s*["']?(.+?)["']?\s*$/m;
-const VARIABLES_REGEX = /^variables:\s*\[([^\]]+)\]/m;
-const OUTPUT_REGEX = /^output:\s*\[([^\]]+)\]/m;
-
-function parseSkillMd(content: string): {
-    description?: string;
-    version?: string;
-    variables?: string[];
-    output?: string[];
-    promptBody?: string;
-} {
-    let description: string | undefined;
-    let version: string | undefined;
-    let variables: string[] | undefined;
-    let output: string[] | undefined;
-    let promptBody: string | undefined;
-
-    const fmMatch = content.match(FRONTMATTER_REGEX);
-    if (fmMatch) {
-        const fm = fmMatch[1];
-        const descMatch = fm.match(DESCRIPTION_REGEX);
-        if (descMatch) description = descMatch[1];
-        const verMatch = fm.match(VERSION_REGEX);
-        if (verMatch) version = verMatch[1];
-        const varMatch = fm.match(VARIABLES_REGEX);
-        if (varMatch) {
-            variables = varMatch[1].split(',').map(v => v.trim().replace(/["']/g, '')).filter(v => v.length > 0);
-        }
-        const outMatch = fm.match(OUTPUT_REGEX);
-        if (outMatch) {
-            output = outMatch[1].split(',').map(v => v.trim().replace(/["']/g, '')).filter(v => v.length > 0);
-        }
-        promptBody = content.slice(fmMatch[0].length).trim() || undefined;
-    } else {
-        description = extractDescriptionFromMarkdown(content);
-        promptBody = content.trim() || undefined;
-    }
-
-    return { description, version, variables, output, promptBody };
-}
-
-function extractDescriptionFromMarkdown(content: string): string | undefined {
-    const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length === 0) return undefined;
-    let startIndex = 0;
-    if (lines[0].startsWith('#')) startIndex = 1;
-    for (let i = startIndex; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line.startsWith('#') && !line.startsWith('---') && !line.startsWith('```')) {
-            return line.length > 100 ? line.substring(0, 97) + '...' : line;
-        }
-    }
-    return undefined;
-}
-
-function listDirectoryFiles(dirPath: string): string[] {
-    if (!fs.existsSync(dirPath)) return [];
-    try {
-        return fs.readdirSync(dirPath).filter(f => {
-            try { return fs.statSync(path.join(dirPath, f)).isFile(); } catch { return false; }
-        }).sort();
-    } catch { return []; }
-}
-
-function listInstalledSkills(installPath: string): SkillInfo[] {
-    if (!fs.existsSync(installPath)) {
-        return [];
-    }
-
-    const skills: SkillInfo[] = [];
-
-    try {
-        const entries = fs.readdirSync(installPath, { withFileTypes: true });
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const skillDir = path.join(installPath, entry.name);
-            const skillMdPath = path.join(skillDir, 'SKILL.md');
-            if (!fs.existsSync(skillMdPath)) continue;
-
-            const skill: SkillInfo = { name: entry.name };
-            try {
-                const content = fs.readFileSync(skillMdPath, 'utf-8');
-                const parsed = parseSkillMd(content);
-                skill.description = parsed.description;
-                skill.version = parsed.version;
-                skill.variables = parsed.variables;
-                skill.output = parsed.output;
-                skill.promptBody = parsed.promptBody;
-            } catch {
-                // ignore
-            }
-
-            skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
-            skill.scripts = listDirectoryFiles(path.join(skillDir, 'scripts'));
-
-            skills.push(skill);
-        }
-    } catch {
-        // ignore
-    }
-
-    return skills;
-}
-
-function getSkillDetail(installPath: string, skillName: string): SkillInfo | null {
-    const skillDir = path.join(installPath, skillName);
-    const skillMdPath = path.join(skillDir, 'SKILL.md');
-    if (!fs.existsSync(skillMdPath)) return null;
-
-    const skill: SkillInfo = { name: skillName };
-    try {
-        const content = fs.readFileSync(skillMdPath, 'utf-8');
-        const parsed = parseSkillMd(content);
-        skill.description = parsed.description;
-        skill.version = parsed.version;
-        skill.variables = parsed.variables;
-        skill.output = parsed.output;
-        skill.promptBody = parsed.promptBody;
-    } catch {
-        // ignore
-    }
-    skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
-    skill.scripts = listDirectoryFiles(path.join(skillDir, 'scripts'));
-
-    return skill;
 }
 
 function readPreferences(dataDir: string): any {
