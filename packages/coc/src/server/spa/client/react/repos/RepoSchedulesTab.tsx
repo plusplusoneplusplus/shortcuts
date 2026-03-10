@@ -915,13 +915,18 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
 
                 {/* Output folder — only for prompt type */}
                 {(!targetType || targetType === 'prompt') && (
-                    <input
-                        className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                        placeholder={`Output folder (e.g., ~/.coc/repos/${workspaceId}/tasks)`}
-                        value={outputFolder}
-                        onChange={e => setOutputFolder(e.target.value)}
-                        data-testid="output-folder-input"
-                    />
+                    <div className="flex flex-col gap-0.5">
+                        <label className="text-[10px] text-[#616161] dark:text-[#999]">
+                            Output folder <span className="text-[#888]">— task output files (.md) are saved here</span>
+                        </label>
+                        <input
+                            className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                            placeholder={`e.g., ~/.coc/repos/${workspaceId}/tasks`}
+                            value={outputFolder}
+                            onChange={e => setOutputFolder(e.target.value)}
+                            data-testid="output-folder-input"
+                        />
+                    </div>
                 )}
 
                 {/* Schedule mode toggle */}
