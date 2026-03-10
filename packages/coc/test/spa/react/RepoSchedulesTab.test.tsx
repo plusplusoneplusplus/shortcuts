@@ -159,7 +159,7 @@ describe('CreateScheduleForm template UI', () => {
 
         // Check name and target inputs are pre-filled
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
-        const targetInput = screen.getByPlaceholderText(/Target/) as HTMLInputElement;
+        const targetInput = screen.getByPlaceholderText(/Prompt/) as HTMLTextAreaElement;
         expect(nameInput.value).toBe(tpl.name);
         expect(targetInput.value).toBe(tpl.target);
     });

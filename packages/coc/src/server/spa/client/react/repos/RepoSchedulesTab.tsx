@@ -876,10 +876,19 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                         }}
                         data-testid="target-workflow-input"
                     />
+                ) : targetType === 'prompt' ? (
+                    <textarea
+                        className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc] resize-y min-h-[60px]"
+                        placeholder="Prompt (e.g., Run safe-refactoring-sweep skill…)"
+                        value={target}
+                        onChange={e => setTarget(e.target.value)}
+                        data-testid="target-input"
+                        rows={3}
+                    />
                 ) : (
                     <input
                         className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
-                        placeholder={targetType === 'script' ? 'Command / Script (e.g., echo "hello world")' : 'Target (e.g., workflows/daily-report/pipeline.yaml)'}
+                        placeholder='Command / Script (e.g., echo "hello world")'
                         value={target}
                         onChange={e => setTarget(e.target.value)}
                         data-testid="target-input"

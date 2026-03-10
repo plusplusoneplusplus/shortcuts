@@ -293,8 +293,8 @@ describe('Schedule duplicate', () => {
 
         await waitFor(() => expect(screen.getByText('New Schedule')).toBeTruthy());
 
-        // Target should be pre-populated (no template selected → plain input)
-        const targetInput = screen.getByPlaceholderText(/Target/) as HTMLInputElement;
+        // Target should be pre-populated (no template selected → prompt textarea)
+        const targetInput = screen.getByPlaceholderText(/Prompt/) as HTMLTextAreaElement;
         expect(targetInput.value).toBe('pipelines/test/pipeline.yaml');
     });
 
