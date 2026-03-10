@@ -3,7 +3,8 @@
  *
  * Tests for read-only system message injection in ask mode:
  * - Initial chat in ask mode includes READ_ONLY_SYSTEM_MESSAGE
- * - Initial chat in autopilot/plan mode does NOT include read-only message
+ * - Initial chat in plan mode includes READ_ONLY_SYSTEM_MESSAGE (same as ask)
+ * - Initial chat in autopilot mode does NOT include read-only message
  * - Follow-up with mode change ask → autopilot creates fresh session via sendMessage
  * - Follow-up with mode change autopilot → ask creates fresh session with read-only message
  * - Follow-up with same ask mode creates fresh session (no special handling needed)
@@ -161,7 +162,7 @@ describe('ask mode system message — initial chat', () => {
         expect(callArgs.systemMessage).toBeUndefined();
     });
 
-    it('should NOT include read-only systemMessage when chat starts in plan mode', async () => {
+    it('should include read-only systemMessage when chat starts in plan mode', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task = chatTask('plan');
 
@@ -169,7 +170,10 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage).toBeUndefined();
+        expect(callArgs.systemMessage).toEqual({
+            mode: 'append',
+            content: READ_ONLY_SYSTEM_MESSAGE,
+        });
     });
 });
 

@@ -98,6 +98,22 @@ function toAgentMode(chatMode: ChatMode | undefined): AgentMode | undefined {
     return chatMode ? CHAT_MODE_TO_AGENT_MODE[chatMode] : undefined;
 }
 
+/**
+ * Builds the system message config for the given chat mode.
+ * Both `ask` and `plan` modes inject the read-only system message, plus an
+ * optional directive to save plan files in the repo's task folder.
+ * `autopilot` (and any unknown mode) returns `undefined`.
+ */
+function buildModeSystemMessage(mode: ChatMode | undefined, taskFolderPath?: string): SystemMessageConfig | undefined {
+    if (mode !== 'ask' && mode !== 'plan') {
+        return undefined;
+    }
+    const planFolderSuffix = taskFolderPath
+        ? `\n\nWhen creating or saving plan files, store them in the repo's task folder: ${taskFolderPath}`
+        : '';
+    return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE + planFolderSuffix };
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -589,10 +605,11 @@ export class CLITaskExecutor implements TaskExecutor {
             });
         }
 
-        // Inject read-only system message for ask mode
-        const systemMessage = currentMode === 'ask'
-            ? { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE }
+        // Inject read-only system message for ask/plan modes
+        const followUpTaskFolder = workingDirectory
+            ? resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: workingDirectory }).absolutePath
             : undefined;
+        const systemMessage = buildModeSystemMessage(currentMode, followUpTaskFolder);
 
         // Build conversation history context for the fresh session
         const historyContext = this.buildConversationHistoryContext(process.conversationTurns);
@@ -950,9 +967,11 @@ export class CLITaskExecutor implements TaskExecutor {
             const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
                 ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
                 : '';
-            const systemMessage = payload.mode === 'ask'
-                ? { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE }
+            const chatWorkingDir = this.getWorkingDirectory(task);
+            const chatTaskFolderPath = chatWorkingDir
+                ? resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: chatWorkingDir, workspaceId: payload.workspaceId || chatWorkingDir }).absolutePath
                 : undefined;
+            const systemMessage = buildModeSystemMessage(payload.mode, chatTaskFolderPath);
             return this.executeWithAI(task, prompt + countSuffix, { tools, systemMessage });
         }
 
