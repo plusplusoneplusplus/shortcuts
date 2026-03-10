@@ -57,7 +57,7 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
             resizable
             minWidth={480}
             minHeight={400}
-            className="max-h-[80vh]"
+            className="h-[60vh] max-h-[80vh]"
             noPadding
             id={`floating-chat-${entry.taskId}`}
         >

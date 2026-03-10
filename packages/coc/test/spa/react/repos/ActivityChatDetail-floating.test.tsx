@@ -195,6 +195,10 @@ describe('FloatingChatManager: structure', () => {
         expect(FLOATING_MANAGER_SOURCE).toContain('max-h-[80vh]');
     });
 
+    it('sets definite default height so flex chain works without resize', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain('h-[60vh]');
+    });
+
     it('uses resizable FloatingDialog', () => {
         expect(FLOATING_MANAGER_SOURCE).toContain('resizable');
     });

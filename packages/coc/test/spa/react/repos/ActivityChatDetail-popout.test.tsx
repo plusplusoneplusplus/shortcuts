@@ -36,6 +36,14 @@ describe('ActivityChatDetail: pop-out button', () => {
         expect(CHAT_DETAIL_SOURCE).toContain('!isMobile');
     });
 
+    it('hides pop-out button when variant is floating', () => {
+        // The pop-out guard must include variant !== 'floating'
+        const popoutBtnIdx = CHAT_DETAIL_SOURCE.indexOf('activity-chat-popout-btn');
+        // Find the render guard preceding the popout button
+        const guardRegion = CHAT_DETAIL_SOURCE.slice(Math.max(0, popoutBtnIdx - 200), popoutBtnIdx);
+        expect(guardRegion).toContain("variant !== 'floating'");
+    });
+
     it('uses usePopOut context', () => {
         expect(CHAT_DETAIL_SOURCE).toContain('usePopOut');
     });

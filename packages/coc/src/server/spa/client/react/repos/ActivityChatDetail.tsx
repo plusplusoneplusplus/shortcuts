@@ -704,7 +704,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                             </svg>
                         </button>
                     )}
-                    {!isPopOut && !isMobile && (
+                    {!isPopOut && !isMobile && variant !== 'floating' && (
                         <button
                             title="Pop out to new window"
                             data-testid="activity-chat-popout-btn"
