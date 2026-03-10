@@ -25,7 +25,7 @@ Execute the following three steps in order.
 
 Use the `explore` agent to list the top-level components, modules, or packages in this repository. Group them into logical areas (by directory, feature domain, or package).
 
-Print the discovered list and **ask the user to confirm** before proceeding to Step 2. The user may remove areas or add custom ones.
+Print the discovered list and then proceed to Step 2.
 
 ### Step 2 — Launch One Sub-Agent per Area
 
