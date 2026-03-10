@@ -9,7 +9,6 @@
 
 import { PromptRenderOptions, PromptTemplate } from './types';
 import {
-    TEMPLATE_VARIABLE_REGEX,
     substituteVariables,
     extractVariables as extractTemplateVariables
 } from '../utils/template-engine';
