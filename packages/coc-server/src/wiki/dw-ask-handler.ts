@@ -261,18 +261,6 @@ export function sendSSE(res: ServerResponse, data: Record<string, unknown>): voi
     res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-/**
- * Chunk text into smaller pieces for streaming simulation.
- */
-export function chunkText(text: string, chunkSize: number): string[] {
-    if (!text) return [];
-    const chunks: string[] = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-        chunks.push(text.slice(i, i + chunkSize));
-    }
-    return chunks;
-}
-
 // ============================================================================
 // Body Reader
 // ============================================================================
