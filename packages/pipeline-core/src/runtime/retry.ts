@@ -78,21 +78,14 @@ export const DEFAULT_RETRY_OPTIONS: Required<Omit<RetryOptions, 'retryOn' | 'onA
  * Default retry predicate - retry everything except cancellation errors
  */
 export const defaultRetryOn: RetryOnFn = (error: unknown): boolean => {
-    // Never retry cancellation
-    if (isCancellationError(error)) {
-        return false;
-    }
-    return true;
+    return !isCancellationError(error);
 };
 
 /**
  * Retry predicate that also retries on timeout
  */
 export const retryOnTimeout: RetryOnFn = (error: unknown): boolean => {
-    if (isCancellationError(error)) {
-        return false;
-    }
-    return isTimeoutError(error);
+    return !isCancellationError(error) && isTimeoutError(error);
 };
 
 /**
