@@ -53,6 +53,8 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
     const [processes, setProcesses] = useState<any[]>([]);
     const [loadingProcesses, setLoadingProcesses] = useState(true);
 
+    const [tasksFolder, setTasksFolder] = useState<string | null>(null);
+
     const [preferences, setPreferences] = useState<PerRepoPreferences | null>(null);
     const [loadingPreferences, setLoadingPreferences] = useState(true);
     const [preferencesError, setPreferencesError] = useState<string | null>(null);
@@ -63,6 +65,12 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
             .then(res => setProcesses(res?.processes || []))
             .catch(() => setProcesses([]))
             .finally(() => setLoadingProcesses(false));
+    }, [ws.id]);
+
+    useEffect(() => {
+        fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks/settings`)
+            .then(res => setTasksFolder(res?.taskRootPath || res?.folderPath || null))
+            .catch(() => setTasksFolder(null));
     }, [ws.id]);
 
     useEffect(() => {
@@ -79,6 +87,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
             {/* Metadata grid */}
             <div className="meta-grid grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
                 <MetaRow label="Path" value={ws.rootPath || ''} mono valueClass="meta-path" />
+                {tasksFolder && <MetaRow label="Tasks" value={tasksFolder} mono />}
                 <MetaRow label="Branch" value={branch + dirty} />
                 <MetaRow label="Sync" value={syncLabel} />
                 {remoteUrl && <MetaRow label="Remote" value={remoteUrl} mono />}
