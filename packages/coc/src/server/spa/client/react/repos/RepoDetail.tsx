@@ -13,7 +13,6 @@ import { WorkflowsTab } from './WorkflowsTab';
 import { TasksPanel } from '../tasks/TasksPanel';
 import { RepoActivityTab } from './RepoActivityTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
-import { RepoTemplatesTab } from './RepoTemplatesTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { RepoCopilotTab } from './RepoCopilotTab';
@@ -43,7 +42,6 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'activity', label: 'Activity' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
-    { key: 'templates', label: 'Templates' },
     { key: 'copilot', label: 'Copilot' },
 ];
 
@@ -414,12 +412,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 {activeSubTab === 'tasks' ? (
                     <TasksPanel wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
                 ) : (
-                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'templates' || activeSubTab === 'explorer' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab repo={repo} />}
                         {activeSubTab === 'activity' && <RepoActivityTab workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab workspaceId={ws.id} />}
-                        {activeSubTab === 'templates' && <RepoTemplatesTab workspaceId={ws.id} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab workspaceId={ws.id} />}

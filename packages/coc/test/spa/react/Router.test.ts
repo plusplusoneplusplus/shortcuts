@@ -131,8 +131,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 11 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(11);
+    it('has exactly 10 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(10);
     });
 });
 

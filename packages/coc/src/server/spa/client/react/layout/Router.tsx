@@ -143,7 +143,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'templates', 'wiki', 'copilot', 'workflow', 'explorer', 'activity']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'copilot', 'workflow', 'explorer', 'activity']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -195,6 +195,12 @@ export function Router() {
                 if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
                     const repoId = decodeURIComponent(parts[1]);
                     dispatch({ type: 'SET_SELECTED_REPO', id: repoId });
+                    // Redirect legacy #repos/:id/templates deep-links to workflows tab
+                    if (parts[2] === 'templates') {
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'workflows' as RepoSubTab });
+                        location.replace('#repos/' + parts[1] + '/workflows');
+                        return;
+                    }
                     if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                         dispatch({ type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab });
                     }

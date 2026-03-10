@@ -1120,7 +1120,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
         // Left panel has the pipeline name
         expect(screen.getByText(/my-pipeline/)).toBeDefined();
         // Right panel shows placeholder
-        expect(screen.getByText('Select a workflow')).toBeDefined();
+        expect(screen.getByText('Select a workflow or template')).toBeDefined();
     });
 
     it('clicking a workflow row selects it and renders WorkflowDetail', async () => {
@@ -1169,7 +1169,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
         // Close detail
         fireEvent.click(screen.getByText('Close'));
         // Placeholder returns
-        expect(screen.getByText('Select a workflow')).toBeDefined();
+        expect(screen.getByText('Select a workflow or template')).toBeDefined();
         expect(location.hash).toBe('#repos/ws-1/workflows');
     });
 
@@ -1194,7 +1194,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             fireEvent.click(screen.getByText('Confirm'));
         });
         // Selection cleared
-        expect(screen.getByText('Select a workflow')).toBeDefined();
+        expect(screen.getByText('Select a workflow or template')).toBeDefined();
         expect(location.hash).toBe('#repos/ws-1/workflows');
     });
 
@@ -1204,7 +1204,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workflows: [samplePipeline],
         });
         render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
-        expect(screen.getByText('+ New Workflow')).toBeDefined();
+        expect(screen.getAllByText('+ New')[0]).toBeDefined();
     });
 
     it('shows "New Workflow" button in empty state', () => {
@@ -1213,7 +1213,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workflows: [],
         });
         render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
-        expect(screen.getByText('+ New Workflow')).toBeDefined();
+        expect(screen.getAllByText('+ New')[0]).toBeDefined();
     });
 
     it('"New Workflow" click opens AddWorkflowDialog', () => {
@@ -1222,7 +1222,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workflows: [samplePipeline],
         });
         render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
-        fireEvent.click(screen.getByText('+ New Workflow'));
+        fireEvent.click(screen.getAllByText('+ New')[0]);
         expect(screen.getByText('New Workflow')).toBeDefined();
         expect(screen.getByText('Name')).toBeDefined();
     });
@@ -1233,7 +1233,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workflows: [samplePipeline, { name: 'other', path: 'other.yaml' }],
         });
         render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
-        expect(screen.getByText('2 workflows')).toBeDefined();
+        expect(screen.getByText('(2)')).toBeDefined();
     });
 
     it('empty state renders within split layout without collapsing', () => {
@@ -1245,9 +1245,9 @@ describe('WorkflowsTab (split-panel layout)', () => {
         // Empty state message in left panel
         expect(screen.getByText('No workflows found')).toBeDefined();
         // Placeholder still visible in right panel
-        expect(screen.getByText('Select a workflow')).toBeDefined();
-        // + New Pipeline visible
-        expect(screen.getByText('+ New Workflow')).toBeDefined();
+        expect(screen.getByText('Select a workflow or template')).toBeDefined();
+        // + New button visible in section header
+        expect(screen.getAllByText('+ New')[0]).toBeDefined();
     });
 
     it('workflow list remains visible when detail is shown', async () => {
@@ -1268,7 +1268,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
         });
         // Both pipelines still visible in the list
         expect(screen.getByText(/second-pipe/)).toBeDefined();
-        expect(screen.getByText('2 workflows')).toBeDefined();
+        expect(screen.getByText('(2)')).toBeDefined();
     });
 
     it('active row has aria-selected true', () => {
@@ -1305,7 +1305,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workflows: [samplePipeline],
         });
         render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
-        fireEvent.click(screen.getByText('+ New Workflow'));
+        fireEvent.click(screen.getAllByText('+ New')[0]);
         fireEvent.change(document.querySelector('select')!, { target: { value: 'custom' } });
         const input = document.querySelector('input[type="text"]')!;
         fireEvent.change(input, { target: { value: 'new-created' } });
@@ -1321,7 +1321,7 @@ describe('WorkflowsTab (split-panel layout)', () => {
             workflows: [],
         });
         render(<Wrap><WorkflowsTab repo={repo} /></Wrap>);
-        expect(screen.getByText(/Create your first workflow by describing what it should do/)).toBeDefined();
+        expect(screen.getByText(/Add YAML files to .vscode\/workflows\//)).toBeDefined();
     });
 
     it('successful ▶ Run stays on Workflows tab (no auto-navigation to queue)', async () => {
