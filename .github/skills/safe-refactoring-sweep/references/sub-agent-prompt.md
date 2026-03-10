@@ -8,7 +8,7 @@ You are a code reviewer performing a **safe refactoring audit** of the `{{AREA_P
 
 **Your job:**
 
-1. Read and understand every file under `{{AREA_PATH}}`.
+1. Read and understand every file under `{{AREA_PATH}}`. **Skip any `scripts/` directories** — they are out of scope for this audit.
 2. Identify trivial, **zero-risk** refactoring opportunities (see the allowed list below).
 3. For each independent refactoring you find, write a **plan file** to the directory `{{ROOT_FOLDER}}/{{AREA_NAME}}/`.
    - File name format: `NNN-short-description.md` (e.g. `001-remove-unused-imports.md`).
@@ -60,6 +60,7 @@ Describe how to verify the change is correct (e.g. "run existing tests",
 - ❌ No moving files or renaming modules (can break downstream consumers).
 - ❌ No changes to test assertions (test helpers/utilities are OK if they are dead code).
 - ❌ No changes that require human judgment to verify correctness.
+- ❌ No changes to files under any `scripts/` directory — ignore them entirely.
 
 **When in doubt, skip it.** A smaller, safer set of plans is better than a large set that contains even one risky change.
 
