@@ -97,7 +97,7 @@ export function flattenWorkflowResult(
     if (mapNodeResult) {
         for (let i = 0; i < mapNodeResult.items.length; i++) {
             const item = mapNodeResult.items[i];
-            const success = item.__error === undefined || item.__error === null;
+            const success = item.__error == null;
             if (success) { successfulMaps++; } else { failedMaps++; }
             items.push({
                 index: i,
