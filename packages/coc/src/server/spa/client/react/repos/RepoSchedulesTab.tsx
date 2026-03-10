@@ -673,7 +673,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
     const [intervalValue, setIntervalValue] = useState(cronParsed?.mode === 'interval' ? cronParsed.value : '1');
     const [intervalUnit, setIntervalUnit] = useState(cronParsed?.mode === 'interval' ? cronParsed.unit : 'hours');
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
-    const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? '');
+    const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? `~/.coc/repos/${workspaceId}/tasks`);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -710,7 +710,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
             setIntervalValue('1');
             setIntervalUnit('hours');
             setParams({});
-            setOutputFolder('');
+            setOutputFolder(`~/.coc/repos/${workspaceId}/tasks`);
             setManualPipeline(false);
             return;
         }
