@@ -182,4 +182,29 @@ describe('CommitDetail', () => {
             expect(source).toContain('data-testid="commit-detail"');
         });
     });
+
+    describe('DiffMiniMap layout — minimap stays fixed (does not scroll with content)', () => {
+        it('outer commit-detail container uses overflow-hidden (not overflow-auto)', () => {
+            expect(source).toContain('commit-detail flex flex-col h-full overflow-hidden');
+        });
+
+        it('outer commit-detail container does NOT have scrollContainerRef', () => {
+            // The ref must NOT appear on the outermost div (which also has "commit-detail" class)
+            expect(source).not.toMatch(/ref=\{scrollContainerRef\}[^>]*commit-detail/);
+        });
+
+        it('flex row wrapper has flex-1 so it fills remaining height', () => {
+            expect(source).toContain('flex flex-1 min-h-0');
+        });
+
+        it('diff-section container has overflow-auto for scrolling', () => {
+            expect(source).toContain('overflow-auto');
+            expect(source).toContain('data-testid="diff-section"');
+        });
+
+        it('scrollContainerRef is placed on the diff-section container', () => {
+            // ref and diff-section data-testid must be on the same element
+            expect(source).toMatch(/ref=\{scrollContainerRef\}[^>]*data-testid="diff-section"/);
+        });
+    });
 });

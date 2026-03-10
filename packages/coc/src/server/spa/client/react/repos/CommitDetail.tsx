@@ -131,7 +131,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     })();
 
     return (
-        <div ref={scrollContainerRef} className="commit-detail flex flex-col h-full overflow-auto" data-testid="commit-detail">
+        <div className="commit-detail flex flex-col h-full overflow-hidden" data-testid="commit-detail">
             {/* Commit info header — only for full-commit view, not per-file view */}
             {commit && !filePath && (
                 <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="commit-info-header">
@@ -186,8 +186,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
             )}
 
             {/* Diff view + sidebar */}
-            <div className="flex min-h-0">
-                <div className="flex-1 px-1 py-1" data-testid="diff-section">
+            <div className="flex flex-1 min-h-0">
+                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="diff-section">
                     {diffLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
                             <Spinner size="sm" /> Loading diff...
