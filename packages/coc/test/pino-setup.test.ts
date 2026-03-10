@@ -131,7 +131,7 @@ describe('pino-setup', () => {
             coc.info({ category: 'test' }, 'coc message');
 
             await new Promise<void>((resolve) => {
-                ai.flush(() => resolve());
+                ai.flush(() => setTimeout(resolve, 100));
             });
 
             const aiFile = path.join(logDir, 'ai-service.ndjson');
@@ -146,7 +146,7 @@ describe('pino-setup', () => {
             ai.info({ category: 'test' }, 'msg');
 
             await new Promise<void>((resolve) => {
-                ai.flush(() => resolve());
+                ai.flush(() => setTimeout(resolve, 100));
             });
 
             expect(fs.existsSync(path.join(logDir, 'ai-service.ndjson'))).toBe(true);
@@ -169,7 +169,7 @@ describe('pino-setup', () => {
 
             ai.info({}, 'ai message');
             coc.info({}, 'coc message');
-            await new Promise<void>((resolve) => { ai.flush(() => resolve()); });
+            await new Promise<void>((resolve) => { ai.flush(() => setTimeout(resolve, 100)); });
 
             expect(fs.existsSync(path.join(logDir, 'ai-service.ndjson'))).toBe(false);
             expect(fs.existsSync(path.join(logDir, 'coc-service.ndjson'))).toBe(true);
