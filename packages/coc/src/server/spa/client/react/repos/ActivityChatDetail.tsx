@@ -38,6 +38,7 @@ import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
+import { getDraft, setDraft, clearDraft, pruneExpired } from '../hooks/useDraftStore';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -84,6 +85,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
     const lastFailedMessageRef = useRef<string>('');
+    // Ref to capture latest followUpInput value for stale-closure-safe draft saves
+    const followUpInputRef = useRef<string>('');
+    const selectedModeRef = useRef<'ask' | 'plan' | 'autopilot'>('autopilot');
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const followUpEventSourceRef = useRef<EventSource | null>(null);
@@ -101,6 +105,10 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const toastCtx = useContext(ToastContext);
     const slashCommands = useSlashCommands(skills);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Keep refs in sync with state for stale-closure-safe draft saves
+    followUpInputRef.current = followUpInput;
+    selectedModeRef.current = selectedMode;
 
     const processId = task?.processId ?? (taskId ? `queue_${taskId}` : null);
     const isPending = task?.status === 'queued';
@@ -180,10 +188,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             .catch(() => setFullTask(null));
     }, [taskId, isPending, queueState.refreshVersion]);
 
+    // Prune stale drafts once on mount
+    useEffect(() => { pruneExpired(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Load task + conversation on mount / taskId change
     useEffect(() => {
         isInitialLoadRef.current = true;
         const loadId = ++loadCounterRef.current;
+        const currentTaskId = taskId;
         setLoading(true);
         setError(null);
         setSessionExpired(false);
@@ -192,7 +204,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setTurnsAndRef([]);
         setProcessDetails(null);
         setSuggestions([]);
-        setFollowUpInput('');
         setResumeFeedback(null);
         setSessionTokenLimit(undefined);
         setSessionCurrentTokens(undefined);
@@ -200,6 +211,17 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         stopStreaming();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
+
+        // Restore draft for the new taskId
+        const draft = getDraft(currentTaskId);
+        if (draft) {
+            setFollowUpInput(draft.text);
+            if (draft.mode && ['ask', 'plan', 'autopilot'].includes(draft.mode)) {
+                setSelectedMode(draft.mode as 'ask' | 'plan' | 'autopilot');
+            }
+        } else {
+            setFollowUpInput('');
+        }
 
         (async () => {
             try {
@@ -265,7 +287,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             }
         })();
 
-        return () => { stopStreaming(); closeFollowUpStream(); };
+        return () => {
+            stopStreaming();
+            closeFollowUpStream();
+            // Save draft on navigate-away; clear if input is empty
+            setDraft(currentTaskId, followUpInputRef.current, selectedModeRef.current);
+        };
     }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch conversation when user re-clicks the already-selected task
@@ -531,6 +558,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         setSuggestions([]);
         lastFailedMessageRef.current = rawContent;
         setFollowUpInput('');
+        clearDraft(taskId);
         slashCommands.dismissMenu();
         setError(null);
         setSending(true);

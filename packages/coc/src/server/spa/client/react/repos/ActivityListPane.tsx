@@ -14,6 +14,7 @@ import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
 import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
+import { getDraft } from '../hooks/useDraftStore';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -489,6 +490,7 @@ export function ActivityListPane({
                             <div className="flex flex-col gap-1">
                                 {filteredPinned.map(task => {
                                     const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    const hasPinnedDraft = !!getDraft(task.id);
                                     return (
                                         <Card
                                             key={task.id}
@@ -511,6 +513,7 @@ export function ActivityListPane({
                                                     <span className={cn("truncate", isUnseen && "font-semibold")}>
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
+                                                    {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -559,6 +562,7 @@ export function ActivityListPane({
                             <div className="flex flex-col gap-1 mt-1">
                                 {filteredUnpinned.map(task => {
                                     const isUnseen = unseenTaskIds?.has(task.id) ?? false;
+                                    const hasUnpinnedDraft = !!getDraft(task.id);
                                     return (
                                         <Card
                                             key={task.id}
@@ -580,6 +584,7 @@ export function ActivityListPane({
                                                     <span className={cn("truncate", isUnseen && "font-semibold")}>
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
+                                                    {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                                                 </span>
                                                 <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
@@ -669,6 +674,7 @@ export function QueueTaskItem({ task, status, now, selected, onClick, onContextM
     const promptPreview = getTaskPromptPreview(task);
     const showProgress = task.type === 'run-workflow' && status === 'running';
     const progress = useWorkflowProgress(showProgress ? (task.processId || task.id) : null);
+    const hasDraft = !!getDraft(task.id);
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());
@@ -682,6 +688,7 @@ export function QueueTaskItem({ task, status, now, selected, onClick, onContextM
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
                     <span className="shrink-0">{task.frozen ? '❄️' : icon}</span>
                     <span className="truncate">{name}</span>
+                    {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                 </div>
                 {elapsed && (
                     <span className="text-[10px] text-[#848484] dark:text-[#999] shrink-0 whitespace-nowrap tabular-nums">
