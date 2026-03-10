@@ -118,17 +118,7 @@ function buildModeSystemMessage(mode: ChatMode | undefined, taskFolderPath?: str
 // Types
 // ============================================================================
 
-export interface QueueExecutorBridgeOptions {
-    /** Maximum concurrent task executions (default: 1). Deprecated: use sharedConcurrency/exclusiveConcurrency. */
-    maxConcurrency?: number;
-    /** Concurrency limit for shared (read-only) tasks (default: 5) */
-    sharedConcurrency?: number;
-    /** Concurrency limit for exclusive (write) tasks (default: 1) */
-    exclusiveConcurrency?: number;
-    /** Policy callback to classify a task as exclusive. Default: defaultIsExclusive */
-    isExclusive?: (task: QueuedTask) => boolean;
-    /** Whether to auto-start processing (default: true) */
-    autoStart?: boolean;
+export interface CLITaskExecutorOptions {
     /** Whether to auto-approve AI permission requests (default: true) */
     approvePermissions?: boolean;
     /** Working directory for AI sessions */
@@ -143,6 +133,19 @@ export interface QueueExecutorBridgeOptions {
     followUpSuggestions?: { enabled: boolean; count: number };
     /** Lazy getter for the WebSocket server — used to broadcast comment-resolved events. */
     getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
+}
+
+export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
+    /** Maximum concurrent task executions (default: 1). Deprecated: use sharedConcurrency/exclusiveConcurrency. */
+    maxConcurrency?: number;
+    /** Concurrency limit for shared (read-only) tasks (default: 5) */
+    sharedConcurrency?: number;
+    /** Concurrency limit for exclusive (write) tasks (default: 1) */
+    exclusiveConcurrency?: number;
+    /** Policy callback to classify a task as exclusive. Default: defaultIsExclusive */
+    isExclusive?: (task: QueuedTask) => boolean;
+    /** Whether to auto-start processing (default: true) */
+    autoStart?: boolean;
 }
 
 /**
@@ -202,7 +205,7 @@ export class CLITaskExecutor implements TaskExecutor {
     /** Shared store for tool-call Q&A capture (explore cache). */
     private readonly toolCallCacheStore: FileToolCallCacheStore;
 
-    constructor(store: ProcessStore, options: { approvePermissions?: boolean; workingDirectory?: string; dataDir?: string; aiService?: CopilotSDKService; defaultTimeoutMs?: number; followUpSuggestions?: { enabled: boolean; count: number }; getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined } = {}) {
+    constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         this.store = store;
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
@@ -621,10 +624,8 @@ export class CLITaskExecutor implements TaskExecutor {
         try {
             // Only attach follow-up suggestions tool on the first AI response (no prior assistant turns)
             const isFirstTurn = !(process.conversationTurns?.some(t => t.role === 'assistant'));
-            const suggestTools = (this.followUpSuggestions.enabled && isFirstTurn) ? [createSuggestFollowUpsTool()] : [];
-            const followUpMessage = (this.followUpSuggestions.enabled && isFirstTurn)
-                ? `${message}\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
-                : message;
+            const { tools: suggestTools, suffix: followUpSuffix } = this.buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled && isFirstTurn);
+            const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;
             const agentMode = toAgentMode(currentMode);
 
             // Build system message: combine conversation history + mode-specific instructions
@@ -657,64 +658,10 @@ export class CLITaskExecutor implements TaskExecutor {
                     // Check throttle conditions and flush if necessary
                     this.checkThrottleAndFlush(processId);
                 },
-                onToolEvent: (event: ToolEvent) => {
-                    // Intercept suggestion tool completions — emit as dedicated SSE event
-                    if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
-                        try {
-                            const parsed = JSON.parse(event.result || '{}');
-                            const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
-                            if (suggestions.length > 0) {
-                                const currentTurnIndex = (process.conversationTurns?.length ?? 0);
-                                this.pendingSuggestions.set(processId, suggestions);
-                                this.store.emitProcessEvent(processId, {
-                                    type: 'suggestions',
-                                    suggestions,
-                                    turnIndex: currentTurnIndex,
-                                });
-                            }
-                        } catch {
-                            // Malformed suggestions — ignore silently
-                        }
-                        return;
-                    }
-
-                    // Append tool timeline item
-                    const timelineType = event.type === 'tool-start' ? 'tool-start'
-                        : event.type === 'tool-complete' ? 'tool-complete'
-                            : 'tool-failed';
-                    const now = new Date();
-                    this.appendTimelineItem(processId, {
-                        type: timelineType,
-                        timestamp: now,
-                        toolCall: {
-                            id: event.toolCallId,
-                            name: event.toolName || 'unknown',
-                            status: event.type === 'tool-start' ? 'running'
-                                : event.type === 'tool-complete' ? 'completed' : 'failed',
-                            startTime: now,
-                            ...(event.type !== 'tool-start' ? { endTime: now } : {}),
-                            args: event.parameters || {},
-                            result: event.result,
-                            error: event.error,
-                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-                        },
-                    });
-                    try {
-                        this.store.emitProcessEvent(processId, {
-                            type: event.type,
-                            toolCallId: event.toolCallId,
-                            toolName: event.toolName,
-                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-                            parameters: event.parameters,
-                            result: event.result,
-                            error: event.error,
-                        });
-                    } catch {
-                        // Non-fatal
-                    }
-                    // Trigger throttled flush so tool-only sessions persist timeline
-                    this.checkThrottleAndFlush(processId);
-                },
+                onToolEvent: this.buildToolEventHandler(
+                    processId,
+                    () => process.conversationTurns?.length ?? 0,
+                ),
             });
 
             const duration = Date.now() - startTime;
@@ -833,6 +780,93 @@ export class CLITaskExecutor implements TaskExecutor {
             // Append to existing output file rather than overwriting
             await this.persistOutput(processId, buffer);
         }
+    }
+
+    // ========================================================================
+    // Private — Follow-Up Suggestions
+    // ========================================================================
+
+    /**
+     * Builds the tools array and prompt suffix for follow-up suggestions.
+     * Returns empty tools and empty suffix when suggestions are disabled.
+     */
+    private buildFollowUpSuggestionsAddon(enabled: boolean): { tools: Tool<any>[]; suffix: string } {
+        if (!enabled) {
+            return { tools: [], suffix: '' };
+        }
+        return {
+            tools: [createSuggestFollowUpsTool()],
+            suffix: `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`,
+        };
+    }
+
+    /**
+     * Builds the onToolEvent handler for a given process.
+     * `computeTurnIndex` is called lazily at event time to determine the current turn index
+     * for suggestion events — this allows callers to supply the correct index based on
+     * conversation state at the time the event fires.
+     */
+    private buildToolEventHandler(
+        processId: string,
+        computeTurnIndex: () => number,
+    ): (event: ToolEvent) => void {
+        return (event: ToolEvent) => {
+            // Intercept suggestion tool completions — emit as dedicated SSE event
+            if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
+                try {
+                    const parsed = JSON.parse(event.result || '{}');
+                    const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
+                    if (suggestions.length > 0) {
+                        this.pendingSuggestions.set(processId, suggestions);
+                        this.store.emitProcessEvent(processId, {
+                            type: 'suggestions',
+                            suggestions,
+                            turnIndex: computeTurnIndex(),
+                        });
+                    }
+                } catch {
+                    // Malformed suggestions — ignore silently
+                }
+                return;
+            }
+
+            // Append tool timeline item
+            const timelineType = event.type === 'tool-start' ? 'tool-start'
+                : event.type === 'tool-complete' ? 'tool-complete'
+                    : 'tool-failed';
+            const now = new Date();
+            this.appendTimelineItem(processId, {
+                type: timelineType,
+                timestamp: now,
+                toolCall: {
+                    id: event.toolCallId,
+                    name: event.toolName || 'unknown',
+                    status: event.type === 'tool-start' ? 'running'
+                        : event.type === 'tool-complete' ? 'completed' : 'failed',
+                    startTime: now,
+                    ...(event.type !== 'tool-start' ? { endTime: now } : {}),
+                    args: event.parameters || {},
+                    result: event.result,
+                    error: event.error,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+                },
+            });
+            try {
+                this.store.emitProcessEvent(processId, {
+                    type: event.type,
+                    toolCallId: event.toolCallId,
+                    toolName: event.toolName,
+                    ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+                    parameters: event.parameters,
+                    result: event.result,
+                    error: event.error,
+                });
+            } catch {
+                // Non-fatal
+            }
+            // Trigger throttled flush so tool-only sessions persist timeline
+            this.checkThrottleAndFlush(processId);
+        };
     }
 
     // ========================================================================
@@ -962,17 +996,13 @@ export class CLITaskExecutor implements TaskExecutor {
             }
 
             // Standard chat: send to AI with optional follow-up suggestions
-            const isChatTask = true;
-            const tools = (isChatTask && this.followUpSuggestions.enabled) ? [createSuggestFollowUpsTool()] : undefined;
-            const countSuffix = (isChatTask && this.followUpSuggestions.enabled)
-                ? `\n\nWhen suggesting follow-ups, provide exactly ${this.followUpSuggestions.count} suggestions. Each suggestion must be a short imperative action phrase (not a question), for example: "Show me an example", "Explain the retry config", "Generate the fix".`
-                : '';
+            const { tools, suffix: countSuffix } = this.buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled);
             const chatWorkingDir = this.getWorkingDirectory(task);
             const chatTaskFolderPath = chatWorkingDir
                 ? resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: chatWorkingDir, workspaceId: payload.workspaceId || chatWorkingDir }).absolutePath
                 : undefined;
             const systemMessage = buildModeSystemMessage(payload.mode, chatTaskFolderPath);
-            return this.executeWithAI(task, prompt + countSuffix, { tools, systemMessage });
+            return this.executeWithAI(task, prompt + countSuffix, { tools: tools.length > 0 ? tools : undefined, systemMessage });
         }
 
         // Fallback: no-op
@@ -1198,63 +1228,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 getLogger().warn(LogCategory.AI, `[QueueExecutor] ToolCallCapture setup failed: ${err}`);
             }
 
-            const existingToolEventHandler = (event: ToolEvent) => {
-                    // Intercept suggestion tool completions — emit as dedicated SSE event
-                    if (event.type === 'tool-complete' && event.toolName === 'suggest_follow_ups') {
-                        try {
-                            const parsed = JSON.parse(event.result || '{}');
-                            const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
-                            if (suggestions.length > 0) {
-                                this.pendingSuggestions.set(processId, suggestions);
-                                this.store.emitProcessEvent(processId, {
-                                    type: 'suggestions',
-                                    suggestions,
-                                    turnIndex: 1,
-                                });
-                            }
-                        } catch {
-                            // Malformed suggestions — ignore silently
-                        }
-                        return;
-                    }
-
-                    // Append tool timeline item
-                    const timelineType = event.type === 'tool-start' ? 'tool-start'
-                        : event.type === 'tool-complete' ? 'tool-complete'
-                            : 'tool-failed';
-                    const now = new Date();
-                    this.appendTimelineItem(processId, {
-                        type: timelineType,
-                        timestamp: now,
-                        toolCall: {
-                            id: event.toolCallId,
-                            name: event.toolName || 'unknown',
-                            status: event.type === 'tool-start' ? 'running'
-                                : event.type === 'tool-complete' ? 'completed' : 'failed',
-                            startTime: now,
-                            ...(event.type !== 'tool-start' ? { endTime: now } : {}),
-                            args: event.parameters || {},
-                            result: event.result,
-                            error: event.error,
-                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-                        },
-                    });
-                    try {
-                        this.store.emitProcessEvent(processId, {
-                            type: event.type,
-                            toolCallId: event.toolCallId,
-                            toolName: event.toolName,
-                            ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-                            parameters: event.parameters,
-                            result: event.result,
-                            error: event.error,
-                        });
-                    } catch {
-                        // Non-fatal: store may be a stub
-                    }
-                    // Trigger throttled flush so tool-only sessions persist timeline
-                    this.checkThrottleAndFlush(processId);
-            };
+            const existingToolEventHandler = this.buildToolEventHandler(processId, () => 1);
 
             const chatMode = isChatPayload(task.payload) ? (task.payload as unknown as ChatPayload).mode : undefined;
             const agentMode = toAgentMode(chatMode as ChatMode | undefined);
