@@ -172,6 +172,12 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] resize-y min-h-[80px]"
                             value={prompt}
                             onChange={e => setPrompt(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !submitting && prompt.trim()) {
+                                    e.preventDefault();
+                                    handleSubmit();
+                                }
+                            }}
                             rows={4}
                         />
                     </div>
