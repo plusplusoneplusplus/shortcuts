@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { chatMarkdownToHtml, toContentHtml } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
 
 describe('chatMarkdownToHtml', () => {
     // --- Empty / whitespace ---
@@ -229,5 +229,38 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('<blockquote>');
         // Should NOT contain raw ** markers
         expect(html).not.toContain('**Key points:**');
+    });
+});
+
+describe('toContentHtml (user prompt renderer)', () => {
+    it('renders markdown in user content', () => {
+        const html = toContentHtml('**bold** and _italic_');
+        expect(html).toContain('<strong>bold</strong>');
+        expect(html).toContain('<em>italic</em>');
+    });
+
+    it('escapes pasted HTML sections as plain text', () => {
+        const html = toContentHtml('<section>\n<h1>Title</h1>\n</section>');
+        // Tags must not be rendered as HTML elements
+        expect(html).not.toContain('<section>');
+        expect(html).not.toContain('<h1>');
+        // They should appear as escaped entities
+        expect(html).toContain('&lt;section&gt;');
+        expect(html).toContain('&lt;h1&gt;');
+    });
+
+    it('escapes inline HTML tags pasted into a prompt', () => {
+        const html = toContentHtml('can you fix <div class="foo">this</div> please');
+        expect(html).not.toContain('<div');
+        expect(html).toContain('&lt;div');
+    });
+
+    it('renders empty string for empty input', () => {
+        expect(toContentHtml('')).toBe('');
+    });
+
+    it('still linkifies file paths in user content', () => {
+        const html = toContentHtml('look at D:/projects/shortcuts/src/index.ts');
+        expect(html).toContain('class="file-path-link"');
     });
 });

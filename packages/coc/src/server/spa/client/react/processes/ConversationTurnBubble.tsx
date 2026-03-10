@@ -87,8 +87,10 @@ type RenderChunk =
         parentToolId?: string;
       };
 
-function toContentHtml(content: string): string {
-    return chatMarkdownToHtml(content);
+export function toContentHtml(content: string): string {
+    // Escape raw HTML so user-pasted HTML sections render as plain text, not rendered HTML.
+    const htmlEscaped = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return chatMarkdownToHtml(htmlEscaped);
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
