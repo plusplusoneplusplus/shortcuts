@@ -474,4 +474,66 @@ describe('Schedule Handler', () => {
             expect(lines.some(l => l.includes(`[Schedule] manual-run scheduleId=${scheduleId} repoId=${WORKSPACE_ID}`))).toBe(true);
         });
     });
+
+    // ========================================================================
+    // outputFolder
+    // ========================================================================
+
+    describe('outputFolder field', () => {
+        it('should store and return outputFolder when provided on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ outputFolder: '~/.coc/repos/myrepo/tasks' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.outputFolder).toBe('~/.coc/repos/myrepo/tasks');
+        });
+
+        it('should return undefined outputFolder when not provided on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule());
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.outputFolder).toBeUndefined();
+        });
+
+        it('should update outputFolder via PATCH', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule());
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { outputFolder: '/new/output/path' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.outputFolder).toBe('/new/output/path');
+        });
+
+        it('should include outputFolder in list response', async () => {
+            await startServer();
+
+            await postJSON(schedulesUrl(), makeSchedule({ outputFolder: '~/.coc/repos/test/tasks' }));
+
+            const res = await request(schedulesUrl());
+            const body = JSON.parse(res.body);
+            expect(body.schedules[0].outputFolder).toBe('~/.coc/repos/test/tasks');
+        });
+
+        it('should persist outputFolder across server restarts', async () => {
+            const store = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            await postJSON(schedulesUrl(), makeSchedule({ name: 'Output Folder Schedule', outputFolder: '~/.coc/repos/persist/tasks' }));
+
+            await server.close();
+
+            const store2 = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+
+            const listRes = await request(schedulesUrl());
+            const body = JSON.parse(listRes.body);
+            expect(body.schedules[0].outputFolder).toBe('~/.coc/repos/persist/tasks');
+        });
+    });
 });

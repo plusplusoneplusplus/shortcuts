@@ -64,6 +64,7 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
         isRunning: manager.isRunning(entry.id),
         nextRun: next ? next.toISOString() : null,
         createdAt: entry.createdAt,
+        outputFolder: entry.outputFolder,
     };
 }
 
@@ -118,6 +119,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
                     onFailure: (body.onFailure as ScheduleOnFailure) || 'notify',
                     status: (body.status as ScheduleStatus) || 'active',
                     targetType: (body.targetType as TargetType) || 'prompt',
+                    outputFolder: body.outputFolder ? String(body.outputFolder).trim() : undefined,
                 });
                 sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager) });
             } catch (err) {
@@ -169,6 +171,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
             if (body.onFailure) updates.onFailure = body.onFailure;
             if (body.status) updates.status = body.status;
             if (body.targetType !== undefined) updates.targetType = body.targetType;
+            if (body.outputFolder !== undefined) updates.outputFolder = body.outputFolder ? String(body.outputFolder).trim() : undefined;
 
             const schedule = manager.updateSchedule(repoId, scheduleId, updates);
             if (!schedule) {

@@ -663,4 +663,140 @@ describe('ScheduleManager', () => {
             newManager.dispose();
         });
     });
+
+    describe('outputFolder field', () => {
+        it('is undefined when not provided', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'No Output Folder',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            expect(schedule.outputFolder).toBeUndefined();
+        });
+
+        it('stores and returns outputFolder when provided', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'With Output Folder',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                outputFolder: '~/.coc/repos/myrepo/tasks',
+            });
+
+            expect(schedule.outputFolder).toBe('~/.coc/repos/myrepo/tasks');
+        });
+
+        it('can be updated via updateSchedule', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Update Output Folder',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            const updated = manager.updateSchedule(REPO_ID, schedule.id, { outputFolder: '/new/output' });
+            expect(updated!.outputFolder).toBe('/new/output');
+        });
+
+        it('persists and restores outputFolder', () => {
+            manager.addSchedule(REPO_ID, {
+                name: 'Persisted Output Folder',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                outputFolder: '~/.coc/repos/test/tasks',
+            });
+
+            manager.dispose();
+
+            const newManager = new ScheduleManager(persistence);
+            newManager.restore();
+
+            const schedules = newManager.getSchedules(REPO_ID);
+            expect(schedules[0].outputFolder).toBe('~/.coc/repos/test/tasks');
+
+            newManager.dispose();
+        });
+
+        it('prepends output folder to prompt when outputFolder is set', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_of'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Output Folder Prompt',
+                target: 'my-task.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                outputFolder: '~/.coc/repos/myrepo/tasks',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].payload.prompt).toBe(
+                'Output folder: ~/.coc/repos/myrepo/tasks\n\nFollow the instruction my-task.md.'
+            );
+
+            mgr.dispose();
+        });
+
+        it('does not prepend output folder prefix when outputFolder is absent', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_nof'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'No Output Folder Prompt',
+                target: 'my-task.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].payload.prompt).toBe('Follow the instruction my-task.md.');
+
+            mgr.dispose();
+        });
+
+        it('does not prepend output folder for script-type schedules', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_script'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Script With Output Folder',
+                target: 'echo hello',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'script',
+                outputFolder: '~/.coc/repos/myrepo/tasks',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].type).toBe('run-script');
+            // script payload has no prompt field
+            expect(enqueued[0].payload.prompt).toBeUndefined();
+
+            mgr.dispose();
+        });
+    });
 });

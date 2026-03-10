@@ -110,6 +110,7 @@ interface Schedule {
     isRunning: boolean;
     nextRun: string | null;
     createdAt: string;
+    outputFolder?: string;
 }
 
 interface RunRecord {
@@ -340,6 +341,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             cron: duplicateValues.cron,
                             params: duplicateValues.params ? { ...duplicateValues.params } : undefined,
                             onFailure: duplicateValues.onFailure,
+                            outputFolder: duplicateValues.outputFolder,
                         } : undefined}
                     />
                 </div>
@@ -466,6 +468,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         cron: schedule.cron,
                         params: { ...schedule.params },
                         onFailure: schedule.onFailure,
+                        outputFolder: schedule.outputFolder,
                     }}
                     onCreated={onSaved}
                     onCancel={onCancelEdit}
@@ -658,6 +661,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
         cron?: string;
         params?: Record<string, string>;
         onFailure?: string;
+        outputFolder?: string;
     };
 }) {
     const cronParsed = initialValues?.cron ? parseCronToInterval(initialValues.cron) : null;
@@ -669,6 +673,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
     const [intervalValue, setIntervalValue] = useState(cronParsed?.mode === 'interval' ? cronParsed.value : '1');
     const [intervalUnit, setIntervalUnit] = useState(cronParsed?.mode === 'interval' ? cronParsed.unit : 'hours');
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
+    const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? '');
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -705,6 +710,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
             setIntervalValue('1');
             setIntervalUnit('hours');
             setParams({});
+            setOutputFolder('');
             setManualPipeline(false);
             return;
         }
@@ -755,6 +761,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                 cron: cronExpr,
                 params,
                 onFailure,
+                outputFolder: outputFolder.trim() || undefined,
             };
             const url = formMode === 'edit' && scheduleId
                 ? getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`
@@ -903,6 +910,17 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                         value={params['workingDirectory'] ?? ''}
                         onChange={e => setParams(prev => ({ ...prev, workingDirectory: e.target.value }))}
                         data-testid="working-directory-input"
+                    />
+                )}
+
+                {/* Output folder — only for prompt type */}
+                {(!targetType || targetType === 'prompt') && (
+                    <input
+                        className="text-xs px-2 py-1.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                        placeholder={`Output folder (e.g., ~/.coc/repos/${workspaceId}/tasks)`}
+                        value={outputFolder}
+                        onChange={e => setOutputFolder(e.target.value)}
+                        data-testid="output-folder-input"
                     />
                 )}
 

@@ -31,6 +31,7 @@ export interface ScheduleEntry {
     status: ScheduleStatus;
     createdAt: string;
     targetType?: TargetType;   // defaults to 'prompt' when absent
+    outputFolder?: string;     // output folder path prepended to prompt for prompt-type schedules
 }
 
 export interface ScheduleRunRecord {
@@ -296,7 +297,7 @@ export class ScheduleManager extends EventEmitter {
     /**
      * Update an existing schedule.
      */
-    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType'>>): ScheduleEntry | undefined {
+    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder'>>): ScheduleEntry | undefined {
         const schedule = this.schedules.get(repoId)?.get(scheduleId);
         if (!schedule) return undefined;
 
@@ -475,13 +476,16 @@ export class ScheduleManager extends EventEmitter {
             // Enqueue a task if queueManager is available
             if (this.queueManager) {
                 if (!schedule.targetType || schedule.targetType === 'prompt') {
+                    const outputPrefix = schedule.outputFolder
+                        ? `Output folder: ${schedule.outputFolder}\n\n`
+                        : '';
                     const taskId = this.queueManager.enqueue({
                         type: 'chat',
                         priority: 'normal',
                         payload: {
                             kind: 'chat',
                             mode: 'autopilot',
-                            prompt: `Follow the instruction ${schedule.target}.`,
+                            prompt: `${outputPrefix}Follow the instruction ${schedule.target}.`,
                             context: {
                                 files: [schedule.target],
                                 scheduleId: schedule.id,
