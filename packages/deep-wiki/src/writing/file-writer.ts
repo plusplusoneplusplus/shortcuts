@@ -17,6 +17,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { WikiOutput, GeneratedArticle } from '../types';
+import { normalizeLineEndings } from '../utils/normalize-line-endings';
 
 // ============================================================================
 // Constants
@@ -142,9 +143,4 @@ export function slugify(input: string): string {
         .replace(/-{2,}/g, '-') || 'untitled';
 }
 
-/**
- * Normalize line endings to LF (Unix-style).
- */
-export function normalizeLineEndings(content: string): string {
-    return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
+export { normalizeLineEndings } from '../utils/normalize-line-endings';

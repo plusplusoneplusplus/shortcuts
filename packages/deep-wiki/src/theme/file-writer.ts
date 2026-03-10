@@ -17,6 +17,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ThemeOutline, ThemeArticle } from '../types';
+import { normalizeLineEndings } from '../utils/normalize-line-endings';
 
 // ============================================================================
 // Constants
@@ -89,15 +90,4 @@ export function writeThemeArticles(options: ThemeWriteOptions): ThemeWriteResult
     }
 
     return { writtenFiles, themeDir };
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Normalize line endings to LF (Unix-style).
- */
-function normalizeLineEndings(content: string): string {
-    return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
