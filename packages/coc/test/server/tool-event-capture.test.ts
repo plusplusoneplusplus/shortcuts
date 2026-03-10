@@ -28,7 +28,7 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 // ============================================================================
 
 const sdkMocks = createMockSDKService();
-const { mockSendMessage, mockIsAvailable, mockSendFollowUp } = sdkMocks;
+const { mockSendMessage, mockIsAvailable } = sdkMocks;
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
@@ -86,7 +86,6 @@ describe('Tool Event Capture', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
-        mockSendFollowUp.mockReset();
     });
 
     // ========================================================================

@@ -89,19 +89,6 @@ describe('CopilotSDKService.transform', () => {
         sendMessageSpy.mockRestore();
     });
 
-    it('should pass keepAlive: false for stateless calls', async () => {
-        const sendMessageSpy = vi.spyOn(service, 'sendMessage').mockResolvedValue({
-            success: true,
-            response: 'ok',
-        });
-
-        await service.transform('test');
-        expect(sendMessageSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ keepAlive: false }),
-        );
-        sendMessageSpy.mockRestore();
-    });
-
     it('should propagate error from sendMessage', async () => {
         const sendMessageSpy = vi.spyOn(service, 'sendMessage').mockResolvedValue({
             success: false,

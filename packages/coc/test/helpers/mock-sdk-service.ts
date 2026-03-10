@@ -19,12 +19,8 @@ import type { QueueExecutorBridge } from '../../src/server/queue-executor-bridge
 export interface MockCopilotSDKService {
     sendMessage: ReturnType<typeof vi.fn>;
     isAvailable: ReturnType<typeof vi.fn>;
-    sendFollowUp: ReturnType<typeof vi.fn>;
-    hasKeptAliveSession: ReturnType<typeof vi.fn>;
-    canResumeSession: ReturnType<typeof vi.fn>;
     transform: ReturnType<typeof vi.fn>;
     abortSession: ReturnType<typeof vi.fn>;
-    destroyKeptAliveSession: ReturnType<typeof vi.fn>;
 }
 
 /** Configuration for SDK service mock behavior */
@@ -38,17 +34,6 @@ export interface MockSDKServiceOptions {
         error?: string;
         sessionId?: string;
     };
-    /** Default sendFollowUp response */
-    sendFollowUpResponse?: {
-        success: boolean;
-        response?: string;
-        error?: string;
-        sessionId?: string;
-    };
-    /** Whether hasKeptAliveSession returns true. Default: true */
-    hasKeptAliveSession?: boolean;
-    /** Whether canResumeSession returns true. Default: same as hasKeptAliveSession */
-    canResumeSession?: boolean;
 }
 
 /** Return type from createMockSDKService() with reset helper */
@@ -56,12 +41,8 @@ export interface MockSDKServiceResult {
     service: MockCopilotSDKService;
     mockSendMessage: ReturnType<typeof vi.fn>;
     mockIsAvailable: ReturnType<typeof vi.fn>;
-    mockSendFollowUp: ReturnType<typeof vi.fn>;
-    mockHasKeptAliveSession: ReturnType<typeof vi.fn>;
-    mockCanResumeSession: ReturnType<typeof vi.fn>;
     mockTransform: ReturnType<typeof vi.fn>;
     mockAbortSession: ReturnType<typeof vi.fn>;
-    mockDestroyKeptAliveSession: ReturnType<typeof vi.fn>;
     /** Reset all mocks to their initial configured state */
     resetAll: () => void;
 }
@@ -87,55 +68,32 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         response: 'AI response text',
         sessionId: 'session-123',
     };
-    const sendFollowUpResponse = options?.sendFollowUpResponse ?? {
-        success: true,
-        response: 'Follow-up response',
-        sessionId: 'sess-follow',
-    };
-    const hasKeptAliveSessionResult = options?.hasKeptAliveSession ?? true;
-    const canResumeSessionResult = options?.canResumeSession ?? hasKeptAliveSessionResult;
 
     const mockSendMessage = vi.fn().mockResolvedValue(sendMessageResponse);
     const mockIsAvailable = vi.fn().mockResolvedValue(availableResult);
-    const mockSendFollowUp = vi.fn().mockResolvedValue(sendFollowUpResponse);
-    const mockHasKeptAliveSession = vi.fn().mockReturnValue(hasKeptAliveSessionResult);
-    const mockCanResumeSession = vi.fn().mockResolvedValue(canResumeSessionResult);
     const mockTransform = vi.fn().mockResolvedValue('Generated Title');
     const mockAbortSession = vi.fn().mockResolvedValue(true);
-    const mockDestroyKeptAliveSession = vi.fn().mockResolvedValue(true);
 
     const service: MockCopilotSDKService = {
         sendMessage: mockSendMessage,
         isAvailable: mockIsAvailable,
-        sendFollowUp: mockSendFollowUp,
-        hasKeptAliveSession: mockHasKeptAliveSession,
-        canResumeSession: mockCanResumeSession,
         transform: mockTransform,
         abortSession: mockAbortSession,
-        destroyKeptAliveSession: mockDestroyKeptAliveSession,
     };
 
     const resetAll = () => {
         mockSendMessage.mockReset().mockResolvedValue(sendMessageResponse);
         mockIsAvailable.mockReset().mockResolvedValue(availableResult);
-        mockSendFollowUp.mockReset().mockResolvedValue(sendFollowUpResponse);
-        mockHasKeptAliveSession.mockReset().mockReturnValue(hasKeptAliveSessionResult);
-        mockCanResumeSession.mockReset().mockResolvedValue(canResumeSessionResult);
         mockTransform.mockReset().mockResolvedValue('Generated Title');
         mockAbortSession.mockReset().mockResolvedValue(true);
-        mockDestroyKeptAliveSession.mockReset().mockResolvedValue(true);
     };
 
     return {
         service,
         mockSendMessage,
         mockIsAvailable,
-        mockSendFollowUp,
-        mockHasKeptAliveSession,
-        mockCanResumeSession,
         mockTransform,
         mockAbortSession,
-        mockDestroyKeptAliveSession,
         resetAll,
     };
 }
@@ -162,11 +120,6 @@ export function createMockBridge(overrides?: Partial<QueueExecutorBridge>): Queu
 // Preset Factory Functions
 // ---------------------------------------------------------------------------
 
-/** Mock where hasKeptAliveSession returns false. Useful for 410 (session expired) paths. */
-export function createExpiredSessionMock(): MockSDKServiceResult {
-    return createMockSDKService({ hasKeptAliveSession: false });
-}
-
 /** Mock where isAvailable returns { available: false }. Useful for SDK unavailability paths. */
 export function createUnavailableMock(): MockSDKServiceResult {
     return createMockSDKService({ available: false });
@@ -190,14 +143,6 @@ export function createStreamingMock(chunks: string[]): MockSDKServiceResult {
     };
 
     result.mockSendMessage.mockImplementation(streamingImpl);
-    result.mockSendFollowUp.mockImplementation(async (_sid: string, _prompt: string, options?: any) => {
-        if (options?.onStreamingChunk) {
-            for (const chunk of chunks) {
-                options.onStreamingChunk(chunk);
-            }
-        }
-        return { success: true, response: fullResponse, sessionId: 'session-streaming' };
-    });
 
     return result;
 }

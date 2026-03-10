@@ -100,11 +100,6 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         sdkMocks.resetAll();
         mockCleanupTempDir.mockReset();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
-        sdkMocks.mockSendFollowUp.mockResolvedValue({
-            success: true,
-            response: 'Follow-up response',
-            sessionId: 'sess-fu',
-        });
     });
 
     // 1 -----------------------------------------------------------------------

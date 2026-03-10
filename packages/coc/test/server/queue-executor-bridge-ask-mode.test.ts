@@ -201,7 +201,6 @@ describe('ask mode system message — follow-up transitions', () => {
         await executor.execute(task);
 
         // Follow-up creates a fresh session via sendMessage — no session destroy needed
-        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.mode).toBe('autopilot');
@@ -221,7 +220,6 @@ describe('ask mode system message — follow-up transitions', () => {
         await executor.execute(task);
 
         // Follow-up creates a fresh session via sendMessage — no session destroy needed
-        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.mode).toBe('interactive');
@@ -240,7 +238,6 @@ describe('ask mode system message — follow-up transitions', () => {
         await executor.execute(task);
 
         // No session re-creation needed when mode doesn't change
-        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
     });
 
     it('should NOT destroy session for autopilot → plan transition', async () => {
@@ -253,7 +250,6 @@ describe('ask mode system message — follow-up transitions', () => {
         await executor.execute(task);
 
         // No session re-creation for non-ask transitions
-        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
     });
 
     it('should NOT destroy session for plan → autopilot transition', async () => {
@@ -264,8 +260,6 @@ describe('ask mode system message — follow-up transitions', () => {
         const task = followUpTask('proc-1', 'execute plan', 'autopilot');
 
         await executor.execute(task);
-
-        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
     });
 
     it('should update process metadata with current and previous mode', async () => {
@@ -312,7 +306,6 @@ describe('ask mode system message — follow-up transitions', () => {
         expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
 
         // No session destroy needed — each follow-up creates a fresh session
-        expect(sdkMocks.mockDestroyKeptAliveSession).not.toHaveBeenCalled();
 
         // Verify final metadata
         const final = await store.getProcess('proc-1');

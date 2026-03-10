@@ -44,7 +44,7 @@ import { createMockProcessStore, createCompletedProcessWithSession } from '../he
 // ============================================================================
 
 const sdkMocks = createMockSDKService();
-const { mockSendMessage, mockIsAvailable, mockSendFollowUp, mockCanResumeSession } = sdkMocks;
+const { mockSendMessage, mockIsAvailable } = sdkMocks;
 
 const mockExecutePipeline = vi.fn();
 const mockExecuteWorkflow = vi.fn();
@@ -2787,8 +2787,6 @@ describe('CLITaskExecutor.executeFollowUp', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
-        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -2927,8 +2925,6 @@ describe('executeFollowUp - chat conversation scenarios', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
-        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -3217,8 +3213,6 @@ describe('session tracking and conversation turns', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
-        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -3270,24 +3264,6 @@ describe('session tracking and conversation turns', () => {
         expect(assistantTurn.role).toBe('assistant');
         expect(assistantTurn.content).toBe('AI response');
         expect(assistantTurn.turnIndex).toBe(1);
-    });
-
-    it('should pass keepAlive: false to sendMessage', async () => {
-        const executor = new CLITaskExecutor(store);
-        const task: QueuedTask = {
-            id: 'task-session-3',
-            type: 'chat',
-            priority: 'normal',
-            status: 'running',
-            createdAt: Date.now(),
-            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' },
-            config: { timeoutMs: 30000 },
-        };
-        await executor.execute(task);
-
-        expect(mockSendMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ keepAlive: false })
-        );
     });
 
     it('should append turns at correct indices on follow-up', async () => {
@@ -3365,8 +3341,6 @@ describe('conversation history persistence during streaming', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
-        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
     });
 
@@ -4449,8 +4423,6 @@ describe('tool event emission via onToolEvent', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
-        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -4844,8 +4816,6 @@ describe('conversation persistence mid-stream', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
-        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -4921,8 +4891,6 @@ describe('timeline population during execution', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
-        mockCanResumeSession.mockResolvedValue(true);
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,
@@ -6602,7 +6570,6 @@ describe('suggest_follow_ups tool wiring', () => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
-        mockCanResumeSession.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
         mockSendMessage.mockResolvedValue({
             success: true,

@@ -6,7 +6,6 @@ import { describe, it, expect, vi } from 'vitest';
 import {
     createMockSDKService,
     createMockBridge,
-    createExpiredSessionMock,
     createUnavailableMock,
     createStreamingMock,
     createFailingMock,
@@ -19,15 +18,9 @@ describe('mock-sdk-service helpers', () => {
             const result = createMockSDKService();
             expect(result.mockSendMessage).toBeDefined();
             expect(result.mockIsAvailable).toBeDefined();
-            expect(result.mockSendFollowUp).toBeDefined();
-            expect(result.mockHasKeptAliveSession).toBeDefined();
-            expect(result.mockCanResumeSession).toBeDefined();
             expect(result.resetAll).toBeInstanceOf(Function);
             expect(result.service.sendMessage).toBe(result.mockSendMessage);
             expect(result.service.isAvailable).toBe(result.mockIsAvailable);
-            expect(result.service.sendFollowUp).toBe(result.mockSendFollowUp);
-            expect(result.service.hasKeptAliveSession).toBe(result.mockHasKeptAliveSession);
-            expect(result.service.canResumeSession).toBe(result.mockCanResumeSession);
         });
 
         it('should use default responses when no options provided', async () => {
@@ -37,12 +30,6 @@ describe('mock-sdk-service helpers', () => {
 
             const msg = await result.mockSendMessage();
             expect(msg).toEqual({ success: true, response: 'AI response text', sessionId: 'session-123' });
-
-            const followUp = await result.mockSendFollowUp();
-            expect(followUp).toEqual({ success: true, response: 'Follow-up response', sessionId: 'sess-follow' });
-
-            expect(result.mockHasKeptAliveSession()).toBe(true);
-            await expect(result.mockCanResumeSession()).resolves.toBe(true);
         });
 
         it('should configure isAvailable to return { available: false }', async () => {
@@ -96,12 +83,6 @@ describe('mock-sdk-service helpers', () => {
     });
 
     describe('preset factories', () => {
-        it('createExpiredSessionMock should have hasKeptAliveSession return false', () => {
-            const result = createExpiredSessionMock();
-            expect(result.mockHasKeptAliveSession()).toBe(false);
-            return expect(result.mockCanResumeSession()).resolves.toBe(false);
-        });
-
         it('createUnavailableMock should have isAvailable return { available: false }', async () => {
             const result = createUnavailableMock();
             expect(await result.mockIsAvailable()).toEqual({ available: false });
@@ -115,16 +96,6 @@ describe('mock-sdk-service helpers', () => {
             });
             expect(chunks).toEqual(['Hello ', 'World']);
             expect(response.response).toBe('Hello World');
-        });
-
-        it('createStreamingMock should also work for sendFollowUp', async () => {
-            const result = createStreamingMock(['a', 'b', 'c']);
-            const chunks: string[] = [];
-            const response = await result.mockSendFollowUp('sid', 'prompt', {
-                onStreamingChunk: (c: string) => chunks.push(c),
-            });
-            expect(chunks).toEqual(['a', 'b', 'c']);
-            expect(response.response).toBe('abc');
         });
 
         it('createFailingMock should have sendMessage return failure', async () => {

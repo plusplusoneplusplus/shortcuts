@@ -114,12 +114,6 @@ export interface E2EMockAIControls {
     mockSendMessage: MockFn;
     /** Mock for isAvailable */
     mockIsAvailable: MockFn;
-    /** Mock for sendFollowUp */
-    mockSendFollowUp: MockFn;
-    /** Mock for hasKeptAliveSession */
-    mockHasKeptAliveSession: MockFn;
-    /** Mock for canResumeSession */
-    mockCanResumeSession: MockFn;
     /** Reset all mocks to their default state */
     resetAll: () => void;
     /**
@@ -154,9 +148,6 @@ export interface E2EMockAIControls {
 export interface E2EMockAIOptions {
     available?: boolean;
     sendMessageResponse?: Record<string, unknown>;
-    sendFollowUpResponse?: Record<string, unknown>;
-    hasKeptAliveSession?: boolean;
-    canResumeSession?: boolean;
 }
 
 /**
@@ -177,29 +168,15 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         response: 'AI response text',
         sessionId: 'session-123',
     };
-    const defaultSendFollowUp = options?.sendFollowUpResponse ?? {
-        success: true,
-        response: 'Follow-up response',
-        sessionId: 'sess-follow',
-    };
-    const defaultHasKeptAlive = options?.hasKeptAliveSession ?? true;
-    const defaultCanResume = options?.canResumeSession ?? defaultHasKeptAlive;
 
     const mockIsAvailable = createMockFn(() => Promise.resolve(defaultAvailability));
     const mockSendMessage = createMockFn(() => Promise.resolve(defaultSendMessage));
-    const mockSendFollowUp = createMockFn(() => Promise.resolve(defaultSendFollowUp));
-    const mockHasKeptAliveSession = createMockFn(() => defaultHasKeptAlive);
-    const mockCanResumeSession = createMockFn(() => Promise.resolve(defaultCanResume));
 
     const service = {
         isAvailable: mockIsAvailable,
         sendMessage: mockSendMessage,
-        sendFollowUp: mockSendFollowUp,
-        hasKeptAliveSession: mockHasKeptAliveSession,
-        canResumeSession: mockCanResumeSession,
         // Stubs for methods the executor may reference but doesn't critically need
         createClient: () => Promise.resolve(),
-        destroyKeptAliveSession: () => Promise.resolve(),
         abortSession: () => {},
         hasActiveSession: () => false,
         getActiveSessionCount: () => 0,
@@ -214,9 +191,6 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         activeGate = null;
         mockIsAvailable.mockReset();
         mockSendMessage.mockReset();
-        mockSendFollowUp.mockReset();
-        mockHasKeptAliveSession.mockReset();
-        mockCanResumeSession.mockReset();
     };
 
     function createStreamingResponse(
@@ -316,9 +290,6 @@ export function createE2EMockSDKService(options?: E2EMockAIOptions): E2EMockAICo
         service,
         mockSendMessage,
         mockIsAvailable,
-        mockSendFollowUp,
-        mockHasKeptAliveSession,
-        mockCanResumeSession,
         resetAll,
         createStreamingResponse,
         createToolCallResponse,

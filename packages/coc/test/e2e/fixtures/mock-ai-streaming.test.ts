@@ -233,19 +233,5 @@ describe('MockAI streaming and tool-event helpers', () => {
                 parameters: { path: '/src' },
             });
         });
-
-        it('works with mockImplementation on mockSendFollowUp', async () => {
-            const fired: Record<string, unknown>[] = [];
-            mockAI.mockSendFollowUp.mockImplementation(
-                mockAI.createToolCallResponse(sampleEvents),
-            );
-
-            await mockAI.mockSendFollowUp('sess', 'msg', {
-                onToolEvent: (e: Record<string, unknown>) => fired.push(e),
-            });
-
-            expect(fired).toHaveLength(2);
-            expect(mockAI.mockSendFollowUp.calls).toHaveLength(1);
-        });
     });
 });
