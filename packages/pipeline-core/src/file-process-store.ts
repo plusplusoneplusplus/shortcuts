@@ -122,23 +122,7 @@ export class FileProcessStore implements ProcessStore {
         let indexEntries = await this.readIndex();
 
         // Filter on index fields first (no file I/O)
-        if (filter?.workspaceId) {
-            indexEntries = indexEntries.filter(e => e.workspaceId === filter.workspaceId);
-        }
-        if (filter?.parentProcessId) {
-            indexEntries = indexEntries.filter(e => e.parentProcessId === filter.parentProcessId);
-        }
-        if (filter?.status) {
-            const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-            indexEntries = indexEntries.filter(e => statuses.includes(e.status as AIProcessStatus));
-        }
-        if (filter?.type) {
-            indexEntries = indexEntries.filter(e => e.type === filter.type);
-        }
-        if (filter?.since) {
-            const sinceTime = filter.since.getTime();
-            indexEntries = indexEntries.filter(e => new Date(e.startTime).getTime() >= sinceTime);
-        }
+        indexEntries = this.applyIndexFilters(indexEntries, filter);
 
         // Apply pagination on index
         if (filter?.limit !== undefined) {
@@ -163,23 +147,7 @@ export class FileProcessStore implements ProcessStore {
         let indexEntries = await this.readIndex();
 
         // Apply the same filtering logic as getAllProcesses (no file I/O)
-        if (filter?.workspaceId) {
-            indexEntries = indexEntries.filter(e => e.workspaceId === filter.workspaceId);
-        }
-        if (filter?.parentProcessId) {
-            indexEntries = indexEntries.filter(e => e.parentProcessId === filter.parentProcessId);
-        }
-        if (filter?.status) {
-            const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-            indexEntries = indexEntries.filter(e => statuses.includes(e.status as AIProcessStatus));
-        }
-        if (filter?.type) {
-            indexEntries = indexEntries.filter(e => e.type === filter.type);
-        }
-        if (filter?.since) {
-            const sinceTime = filter.since.getTime();
-            indexEntries = indexEntries.filter(e => new Date(e.startTime).getTime() >= sinceTime);
-        }
+        indexEntries = this.applyIndexFilters(indexEntries, filter);
 
         const total = indexEntries.length;
 
@@ -190,6 +158,31 @@ export class FileProcessStore implements ProcessStore {
         }
 
         return { entries: indexEntries, total };
+    }
+
+    private applyIndexFilters(
+        indexEntries: ProcessIndexEntry[],
+        filter?: ProcessFilter
+    ): ProcessIndexEntry[] {
+        let entries = indexEntries;
+        if (filter?.workspaceId) {
+            entries = entries.filter(e => e.workspaceId === filter.workspaceId);
+        }
+        if (filter?.parentProcessId) {
+            entries = entries.filter(e => e.parentProcessId === filter.parentProcessId);
+        }
+        if (filter?.status) {
+            const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+            entries = entries.filter(e => statuses.includes(e.status as AIProcessStatus));
+        }
+        if (filter?.type) {
+            entries = entries.filter(e => e.type === filter.type);
+        }
+        if (filter?.since) {
+            const sinceTime = filter.since.getTime();
+            entries = entries.filter(e => new Date(e.startTime).getTime() >= sinceTime);
+        }
+        return entries;
     }
 
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
