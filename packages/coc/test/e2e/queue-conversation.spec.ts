@@ -572,7 +572,7 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
     });
 
     test('send button triggers message send', async ({ page, serverUrl, mockAI }) => {
-        mockAI.mockSendFollowUp.mockImplementation(async (_sid: unknown, _msg: unknown, opts: any) => {
+        mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
             if (opts && opts.onStreamingChunk) {
                 opts.onStreamingChunk('Button reply');
             }
