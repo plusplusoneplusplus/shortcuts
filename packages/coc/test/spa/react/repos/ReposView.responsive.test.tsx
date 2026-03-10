@@ -197,8 +197,8 @@ describe('ReposView — responsive layout', () => {
             render(<ReposView />);
 
             const aside = await screen.findByTestId('repos-sidebar');
-            expect(aside.className).toContain('w-12');
-            expect(aside.className).toContain('min-w-[48px]');
+            expect(aside.className).toContain('w-44');
+            expect(aside.className).toContain('min-w-[160px]');
 
             // MiniReposSidebar replaces ReposGrid
             expect(aside.querySelector('[data-testid="mini-sidebar"]')).toBeTruthy();

@@ -299,7 +299,7 @@ export function ReposView() {
                         className={cn(
                             'shrink-0 min-h-0 flex flex-col overflow-hidden transition-[width,min-width,opacity] duration-150 ease-out border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]',
                             isCollapsed
-                                ? 'w-12 min-w-[48px]'
+                                ? 'w-44 min-w-[160px]'
                                 : 'w-[280px] min-w-[240px]'
                         )}
                         onMouseLeave={state.reposSidebarCollapsed ? handleMiniHoverEnd : undefined}

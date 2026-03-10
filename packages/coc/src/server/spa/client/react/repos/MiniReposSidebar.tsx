@@ -47,7 +47,6 @@ export function disambiguateLabels(repos: RepoData[]): Map<string, string> {
 
 function MiniRepoItem({
     repo,
-    label,
     isSelected,
     unseenCount,
     onClick,
@@ -56,7 +55,6 @@ function MiniRepoItem({
     onHoverEnd,
 }: {
     repo: RepoData;
-    label: string;
     isSelected: boolean;
     unseenCount?: number;
     onClick: () => void;
@@ -73,7 +71,7 @@ function MiniRepoItem({
         <button
             data-testid="mini-repo-item"
             className={cn(
-                'relative w-full h-10 flex items-center justify-center gap-1.5 rounded transition-colors',
+                'relative w-full h-10 flex items-center justify-start px-3 gap-1.5 rounded transition-colors',
                 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
                 isSelected && 'border-l-[3px] border-l-[#0078d4]'
             )}
@@ -88,7 +86,7 @@ function MiniRepoItem({
                 className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
                 style={{ background: color }}
             />
-            <span className="text-[11px] text-[#616161] dark:text-[#999]">{label}</span>
+            <span className="truncate text-[12px] text-[#616161] dark:text-[#999]">{ws.name}</span>
             {unseenCount != null && unseenCount > 0 && (
                 <span
                     className="absolute top-1 right-1 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#0078d4] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
@@ -105,8 +103,6 @@ function MiniRepoItem({
 export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHoverEnd, unseenCounts }: MiniReposSidebarProps) {
     const { state, dispatch } = useApp();
     const [addOpen, setAddOpen] = useState(false);
-
-    const labels = useMemo(() => disambiguateLabels(repos), [repos]);
 
     const groups = useMemo(
         () => groupReposByRemote(repos, {}),
@@ -160,7 +156,6 @@ export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHov
                                 <MiniRepoItem
                                     key={repo.workspace.id}
                                     repo={repo}
-                                    label={labels.get(repo.workspace.id) || '?'}
                                     isSelected={repo.workspace.id === state.selectedRepoId}
                                     unseenCount={unseenCounts?.[repo.workspace.id]}
                                     onClick={() => selectRepo(repo.workspace.id)}
@@ -175,7 +170,7 @@ export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHov
             </div>
 
             {/* Footer */}
-            <div className="px-1 py-1.5 text-[10px] text-[#848484] border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-center">
+            <div className="px-3 py-1.5 text-[10px] text-[#848484] border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-left">
                 {repos.length} repo{repos.length !== 1 ? 's' : ''}
             </div>
 

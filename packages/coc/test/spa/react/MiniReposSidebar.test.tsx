@@ -150,7 +150,7 @@ describe('MiniReposSidebar', () => {
         expect(screen.getByText('1 repo')).toBeDefined();
     });
 
-    it('renders mini items with color dot and letter', () => {
+    it('renders mini items with color dot and full name', () => {
         const repos = [
             makeRepo({ workspace: { id: 'a', name: 'Alpha', color: '#0078d4' } }),
         ];
@@ -158,7 +158,7 @@ describe('MiniReposSidebar', () => {
         const items = screen.getAllByTestId('mini-repo-item');
         expect(items).toHaveLength(1);
         expect(items[0].getAttribute('aria-label')).toBe('Alpha (main)');
-        expect(items[0].textContent).toContain('A');
+        expect(items[0].textContent).toContain('Alpha');
     });
 
     it('shows full name and branch in tooltip', () => {
@@ -220,15 +220,15 @@ describe('MiniReposSidebar', () => {
         expect(items).toHaveLength(3);
     });
 
-    it('disambiguates duplicate first letters', () => {
+    it('shows full repo names (not abbreviations)', () => {
         const repos = [
             makeRepo({ workspace: { id: 'a', name: 'Shortcuts' } }),
             makeRepo({ workspace: { id: 'b', name: 'SnakeGame' } }),
         ];
         render(<Wrap><MiniReposSidebar repos={repos} onRefresh={() => {}} /></Wrap>);
         const items = screen.getAllByTestId('mini-repo-item');
-        expect(items[0].textContent).toContain('SH');
-        expect(items[1].textContent).toContain('SN');
+        expect(items[0].textContent).toContain('Shortcuts');
+        expect(items[1].textContent).toContain('SnakeGame');
     });
 
     it('many repos are scrollable (overflow-y-auto)', () => {
@@ -262,8 +262,8 @@ describe('ReposView — mini sidebar integration', () => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
         const sidebar = screen.getByTestId('repos-sidebar');
-        // Should be 48px (w-12), not 0
-        expect(sidebar.className).toContain('w-12');
+        // Should be 176px (w-44), not 0
+        expect(sidebar.className).toContain('w-44');
         expect(sidebar.className).not.toContain('w-0');
         // Mini sidebar should be rendered
         expect(screen.getByTestId('mini-repos-sidebar')).toBeDefined();
@@ -343,18 +343,18 @@ describe('Long hover expand', () => {
         });
 
         const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.className).toContain('w-12');
+        expect(sidebar.className).toContain('w-44');
 
         const items = screen.getAllByTestId('mini-repo-item');
         fireEvent.mouseEnter(items[0]);
         // Only 2s — not enough
         act(() => { vi.advanceTimersByTime(2000); });
-        expect(sidebar.className).toContain('w-12');
+        expect(sidebar.className).toContain('w-44');
 
         // Cancel by leaving
         fireEvent.mouseLeave(items[0]);
         act(() => { vi.advanceTimersByTime(2000); });
-        expect(sidebar.className).toContain('w-12');
+        expect(sidebar.className).toContain('w-44');
         vi.useRealTimers();
     });
 
@@ -386,7 +386,7 @@ describe('Long hover expand', () => {
 
         // Leave the aside entirely
         fireEvent.mouseLeave(sidebar);
-        expect(sidebar.className).toContain('w-12');
+        expect(sidebar.className).toContain('w-44');
         vi.useRealTimers();
     });
 
