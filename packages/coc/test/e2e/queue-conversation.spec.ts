@@ -538,18 +538,19 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
     });
 
     test('sends follow-up message when Enter is pressed', async ({ page, serverUrl, mockAI }) => {
-        // Setup: mock follow-up response
-        mockAI.mockSendFollowUp.mockImplementation(async (_sid: unknown, _msg: unknown, opts: any) => {
+        const task = await seedAndWaitForTask(serverUrl, {
+            payload: { prompt: 'First question' },
+        });
+        const taskId = task.id as string;
+
+        // Setup follow-up mock AFTER initial task completes
+        // executeFollowUp() calls aiService.sendMessage (not sendFollowUp)
+        mockAI.mockSendMessage.mockImplementationOnce(async (opts: any) => {
             if (opts && opts.onStreamingChunk) {
                 opts.onStreamingChunk('Follow-up reply');
             }
             return { success: true, response: 'Follow-up reply', sessionId: 'sess-followup' };
         });
-
-        const task = await seedAndWaitForTask(serverUrl, {
-            payload: { prompt: 'First question' },
-        });
-        const taskId = task.id as string;
 
         await gotoQueueTask(page, serverUrl, taskId);
         await waitForConversation(page, 2);

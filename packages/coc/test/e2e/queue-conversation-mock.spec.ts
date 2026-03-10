@@ -374,7 +374,8 @@ test.describe('Mock AI: Complete Multi-Turn Conversation', () => {
         await expect(page.locator('.chat-message.assistant')).toHaveCount(1);
 
         // ── Turn 2: follow-up ─────────────────────────────────────────────────
-        mockAI.mockSendFollowUp.mockImplementation(async (_sid: unknown, _msg: unknown, opts: any) => {
+        // executeFollowUp() calls aiService.sendMessage (not sendFollowUp)
+        mockAI.mockSendMessage.mockImplementationOnce(async (opts: any) => {
             if (opts && opts.onStreamingChunk) {
                 opts.onStreamingChunk('Follow-up answer');
             }
