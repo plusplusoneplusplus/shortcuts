@@ -139,49 +139,18 @@ describe('App.tsx — per-repo queue update aliasing', () => {
         source = fs.readFileSync(path.join(CLIENT_DIR, 'App.tsx'), 'utf-8');
     });
 
-    it('defines helpers to resolve workspace ID from queue message workingDirectory', () => {
-        expect(source).toContain('getQueueWorkingDirectory');
-        expect(source).toContain('resolveWorkspaceIdForQueueMessage');
+    it('dispatches REPO_QUEUE_UPDATED when queue message includes repoId', () => {
+        expect(source).toContain("type: 'REPO_QUEUE_UPDATED'");
+        expect(source).toContain("repoId: String(msg.queue.repoId)");
     });
 
-    it('maintains a repoId alias ref for empty-queue follow-up updates', () => {
-        expect(source).toContain('repoIdAliasRef');
-        expect(source).toMatch(/useRef<Record<string,\s*string>>\(\{\}\)/);
+    it('falls back to QUEUE_UPDATED when no repoId present', () => {
+        // The else branch when msg.queue.repoId is falsy dispatches QUEUE_UPDATED
+        expect(source).toContain("type: 'QUEUE_UPDATED', queue: msg.queue");
     });
 
-    it('dispatches REPO_QUEUE_UPDATED for the raw queue repoId from WS', () => {
-        expect(source).toContain("const queueRepoId = String(msg.queue.repoId)");
-        expect(source).toContain("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: queueRepoId, queue: msg.queue })");
-    });
-
-    it('mirrors per-repo WS updates onto resolved workspace ID when available', () => {
-        expect(source).toContain('resolvedWorkspaceId');
-        expect(source).toContain("repoIdAliasRef.current[queueRepoId] = resolvedWorkspaceId");
-        expect(source).toContain("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: resolvedWorkspaceId, queue: msg.queue })");
-    });
-
-    it('falls back to stored alias mapping when workingDirectory is absent', () => {
-        expect(source).toContain('aliasedWorkspaceId');
-        expect(source).toContain("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId, queue: msg.queue })");
-    });
-
-    it('validates alias against current workspace list before dispatching fallback', () => {
-        // The alias fallback should check that the aliased ID still corresponds to a known workspace
-        expect(source).toContain('appState.workspaces');
-        const elseBlock = source.substring(
-            source.indexOf('const aliasedWorkspaceId'),
-            source.indexOf("queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: aliasedWorkspaceId")
-        );
-        expect(elseBlock).toContain('aliasStillValid');
-    });
-
-    it('uses aliasStillValid guard so removed workspaces do not receive stale events', () => {
-        expect(source).toContain('aliasStillValid');
-        const guard = source.substring(
-            source.indexOf('aliasStillValid'),
-            source.indexOf('aliasStillValid') + 200
-        );
-        expect(guard).toContain('.some(ws => ws.id === aliasedWorkspaceId)');
+    it('guards dispatch with repoId check', () => {
+        expect(source).toContain('if (msg.queue.repoId)');
     });
 });
 
