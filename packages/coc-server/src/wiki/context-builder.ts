@@ -10,8 +10,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ComponentGraph } from './types';
-import type { ThemeMeta } from './types';
+import type { ComponentGraph, ThemeMeta } from './types';
 
 // ============================================================================
 // Types
