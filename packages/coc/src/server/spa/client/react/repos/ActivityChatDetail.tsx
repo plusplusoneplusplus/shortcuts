@@ -529,7 +529,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         const content = cleanedPrompt || rawContent;
 
         setSuggestions([]);
-        lastFailedMessageRef.current = content;
+        lastFailedMessageRef.current = rawContent;
         setFollowUpInput('');
         slashCommands.dismissMenu();
         setError(null);
@@ -539,7 +539,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         const timestamp = new Date().toISOString();
         setTurnsAndRef(prev => ([
             ...prev,
-            { role: 'user' as const, content, timestamp, timeline: [] },
+            { role: 'user' as const, content: rawContent, timestamp, timeline: [] },
             { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [] },
         ]));
 

@@ -329,9 +329,9 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain('lastFailedMessageRef');
         });
 
-        it('stores content in lastFailedMessageRef before sending', () => {
+        it('stores rawContent in lastFailedMessageRef before sending', () => {
             const sendBlock = source.substring(source.indexOf('const sendFollowUp'));
-            expect(sendBlock).toContain('lastFailedMessageRef.current = content');
+            expect(sendBlock).toContain('lastFailedMessageRef.current = rawContent');
         });
 
         it('renders Retry button when error and lastFailedMessageRef', () => {
