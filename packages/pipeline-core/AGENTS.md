@@ -12,16 +12,20 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep 
 | **runtime** | `src/runtime/` | `runWithPolicy` (timeout + retry + cancellation), `withTimeout`, `withRetry`, backoff strategies |
 | **queue** | `src/queue/` | `TaskQueueManager` (priority queue) + `QueueExecutor` (concurrency control, events) |
 | **ai** | `src/ai/` | AI types (`AIInvoker`, `ProcessTracker`, `PromptItem`, `JobProgress`), CLI shell escaping, prompt builder, program utils, timeout defaults |
-| **copilot-sdk** | `src/copilot-sdk-wrapper/` | `CopilotSDKService` (per-session client isolation, follow-up retry on disposed connection), `ModelRegistry`, MCP config loader, trusted folders |
+| **copilot-sdk** | `src/copilot-sdk-wrapper/` | `CopilotSDKService` (singleton, session-per-request pattern with error recovery, `createClient`/`sendMessage`/`abortSession`/`transform`), `ModelRegistry`, MCP config loader, SDK availability detection, trusted folders |
 | **process-store** | `src/process-store.ts`, `src/file-process-store.ts` | Abstract `ProcessStore` + `FileProcessStore` (JSON, atomic writes with retry on transient FS errors, 500-process cap). |
 | **pipeline** | `src/pipeline/` | YAML pipeline types (`PipelineConfig`), CSV reader, template engine, filter executor, skill/prompt resolvers, input generator. The executor has been removed — use `compileToWorkflow` + `executeWorkflow` instead. |
 | **workflow** | `src/workflow/` | DAG-based workflow engine: `executeWorkflow`, graph builder, scheduler, validator, compiler (`compileToWorkflow` — pipeline→workflow format conversion), node executors (load/map/ai/reduce/filter/script/merge/transform), `ConcurrencyLimiter`, result adapter (`flattenWorkflowResult`). Supports `WorkflowSettings` (model/concurrency/timeout/workingDirectory/toolCallCache), `parameters` (template substitution), `skill`/`skills` (per-node single or multi-skill resolution), structured `WorkflowProgressEvent`, per-item `WorkflowItemProcessEvent` |
+| **map-reduce** | `src/map-reduce/` | `MapReduceExecutor`, `MapReduceJob`, splitters (File/Chunk/Rule), reducers (AI/Deterministic/Hybrid), prompt templates, concurrency limiter |
 | **memory** | `src/memory/` | Persistent AI memory system (see [Memory System](#memory-system) below) |
 | **tasks** | `src/tasks/` | Task scanner, parser, CRUD ops, prompt builders for task discovery |
 | **discovery** | `src/discovery/` | Prompt file and skill file resolution |
 | **editor** | `src/editor/` | Comment anchors, markdown parsing/rendering, file state, message transport |
 | **utils** | `src/utils/` | File I/O, glob, HTTP, text matching, AI response parsing, template engine |
 | **git** | `src/git/` | `BranchService` (pull/push/fetch/merge/stash), `GitLogService`, `GitRangeService`, `WorkingTreeService`, `GitOpsStore` (background git op tracking, file-persisted to `~/.coc/git-ops/`), exec helpers, remote URL detection |
+| **templates** | `src/templates/` | `replicateCommit()`, prompt builder, result parser — commit template replication service |
+| **ado** | `src/ado/` | Azure DevOps integration: `AdoConnectionFactory`, `AdoWorkItemsService`, `AdoPullRequestsService` |
+| **skills** | `src/skills/` | Skill management: source detector, skill scanner, skill installer, bundled skills provider |
 
 Entry point: `src/index.ts` — re-exports all public API from the modules above.
 

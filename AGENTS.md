@@ -14,7 +14,7 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
-| **pipeline-core** | `packages/pipeline-core/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session pool), DAG workflow engine (executeWorkflow, compileToWorkflow), task queue, runtime policies, process store, git CLI, utilities |
+| **pipeline-core** | `packages/pipeline-core/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session-per-request), DAG workflow engine (executeWorkflow, compileToWorkflow), task queue, runtime policies, process store, git CLI, utilities |
 | **coc-server** | `packages/coc-server/` | HTTP/WebSocket server: REST API, SSE streaming, SPA dashboard, wiki serving, process store at `~/.coc/` |
 
 **Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `src/shortcuts/`. Example: `pipeline-core/src/ai/` = pure AI SDK; `src/shortcuts/ai-service/` = VS Code UI wrapper.
@@ -90,7 +90,7 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `pi
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/pipeline-core`.
 
-**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session pool, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Pipeline types (YAML config types, CSV reader, template engine, filters), Process store (`FileProcessStore` — JSON persistence, atomic writes, 500-process retention), Git CLI (`@plusplusoneplusplus/pipeline-core/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
+**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Pipeline types (YAML config types, CSV reader, template engine, filters), Process store (`FileProcessStore` — JSON persistence, atomic writes, 500-process retention), Git CLI (`@plusplusoneplusplus/pipeline-core/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
 
 **Workflow execution:** `compileToWorkflow(yamlContent)` converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig`, then `executeWorkflow(config, options)` runs the DAG. Use `flattenWorkflowResult(result)` for flat display output.
 

@@ -7,15 +7,15 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 **Pipeline Core Package Extraction** - Extracted pipeline execution engine into standalone package:
 - New package: `pipeline-core` in `packages/pipeline-core/`
 - Pure Node.js (no VS Code dependencies), usable in CLI tools
-- Modules: logger, utils, ai (SDK service, session pool), map-reduce, pipeline
+- Modules: logger, utils, ai (SDK service, session-per-request), map-reduce, workflow, pipeline, memory, templates, ado, skills
 - Monorepo with npm workspaces
 - Extension imports core functionality from the package
 
 **Deep Wiki Generator** - Standalone CLI tool for auto-generating wiki documentation:
 - New package: `deep-wiki` in `packages/deep-wiki/`
 - CLI tool that auto-generates wiki documentation for any codebase
-- 3-phase pipeline: Discovery → Analysis → Writing
-- Uses pipeline-core for AI SDK and map-reduce
+- 6-phase pipeline: Seeds → Discovery → Consolidation → Analysis → Writing → Website
+- Uses pipeline-core for AI SDK
 
 **Tree Data Provider Base Classes** - Eliminated code duplication across tree data providers:
 - Created 5 new shared modules: `base-tree-data-provider`, `filterable-tree-data-provider`, `tree-filter-utils`, `tree-icon-utils`, `tree-error-handler`
