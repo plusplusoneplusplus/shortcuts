@@ -58,13 +58,6 @@ export class CommentsManager extends CommentsManagerBase<
     }
 
     /**
-     * Get the ID prefix for markdown comments
-     */
-    protected override getCommentIdPrefix(): string {
-        return 'comment';
-    }
-
-    /**
      * Create anchor from markdown file content
      */
     protected createAnchorFromContent(
