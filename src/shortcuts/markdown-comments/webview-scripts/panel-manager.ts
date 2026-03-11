@@ -9,9 +9,7 @@ import { MarkdownComment } from '../types';
 import { escapeHtml } from '../webview-logic/markdown-renderer';
 import {
     calculateBubbleDimensions,
-    createResizeHandlesHTML,
     DEFAULT_RESIZE_CONSTRAINTS,
-    formatCommentDate,
     setupBubbleDrag as setupSharedBubbleDrag,
     setupElementResize,
     setupPanelDrag as setupSharedPanelDrag
