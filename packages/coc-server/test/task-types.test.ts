@@ -17,9 +17,7 @@ import {
     hasReplicationContext,
 } from '../src/task-types';
 import type {
-    ChatPayload,
     RunWorkflowPayload,
-    RunScriptPayload,
 } from '../src/task-types';
 import type { MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
 
