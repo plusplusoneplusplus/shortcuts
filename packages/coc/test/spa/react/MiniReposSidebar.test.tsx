@@ -262,8 +262,8 @@ describe('ReposView — mini sidebar integration', () => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
         const sidebar = screen.getByTestId('repos-sidebar');
-        // Should be 176px (w-44), not 0
-        expect(sidebar.className).toContain('w-44');
+        // Should have dynamic width, not 0
+        expect(sidebar.style.width).toBeTruthy();
         expect(sidebar.className).not.toContain('w-0');
         // Mini sidebar should be rendered
         expect(screen.getByTestId('mini-repos-sidebar')).toBeDefined();
@@ -343,18 +343,18 @@ describe('Long hover expand', () => {
         });
 
         const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.className).toContain('w-44');
+        expect(sidebar.style.width).toBeTruthy();
 
         const items = screen.getAllByTestId('mini-repo-item');
         fireEvent.mouseEnter(items[0]);
         // Only 2s — not enough
         act(() => { vi.advanceTimersByTime(2000); });
-        expect(sidebar.className).toContain('w-44');
+        expect(sidebar.style.width).toBeTruthy();
 
         // Cancel by leaving
         fireEvent.mouseLeave(items[0]);
         act(() => { vi.advanceTimersByTime(2000); });
-        expect(sidebar.className).toContain('w-44');
+        expect(sidebar.style.width).toBeTruthy();
         vi.useRealTimers();
     });
 
@@ -386,7 +386,7 @@ describe('Long hover expand', () => {
 
         // Leave the aside entirely
         fireEvent.mouseLeave(sidebar);
-        expect(sidebar.className).toContain('w-44');
+        expect(sidebar.style.width).toBeTruthy();
         vi.useRealTimers();
     });
 

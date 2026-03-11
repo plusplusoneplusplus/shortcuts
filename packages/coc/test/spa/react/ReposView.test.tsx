@@ -797,8 +797,7 @@ describe('ReposView', () => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
         const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.className).toContain('w-44');
-        expect(sidebar.className).toContain('min-w-[160px]');
+        expect(sidebar.style.width).toBeTruthy();
         expect(sidebar.className).not.toContain('w-0');
     });
 

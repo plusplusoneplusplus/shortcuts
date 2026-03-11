@@ -55,6 +55,17 @@ export function ReposView() {
 
     const isCollapsed = state.reposSidebarCollapsed && !tempExpanded;
 
+    // Dynamic collapsed width: fit the longest repo name (dot + gap + text + padding).
+    const collapsedSidebarWidth = useMemo(() => {
+        if (!repos.length) return 120;
+        const longestName = repos.reduce((max, r) => {
+            const name = r.workspace.name || '';
+            return name.length > max.length ? name : max;
+        }, '');
+        // 10px dot + 6px gap + text (≈7.5px/char at 12px) + 24px padding + 3px selected border
+        return Math.max(80, Math.ceil(10 + 6 + longestName.length * 7.5 + 24 + 3));
+    }, [repos]);
+
     // Bump this counter whenever the user marks tasks as read/unread so the
     // useMemo below re-evaluates (localStorage changes don't update queueState).
     const [seenVersion, setSeenVersion] = useState(0);
@@ -298,10 +309,9 @@ export function ReposView() {
                         data-testid="repos-sidebar"
                         className={cn(
                             'shrink-0 min-h-0 flex flex-col overflow-hidden transition-[width,min-width,opacity] duration-150 ease-out border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]',
-                            isCollapsed
-                                ? 'w-44 min-w-[160px]'
-                                : 'w-[280px] min-w-[240px]'
+                            isCollapsed ? '' : 'w-[280px] min-w-[240px]'
                         )}
+                        style={isCollapsed ? { width: collapsedSidebarWidth, minWidth: collapsedSidebarWidth } : undefined}
                         onMouseLeave={state.reposSidebarCollapsed ? handleMiniHoverEnd : undefined}
                     >
                         {isCollapsed ? (
