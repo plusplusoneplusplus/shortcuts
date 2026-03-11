@@ -5,7 +5,7 @@
  * used to show visual indicators when external tools (like AI) edit the file.
  */
 
-import { diffLines, Change } from 'diff';
+import { diffLines } from 'diff';
 
 /**
  * Represents a change to a specific line.
