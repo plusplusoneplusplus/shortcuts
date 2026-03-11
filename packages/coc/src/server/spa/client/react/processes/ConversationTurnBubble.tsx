@@ -20,6 +20,11 @@ import { ToolCallGroupView } from './ToolCallGroupView';
 const chatMarked = new Marked({
     gfm: true,
     breaks: true,
+    renderer: {
+        html(raw: string) {
+            return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        },
+    },
 });
 
 /**
@@ -88,9 +93,7 @@ type RenderChunk =
       };
 
 export function toContentHtml(content: string): string {
-    // Escape raw HTML so user-pasted HTML sections render as plain text, not rendered HTML.
-    const htmlEscaped = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return chatMarkdownToHtml(htmlEscaped);
+    return chatMarkdownToHtml(content);
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {

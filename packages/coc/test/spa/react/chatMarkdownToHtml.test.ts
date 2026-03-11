@@ -230,6 +230,18 @@ describe('chatMarkdownToHtml', () => {
         // Should NOT contain raw ** markers
         expect(html).not.toContain('**Key points:**');
     });
+
+    it('escapes raw HTML tags instead of passing them through', () => {
+        const html = chatMarkdownToHtml('<div>injected</div>');
+        expect(html).not.toContain('<div>');
+        expect(html).toContain('&lt;div&gt;');
+    });
+
+    it('does not double-escape angle brackets in placeholder text', () => {
+        const html = chatMarkdownToHtml('Use the <chosen-folder> path');
+        expect(html).toContain('&lt;chosen-folder&gt;');
+        expect(html).not.toContain('&amp;lt;');
+    });
 });
 
 describe('toContentHtml (user prompt renderer)', () => {
@@ -262,5 +274,19 @@ describe('toContentHtml (user prompt renderer)', () => {
     it('still linkifies file paths in user content', () => {
         const html = toContentHtml('look at D:/projects/shortcuts/src/index.ts');
         expect(html).toContain('class="file-path-link"');
+    });
+
+    it('does not double-escape angle brackets in placeholders', () => {
+        const html = toContentHtml('Use the <chosen-folder> for output');
+        // Should render as single-escaped entity, not &amp;lt;
+        expect(html).toContain('&lt;chosen-folder&gt;');
+        expect(html).not.toContain('&amp;lt;');
+        expect(html).not.toContain('&amp;gt;');
+    });
+
+    it('does not double-escape generic type annotations', () => {
+        const html = toContentHtml('The type is Map<string, number>');
+        expect(html).toContain('&lt;string');
+        expect(html).not.toContain('&amp;');
     });
 });
