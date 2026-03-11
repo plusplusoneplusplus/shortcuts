@@ -72,9 +72,7 @@ test.describe('Desktop Regression', () => {
 
         const sidebar = page.locator('#repos-sidebar');
         await expect(sidebar).toBeVisible();
-        // Collapsed sidebar should have w-44 class (MiniReposSidebar)
-        await expect(sidebar).toHaveClass(/w-44/);
-        // Collapsed sidebar should be narrower than expanded
+        // Collapsed sidebar should be narrower than expanded (width is now inline-styled, not class-based)
         const collapsedBox = await sidebar.boundingBox();
         expect(collapsedBox!.width).toBeLessThan(expandedBox!.width);
     });
