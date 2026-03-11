@@ -22,7 +22,6 @@ import {
 import { sendJSON, parseBody } from './api-handler';
 import { handleAPIError, notFound, invalidJSON, badRequest, internalError } from './errors';
 import { sortSkillsByUsage, listInstalledSkills, getSkillDetail } from './skill-handler';
-import type { SkillInfo } from './skill-handler';
 import type { Route } from './types';
 
 // ============================================================================
