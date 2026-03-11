@@ -235,7 +235,7 @@ export function CommitList({ title, commits, selectedHash, selectedFile, onSelec
                                     onClick={() => handleCommitClick(commit)}
                                     onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
                                     onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
-                                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
+                                    onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
                                     data-testid={`commit-row-${commit.shortHash}`}
                                 >
                                     <span className="text-[10px] mt-0.5 flex-shrink-0">{isUnpushed ? '●' : '○'}</span>

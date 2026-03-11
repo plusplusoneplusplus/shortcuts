@@ -96,6 +96,7 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick, 
                             onClick={() => itemPath && onFileClick(itemPath)}
                             onContextMenu={(e) => {
                                 if (onContextMenu) {
+                                    if (e.shiftKey) return;
                                     e.preventDefault();
                                     onContextMenu(item, e.clientX, e.clientY);
                                 }

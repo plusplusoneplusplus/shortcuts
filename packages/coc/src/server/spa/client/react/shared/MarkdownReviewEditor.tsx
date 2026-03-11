@@ -344,6 +344,7 @@ export function MarkdownReviewEditor({
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
         if (viewMode === 'source') return;
+        if (e.shiftKey) return;
         e.preventDefault();
         setContextMenuPos({ x: e.clientX, y: e.clientY });
         setContextMenuVisible(true);

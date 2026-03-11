@@ -79,6 +79,7 @@ export function TreeNode({
     };
 
     const handleContextMenu = (e: React.MouseEvent) => {
+        if (e.shiftKey) return;
         e.preventDefault();
         e.stopPropagation();
         onSelect(entry.path, isDir);

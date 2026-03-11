@@ -121,6 +121,7 @@ function TemplateListItem({ template, isSelected, onSelect, onEdit, onReplicate,
             )}
             onClick={onSelect}
             onContextMenu={(e) => {
+                if (e.shiftKey) return;
                 e.preventDefault();
                 setMenuPos({ x: e.clientX, y: e.clientY });
                 setShowContextMenu(true);

@@ -185,7 +185,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
             <button
                 className="w-full flex items-center gap-2 px-4 py-2 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
                 onClick={() => setExpanded(prev => !prev)}
-                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onBranchContextMenu?.(e); }}
+                onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onBranchContextMenu?.(e); }}
                 data-testid="branch-changes-header"
             >
                 <div className="flex-1 min-w-0">
