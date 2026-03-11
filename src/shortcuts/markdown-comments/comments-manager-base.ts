@@ -168,7 +168,7 @@ export abstract class CommentsManagerBase<
      * Generate a unique comment ID
      */
     protected generateId(prefix: string = 'comment'): string {
-        return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     }
 
     /**

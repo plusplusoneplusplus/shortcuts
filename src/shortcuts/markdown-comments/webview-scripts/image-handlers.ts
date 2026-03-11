@@ -58,7 +58,7 @@ export function resolveImagePaths(): void {
             const relativePath = src.substring(9); // Remove 'IMG_PATH:' prefix
             
             // Generate a unique ID for this image
-            const imgId = imgEl.dataset.imgId || Math.random().toString(36).substr(2, 9);
+            const imgId = imgEl.dataset.imgId || Math.random().toString(36).substring(2, 11);
             imgEl.dataset.imgId = imgId;
             imgEl.dataset.pendingPath = relativePath;
             imgEl.src = ''; // Clear src while waiting
