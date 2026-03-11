@@ -847,6 +847,7 @@ export {
     getRemoteUrl,
     normalizeRemoteUrl,
     computeRemoteHash,
+    detectRemoteUrl,
     GitLogService,
     GitRangeService,
     BranchService,

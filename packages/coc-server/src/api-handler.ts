@@ -15,7 +15,7 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore, ProcessFilter, ProcessIndexEntry, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
-import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig } from '@plusplusoneplusplus/pipeline-core';
+import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig, detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
@@ -195,6 +195,18 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
 // ============================================================================
 
 /**
+ * Detect and persist the remote URL for a workspace if it has changed.
+ * Returns the detected URL (or undefined if not a git repo / no remotes).
+ */
+async function syncRemoteUrl(ws: WorkspaceInfo, store: ProcessStore): Promise<string | undefined> {
+    const remoteUrl = detectRemoteUrl(ws.rootPath);
+    if (remoteUrl && remoteUrl !== ws.remoteUrl) {
+        await store.updateWorkspace(ws.id, { remoteUrl });
+    }
+    return remoteUrl;
+}
+
+/**
  * Register all API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
@@ -338,23 +350,15 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 // Even when branch status is unavailable (e.g. no commits yet, detached HEAD
                 // edge cases), still attempt to detect the remote URL so that the repo can
                 // be grouped correctly in the sidebar.
-                const remoteUrl = detectRemoteUrl(ws.rootPath);
-                if (remoteUrl && remoteUrl !== ws.remoteUrl) {
-                    await store.updateWorkspace(ws.id, { remoteUrl });
-                }
+                const remoteUrl = await syncRemoteUrl(ws, store);
                 sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null });
                 return;
             }
 
             const branch = getGitRangeService().getCurrentBranch(ws.rootPath);
-            const remoteUrl = detectRemoteUrl(ws.rootPath);
+            const remoteUrl = await syncRemoteUrl(ws, store);
             const ahead = branchStatus.ahead;
             const behind = branchStatus.behind;
-
-            // Update workspace remoteUrl if it changed (or wasn't set)
-            if (remoteUrl && remoteUrl !== ws.remoteUrl) {
-                await store.updateWorkspace(ws.id, { remoteUrl });
-            }
 
             sendJSON(res, 200, { branch, dirty, ahead, behind, isGitRepo: true, remoteUrl: remoteUrl || null });
         },
@@ -389,18 +393,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                         if (!branchStatus) {
                             // Even when branch status is unavailable, still detect remoteUrl
                             // so Azure DevOps repos without commits still get grouped.
-                            const remoteUrl = detectRemoteUrl(ws.rootPath);
-                            if (remoteUrl && remoteUrl !== ws.remoteUrl) {
-                                await store.updateWorkspace(ws.id, { remoteUrl });
-                            }
+                            const remoteUrl = await syncRemoteUrl(ws, store);
                             results[wsId] = { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null };
                             return;
                         }
                         const branch = getGitRangeService().getCurrentBranch(ws.rootPath);
-                        const remoteUrl = detectRemoteUrl(ws.rootPath);
-                        if (remoteUrl && remoteUrl !== ws.remoteUrl) {
-                            await store.updateWorkspace(ws.id, { remoteUrl });
-                        }
+                        const remoteUrl = await syncRemoteUrl(ws, store);
                         results[wsId] = {
                             branch, dirty,
                             ahead: branchStatus.ahead, behind: branchStatus.behind,
@@ -1984,74 +1982,10 @@ export function readGitFileAtCommit(hash: string, filePath: string, cwd: string)
 /**
  * Detect the primary git remote URL for a workspace directory.
  * Returns undefined if not a git repo or no remotes configured.
+ * @deprecated Use `detectRemoteUrl` imported from `@plusplusoneplusplus/pipeline-core`.
+ *             Re-exported here for backward compatibility with existing callers.
  */
-export function detectRemoteUrl(cwd: string): string | undefined {
-    try {
-        return execGitSync('remote get-url origin', cwd) || undefined;
-    } catch {
-        // No origin remote — try first available remote
-        try {
-            const remotes = execGitSync('remote', cwd);
-            const firstRemote = remotes.split('\n').filter(Boolean)[0];
-            if (firstRemote) {
-                return execGitSync(`remote get-url ${firstRemote}`, cwd) || undefined;
-            }
-        } catch { /* not a git repo or no remotes */ }
-        return undefined;
-    }
-}
-
-/**
- * Normalize a git remote URL for comparison.
- * Converts SSH, HTTPS, and git:// URLs to a canonical form:
- *   `github.com/user/repo` (no protocol, no .git suffix, no trailing slash)
- *
- * Examples:
- *   git@github.com:user/repo.git     → github.com/user/repo
- *   https://github.com/user/repo.git → github.com/user/repo
- *   ssh://git@github.com/user/repo   → github.com/user/repo
- *   git://github.com/user/repo.git/  → github.com/user/repo
- *
- * Azure DevOps URLs are normalised to `dev.azure.com/{org}/{project}/{repo}`:
- *   https://dev.azure.com/{org}/{project}/_git/{repo}
- *   https://{org}.visualstudio.com/{project}/_git/{repo}
- *   git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
- */
-export function normalizeRemoteUrl(rawUrl: string): string {
-    let url = rawUrl.trim();
-
-    // SSH shorthand: git@host:user/repo.git → host/user/repo.git
-    const sshMatch = url.match(/^[\w.-]+@([\w.-]+):(.+)$/);
-    if (sshMatch) {
-        url = sshMatch[1] + '/' + sshMatch[2];
-    } else {
-        // Strip protocol (https://, ssh://, git://, http://)
-        url = url.replace(/^(?:https?|ssh|git):\/\//, '');
-        // Strip userinfo (user@, git@)
-        url = url.replace(/^[^@]+@/, '');
-    }
-
-    // Strip trailing .git
-    url = url.replace(/\.git\/?$/, '');
-    // Strip trailing slash
-    url = url.replace(/\/+$/, '');
-
-    // Azure DevOps: ssh.dev.azure.com/v3/{org}/{project}/{repo} → dev.azure.com/{org}/{project}/{repo}
-    url = url.replace(/^ssh\.dev\.azure\.com\/v3\//, 'dev.azure.com/');
-
-    // Azure DevOps: {org}.visualstudio.com/[DefaultCollection/]{project}/… → dev.azure.com/{org}/…
-    const vsMatch = url.match(/^([^./]+)\.visualstudio\.com\/(?:DefaultCollection\/)?(.+)$/i);
-    if (vsMatch) {
-        url = 'dev.azure.com/' + vsMatch[1] + '/' + vsMatch[2];
-    }
-
-    // Azure DevOps: strip /_git/ path segment
-    if (url.startsWith('dev.azure.com/')) {
-        url = url.replace(/\/_git\//, '/');
-    }
-
-    return url;
-}
+export { detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/pipeline-core';
 
 /** Discover pipeline packages in a directory. Each subdirectory with a pipeline.yaml is a package. */
 export function discoverPipelines(pipelinesDir: string): Array<{ name: string; path: string }> {

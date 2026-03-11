@@ -24,6 +24,7 @@ import {
 
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
+    execFile: vi.fn(),
 }));
 
 import { execSync } from 'child_process';
