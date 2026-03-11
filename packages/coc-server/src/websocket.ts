@@ -404,19 +404,13 @@ export class ProcessWebSocketServer {
         if ('process' in message && message.process) {
             return (message.process as ProcessSummary).workspaceId;
         }
-        if (message.type === 'tasks-changed') {
-            return message.workspaceId;
-        }
-        if (message.type === 'workflows-changed') {
-            return message.workspaceId;
-        }
-        if (message.type === 'templates-changed') {
-            return message.workspaceId;
-        }
-        if (message.type === 'git-changed') {
-            return message.workspaceId;
-        }
-        if (message.type === 'diff-comment-updated') {
+        if (
+            message.type === 'tasks-changed' ||
+            message.type === 'workflows-changed' ||
+            message.type === 'templates-changed' ||
+            message.type === 'git-changed' ||
+            message.type === 'diff-comment-updated'
+        ) {
             return message.workspaceId;
         }
         return undefined;
