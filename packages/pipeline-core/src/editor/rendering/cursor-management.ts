@@ -331,7 +331,6 @@ export function adjustCursorAfterDeletion(
     if (cursor.line === deleteEndLine) {
         // Cursor is on the same line as deletion end
         // Column needs adjustment: move left by the deleted portion
-        const deletedColumns = deleteEndColumn - (cursor.line === deleteStartLine ? deleteStartColumn : 0);
         return {
             line: deleteStartLine,
             column: deleteStartColumn + (cursor.column - deleteEndColumn)
