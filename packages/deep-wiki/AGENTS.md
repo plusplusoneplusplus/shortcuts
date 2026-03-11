@@ -9,91 +9,22 @@ packages/deep-wiki/
 ├── src/
 │   ├── index.ts              # CLI entry point (#!/usr/bin/env node)
 │   ├── cli.ts                # Commander program setup, command routing, exit codes
-│   ├── types.ts              # All shared interfaces (ComponentGraph, ComponentAnalysis, GeneratedArticle, etc.)
+│   ├── types.ts              # All shared interfaces (ComponentGraph, ComponentAnalysis, etc.)
 │   ├── schemas.ts            # JSON schema strings embedded in AI prompts
 │   ├── ai-invoker.ts         # AIInvoker factory: analysis (with MCP tools) and writing (no tools)
 │   ├── logger.ts             # Colored terminal output, spinners, verbosity control
-│   ├── usage-tracker.ts      # Token usage accumulator per phase, CLI display and JSON export
-│   ├── commands/
-│   │   ├── seeds.ts          # `seeds` command: Generate theme seeds for breadth-first discovery
-│   │   ├── discover.ts       # `discover` command: Phase 1 only, outputs ComponentGraph JSON
-│   │   ├── generate.ts       # `generate` command: Full pipeline (Seeds → Discovery → Consolidation → Analysis → Writing → Website)
-│   │   ├── theme.ts          # `theme` command: Theme article generation pipeline (probe → outline → analysis → articles → integration)
-│   │   ├── init.ts           # `init` command: Generate template deep-wiki.config.yaml
-│   │   └── phases/           # Per-phase runner modules used by generate command
-│   │       ├── index.ts
-│   │       ├── discovery-phase.ts
-│   │       ├── consolidation-phase.ts
-│   │       ├── analysis-phase.ts
-│   │       ├── writing-phase.ts
-│   │       └── website-phase.ts
-│   ├── seeds/
-│   │   ├── index.ts          # Exports: generateThemeSeeds(), parseSeedFile()
-│   │   ├── seeds-session.ts  # SDK session orchestration for theme seed generation
-│   │   ├── prompts.ts        # Seeds prompt templates
-│   │   ├── response-parser.ts    # Parse AI response into ThemeSeed[]
-│   │   ├── seed-file-parser.ts   # Parse JSON/CSV seed files into ThemeSeed[]
-│   │   └── heuristic-fallback.ts # Directory-name-based fallback when AI under-generates
-│   ├── discovery/
-│   │   ├── index.ts          # Exports: discoverComponentGraph()
-│   │   ├── discovery-session.ts  # SDK session orchestration for component graph discovery
-│   │   ├── prompts.ts        # Discovery prompt templates
-│   │   ├── response-parser.ts    # Parse AI response into ComponentGraph
-│   │   ├── large-repo-handler.ts # Multi-round discovery for 3000+ file repos
-│   │   └── iterative/        # Breadth-first iterative discovery using topic seeds
-│   │       ├── index.ts          # Exports: runIterativeDiscovery(), probe/merge functions
-│   │       ├── iterative-discovery.ts  # Iterative discovery orchestration
-│   │       ├── probe-session.ts  # Per-theme probe SDK session
-│   │       ├── probe-prompts.ts  # Probe prompt templates
-│   │       ├── probe-response-parser.ts  # Parse probe responses
-│   │       ├── merge-session.ts  # Merge SDK session to combine probe results
-│   │       ├── merge-prompts.ts  # Merge prompt templates
-│   │       └── merge-response-parser.ts  # Parse merge responses
-│   ├── consolidation/
-│   │   ├── index.ts          # Exports: consolidateComponents()
-│   │   ├── consolidator.ts   # Hybrid consolidation orchestration (rule-based + AI clustering)
-│   │   ├── rule-based-consolidator.ts  # Directory-based component merging
-│   │   └── ai-consolidator.ts         # AI-assisted semantic clustering
-│   ├── analysis/
-│   │   ├── index.ts          # Exports: analyzeComponents(), parseAnalysisResponse()
-│   │   ├── analysis-executor.ts  # Per-component AI analysis with concurrency control
-│   │   ├── prompts.ts        # Analysis prompt templates (per-component deep dive)
-│   │   └── response-parser.ts    # Parse analysis response into ComponentAnalysis
-│   ├── writing/
-│   │   ├── index.ts          # Exports: generateArticles(), writeWikiOutput(), generateWebsite()
-│   │   ├── article-executor.ts   # Per-component article generation with concurrency
-│   │   ├── file-writer.ts    # Write articles and index files to disk
-│   │   ├── prompts.ts        # Article writing prompt templates
-│   │   ├── reduce-prompts.ts # Reduce/synthesis prompts for overview articles
-│   │   ├── website-generator.ts  # Static HTML website generation with themes
-│   │   ├── website-styles.ts # CSS styles for generated website
-│   │   ├── website-client-script.ts # Client-side JS for website interactivity
-│   │   └── website-data.ts   # Data serialization for website templates
-│   ├── theme/
-│   │   ├── index.ts          # Barrel exports for theme module
-│   │   ├── coverage-checker.ts   # Load wiki graph, list theme areas, check theme coverage gaps
-│   │   ├── theme-probe.ts    # Build theme seed and run single-theme probe against repo
-│   │   ├── theme-analysis.ts # Analyze article scope and cross-cutting concerns for a theme
-│   │   ├── analysis-prompts.ts   # Prompts for theme article analysis and cross-cutting analysis
-│   │   ├── outline-generator.ts  # Generate/parse theme outline (article structure)
-│   │   ├── outline-prompts.ts    # Prompts for theme outline generation
-│   │   ├── article-generator.ts  # Generate theme articles from outline and analysis
-│   │   ├── article-prompts.ts    # Prompts for sub-article and index page generation
-│   │   ├── file-writer.ts    # Write theme articles to disk
-│   │   └── wiki-integrator.ts    # Update module graph, wiki index, and add cross-links
-│   ├── utils/
-│   │   ├── error-utils.ts    # Error handling utilities
-│   │   ├── git-init.ts       # Git initialization helpers
-│   │   ├── parse-ai-response.ts  # AI response extraction
-│   │   └── resolve-working-directory.ts  # Working directory resolution
+│   ├── usage-tracker.ts      # Token usage accumulator per phase
 │   ├── config-loader.ts      # Load deep-wiki.config.yaml configuration
-│   ├── rendering/
-│   │   └── mermaid-zoom.ts   # Shared Mermaid diagram zoom/pan CSS, HTML, JS for SPA and static website
-│   └── cache/
-│       ├── index.ts          # All cache operations: save/load/invalidate for each phase
-│       ├── cache-utils.ts    # Low-level atomic read/write/scan primitives shared by all cache modules
-│       ├── discovery-cache.ts # Intermediate discovery artifact caching (seeds, probes, structural scans)
-│       └── git-utils.ts      # Git HEAD hash for cache invalidation
+│   ├── commands/             # CLI commands (seeds, discover, generate, theme, init) and phase runners
+│   ├── seeds/                # Theme seed generation (AI + heuristic fallback)
+│   ├── discovery/            # Component graph discovery (single-round, multi-round, iterative)
+│   ├── consolidation/        # Rule-based + AI-assisted component merging
+│   ├── analysis/             # Per-component AI analysis with concurrency control
+│   ├── writing/              # Article generation, file writing, static website generation
+│   ├── theme/                # Cross-cutting theme articles (probe → outline → analysis → articles → integration)
+│   ├── utils/                # Error handling, git init, AI response parsing, working directory resolution
+│   ├── rendering/            # Mermaid diagram zoom/pan rendering
+│   └── cache/                # Per-phase caching with git-hash invalidation
 ├── test/                     # 64 Vitest test files (mirrors src/ structure)
 ├── package.json
 ├── tsconfig.json

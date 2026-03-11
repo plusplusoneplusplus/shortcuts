@@ -12,67 +12,30 @@ packages/coc-server/
 │   ├── router.ts             # Main HTTP router — dispatches to API, static, SPA
 │   ├── git-cache.ts          # In-memory GitCacheService for git API responses
 │   ├── api-handler.ts        # Process/queue REST API: CRUD, git detection, pipeline discovery
-│   ├── admin-handler.ts      # Admin endpoints: data wipe/export/import with time-limited confirmation tokens
+│   ├── admin-handler.ts      # Admin endpoints with time-limited confirmation tokens
 │   ├── data-wiper.ts         # DataWiper — deletes processes, queue files, blobs, preferences
-│   ├── data-exporter.ts      # exportAllData — serializes all CoC data to CoCExportPayload
-│   ├── data-importer.ts      # importData — restores CoCExportPayload (replace or merge mode)
+│   ├── data-exporter.ts      # exportAllData — serializes all CoC data
+│   ├── data-importer.ts      # importData — restores CoCExportPayload
 │   ├── preferences-handler.ts # User preferences persistence (~/.coc/preferences.json)
 │   ├── sse-handler.ts        # SSE streaming for individual process output
 │   ├── websocket.ts          # ProcessWebSocketServer: real-time process/queue events
 │   ├── errors.ts             # Centralized APIError class and factory helpers
-│   ├── export-import-types.ts # Export/import schema, validation, CoCExportPayload
-│   ├── repo-utils.ts         # Git root detection, repo ID extraction, path normalization
-│   ├── queue/
-│   │   ├── queue-persistence.ts   # QueuePersistence — saves/restores per-repo queue state to ~/.coc/queues/
-│   │   └── image-blob-store.ts    # ImageBlobStore — externalizes base64 images from queue payloads to blobs/
-│   ├── shared/
-│   │   └── router.ts         # Low-level router primitives (createRouter, serveStaticFile, readBody)
-│   ├── memory/               # Memory subsystem (entries store, config, observation browsing, tool-call cache)
-│   │   ├── memory-routes.ts  # Register /api/memory/* endpoints (entries CRUD, config, observations browsing, aggregation)
-│   │   ├── memory-store.ts   # File-based manual memory entries (index.json + per-entry JSON)
-│   │   ├── memory-config-handler.ts # Read/write memory-config.json
-│   │   └── tool-call-aggregation-handler.ts # AI-driven tool-call aggregation
-│   ├── spa/
-│   │   └── client/           # SPA dashboard client assets (compiled)
-│   └── wiki/                 # Wiki serving module
-│       ├── index.ts          # Barrel exports for wiki sub-module
-│       ├── types.ts          # Wiki domain types: ComponentGraph, ComponentAnalysis, ThemeMeta
-│       ├── dw-types.ts       # Deep-wiki pipeline types (ArticleType, GenerateOptions, etc.)
-│       ├── router.ts         # Wiki-specific HTTP router (API + static file serving)
-│       ├── wiki-routes.ts    # Register wiki REST endpoints on a parent router
-│       ├── wiki-manager.ts   # Per-wiki runtime lifecycle (WikiData, ContextBuilder, FileWatcher)
-│       ├── wiki-data.ts      # In-memory wiki data store (components, articles, themes)
-│       ├── context-builder.ts # RAG-style context retrieval with tokenization
-│       ├── conversation-session-manager.ts # Manages AI conversation sessions per wiki
-│       ├── file-watcher.ts   # Watches wiki output directory for changes, triggers reload
-│       ├── ask-handler.ts    # POST /api/wiki/:id/ask — conversational AI Q&A with SSE
-│       ├── explore-handler.ts # POST /api/wiki/:id/explore — AI-guided codebase exploration
-│       ├── generate-handler.ts # POST /api/wiki/:id/generate — trigger wiki regeneration
-│       ├── api-handlers.ts   # General wiki API: components, articles, search, stats
-│       ├── admin-handlers.ts # Wiki admin: register/unregister, cache clear
-│       ├── websocket.ts      # Wiki-specific WebSocket server (distinct from process WS)
-│       ├── dw-ask-handler.ts       # Deep-wiki ask handler (delegates to wiki ask)
-│       ├── dw-explore-handler.ts   # Deep-wiki explore handler
-│       ├── dw-generate-handler.ts  # Deep-wiki generate handler (six-phase pipeline)
-│       ├── dw-admin-handlers.ts    # Deep-wiki admin (register, config, cache)
-│       └── dw-config-loader.ts     # Load deep-wiki.config.yaml for wiki settings
-├── test/
-│   ├── errors.test.ts
-│   ├── export-import-types.test.ts
-│   ├── git-api.test.ts
-│   ├── git-branches-api.test.ts
-│   ├── git-branch-range-api.test.ts
-│   ├── process-children-api.test.ts
-│   ├── repo-routes.test.ts
-│   ├── repo-tree-service.test.ts
-│   ├── repo-utils.test.ts
-│   ├── scaffold.test.ts
-│   ├── sse-replay.test.ts
-│   ├── websocket-file-subscribe.test.ts
-│   ├── helpers/
-│   │   └── mock-process-store.ts
-│   └── shared/
-│       └── router.test.ts
+│   ├── export-import-types.ts # Export/import schema, validation
+│   ├── repo-utils.ts         # Git root detection, repo ID extraction
+│   ├── server-logger.ts      # Pino logger injection
+│   ├── image-utils.ts        # Decode base64 data-URL images to temp files
+│   ├── suggest-follow-ups-tool.ts # Factory for `suggest_follow_ups` AI tool
+│   ├── skill-handler.ts      # Per-workspace skill REST API
+│   ├── global-skill-handler.ts # Global skill REST API
+│   ├── task-types.ts         # Domain payload types and guards
+│   ├── openapi.yaml          # OpenAPI 3.1 spec
+│   ├── queue/                # Queue persistence and image blob store
+│   ├── shared/               # Low-level router primitives
+│   ├── repos/                # Repository file-explorer subsystem
+│   ├── memory/               # Memory subsystem (entries, config, observations, tool-call cache)
+│   ├── spa/                  # SPA dashboard client assets
+│   └── wiki/                 # Wiki serving module (AI Q&A, explore, generate, deep-wiki integration)
+├── test/                     # 46+ Vitest test files
 ├── package.json
 ├── tsconfig.json
 └── vitest.config.ts
@@ -110,6 +73,11 @@ The package exports from `src/index.ts`:
 - **WebSocket**: `ProcessWebSocketServer`, `toProcessSummary`, `toCommentSummary`
 - **SSE**: `handleProcessStream`
 - **Errors**: `APIError`, `handleAPIError`, `badRequest`, `notFound`, etc.
+- **Server Logger**: `setServerLogger`, `getServerLogger`, `createRequestLogger`, `createWSLogger`, `createQueueLogger` — Pino logger injection
+- **Image Utils**: `parseDataUrl`, `saveImagesToTempFiles`, `cleanupTempDir`
+- **Git Cache**: `GitCacheService`, `gitCache` — in-memory cache for git API responses
+- **Skills**: `registerSkillRoutes`, `sortSkillsByUsage` (per-workspace), `registerGlobalSkillRoutes` (global)
+- **Repos**: `RepoInfo`, `TreeEntry`, `TreeListResult`, `RepoTreeService`, `registerRepoRoutes` — file explorer API
 - **Export/Import**: `EXPORT_SCHEMA_VERSION`, `validateExportPayload`
 - **Repo Utils**: `extractRepoId`, `findGitRoot`, `normalizeRepoPath`, `getWorkingDirectory`
 - **Wiki** (via `wiki/index.ts`): `WikiData`, `WikiManager`, `ContextBuilder`, `ConversationSessionManager`, `FileWatcher`, route handlers, WebSocket
@@ -125,11 +93,12 @@ The package exports from `src/index.ts`:
 
 - `@plusplusoneplusplus/pipeline-core` — ProcessStore, CopilotSDKService, TaskQueueManager, defineTool
 - `ws` — WebSocket server
+- `pino` — Structured JSON logger (injected via `server-logger.ts`)
 - `js-yaml` — YAML config parsing
 
 ## Testing
 
-43 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, WebSocket file subscriptions, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints, git cache unit and integration tests, child process API routes, **queue persistence restore/save**, and **data wiper dry-run and wipe operations**.
+46 Vitest test files plus helpers covering: error factories, export/import validation, repo utilities, server scaffold, SSE replay, SSE concurrent sessions, SSE reconnect, SSE token usage, SSE pipeline/item events, WebSocket file subscriptions, WebSocket git-changed events, shared router, git commit API endpoints, git branch range API endpoints, git branch listing/status/CRUD API endpoints, git cache unit and integration tests, git working-tree diff, child process API routes, **queue persistence restore/save**, **data wiper dry-run and wipe operations**, server logger injection, image utilities, suggest-follow-ups tool, skill handler (per-workspace and global), task types and guards, swagger/OpenAPI routes, memory subsystem (routes, store, config, tool-call aggregation), request logging, parse-body, normalize-remote-url, wiki router utils, MCP config API, skills config API, API handler batch/images/summaries.
 
 Run with `npm run test:run` in `packages/coc-server/`.
 

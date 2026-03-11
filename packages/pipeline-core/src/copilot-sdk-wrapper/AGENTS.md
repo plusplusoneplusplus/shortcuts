@@ -6,7 +6,7 @@ Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lif
 
 | File | Purpose |
 |------|---------|
-| `copilot-sdk-service.ts` | Core service: client/session lifecycle, streaming, follow-ups, error recovery |
+| `copilot-sdk-service.ts` | Core service: client/session lifecycle, streaming, error recovery |
 | `types.ts` | All shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models (add models here only) |
 | `mcp-config-loader.ts` | Loads/merges MCP server config from `~/.copilot/mcp-config.json` |
@@ -34,24 +34,14 @@ sendMessage(cwd="/project-b")  →  CopilotClient(cwd="/project-b")  →  Sessio
 | `sdkModule` | cached SDK module | ESM-loaded `@github/copilot-sdk` (lazy, loaded once) |
 | `availabilityCache` | `SDKAvailabilityResult` | Cached SDK availability check |
 | `activeSessions` | `Map<string, ICopilotSession>` | In-flight sessions tracked for cancellation |
-| `keptAliveSessions` | `Map<string, KeptAliveSession>` | Multi-turn sessions preserved post-completion |
-| `keepAliveCleanupTimer` | timer | 60s interval that evicts idle kept-alive sessions |
 | `streamErrorGuardHandler` | `uncaughtException` listener | Absorbs `ERR_STREAM_DESTROYED` from SDK stdio |
 | `disposed` | boolean | Guard preventing calls after `dispose()` |
 
-### `KeptAliveSession` Entry
-
-Stores both the session and its dedicated client together:
-
-```typescript
-{ session, client, createdAt, lastUsedAt, workingDirectory }
-```
-
-When the entry is destroyed (cleanup, idle timeout, follow-up error), both `session.destroy()` and `client.stop()` are called.
-
 ## Session Lifecycle
 
-### `sendMessage()` Flow
+### `sendMessage()` Flow (Session-Per-Request)
+
+Each `sendMessage()` call creates a fresh client and session, uses it for one request, then destroys both. No session reuse or persistence occurs between calls.
 
 ```
 1. isAvailable() → check SDK exists
@@ -70,37 +60,10 @@ When the entry is destroyed (cleanup, idle timeout, follow-up error), both `sess
 7. Empty-response handling:
    - turnCount > 0 + empty text → SUCCESS (tool-based execution, no summary)
    - turnCount == 0 + empty text → failure
-8. FINALLY:
+8. FINALLY (always):
    - untrackSession
-   - IF keepAlive && success:
-       store { session, client } in keptAliveSessions
-   - ELSE:
-       session.destroy() + client.stop()
+   - session.destroy() + client.stop()
 ```
-
-### `sendFollowUp()` Flow
-
-```
-1. Lookup keptAliveSessions.get(sessionId)
-2. If missing → resumeKeptAliveSession() → creates new client, calls SDK resumeSession()
-3. If still missing → { success: false, error: "not found or expired" }
-4. trackSession → executeFollowUpSend() → update lastUsedAt
-5. ON CONNECTION ERROR:
-   - Destroy broken session + client
-   - Retry ONCE via resumeKeptAliveSession → executeFollowUpSend
-   - If retry fails → cleanup + return error
-6. FINALLY: untrackSession
-```
-
-Connection disposed errors are detected by matching: `"Connection is disposed"`, `"connection closed"`, `"Connection got disposed"`, or error code `2`.
-
-### Kept-Alive Session Management
-
-- **Idle timeout**: 10 minutes. Checked every 60 seconds by `cleanupIdleKeptAliveSessions()`.
-- **Explicit destroy**: `destroyKeptAliveSession(sessionId)` — removes + destroys session + stops client.
-- **`canResumeSession(sessionId)`** — checks map or attempts SDK `resumeSession()`.
-- **`hasKeptAliveSession(sessionId)`** — non-mutating presence check.
-- Timer auto-cancels when map is empty. Timer is `.unref()`'d so it won't block Node exit.
 
 ### Active Session Tracking (Cancellation)
 
@@ -201,17 +164,16 @@ Config location respects `XDG_CONFIG_HOME` env var, defaulting to `~/.copilot/co
 2. **Streaming is the default path** — any `timeoutMs > 120000` or `onStreamingChunk` callback automatically uses the streaming event API (SDK's `sendAndWait` has a hardcoded 120s `session.idle` timeout).
 3. **Empty text + turns > 0 = success** — tool-heavy agents (e.g., `impl` skill) may produce no text summary but have done work via tool calls (file edits, shell commands).
 4. **Multi-turn grace timer** — `turn_end` → 2s timer → `turn_start` cancels. Correctly handles multi-step MCP tool loops without settling prematurely.
-5. **Resume-and-retry** — `sendFollowUp` automatically re-establishes a disconnected session via SDK's `resumeSession()` and retries once before giving up.
-6. **MCP `{}` escape hatch** — passing `mcpServers: {}` explicitly disables all MCP servers regardless of the user's config file.
-7. **Permission default is deny** — without `onPermissionRequest`, all tool permission requests are denied. Use `approveAllPermissions` only in trusted environments.
+5. **MCP `{}` escape hatch** — passing `mcpServers: {}` explicitly disables all MCP servers regardless of the user's config file.
+6. **Permission default is deny** — without `onPermissionRequest`, all tool permission requests are denied. Use `approveAllPermissions` only in trusted environments.
 
 ## `transform<T>()` Utility
 
-One-shot prompt helper. Calls `sendMessage` with `gpt-4.1` (default), `keepAlive: false`. Throws on failure. Optional `parse` callback maps raw string to `T`.
+One-shot prompt helper. Calls `sendMessage` with `gpt-4.1` (default). Throws on failure. Optional `parse` callback maps raw string to `T`.
 
 ## Cleanup
 
-`cleanup()` (async): aborts all `activeSessions`, destroys all `keptAliveSessions` (session + client), clears timer, removes stream error guard, nulls sdkModule and availabilityCache.
+`cleanup()` (async): aborts all `activeSessions`, removes stream error guard, nulls sdkModule and availabilityCache.
 
 `dispose()`: sets `disposed = true`, fires `cleanup()` fire-and-forget.
 
@@ -220,4 +182,4 @@ One-shot prompt helper. Calls `sendMessage` with `gpt-4.1` (default), `keepAlive
 - `resetCopilotSDKService()` / `CopilotSDKService.resetInstance()` — disposes and nulls the singleton. Call in `afterEach`.
 - Mock helpers in `test/helpers/mock-sdk.ts`: `createMockSession`, `createStreamingMockSession`, `createMockSDKModule`, `createStreamingMockSDKModule`, `setupService`.
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to wire up mocks without real SDK.
-- Tests for: client initialization, streaming events, keep-alive lifecycle, follow-up retry, transform, tools, attachments, idle cleanup, session isolation.
+- Tests for: client initialization, streaming events, transform, tools, attachments, session isolation.

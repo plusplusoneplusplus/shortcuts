@@ -29,6 +29,7 @@ coc run <path>              # Execute a workflow
 coc validate <path>         # Validate YAML without executing
 coc list [dir]              # List workflow packages in a directory
 coc serve                   # Start AI Execution Dashboard web server
+coc skills                  # Manage CoC skills (list, install-bundled, install, delete)
 coc wipe-data               # Clear all stored data
 ```
 
@@ -84,14 +85,10 @@ src/
 │   ├── list.ts           # List packages - Discovers and displays workflow packages in a directory
 │   ├── serve.ts          # Start server - Launches AI Execution Dashboard with browser auto-open
 │   ├── wipe-data.ts      # Wipe data - Clears stored processes, queues, and schedules
+│   ├── skills.ts         # Skills management - list, install-bundled, install, delete subcommands
 │   └── options-resolver.ts  # Shared option resolution logic for commands
 ├── server/
-│   ├── index.ts          # Server factory - createExecutionServer(), wires store + WebSocket + routes
-│   ├── router.ts         # HTTP router - Request routing, CORS, static files, SPA fallback
-│   ├── api-handler.ts    # REST API - CRUD for processes/workspaces, stats, query filtering
-│   ├── websocket.ts      # WebSocket server - `ws` library, workspace-scoped event broadcasting
-│   ├── sse-handler.ts    # SSE streaming - Real-time process output via Server-Sent Events
-│   ├── types.ts          # Server types - ExecutionServer, Route, ServeCommandOptions
+│   ├── index.ts          # Server factory - createExecutionServer(), imports router/API/WebSocket/SSE from @plusplusoneplusplus/coc-server
 │   ├── queue-handler.ts          # Queue management API — validates 3 task types (chat, run-workflow, run-script); no-repoId branch scopes to global workspace
 │   ├── queue-executor-bridge.ts  # Bridges queue to AI/workflow/script execution — unified chat dispatch with context-based routing
 │   ├── queue-persistence.ts      # Persistent queue state — per-workspace files under ~/.coc/queues/repo-<workspaceId>.json
@@ -119,6 +116,13 @@ src/
 │   ├── data-exporter.ts          # Export stored data
 │   ├── data-importer.ts          # Import data
 │   ├── data-wiper.ts             # Data cleanup/reset
+│   ├── diff-comments-handler.ts  # Git diff view comment CRUD API
+│   ├── image-blob-store.ts       # Externalizes base64 images from queue persistence into JSON files
+│   ├── replicate-apply-handler.ts # Applies ReplicateResult changes to disk (idempotent)
+│   ├── resolve-comment-tool.ts   # Factory for per-invocation resolve_comment AI tool
+│   ├── task-migration.ts         # One-time migration from legacy .vscode/tasks/ location
+│   ├── template-watcher.ts       # Watches .vscode/templates/ for file changes
+│   ├── templates-handler.ts      # Template CRUD API (list, read, create, update, delete)
 │   ├── wiki/                     # Wiki integration
 │   │   ├── index.ts              # Wiki module exports
 │   │   ├── types.ts              # Wiki types
@@ -133,21 +137,33 @@ src/
 │   │   ├── file-watcher.ts       # Watch wiki source files
 │   │   └── admin-handlers.ts     # Wiki admin endpoints
 │   └── spa/              # Dashboard SPA
-│       ├── html-template.ts  # HTML generation - Inline SPA with all CSS/JS embedded
-│       ├── styles.ts         # CSS styles - Dark/light theme, responsive layout
-│       ├── scripts.ts        # Client JS - WebSocket connection, API calls, DOM updates
+│       ├── html-template.ts  # HTML generation - Generates full HTML with inline bundled assets from client/dist/
+│       ├── index.ts          # Module exports - generateDashboardHtml + DashboardOptions
 │       ├── helpers.ts        # Template helpers
 │       ├── types.ts          # Dashboard option types
 │       └── client/           # React SPA client
 │           └── react/
-│               ├── shared/
-│               │   └── MarkdownReviewEditor.tsx  # Shared markdown review surface (see below)
-│               └── repos/explorer/  # File explorer with Monaco Editor
-│                   ├── ExplorerPanel.tsx   # Split-pane: FileTree + PreviewPane
-│                   ├── PreviewPane.tsx     # Monaco editor for code, image/binary preview
-│                   ├── MonacoFileEditor.tsx # Monaco wrapper with theme sync and Ctrl+S save
-│                   ├── monaco-setup.ts    # Worker URL config (bundled, no CDN)
-│                   └── FileTree.tsx       # Recursive file tree with search
+│               ├── App.tsx              # Root React component
+│               ├── admin/               # Admin panel & preferences UI
+│               ├── chat/                # Chat conversation utilities
+│               ├── components/          # Shared UI components (e.g., ContextWindowIndicator)
+│               ├── context/             # React contexts (App, Queue, Task, Toast, FloatingChats, etc.)
+│               ├── hooks/               # 30+ custom hooks (useApi, useWebSocket, useMarkdownPreview, useDiffComments, etc.)
+│               ├── layout/              # Layout components (Router, TopBar, BottomNav, ThemeProvider)
+│               ├── processes/           # Process detail views, conversation bubbles, tool call rendering
+│               │   └── dag/             # Workflow DAG visualization (25+ components)
+│               ├── queue/               # Queue management UI (EnqueueDialog, QueueView)
+│               ├── repos/               # Repository management (45+ components: git, workflows, branches, diffs)
+│               │   └── explorer/        # File explorer with Monaco Editor
+│               ├── shared/              # Shared components (MarkdownReviewEditor, Dialog, Button, SourceEditor, etc.)
+│               ├── tasks/               # Task management UI (TaskTree, TaskPreview, TaskActions)
+│               │   └── comments/        # Inline comment system (CommentCard, CommentSidebar, SelectionToolbar)
+│               ├── types/               # TypeScript type definitions
+│               ├── utils/               # Utility modules (config, format, path-resolution)
+│               ├── views/
+│               │   ├── memory/          # Memory management (MemoryView, entries/files/config panels, ExploreCachePanel)
+│               │   └── skills/          # Skills management (SkillsView, installed/bundled/config panels)
+│               └── wiki/                # Wiki UI (WikiView, WikiAsk, WikiGraph, WikiComponentTree, etc.)
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling
 ├── logger.ts             # Console logger - Colored output, spinners, and progress bars
 ├── output-formatter.ts   # Result formatting - Formats results as table/json/csv/markdown
