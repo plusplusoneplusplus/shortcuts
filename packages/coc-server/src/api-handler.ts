@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import type { ProcessStore, ProcessFilter, ProcessIndexEntry, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessFilter, ProcessIndexEntry, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig, detectRemoteUrl, normalizeRemoteUrl, GitOpsStore } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment, GitOpJob } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
