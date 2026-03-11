@@ -56,6 +56,10 @@ export function internalError(message: string = 'Internal server error'): APIErr
     return new APIError(500, message, 'INTERNAL_ERROR');
 }
 
+export function conflict(message: string): APIError {
+    return new APIError(409, message, 'CONFLICT');
+}
+
 // ============================================================================
 // Centralized Error Handler
 // ============================================================================

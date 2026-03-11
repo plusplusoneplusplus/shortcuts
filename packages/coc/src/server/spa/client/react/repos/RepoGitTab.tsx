@@ -61,6 +61,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [fetching, setFetching] = useState(false);
     const [pulling, setPulling] = useState(false);
     const [pushing, setPushing] = useState(false);
+    const pullJobRef = useRef<string | null>(null);
+    const pullPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
 
     // Branch-range state (lifted from BranchChanges)
@@ -206,9 +208,71 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     gitChangedDebounceRef.current = null;
                     refreshAll();
                 }, 500);
+                // If we're tracking a pull job, re-fetch its status on git-changed
+                if (pullJobRef.current) {
+                    fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${encodeURIComponent(pullJobRef.current)}`)
+                        .then((job: any) => {
+                            if (job && job.status !== 'running') {
+                                stopPullPolling();
+                                if (job.status === 'failed') {
+                                    setActionError(job.error || 'Pull failed');
+                                }
+                            }
+                        })
+                        .catch(() => {});
+                }
             }
         }, [workspaceId, refreshAll]),
     });
+
+    // Pull job polling helpers
+    const stopPullPolling = useCallback(() => {
+        if (pullPollRef.current) {
+            clearInterval(pullPollRef.current);
+            pullPollRef.current = null;
+        }
+        pullJobRef.current = null;
+        setPulling(false);
+    }, []);
+
+    const startPullPolling = useCallback((jobId: string) => {
+        pullJobRef.current = jobId;
+        setPulling(true);
+        if (pullPollRef.current) clearInterval(pullPollRef.current);
+        pullPollRef.current = setInterval(async () => {
+            try {
+                const job = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${encodeURIComponent(jobId)}`);
+                if (!job || job.status !== 'running') {
+                    stopPullPolling();
+                    if (job?.status === 'failed') {
+                        setActionError(job.error || 'Pull failed');
+                    } else {
+                        refreshAll();
+                    }
+                }
+            } catch {
+                stopPullPolling();
+            }
+        }, 3000);
+    }, [workspaceId, stopPullPolling, refreshAll]);
+
+    // Recover pull status on mount (page refresh recovery)
+    useEffect(() => {
+        fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/latest?op=pull`)
+            .then((job: any) => {
+                if (!job) return;
+                if (job.status === 'running') {
+                    startPullPolling(job.id);
+                } else if (job.status === 'failed' && job.finishedAt) {
+                    const elapsed = Date.now() - new Date(job.finishedAt).getTime();
+                    if (elapsed < 5 * 60 * 1000) { // 5 min TTL
+                        setActionError(job.error || 'Pull failed');
+                    }
+                }
+            })
+            .catch(() => {});
+        return () => { stopPullPolling(); };
+    }, [workspaceId, startPullPolling, stopPullPolling]);
 
     // Git action handlers
     const handleFetch = useCallback(async () => {
@@ -238,14 +302,20 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rebase: true }),
             });
-            if (result.success === false) throw new Error(result.error || 'Pull failed');
-            refreshAll();
+            if (result.jobId) {
+                // Async pull — start polling for job completion
+                startPullPolling(result.jobId);
+            } else if (result.success === false) {
+                throw new Error(result.error || 'Pull failed');
+            } else {
+                refreshAll();
+                setPulling(false);
+            }
         } catch (err: any) {
             setActionError(err.message || 'Pull failed');
-        } finally {
             setPulling(false);
         }
-    }, [pulling, workspaceId, refreshAll]);
+    }, [pulling, workspaceId, refreshAll, startPullPolling]);
 
     const handlePush = useCallback(async () => {
         if (pushing) return;

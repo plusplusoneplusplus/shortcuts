@@ -39,3 +39,4 @@ export { BranchService } from './branch-service';
 export { WorkingTreeService, parsePorcelain } from './working-tree-service';
 export { normalizeRemoteUrl } from './normalize-url';
 export { getRemoteUrl, computeRemoteHash, detectRemoteUrl } from './remote';
+export { GitOpsStore, GitOpJob, GitOpType, GitOpStatus, GitOpsStoreOptions } from './git-ops-store';

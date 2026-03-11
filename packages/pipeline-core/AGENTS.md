@@ -21,6 +21,7 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep 
 | **discovery** | `src/discovery/` | Prompt file and skill file resolution |
 | **editor** | `src/editor/` | Comment anchors, markdown parsing/rendering, file state, message transport |
 | **utils** | `src/utils/` | File I/O, glob, HTTP, text matching, AI response parsing, template engine |
+| **git** | `src/git/` | `BranchService` (pull/push/fetch/merge/stash), `GitLogService`, `GitRangeService`, `WorkingTreeService`, `GitOpsStore` (background git op tracking, file-persisted to `~/.coc/git-ops/`), exec helpers, remote URL detection |
 
 Entry point: `src/index.ts` — re-exports all public API from the modules above.
 

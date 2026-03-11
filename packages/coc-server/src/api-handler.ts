@@ -15,11 +15,11 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore, ProcessFilter, ProcessIndexEntry, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, MCPServerConfig, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
-import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig, detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/pipeline-core';
-import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
+import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig, detectRemoteUrl, normalizeRemoteUrl, GitOpsStore } from '@plusplusoneplusplus/pipeline-core';
+import type { Attachment, GitOpJob } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream } from './sse-handler';
-import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, APIError } from './errors';
+import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, conflict, APIError } from './errors';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
 import { gitCache } from './git-cache';
 import { registerSkillRoutes } from './skill-handler';
@@ -243,6 +243,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     };
 
     try {
+
+    // Git ops store — persists background git operation status for page-refresh recovery
+    const gitOpsStore = new GitOpsStore({ dataDir: dataDir ?? undefined });
+    // Mark any orphaned running jobs from a previous server session
+    gitOpsStore.markStaleRunningJobs().catch(() => {});
 
     // POST /api/workspaces — Register a workspace
     routes.push({
@@ -1111,7 +1116,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
-    // POST /api/workspaces/:id/git/pull — Pull from remote
+    // POST /api/workspaces/:id/git/pull — Pull from remote (async background job)
     routes.push({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/pull$/,
@@ -1123,6 +1128,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, notFound('Workspace'));
             }
 
+            // Guard against concurrent pulls
+            const running = await gitOpsStore.getRunning(id, 'pull');
+            if (running.length > 0) {
+                return handleAPIError(res, conflict('A pull operation is already running'));
+            }
+
             let body: any = {};
             try {
                 body = await parseBody(req);
@@ -1131,9 +1142,63 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             const rebase = body.rebase === true;
-            const result = await branchService.pull(ws.rootPath, rebase);
-            getWsServer?.()?.broadcastGitChanged(id, 'pull');
-            sendJSON(res, 200, result);
+            const jobId = `pull-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const job: GitOpJob = {
+                id: jobId,
+                workspaceId: id,
+                op: 'pull',
+                status: 'running',
+                startedAt: new Date().toISOString(),
+                pid: process.pid,
+            };
+            await gitOpsStore.create(job);
+            sendJSON(res, 202, { jobId });
+
+            // Run pull in background — update store on completion
+            branchService.pull(ws.rootPath, rebase).then(async (result) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: result.success ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(),
+                    error: result.error,
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'pull');
+            }).catch(async (err) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: 'failed',
+                    finishedAt: new Date().toISOString(),
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'pull');
+            });
+        },
+    });
+
+    // GET /api/workspaces/:id/git/ops/latest — Most recent git op job (supports ?op=pull)
+    routes.push({
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/ops\/latest$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const parsed = url.parse(req.url || '', true);
+            const opFilter = typeof parsed.query.op === 'string' ? parsed.query.op as any : undefined;
+            const job = await gitOpsStore.getLatest(id, opFilter);
+            if (!job) {
+                return sendJSON(res, 200, null);
+            }
+            sendJSON(res, 200, job);
+        },
+    });
+
+    // GET /api/workspaces/:id/git/ops/:jobId — Specific git op job by ID
+    routes.push({
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/ops\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const jobId = decodeURIComponent(match![2]);
+            const job = await gitOpsStore.getById(wsId, jobId);
+            if (!job) {
+                return handleAPIError(res, notFound('Git operation'));
+            }
+            sendJSON(res, 200, job);
         },
     });
 

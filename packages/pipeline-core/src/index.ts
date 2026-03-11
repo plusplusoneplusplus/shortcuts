@@ -853,6 +853,11 @@ export {
     BranchService,
     WorkingTreeService,
     parsePorcelain,
+    GitOpsStore,
+    GitOpJob,
+    GitOpType,
+    GitOpStatus,
+    GitOpsStoreOptions,
 } from './git';
 
 // ============================================================================

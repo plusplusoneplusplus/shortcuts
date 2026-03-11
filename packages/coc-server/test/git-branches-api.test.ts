@@ -21,6 +21,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
 import * as http from 'http';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { createRouter } from '../src/shared/router';
 import { registerApiRoutes } from '../src/api-handler';
 import type { Route } from '../src/types';
@@ -120,6 +123,7 @@ describe('Git Branches API endpoints', () => {
     let server: http.Server;
     let port: number;
     let store: MockProcessStore;
+    let tmpDir: string;
 
     const WORKSPACE_ID = 'ws-branch-test';
     const WORKSPACE_ROOT = '/test/repo';
@@ -153,13 +157,15 @@ describe('Git Branches API endpoints', () => {
     };
 
     beforeAll(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-branch-api-test-'));
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT },
+            { id: 'ws-ops-test', name: 'Ops Test Repo', rootPath: '/test/ops-repo' },
         ]);
 
         const routes: Route[] = [];
-        registerApiRoutes(routes, store);
+        registerApiRoutes(routes, store, undefined, tmpDir);
         const handleRequest = createRouter({ routes, spaHtml: '<html></html>' });
         server = http.createServer(handleRequest);
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -168,6 +174,7 @@ describe('Git Branches API endpoints', () => {
 
     afterAll(async () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
+        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     });
 
     beforeEach(() => {
@@ -612,7 +619,7 @@ describe('Git Branches API endpoints', () => {
     // -----------------------------------------------------------------------
 
     describe('POST /api/workspaces/:id/git/pull', () => {
-        it('should pull with default options', async () => {
+        it('should return 202 with jobId for async pull', async () => {
             mockPull.mockResolvedValue({ success: true });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
@@ -620,9 +627,12 @@ describe('Git Branches API endpoints', () => {
                 body: JSON.stringify({}),
             });
 
-            expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ success: true });
-            expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, false);
+            expect(res.status).toBe(202);
+            const data = res.json();
+            expect(data.jobId).toBeDefined();
+            expect(typeof data.jobId).toBe('string');
+            // Wait for background pull to finish before next test
+            await new Promise(resolve => setTimeout(resolve, 200));
         });
 
         it('should pass rebase=true when specified', async () => {
@@ -633,6 +643,8 @@ describe('Git Branches API endpoints', () => {
                 body: JSON.stringify({ rebase: true }),
             });
 
+            // Wait for background pull to complete
+            await new Promise(resolve => setTimeout(resolve, 200));
             expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
         });
 
@@ -644,9 +656,113 @@ describe('Git Branches API endpoints', () => {
                 // no body, no headers — regression test for 400 Bad Request bug
             });
 
+            expect(res.status).toBe(202);
+            const data = res.json();
+            expect(data.jobId).toBeDefined();
+            // Wait for background pull to finish before next test
+            await new Promise(resolve => setTimeout(resolve, 200));
+        });
+
+        it('should return 409 when a pull is already running', async () => {
+            // Use ws-ops-test for isolation (no leftover running jobs)
+            mockPull.mockReturnValue(new Promise(() => {})); // never resolves
+
+            const res1 = await request(`${base()}/api/workspaces/ws-ops-test/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            expect(res1.status).toBe(202);
+
+            // Second pull on same workspace: should be rejected
+            const res2 = await request(`${base()}/api/workspaces/ws-ops-test/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            expect(res2.status).toBe(409);
+            expect(res2.json().code).toBe('CONFLICT');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/git/ops/latest — Latest git op
+    // -----------------------------------------------------------------------
+
+    describe('GET /api/workspaces/:id/git/ops/latest', () => {
+        it('should return null when no ops exist for a workspace', async () => {
+            // Use a workspace that never had any pull jobs
+            const res = await request(`${base()}/api/workspaces/ws-nonexistent/git/ops/latest?op=pull`);
             expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ success: true });
-            expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, false);
+            expect(res.json()).toBeNull();
+        });
+
+        it('should return latest pull job after pull is triggered', async () => {
+            mockPull.mockResolvedValue({ success: true });
+
+            const pullRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            const { jobId } = pullRes.json();
+
+            // Wait for background pull to complete
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/latest?op=pull`);
+            expect(res.status).toBe(200);
+            const job = res.json();
+            expect(job.id).toBe(jobId);
+            expect(job.op).toBe('pull');
+            expect(job.status).toBe('success');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/git/ops/:jobId — Get job by ID
+    // -----------------------------------------------------------------------
+
+    describe('GET /api/workspaces/:id/git/ops/:jobId', () => {
+        it('should return 404 for nonexistent job', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/nonexistent`);
+            expect(res.status).toBe(404);
+        });
+
+        it('should return job details by ID', async () => {
+            mockPull.mockResolvedValue({ success: true });
+
+            const pullRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            const { jobId } = pullRes.json();
+
+            // Wait for background pull to complete
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
+            expect(res.status).toBe(200);
+            const job = res.json();
+            expect(job.id).toBe(jobId);
+            expect(job.status).toBe('success');
+            expect(job.finishedAt).toBeDefined();
+        });
+
+        it('should show failed status when pull fails', async () => {
+            mockPull.mockResolvedValue({ success: false, error: 'merge conflict' });
+
+            const pullRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            const { jobId } = pullRes.json();
+
+            // Wait for background pull to complete
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
+            expect(res.status).toBe(200);
+            const job = res.json();
+            expect(job.status).toBe('failed');
+            expect(job.error).toBe('merge conflict');
         });
     });
 
