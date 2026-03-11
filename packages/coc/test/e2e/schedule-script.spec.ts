@@ -83,7 +83,7 @@ test.describe('Schedule Script', () => {
         await page.getByRole('button', { name: 'Create' }).click();
 
         // Schedule card with [Script] badge should appear
-        await expect(page.getByText('Echo Test')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('schedule-name').filter({ hasText: 'Echo Test' })).toBeVisible({ timeout: 10_000 });
         // Schedule items are <li> elements containing a [Script] badge
         await expect(page.locator('.repo-schedule-item:has-text("[Script]")')).toBeVisible();
     });
@@ -99,14 +99,14 @@ test.describe('Schedule Script', () => {
         await navigateToSchedules(page, serverUrl);
 
         // Confirm the schedule card is visible
-        await expect(page.getByText('Run Test')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('schedule-name').filter({ hasText: 'Run Test' })).toBeVisible({ timeout: 10_000 });
 
         // Click the schedule item to expand and reveal actions
         await page.locator('.repo-schedule-item:has-text("Run Test")').first().click();
-        await expect(page.getByRole('button', { name: 'Run Now' })).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByRole('button', { name: 'Run schedule now' })).toBeVisible({ timeout: 5_000 });
 
         // Trigger a manual run — handleRunNow() auto-refreshes history for expanded cards
-        await page.getByRole('button', { name: 'Run Now' }).click();
+        await page.getByRole('button', { name: 'Run schedule now' }).click();
 
         // ScheduleRunRecord status is set to 'completed' immediately after enqueue
         await expect(page.getByText('Run History')).toBeVisible({ timeout: 10_000 });
