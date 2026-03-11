@@ -338,7 +338,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             }
 
             const installPath = getSkillsInstallPath(ws.rootPath);
-            const replace: boolean = body.replace === true;
+            const replace = body.replace === true;
 
             // Handle bundled skills
             if (body.source === 'bundled') {

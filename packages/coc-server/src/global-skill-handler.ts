@@ -138,7 +138,7 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
                 return handleAPIError(res, invalidJSON());
             }
 
-            const replace: boolean = body.replace === true;
+            const replace = body.replace === true;
 
             // Ensure global dir exists
             fs.mkdirSync(globalDir, { recursive: true });
