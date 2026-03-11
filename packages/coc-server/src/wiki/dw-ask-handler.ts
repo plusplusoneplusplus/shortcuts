@@ -17,25 +17,13 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { ContextBuilder } from './context-builder';
 import type { ConversationSessionManager } from './conversation-session-manager';
 import { readBody } from './router';
+import { buildAskPrompt, sendSSE } from './ask-handler';
+import type { ConversationMessage, AskRequest } from './ask-handler';
+import type { AskAIFunction } from './types';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/** A single message in a conversation turn. */
-export interface ConversationMessage {
-    role: 'user' | 'assistant';
-    content: string;
-}
-
-/** Request body for POST /api/ask. */
-export interface AskRequest {
-    question: string;
-    /** Optional session ID for multi-turn conversations. */
-    sessionId?: string;
-    /** Legacy: full conversation history (used when no sessionId). */
-    conversationHistory?: ConversationMessage[];
-}
 
 /** Options for the ask handler. */
 export interface AskHandlerOptions {
@@ -46,19 +34,6 @@ export interface AskHandlerOptions {
     /** Session manager for multi-turn conversations. */
     sessionManager?: ConversationSessionManager;
 }
-
-/**
- * Abstraction over the AI SDK's sendMessage for testability.
- * Returns the full response string.
- * When `onStreamingChunk` is provided, each delta chunk is emitted in real-time
- * while the function still resolves with the complete response.
- */
-export type AskAIFunction = (prompt: string, options?: {
-    model?: string;
-    workingDirectory?: string;
-    /** Callback invoked for each streaming chunk as it arrives. */
-    onStreamingChunk?: (chunk: string) => void;
-}) => Promise<string>;
 
 // ============================================================================
 // Handler
@@ -197,67 +172,7 @@ export async function handleAskRequest(
     res.end();
 }
 
-// ============================================================================
-// Prompt Building
-// ============================================================================
-
-/**
- * Build the AI prompt for Q&A.
- */
-export function buildAskPrompt(
-    question: string,
-    contextText: string,
-    graphSummary: string,
-    conversationHistory?: ConversationMessage[],
-): string {
-    const parts: string[] = [];
-
-    parts.push('You are a knowledgeable assistant for a software project wiki.');
-    parts.push('Answer the user\'s question based on the provided component documentation and architecture context.');
-    parts.push('If the documentation doesn\'t contain enough information to answer, say so clearly.');
-    parts.push('Use markdown formatting in your response. Reference specific components by name when relevant.');
-    parts.push('');
-
-    // Architecture overview
-    parts.push('## Architecture Overview');
-    parts.push('');
-    parts.push(graphSummary);
-    parts.push('');
-
-    // Relevant component documentation
-    if (contextText) {
-        parts.push('## Relevant Component Documentation');
-        parts.push('');
-        parts.push(contextText);
-        parts.push('');
-    }
-
-    // Conversation history
-    if (conversationHistory && conversationHistory.length > 0) {
-        parts.push('## Conversation History');
-        parts.push('');
-        for (const msg of conversationHistory) {
-            const role = msg.role === 'user' ? 'User' : 'Assistant';
-            parts.push(`**${role}:** ${msg.content}`);
-            parts.push('');
-        }
-    }
-
-    // Current question
-    parts.push('## Current Question');
-    parts.push('');
-    parts.push(question);
-
-    return parts.join('\n');
-}
-
-// ============================================================================
-// SSE Utilities
-// ============================================================================
-
-/**
- * Send a Server-Sent Event.
- */
-export function sendSSE(res: ServerResponse, data: Record<string, unknown>): void {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
+// Re-exports for backward compatibility (canonical definitions in ask-handler.ts / types.ts)
+export { sendSSE, buildAskPrompt } from './ask-handler';
+export type { ConversationMessage, AskRequest } from './ask-handler';
+export type { AskAIFunction } from './types';
