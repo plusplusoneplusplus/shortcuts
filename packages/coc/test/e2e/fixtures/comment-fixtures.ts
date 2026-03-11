@@ -140,3 +140,49 @@ export async function getCommentById(
     const { comments } = JSON.parse(res.body);
     return (comments as Record<string, unknown>[]).find(c => c.id === commentId) ?? null;
 }
+
+/**
+ * Seed a comment with additional fields (e.g. aiResponse, status: 'orphaned').
+ * Passes extra fields straight through since the handler stores them as-is.
+ */
+export async function seedCommentWithFields(
+    serverUrl: string,
+    wsId: string,
+    filePath: string,
+    fields: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+    const body = JSON.stringify({
+        filePath,
+        selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+        selectedText: 'hello',
+        comment: 'test comment',
+        category: 'general',
+        status: 'open',
+        ...fields,
+    });
+    const encodedPath = encodeURIComponent(filePath);
+    const res = await request(
+        `${serverUrl}/api/comments/${encodeURIComponent(wsId)}/${encodedPath}`,
+        { method: 'POST', body },
+    );
+    return JSON.parse(res.body);
+}
+
+/** Seed a reply on a comment via POST /api/comments/:wsId/:taskPath/:id/replies. */
+export async function seedReply(
+    serverUrl: string,
+    wsId: string,
+    filePath: string,
+    commentId: string,
+    text: string,
+    author = 'Tester',
+    isAI = false,
+): Promise<Record<string, unknown>> {
+    const body = JSON.stringify({ author, text, isAI });
+    const encodedPath = encodeURIComponent(filePath);
+    const res = await request(
+        `${serverUrl}/api/comments/${encodeURIComponent(wsId)}/${encodedPath}/${commentId}/replies`,
+        { method: 'POST', body },
+    );
+    return JSON.parse(res.body);
+}
