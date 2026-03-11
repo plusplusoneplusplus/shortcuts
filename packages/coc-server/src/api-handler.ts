@@ -436,7 +436,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 type: config.type ?? 'stdio',
                 ...('url' in config && config.url ? { url: config.url } : {}),
             }));
-            const enabledMcpServers: string[] | null = ws.enabledMcpServers ?? null;
+            const enabledMcpServers = ws.enabledMcpServers ?? null;
             sendJSON(res, 200, { availableServers, enabledMcpServers });
         },
     });
