@@ -404,8 +404,6 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             if (!isWithinDirectory(installPath, skillName)) {
                 return handleAPIError(res, badRequest('Invalid skill name'));
             }
-            const skillPath = path.join(installPath, skillName);
-
             const skill = getSkillDetail(installPath, skillName);
             if (!skill) {
                 return handleAPIError(res, notFound('Skill'));
