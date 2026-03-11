@@ -86,10 +86,13 @@ function removeDirSafe(dir: string): void {
     }
 }
 
-/** Write a persistence file so the server loads a pre-existing task on startup. Returns the repoId. */
-function seedPersistence(dataDir: string, task: Record<string, unknown>): string {
+/** Write a persistence file so the server loads a pre-existing task on startup. Returns the repoId.
+ *  Use `rootPath` to set the workspace root — defaults to process.cwd() but callers should
+ *  pass a clean directory (without .vscode/tasks/) to avoid triggering task migration delays. */
+function seedPersistence(dataDir: string, task: Record<string, unknown>, rootPath?: string): string {
+    const cwd = rootPath ?? process.cwd();
     const repoId = crypto.createHash('sha256')
-        .update(path.resolve(process.cwd()))
+        .update(path.resolve(cwd))
         .digest('hex')
         .substring(0, 16);
     const queuesDir = path.join(dataDir, 'queues');
@@ -97,7 +100,7 @@ function seedPersistence(dataDir: string, task: Record<string, unknown>): string
     const state = {
         version: 3,
         savedAt: new Date().toISOString(),
-        repoRootPath: process.cwd(),
+        repoRootPath: cwd,
         repoId,
         pending: [task],
         history: [],
@@ -248,6 +251,10 @@ describe('GET /api/queue/:id/images', () => {
         const blobPath = path.join(blobDir, 'seeded-task.images.json');
         fs.writeFileSync(blobPath, JSON.stringify([PNG_DATA_URL, PNG_DATA_URL]), 'utf-8');
 
+        // Use isolated workspace root (no .vscode/tasks/) to avoid migration delays
+        const workspaceRoot = path.join(dataDir, 'workspace');
+        fs.mkdirSync(workspaceRoot, { recursive: true });
+
         // Pre-seed persistence with a task that has imagesFilePath
         seedPersistence(dataDir, {
             id: 'seeded-task',
@@ -258,11 +265,11 @@ describe('GET /api/queue/:id/images', () => {
             payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', imagesFilePath: blobPath, imagesCount: 2 },
             config: {},
             displayName: 'Test task with images',
-        });
+        }, workspaceRoot);
 
         const srv = await startServer();
-        // Register workspace for cwd so we can query by workspace ID
-        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: process.cwd() });
+        // Register workspace so we can query by workspace ID
+        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: workspaceRoot });
         // Restored task gets a new ID; find it via the list endpoint
         const taskId = await getFirstQueuedTaskId(srv.url, 'ws-cwd');
 
@@ -293,6 +300,10 @@ describe('GET /api/queue/:id/images', () => {
     });
 
     it('should return empty array when blob file is missing on disk', async () => {
+        // Use isolated workspace root (no .vscode/tasks/) to avoid migration delays
+        const workspaceRoot = path.join(dataDir, 'workspace');
+        fs.mkdirSync(workspaceRoot, { recursive: true });
+
         // Pre-seed with imagesFilePath pointing to a non-existent file
         seedPersistence(dataDir, {
             id: 'missing-blob-task',
@@ -303,10 +314,10 @@ describe('GET /api/queue/:id/images', () => {
             payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', imagesFilePath: path.join(dataDir, 'blobs', 'nonexistent.images.json'), imagesCount: 1 },
             config: {},
             displayName: 'Test task missing blob',
-        });
+        }, workspaceRoot);
 
         const srv = await startServer();
-        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: process.cwd() });
+        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: workspaceRoot });
         const taskId = await getFirstQueuedTaskId(srv.url, 'ws-cwd');
 
         const imgRes = await request(`${srv.url}/api/queue/${taskId}/images`);
@@ -424,6 +435,10 @@ describe('serializeTask — image stripping', () => {
     });
 
     it('should not leak imagesFilePath to client', async () => {
+        // Use isolated workspace root (no .vscode/tasks/) to avoid migration delays
+        const workspaceRoot = path.join(dataDir, 'workspace');
+        fs.mkdirSync(workspaceRoot, { recursive: true });
+
         // Pre-seed with imagesFilePath set on the task
         seedPersistence(dataDir, {
             id: 'leak-check',
@@ -434,11 +449,11 @@ describe('serializeTask — image stripping', () => {
             payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', imagesFilePath: '/absolute/server/path.json', imagesCount: 3 },
             config: {},
             displayName: 'Leak check task',
-        });
+        }, workspaceRoot);
 
         const srv = await startServer();
-        // Register workspace for cwd so we can query by workspace ID
-        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: process.cwd() });
+        // Register workspace so we can query by workspace ID
+        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: workspaceRoot });
         // Get restored task ID from list
         const listRes = await request(`${srv.url}/api/queue?repoId=ws-cwd`);
         const taskId = JSON.parse(listRes.body).queued[0].id;
