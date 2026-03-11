@@ -27,6 +27,9 @@ import type { Route } from './types';
 // Helpers
 // ============================================================================
 
+/** Skill names that collide with sub-routes and must be rejected. */
+const RESERVED_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'all']);
+
 function getSkillsInstallPath(workspaceRoot: string, installPath?: string): string {
     return path.join(workspaceRoot, installPath || DEFAULT_SKILLS_SETTINGS.installPath);
 }
@@ -385,7 +388,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const skillName = decodeURIComponent(match![2]);
 
             // Reject route-collision names
-            if (skillName === 'bundled' || skillName === 'scan' || skillName === 'install' || skillName === 'all') {
+            if (RESERVED_SKILL_NAMES.has(skillName)) {
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
@@ -421,7 +424,7 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const skillName = decodeURIComponent(match![2]);
 
             // Reject route-collision names
-            if (skillName === 'bundled' || skillName === 'scan' || skillName === 'install' || skillName === 'all') {
+            if (RESERVED_SKILL_NAMES.has(skillName)) {
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
