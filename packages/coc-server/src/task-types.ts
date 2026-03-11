@@ -123,7 +123,7 @@ export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload;
 // ============================================================================
 
 export function isChatPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
-    return (payload as any).kind === 'chat';
+    return payload.kind === 'chat';
 }
 
 export function isChatFollowUp(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
@@ -131,11 +131,11 @@ export function isChatFollowUp(payload: Record<string, unknown>): payload is Rec
 }
 
 export function isRunWorkflowPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunWorkflowPayload {
-    return (payload as any).kind === 'run-workflow';
+    return payload.kind === 'run-workflow';
 }
 
 export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {
-    return (payload as any).kind === 'run-script';
+    return payload.kind === 'run-script';
 }
 
 /** Check whether a chat payload carries task-generation context. */
