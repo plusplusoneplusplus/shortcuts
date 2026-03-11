@@ -11,7 +11,6 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import type { Route } from '../types';
-import type { WikiServerOptions } from '../types';
 import { sendJson, send404, send500, readJsonBody } from '../router';
 import { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
