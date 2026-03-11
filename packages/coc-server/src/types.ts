@@ -74,6 +74,8 @@ export interface ExecutionServerOptions {
         restartPolicy?: 'fail' | 'requeue' | 'requeue-if-retriable';
         /** Maximum number of history entries to persist per repo (default: 100). */
         historyLimit?: number;
+        /** Whether to auto-start the queue executor (default: true). Set to false in tests to prevent task consumption. */
+        autoStart?: boolean;
     };
 }
 

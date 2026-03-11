@@ -230,9 +230,9 @@ describe('GET /api/queue/:id/images', () => {
         removeDirSafe(dataDir);
     });
 
-    async function startServer(): Promise<ExecutionServer> {
+    async function startServer(opts?: { autoStart?: boolean }): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, queue: { autoStart: opts?.autoStart } });
         return server;
     }
 
@@ -267,7 +267,7 @@ describe('GET /api/queue/:id/images', () => {
             displayName: 'Test task with images',
         }, workspaceRoot);
 
-        const srv = await startServer();
+        const srv = await startServer({ autoStart: false });
         // Register workspace so we can query by workspace ID
         await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: workspaceRoot });
         // Restored task gets a new ID; find it via the list endpoint
@@ -316,7 +316,7 @@ describe('GET /api/queue/:id/images', () => {
             displayName: 'Test task missing blob',
         }, workspaceRoot);
 
-        const srv = await startServer();
+        const srv = await startServer({ autoStart: false });
         await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: workspaceRoot });
         const taskId = await getFirstQueuedTaskId(srv.url, 'ws-cwd');
 
@@ -411,9 +411,9 @@ describe('serializeTask — image stripping', () => {
         removeDirSafe(dataDir);
     });
 
-    async function startServer(): Promise<ExecutionServer> {
+    async function startServer(opts?: { autoStart?: boolean }): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir, queue: { autoStart: opts?.autoStart } });
         return server;
     }
 
@@ -451,7 +451,7 @@ describe('serializeTask — image stripping', () => {
             displayName: 'Leak check task',
         }, workspaceRoot);
 
-        const srv = await startServer();
+        const srv = await startServer({ autoStart: false });
         // Register workspace so we can query by workspace ID
         await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: workspaceRoot });
         // Get restored task ID from list

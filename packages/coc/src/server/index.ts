@@ -174,7 +174,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         : DEFAULT_AI_TIMEOUT_MS;
 
     const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
-        autoStart: true,
+        autoStart: options.queue?.autoStart !== false,
         approvePermissions: true,
         dataDir,
         aiService: options.aiService,
