@@ -60,7 +60,7 @@ export class FileWatcher {
 
         const { repoPath, debounceMs = DEFAULT_DEBOUNCE_MS } = this.options;
 
-        const changeHandler = (eventType: string, filename: string | null) => {
+        const changeHandler = (_eventType: string, filename: string | null) => {
             if (!filename) return;
             if (shouldIgnore(filename)) return;
 
