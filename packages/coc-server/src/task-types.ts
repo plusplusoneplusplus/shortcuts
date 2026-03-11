@@ -127,7 +127,7 @@ export function isChatPayload(payload: Record<string, unknown>): payload is Reco
 }
 
 export function isChatFollowUp(payload: Record<string, unknown>): payload is Record<string, unknown> & ChatPayload {
-    return isChatPayload(payload) && !!(payload as any).processId;
+    return isChatPayload(payload) && !!payload.processId;
 }
 
 export function isRunWorkflowPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunWorkflowPayload {
@@ -140,15 +140,15 @@ export function isRunScriptPayload(payload: Record<string, unknown>): payload is
 
 /** Check whether a chat payload carries task-generation context. */
 export function hasTaskGenerationContext(payload: Record<string, unknown>): boolean {
-    return isChatPayload(payload) && !!(payload as any).context?.taskGeneration;
+    return isChatPayload(payload) && !!payload.context?.taskGeneration;
 }
 
 /** Check whether a chat payload carries resolve-comments context. */
 export function hasResolveCommentsContext(payload: Record<string, unknown>): boolean {
-    return isChatPayload(payload) && !!(payload as any).context?.resolveComments;
+    return isChatPayload(payload) && !!payload.context?.resolveComments;
 }
 
 /** Check whether a chat payload carries replication context. */
 export function hasReplicationContext(payload: Record<string, unknown>): boolean {
-    return isChatPayload(payload) && !!(payload as any).context?.replication;
+    return isChatPayload(payload) && !!payload.context?.replication;
 }
