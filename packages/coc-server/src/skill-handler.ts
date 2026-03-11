@@ -32,6 +32,16 @@ function getSkillsInstallPath(workspaceRoot: string, installPath?: string): stri
 }
 
 /**
+ * Returns true if `childName` resolved under `baseDir` stays within `baseDir`.
+ * Used to prevent path-traversal attacks on skill names.
+ */
+export function isWithinDirectory(baseDir: string, childName: string): boolean {
+    const resolvedChild = path.resolve(path.join(baseDir, childName));
+    const resolvedBase = path.resolve(baseDir);
+    return resolvedChild.startsWith(resolvedBase + path.sep);
+}
+
+/**
  * Sort skills by most-recently-used first, then alphabetically.
  * Skills with a usage timestamp are sorted most-recent-first;
  * unused skills follow in A→Z order.
@@ -388,12 +398,10 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const installPath = getSkillsInstallPath(ws.rootPath);
 
             // Validate skill path is within install path (security)
-            const skillPath = path.join(installPath, skillName);
-            const resolvedSkillPath = path.resolve(skillPath);
-            const resolvedInstallPath = path.resolve(installPath);
-            if (!resolvedSkillPath.startsWith(resolvedInstallPath + path.sep)) {
+            if (!isWithinDirectory(installPath, skillName)) {
                 return handleAPIError(res, badRequest('Invalid skill name'));
             }
+            const skillPath = path.join(installPath, skillName);
 
             const skill = getSkillDetail(installPath, skillName);
             if (!skill) {
@@ -424,14 +432,10 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             }
 
             const installPath = getSkillsInstallPath(ws.rootPath);
-            const skillPath = path.join(installPath, skillName);
-
-            // Validate skill path is within install path (security)
-            const resolvedSkillPath = path.resolve(skillPath);
-            const resolvedInstallPath = path.resolve(installPath);
-            if (!resolvedSkillPath.startsWith(resolvedInstallPath + path.sep)) {
+            if (!isWithinDirectory(installPath, skillName)) {
                 return handleAPIError(res, badRequest('Invalid skill name'));
             }
+            const skillPath = path.join(installPath, skillName);
 
             const skillMdPath = path.join(skillPath, 'SKILL.md');
             if (!fs.existsSync(skillMdPath)) {

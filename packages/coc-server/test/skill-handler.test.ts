@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { registerSkillRoutes, sortSkillsByUsage } from '../src/skill-handler';
+import { registerSkillRoutes, sortSkillsByUsage, isWithinDirectory } from '../src/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../src/types';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
@@ -455,5 +455,28 @@ describe('sortSkillsByUsage', () => {
         const copy = [...skills];
         sortSkillsByUsage(skills, {});
         expect(skills).toEqual(copy);
+    });
+});
+
+describe('isWithinDirectory', () => {
+    it('returns true for a simple child name', () => {
+        expect(isWithinDirectory('/base/dir', 'child')).toBe(true);
+    });
+
+    it('returns false for a path-traversal attempt', () => {
+        expect(isWithinDirectory('/base/dir', '../escape')).toBe(false);
+    });
+
+    it('returns false for a deeply nested traversal', () => {
+        expect(isWithinDirectory('/base/dir', '../../etc/passwd')).toBe(false);
+    });
+
+    it('returns true for a nested child', () => {
+        expect(isWithinDirectory('/base/dir', 'sub/child')).toBe(true);
+    });
+
+    it('returns false when child resolves to base itself (no trailing sep)', () => {
+        // path.resolve('/base/dir', '.') === '/base/dir' which does NOT start with '/base/dir' + sep
+        expect(isWithinDirectory('/base/dir', '.')).toBe(false);
     });
 });

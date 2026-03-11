@@ -21,7 +21,7 @@ import {
 } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, parseBody } from './api-handler';
 import { handleAPIError, notFound, invalidJSON, badRequest, internalError } from './errors';
-import { sortSkillsByUsage, listInstalledSkills, getSkillDetail } from './skill-handler';
+import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, isWithinDirectory } from './skill-handler';
 import type { Route } from './types';
 
 // ============================================================================
@@ -235,10 +235,7 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
             }
 
             // Validate skill path is within global dir (security)
-            const skillPath = path.join(globalDir, skillName);
-            const resolvedSkillPath = path.resolve(skillPath);
-            const resolvedGlobalDir = path.resolve(globalDir);
-            if (!resolvedSkillPath.startsWith(resolvedGlobalDir + path.sep)) {
+            if (!isWithinDirectory(globalDir, skillName)) {
                 return handleAPIError(res, badRequest('Invalid skill name'));
             }
 
@@ -262,14 +259,10 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
-            const skillPath = path.join(globalDir, skillName);
-
-            // Validate skill path is within global dir (security)
-            const resolvedSkillPath = path.resolve(skillPath);
-            const resolvedGlobalDir = path.resolve(globalDir);
-            if (!resolvedSkillPath.startsWith(resolvedGlobalDir + path.sep)) {
+            if (!isWithinDirectory(globalDir, skillName)) {
                 return handleAPIError(res, badRequest('Invalid skill name'));
             }
+            const skillPath = path.join(globalDir, skillName);
 
             const skillMdPath = path.join(skillPath, 'SKILL.md');
             if (!fs.existsSync(skillMdPath)) {
