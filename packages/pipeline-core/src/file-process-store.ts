@@ -286,7 +286,7 @@ export class FileProcessStore implements ProcessStore {
             const workspaces = await this.readWorkspaces();
             const idx = workspaces.findIndex(w => w.id === workspace.id);
             if (idx >= 0) {
-                workspaces[idx] = workspace;
+                workspaces[idx] = { ...workspaces[idx], ...workspace };
             } else {
                 workspaces.push(workspace);
             }
