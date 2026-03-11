@@ -100,6 +100,24 @@ describe('ActivityListPane pinned chats', () => {
         });
     });
 
+    describe('shift+right-click bypasses custom context menu', () => {
+        it('checks shiftKey before preventing default', () => {
+            expect(source).toContain('if (e.shiftKey) return');
+        });
+
+        it('places the shiftKey guard before preventDefault', () => {
+            const handler = source.substring(
+                source.indexOf('handleTaskContextMenu'),
+                source.indexOf('handleTaskContextMenu') + 300,
+            );
+            const shiftIdx = handler.indexOf('e.shiftKey');
+            const preventIdx = handler.indexOf('e.preventDefault');
+            expect(shiftIdx).toBeGreaterThan(-1);
+            expect(preventIdx).toBeGreaterThan(-1);
+            expect(shiftIdx).toBeLessThan(preventIdx);
+        });
+    });
+
     describe('pinned cards styling', () => {
         it('applies left border accent to pinned cards', () => {
             expect(source).toContain('border-l-2 border-l-amber-400');

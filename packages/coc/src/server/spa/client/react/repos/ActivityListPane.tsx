@@ -262,6 +262,7 @@ export function ActivityListPane({
     const activeDropPosition = dropPosition || touchDrag.dropPosition;
 
     const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued' | 'completed') => {
+        if (e.shiftKey) return; // Allow native browser context menu on shift+right-click
         e.preventDefault();
         e.stopPropagation();
         setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus });
