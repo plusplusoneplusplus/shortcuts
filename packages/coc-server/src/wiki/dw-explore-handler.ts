@@ -17,16 +17,11 @@ import type { WikiData } from './wiki-data';
 import { sendSSE } from './dw-ask-handler';
 import type { AskAIFunction } from './dw-ask-handler';
 import { readBody } from './router';
+import { buildExplorePrompt } from './explore-handler';
+import type { ExploreRequest } from './explore-handler';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/** Request body for POST /api/explore/:componentId. */
-export interface ExploreRequest {
-    question?: string;
-    depth?: 'normal' | 'deep';
-}
+export type { ExploreRequest } from './explore-handler';
+export { buildExplorePrompt } from './explore-handler';
 
 /** Options for the explore handler. */
 export interface ExploreHandlerOptions {
@@ -108,86 +103,6 @@ export async function handleExploreRequest(
     }
 
     res.end();
-}
-
-// ============================================================================
-// Prompt Building
-// ============================================================================
-
-/**
- * Build the AI prompt for deep-dive exploration.
- */
-export function buildExplorePrompt(
-    mod: { id: string; name: string; category: string; path: string; purpose: string; keyFiles: string[]; dependencies: string[]; dependents: string[] },
-    existingMarkdown: string,
-    graph: { project: { name: string; description: string; language: string }; components: Array<{ id: string; name: string; purpose: string; dependencies: string[] }> },
-    request: ExploreRequest,
-): string {
-    const parts: string[] = [];
-
-    const depth = request.depth || 'normal';
-    const isDeep = depth === 'deep';
-
-    parts.push(`You are conducting a ${isDeep ? 'deep' : 'focused'} analysis of the "${mod.name}" component.`);
-    parts.push('Provide detailed technical insights with code-level specifics.');
-    parts.push('Use markdown formatting with headers, code blocks, and lists.');
-    parts.push('');
-
-    // Component context
-    parts.push('## Component Information');
-    parts.push('');
-    parts.push(`- **Name:** ${mod.name}`);
-    parts.push(`- **ID:** ${mod.id}`);
-    parts.push(`- **Category:** ${mod.category}`);
-    parts.push(`- **Path:** ${mod.path}`);
-    parts.push(`- **Purpose:** ${mod.purpose}`);
-    parts.push(`- **Key Files:** ${mod.keyFiles.join(', ')}`);
-    parts.push(`- **Dependencies:** ${mod.dependencies.length > 0 ? mod.dependencies.join(', ') : 'none'}`);
-    parts.push(`- **Dependents:** ${mod.dependents.length > 0 ? mod.dependents.join(', ') : 'none'}`);
-    parts.push('');
-
-    // Existing analysis
-    if (existingMarkdown) {
-        parts.push('## Existing Analysis');
-        parts.push('');
-        parts.push(existingMarkdown);
-        parts.push('');
-    }
-
-    // Architecture context
-    parts.push('## Project Architecture');
-    parts.push('');
-    parts.push(`Project: ${graph.project.name} (${graph.project.language})`);
-    for (const m of graph.components) {
-        const deps = m.dependencies.length > 0 ? ` → ${m.dependencies.join(', ')}` : '';
-        parts.push(`  - ${m.name}: ${m.purpose}${deps}`);
-    }
-    parts.push('');
-
-    // User question or default exploration
-    if (request.question) {
-        parts.push('## User Question');
-        parts.push('');
-        parts.push(request.question);
-    } else if (isDeep) {
-        parts.push('## Deep Analysis Task');
-        parts.push('');
-        parts.push('Provide a comprehensive deep-dive analysis covering:');
-        parts.push('1. Internal architecture and design patterns');
-        parts.push('2. Key algorithms and data structures');
-        parts.push('3. Error handling strategies');
-        parts.push('4. Performance characteristics and potential bottlenecks');
-        parts.push('5. Integration points with other components');
-        parts.push('6. Potential improvements and technical debt');
-    } else {
-        parts.push('## Analysis Task');
-        parts.push('');
-        parts.push('Provide a focused analysis covering the most important aspects of this component,');
-        parts.push('including architecture, key patterns, and how it integrates with the rest of the system.');
-
-    }
-
-    return parts.join('\n');
 }
 
 
