@@ -380,7 +380,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         const body = JSON.parse(res.body);
 
         // Verify the task appears in the queue
-        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
@@ -438,7 +438,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(res.status).toBe(201);
         const body = JSON.parse(res.body);
 
-        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
@@ -459,7 +459,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(res.status).toBe(201);
         const body = JSON.parse(res.body);
 
-        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
@@ -482,7 +482,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(res.status).toBe(201);
         const body = JSON.parse(res.body);
 
-        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
@@ -503,7 +503,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(res.status).toBe(201);
         const body = JSON.parse(res.body);
 
-        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);
@@ -521,7 +521,7 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(res.status).toBe(201);
         const body = JSON.parse(res.body);
 
-        const queueRes = await request(`${srv.url}/api/queue`);
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
         const queueBody = JSON.parse(queueRes.body);
         const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
         const task = allTasks.find((t: any) => t.id === body.taskId);

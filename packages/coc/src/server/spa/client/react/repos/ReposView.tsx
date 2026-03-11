@@ -102,12 +102,15 @@ export function ReposView() {
                 return;
             }
 
+            // Hide virtual workspaces (e.g. global workspace) from repos grid
+            const visibleWorkspaces = workspaces.filter((ws: any) => !ws.virtual);
+
             // Update global workspace list
             dispatch({ type: 'WORKSPACES_LOADED', workspaces });
 
             // Phase 1: Fetch workflows/tasks/processes (fast) in parallel — skip git-info
             const enriched: RepoData[] = await Promise.all(
-                workspaces.map(async (ws: any) => {
+                visibleWorkspaces.map(async (ws: any) => {
                     const [pipelinesRes, tasksRes] = await Promise.all([
                         fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/workflows`).catch(() => null),
                         fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/tasks`).catch(() => null),

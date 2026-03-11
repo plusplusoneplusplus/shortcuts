@@ -142,7 +142,7 @@ describe('Admin Handler', () => {
 
             const body = JSON.parse(res.body);
             expect(body.deletedProcesses).toBe(1);
-            expect(body.deletedWorkspaces).toBe(0);
+            expect(body.deletedWorkspaces).toBe(1); // includes auto-registered global workspace
             expect(body.deletedWikis).toBe(0);
             expect(body.errors).toEqual([]);
         });
@@ -213,7 +213,7 @@ describe('Admin Handler', () => {
             expect(wipeRes.status).toBe(200);
             const result = JSON.parse(wipeRes.body);
             expect(result.deletedProcesses).toBe(1);
-            expect(result.deletedWorkspaces).toBe(1);
+            expect(result.deletedWorkspaces).toBe(2); // ws1 + auto-registered global workspace
             expect(result.errors).toEqual([]);
 
             // Verify data is gone
@@ -344,7 +344,7 @@ describe('Admin Handler', () => {
             expect(typeof body.exportedAt).toBe('string');
             expect(typeof body.metadata).toBe('object');
             expect(body.metadata.processCount).toBe(0);
-            expect(body.metadata.workspaceCount).toBe(0);
+            expect(body.metadata.workspaceCount).toBe(1); // auto-registered global workspace
             expect(Array.isArray(body.processes)).toBe(true);
             expect(Array.isArray(body.workspaces)).toBe(true);
             expect(Array.isArray(body.wikis)).toBe(true);

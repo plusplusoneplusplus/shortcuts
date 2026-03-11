@@ -343,7 +343,7 @@ export function buildContextPrompt(turns: ConversationTurn[]): string {
     );
 }
 
-export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore): void {
+export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore, globalWorkspaceRootPath?: string): void {
 
     // Track global pause state so newly-created bridges inherit it
     let globalPaused = false;
@@ -371,10 +371,8 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
      * Enqueue a validated task input via the bridge, resolving rootPath from payload.
      */
     async function enqueueViaBridge(input: CreateTaskInput): Promise<string> {
-        const rootPath = await resolveRootPath(input.payload) || process.cwd();
-        if (rootPath === process.cwd() && !(input.payload as any)?.workingDirectory) {
-            process.stderr.write(`[Queue] warn: no workingDirectory or workspaceId — falling back to cwd\n`);
-        }
+        const fallback = globalWorkspaceRootPath ?? process.cwd();
+        const rootPath = await resolveRootPath(input.payload) || fallback;
         bridge.getOrCreateBridge(rootPath); // ensure executor bridge exists
         const queueManager = bridge.registry.getQueueForRepo(rootPath);
         // Auto-pause newly created managers if global pause is active
@@ -541,13 +539,11 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                     stats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false };
                 }
             } else {
-                queued = [];
-                running = [];
-                for (const m of bridge.registry.getAllQueues().values()) {
-                    queued.push(...m.getQueueItems().map(serializeQueueItem));
-                    running.push(...m.getRunning().map(serializeTask));
-                }
-                stats = getAggregateStats();
+                const globalPath = globalWorkspaceRootPath ?? process.cwd();
+                const globalMgr = bridge.registry.getQueueForRepo(globalPath);
+                queued = globalMgr.getQueueItems().map(serializeQueueItem);
+                running = globalMgr.getRunning().map(serializeTask);
+                stats = globalMgr.getStats();
             }
 
             if (typeFilter) {
@@ -753,10 +749,9 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                     ? mgr.getHistory().map(serializeTask)
                     : [];
             } else {
-                history = [];
-                for (const m of bridge.registry.getAllQueues().values()) {
-                    history.push(...m.getHistory().map(serializeTask));
-                }
+                const globalPath = globalWorkspaceRootPath ?? process.cwd();
+                const globalMgr = bridge.registry.getQueueForRepo(globalPath);
+                history = globalMgr.getHistory().map(serializeTask);
             }
 
             if (typeFilter) {
@@ -782,9 +777,9 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
                     const mgr = await getManagerByRepoIdentifier(repoId);
                     if (mgr) collectActive(mgr);
                 } else {
-                    for (const m of bridge.registry.getAllQueues().values()) {
-                        collectActive(m);
-                    }
+                    const globalPath = globalWorkspaceRootPath ?? process.cwd();
+                    const globalMgr = bridge.registry.getQueueForRepo(globalPath);
+                    collectActive(globalMgr);
                 }
                 // Sort combined list by createdAt descending
                 history.sort((a, b) => {

@@ -177,6 +177,10 @@ describe('Per-Repo Queue Integration', () => {
             const repoA = '/Users/test/repo-a';
             const repoB = '/Users/test/repo-b';
 
+            // Register workspaces so we can query by repoId
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-enq-a', name: 'ws-enq-a', rootPath: repoA });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-enq-b', name: 'ws-enq-b', rootPath: repoB });
+
             // Pause to prevent auto-execution
             await postJSON(`${baseUrl}/api/queue/pause`, {});
 
@@ -196,16 +200,14 @@ describe('Per-Repo Queue Integration', () => {
             const bodyB1 = JSON.parse(taskB1.body);
             expect(bodyB1.task.payload?.workingDirectory).toBe(repoB);
 
-            // List all tasks and verify repo assignments
-            const list = await request(`${baseUrl}/api/queue`);
-            expect(list.status).toBe(200);
-            const allTasks = JSON.parse(list.body);
+            // List tasks per repo and verify counts
+            const listA = await request(`${baseUrl}/api/queue?repoId=ws-enq-a`);
+            const tasksA = JSON.parse(listA.body);
+            const repoATasks = [...tasksA.queued, ...tasksA.running];
 
-            // Get queued + running tasks
-            const tasks = [...allTasks.queued, ...allTasks.running];
-
-            const repoATasks = tasks.filter((t: any) => t.payload?.workingDirectory === repoA);
-            const repoBTasks = tasks.filter((t: any) => t.payload?.workingDirectory === repoB);
+            const listB = await request(`${baseUrl}/api/queue?repoId=ws-enq-b`);
+            const tasksB = JSON.parse(listB.body);
+            const repoBTasks = [...tasksB.queued, ...tasksB.running];
 
             expect(repoATasks.length).toBe(2);
             expect(repoBTasks.length).toBe(1);
@@ -229,6 +231,11 @@ describe('Per-Repo Queue Integration', () => {
         });
 
         it('should list tasks from multiple repos in queue listing', async () => {
+            // Register workspaces
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-list-a', name: 'ws-list-a', rootPath: '/repo-a' });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-list-b', name: 'ws-list-b', rootPath: '/repo-b' });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-list-c', name: 'ws-list-c', rootPath: '/repo-c' });
+
             // Pause to prevent auto-execution
             await postJSON(`${baseUrl}/api/queue/pause`, {});
 
@@ -238,28 +245,18 @@ describe('Per-Repo Queue Integration', () => {
             await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-b', { displayName: 'B1' }));
             await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-c', { displayName: 'C1' }));
 
-            const list = await request(`${baseUrl}/api/queue`);
-            expect(list.status).toBe(200);
-            const body = JSON.parse(list.body);
+            // Query each repo's queue and verify task counts
+            const listA = await request(`${baseUrl}/api/queue?repoId=ws-list-a`);
+            const bodyA = JSON.parse(listA.body);
+            expect([...bodyA.queued, ...bodyA.running].length).toBe(2);
 
-            const tasks = [...body.queued, ...body.running];
+            const listB = await request(`${baseUrl}/api/queue?repoId=ws-list-b`);
+            const bodyB = JSON.parse(listB.body);
+            expect([...bodyB.queued, ...bodyB.running].length).toBe(1);
 
-            // Group by payload.workingDirectory
-            const byRepo = new Map<string, any[]>();
-            for (const task of tasks) {
-                const repo = task.payload?.workingDirectory || '__none__';
-                if (!byRepo.has(repo)) { byRepo.set(repo, []); }
-                byRepo.get(repo)!.push(task);
-            }
-
-            // Verify working directories present
-            const repoIds = Array.from(byRepo.keys()).sort();
-            expect(repoIds).toEqual(['/repo-a', '/repo-b', '/repo-c']);
-
-            // Verify task counts
-            expect(byRepo.get('/repo-a')!.length).toBe(2);
-            expect(byRepo.get('/repo-b')!.length).toBe(1);
-            expect(byRepo.get('/repo-c')!.length).toBe(1);
+            const listC = await request(`${baseUrl}/api/queue?repoId=ws-list-c`);
+            const bodyC = JSON.parse(listC.body);
+            expect([...bodyC.queued, ...bodyC.running].length).toBe(1);
 
             // Resume for cleanup
             await postJSON(`${baseUrl}/api/queue/resume`, {});
@@ -337,22 +334,28 @@ describe('Per-Repo Queue Integration', () => {
         });
 
         it('should clear all tasks from all repos', async () => {
+            // Register workspaces
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-clear-a', name: 'ws-clear-a', rootPath: '/repo-clear-a' });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-clear-b', name: 'ws-clear-b', rootPath: '/repo-clear-b' });
+
             await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-clear-a'));
             await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-clear-a'));
             await postJSON(`${baseUrl}/api/queue`, makeTask('/repo-clear-b'));
 
-            // Verify tasks exist
-            const beforeList = await request(`${baseUrl}/api/queue`);
-            const beforeBody = JSON.parse(beforeList.body);
-            expect(beforeBody.queued.length + beforeBody.running.length).toBeGreaterThanOrEqual(2);
+            // Verify tasks exist per repo
+            const beforeA = await request(`${baseUrl}/api/queue?repoId=ws-clear-a`);
+            const beforeB = await request(`${baseUrl}/api/queue?repoId=ws-clear-b`);
+            const beforeABody = JSON.parse(beforeA.body);
+            const beforeBBody = JSON.parse(beforeB.body);
+            expect(beforeABody.queued.length + beforeABody.running.length + beforeBBody.queued.length + beforeBBody.running.length).toBeGreaterThanOrEqual(2);
 
             // Clear all queued tasks
             const clearRes = await request(`${baseUrl}/api/queue`, { method: 'DELETE' });
             expect(clearRes.status).toBe(200);
 
             // Verify queue is empty (running tasks may still be there)
-            const afterList = await request(`${baseUrl}/api/queue`);
-            const afterBody = JSON.parse(afterList.body);
+            const afterA = await request(`${baseUrl}/api/queue?repoId=ws-clear-a`);
+            const afterBody = JSON.parse(afterA.body);
             expect(afterBody.queued.length).toBe(0);
         });
 
@@ -409,11 +412,14 @@ describe('Per-Repo Queue Integration', () => {
             }));
 
             // Verify tasks are queued
-            const beforeList = await request(`${baseUrl}/api/queue`);
-            const beforeBody = JSON.parse(beforeList.body);
-            const beforeTasks = [...beforeBody.queued, ...beforeBody.running];
-            expect(beforeTasks.filter((t: any) => t.payload?.workingDirectory === repoA).length).toBe(1);
-            expect(beforeTasks.filter((t: any) => t.payload?.workingDirectory === repoB).length).toBe(1);
+            const beforeListA = await request(`${baseUrl}/api/queue?repoId=ws-persist-a`);
+            const beforeListB = await request(`${baseUrl}/api/queue?repoId=ws-persist-b`);
+            const beforeBodyA = JSON.parse(beforeListA.body);
+            const beforeBodyB = JSON.parse(beforeListB.body);
+            const beforeTasksA = [...beforeBodyA.queued, ...beforeBodyA.running];
+            const beforeTasksB = [...beforeBodyB.queued, ...beforeBodyB.running];
+            expect(beforeTasksA.filter((t: any) => t.payload?.workingDirectory === repoA).length).toBe(1);
+            expect(beforeTasksB.filter((t: any) => t.payload?.workingDirectory === repoB).length).toBe(1);
 
             // Wait for persistence debounce to flush (300ms + buffer)
             await waitFor(600);
@@ -443,12 +449,16 @@ describe('Per-Repo Queue Integration', () => {
             // Wait for server initialization
             await waitFor(200);
 
-            // Verify tasks are restored - check queue listing
-            const list = await request(`${baseUrl}/api/queue`);
-            expect(list.status).toBe(200);
-            const body = JSON.parse(list.body);
+            // Verify tasks are restored - check queue listing per repo
+            const listA = await request(`${baseUrl}/api/queue?repoId=ws-persist-a`);
+            expect(listA.status).toBe(200);
+            const bodyA = JSON.parse(listA.body);
 
-            const allTasks = [...body.queued, ...body.running];
+            const listB = await request(`${baseUrl}/api/queue?repoId=ws-persist-b`);
+            expect(listB.status).toBe(200);
+            const bodyB = JSON.parse(listB.body);
+
+            const allTasks = [...bodyA.queued, ...bodyA.running, ...bodyB.queued, ...bodyB.running];
 
             // Filter by our specific workingDirectories
             const repoATasks = allTasks.filter((t: any) => t.payload?.workingDirectory === repoA);
@@ -766,6 +776,10 @@ describe('Per-Repo Queue Integration', () => {
             const repoA = '/repo-parallel-a';
             const repoB = '/repo-parallel-b';
 
+            // Register workspaces so we can query per-repo
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-par-a', name: 'ws-par-a', rootPath: repoA });
+            await postJSON(`${baseUrl}/api/workspaces`, { id: 'ws-par-b', name: 'ws-par-b', rootPath: repoB });
+
             // Enqueue one task per repo — they should execute in parallel
             const taskA = await postJSON(`${baseUrl}/api/queue`, makeTask(repoA, { displayName: 'Parallel A' }));
             const taskB = await postJSON(`${baseUrl}/api/queue`, makeTask(repoB, { displayName: 'Parallel B' }));
@@ -780,9 +794,11 @@ describe('Per-Repo Queue Integration', () => {
             await waitFor(500);
 
             // Both tasks should be running or completed — neither should block the other
-            const list = await request(`${baseUrl}/api/queue`);
-            const body = JSON.parse(list.body);
-            const allActive = [...body.queued, ...body.running];
+            const listA = await request(`${baseUrl}/api/queue?repoId=ws-par-a`);
+            const listB = await request(`${baseUrl}/api/queue?repoId=ws-par-b`);
+            const bodyA = JSON.parse(listA.body);
+            const bodyB = JSON.parse(listB.body);
+            const allActive = [...bodyA.queued, ...bodyA.running, ...bodyB.queued, ...bodyB.running];
 
             // At this point both tasks should have started (running or completed)
             // Since they are on different repos, neither should be queued waiting for the other
@@ -794,11 +810,13 @@ describe('Per-Repo Queue Integration', () => {
                 const bothQueued = taskAActive.status === 'queued' && taskBActive.status === 'queued';
                 expect(bothQueued).toBe(false);
             }
-            // If they completed very fast, check history
+            // If they completed very fast, check history per-repo
             if (!taskAActive || !taskBActive) {
-                const histRes = await request(`${baseUrl}/api/queue/history`);
-                const histBody = JSON.parse(histRes.body);
-                const histIds = histBody.history.map((t: any) => t.id);
+                const histResA = await request(`${baseUrl}/api/queue/history?repoId=ws-par-a`);
+                const histResB = await request(`${baseUrl}/api/queue/history?repoId=ws-par-b`);
+                const histIdsA = JSON.parse(histResA.body).history.map((t: any) => t.id);
+                const histIdsB = JSON.parse(histResB.body).history.map((t: any) => t.id);
+                const histIds = [...histIdsA, ...histIdsB];
                 if (!taskAActive) expect(histIds).toContain(taskAId);
                 if (!taskBActive) expect(histIds).toContain(taskBId);
             }
@@ -1041,7 +1059,7 @@ describe('Per-Repo Queue Integration', () => {
     // Scenario 18: Aggregate GET /api/queue
     // ------------------------------------------------------------------
     describe('aggregate GET /api/queue', () => {
-        it('should return tasks from all repos when no repoId filter', async () => {
+        it('should return only global workspace tasks when no repoId filter', async () => {
             const repoA = '/repo/aggregate-a';
             const repoB = '/repo/aggregate-b';
 
@@ -1055,14 +1073,9 @@ describe('Per-Repo Queue Integration', () => {
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
 
-            // All 3 tasks should appear in aggregate
-            expect(body.queued.length).toBe(3);
-            expect(body.stats.queued).toBe(3);
-
-            // Verify both repos' tasks present
-            const wdirs = body.queued.map((t: any) => t.payload?.workingDirectory);
-            expect(wdirs.filter((w: string) => w === repoA).length).toBe(1);
-            expect(wdirs.filter((w: string) => w === repoB).length).toBe(2);
+            // GET /api/queue (no repoId) now returns only the global workspace queue
+            expect(body.queued.length).toBe(0);
+            expect(body.stats.queued).toBe(0);
 
             await postJSON(`${baseUrl}/api/queue/resume`, {});
         });

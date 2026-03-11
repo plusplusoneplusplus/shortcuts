@@ -92,11 +92,12 @@ src/
 │   ├── websocket.ts      # WebSocket server - `ws` library, workspace-scoped event broadcasting
 │   ├── sse-handler.ts    # SSE streaming - Real-time process output via Server-Sent Events
 │   ├── types.ts          # Server types - ExecutionServer, Route, ServeCommandOptions
-│   ├── queue-handler.ts          # Queue management API — validates 3 task types (chat, run-workflow, run-script)
+│   ├── queue-handler.ts          # Queue management API — validates 3 task types (chat, run-workflow, run-script); no-repoId branch scopes to global workspace
 │   ├── queue-executor-bridge.ts  # Bridges queue to AI/workflow/script execution — unified chat dispatch with context-based routing
 │   ├── queue-persistence.ts      # Persistent queue state — per-workspace files under ~/.coc/queues/repo-<workspaceId>.json
 │   ├── multi-repo-executor-bridge.ts  # Multi-repo workflow execution — maintains repoId↔rootPath bidirectional maps
 │   ├── multi-repo-queue-persistence.ts # Per-repo queue persistence — uses workspace ID for file naming
+│   ├── global-workspace.ts       # Global workspace bootstrapper — creates ~/.coc/global-workspace/ and registers virtual workspace (GLOBAL_WORKSPACE_ID)
 │   ├── workflows-handler.ts      # Workflow CRUD and listing API
 │   ├── workflow-watcher.ts       # File watcher for workflow changes
 │   ├── tasks-handler.ts          # Task management API — task root at ~/.coc/repos/<workspaceId>/tasks/

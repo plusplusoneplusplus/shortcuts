@@ -166,24 +166,21 @@ describe('ProcessesView', () => {
     });
 
     // Test 8: fetchQueue filters out tasks with a repoId (repo-specific tasks)
-    it('filters out running and queued tasks that have a repoId', async () => {
+    it('passes through all tasks from server (server scopes to global workspace)', async () => {
         const { fetchApi } = await import('../../../src/server/spa/client/react/hooks/useApi');
         (fetchApi as ReturnType<typeof vi.fn>)
             .mockResolvedValueOnce({
                 running: [
-                    { id: 'r1', type: 'chat', repoId: 'repo-abc' },    // should be filtered
-                    { id: 'r2', type: 'chat' },                          // global — keep
+                    { id: 'r2', type: 'chat' },                          // global task
                 ],
                 queued: [
-                    { id: 'q1', type: 'chat', repoId: 'repo-abc' },    // should be filtered
-                    { id: 'q2', type: 'chat' },                          // global — keep
+                    { id: 'q2', type: 'chat' },                          // global task
                     { id: 'pm1', kind: 'pause-marker' },                 // pause-marker — always keep
                 ],
                 stats: {},
             })
             .mockResolvedValueOnce({ history: [
-                { id: 'h1', type: 'chat', repoId: 'repo-abc' },        // should be filtered
-                { id: 'h2', type: 'chat' },                              // global — keep
+                { id: 'h2', type: 'chat' },                              // global task
             ] });
 
         await act(async () => {
@@ -196,39 +193,33 @@ describe('ProcessesView', () => {
         expect(listPane.getAttribute('data-history-count')).toBe('1');
     });
 
-    // Test 9: WS context updates also filter out repo-specific tasks
-    it('WS context update: repo tasks are filtered from local state', async () => {
+    // Test 9: WS context updates pass through directly (no client-side filtering needed)
+    it('WS context update: all tasks pass through (server-scoped)', async () => {
         const { fetchApi } = await import('../../../src/server/spa/client/react/hooks/useApi');
-        // fetchQueue also runs on mount — provide the same mixed data so the filter is exercised
+        // fetchQueue also runs on mount
         (fetchApi as ReturnType<typeof vi.fn>)
             .mockResolvedValueOnce({
                 running: [
-                    { id: 'r1', type: 'chat', repoId: 'some-repo' },
                     { id: 'r2', type: 'chat' },
                 ],
                 queued: [
-                    { id: 'q1', type: 'chat', repoId: 'some-repo' },
                     { id: 'q2', type: 'chat' },
                 ],
                 stats: {},
             })
             .mockResolvedValueOnce({ history: [
-                { id: 'h1', type: 'chat', repoId: 'some-repo' },
                 { id: 'h2', type: 'chat' },
             ] });
 
         mockQueueState = {
             selectedTaskId: null,
             running: [
-                { id: 'r1', type: 'chat', repoId: 'some-repo' },
                 { id: 'r2', type: 'chat' },
             ],
             queued: [
-                { id: 'q1', type: 'chat', repoId: 'some-repo' },
                 { id: 'q2', type: 'chat' },
             ],
             history: [
-                { id: 'h1', type: 'chat', repoId: 'some-repo' },
                 { id: 'h2', type: 'chat' },
             ],
             stats: { isPaused: false },

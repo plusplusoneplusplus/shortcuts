@@ -86,8 +86,8 @@ function removeDirSafe(dir: string): void {
     }
 }
 
-/** Write a persistence file so the server loads a pre-existing task on startup. */
-function seedPersistence(dataDir: string, task: Record<string, unknown>): void {
+/** Write a persistence file so the server loads a pre-existing task on startup. Returns the repoId. */
+function seedPersistence(dataDir: string, task: Record<string, unknown>): string {
     const repoId = crypto.createHash('sha256')
         .update(path.resolve(process.cwd()))
         .digest('hex')
@@ -108,6 +108,7 @@ function seedPersistence(dataDir: string, task: Record<string, unknown>): void {
         JSON.stringify(state),
         'utf-8',
     );
+    return repoId;
 }
 
 // ============================================================================
@@ -233,8 +234,9 @@ describe('GET /api/queue/:id/images', () => {
     }
 
     /** Helper: get first queued task ID from the list endpoint */
-    async function getFirstQueuedTaskId(baseUrl: string): Promise<string> {
-        const res = await request(`${baseUrl}/api/queue`);
+    async function getFirstQueuedTaskId(baseUrl: string, repoId?: string): Promise<string> {
+        const qs = repoId ? `?repoId=${repoId}` : '';
+        const res = await request(`${baseUrl}/api/queue${qs}`);
         const body = JSON.parse(res.body);
         return body.queued[0].id;
     }
@@ -259,8 +261,10 @@ describe('GET /api/queue/:id/images', () => {
         });
 
         const srv = await startServer();
+        // Register workspace for cwd so we can query by workspace ID
+        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: process.cwd() });
         // Restored task gets a new ID; find it via the list endpoint
-        const taskId = await getFirstQueuedTaskId(srv.url);
+        const taskId = await getFirstQueuedTaskId(srv.url, 'ws-cwd');
 
         const imgRes = await request(`${srv.url}/api/queue/${taskId}/images`);
         expect(imgRes.status).toBe(200);
@@ -302,7 +306,8 @@ describe('GET /api/queue/:id/images', () => {
         });
 
         const srv = await startServer();
-        const taskId = await getFirstQueuedTaskId(srv.url);
+        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: process.cwd() });
+        const taskId = await getFirstQueuedTaskId(srv.url, 'ws-cwd');
 
         const imgRes = await request(`${srv.url}/api/queue/${taskId}/images`);
         expect(imgRes.status).toBe(200);
@@ -432,8 +437,10 @@ describe('serializeTask — image stripping', () => {
         });
 
         const srv = await startServer();
+        // Register workspace for cwd so we can query by workspace ID
+        await postJSON(`${srv.url}/api/workspaces`, { id: 'ws-cwd', name: 'cwd', rootPath: process.cwd() });
         // Get restored task ID from list
-        const listRes = await request(`${srv.url}/api/queue`);
+        const listRes = await request(`${srv.url}/api/queue?repoId=ws-cwd`);
         const taskId = JSON.parse(listRes.body).queued[0].id;
 
         const getRes = await request(`${srv.url}/api/queue/${taskId}`);

@@ -541,7 +541,7 @@ describe('Per-Repo Pause Integration', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        it('handles task without workingDirectory (defaults to process.cwd())', async () => {
+        it('handles task without workingDirectory (defaults to global workspace)', async () => {
             const server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir });
             const baseUrl = server.url;
 
@@ -556,15 +556,11 @@ describe('Per-Repo Pause Integration', () => {
                 }),
             });
 
-            // Pause the cwd-based repo
-            const cwdRepoId = 'ws-cwd';
-            await registerWorkspace(baseUrl, cwdRepoId, process.cwd());
-            await request(`${baseUrl}/api/queue/pause?repoId=${cwdRepoId}`, { method: 'POST' });
-
-            // Verify pause state is tracked for the cwd-based repo
+            // Task lands in global workspace; verify global workspace exists in repos
             const reposRes = await request(`${baseUrl}/api/queue/repos`);
             const repos = JSON.parse(reposRes.body).repos;
-            expect(repos.find((r: any) => r.repoId === cwdRepoId)?.isPaused).toBe(true);
+            const globalRepo = repos.find((r: any) => r.repoId === 'global-workspace-00');
+            expect(globalRepo).toBeDefined();
 
             await server.close();
             fs.rmSync(tmpDir, { recursive: true, force: true });

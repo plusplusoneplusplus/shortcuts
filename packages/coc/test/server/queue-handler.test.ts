@@ -748,17 +748,22 @@ describe('Queue Handler', () => {
             expect(body.running).toEqual([]);
         });
 
-        it('should treat empty repoId parameter as no filter', async () => {
+        it('should treat empty repoId parameter as global workspace scope', async () => {
             const srv = await startServer();
 
             await postJSON(`${srv.url}/api/queue/pause`, {});
+            // Tasks with explicit workingDirectory go to their repo queue, not global
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'A', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/alpha' } }));
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'B', payload: { data: { prompt: 'test' }, workingDirectory: '/repo/beta' } }));
+            // Task without workingDirectory lands in the global workspace queue
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Global' }));
 
             const res = await request(`${srv.url}/api/queue?repoId=`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.queued).toHaveLength(2);
+            // Only the global task (no workingDirectory) should appear
+            expect(body.queued).toHaveLength(1);
+            expect(body.queued[0].displayName).toBe('Global');
         });
 
         it('should return per-repo stats when filtering by repoId', async () => {
@@ -1514,6 +1519,7 @@ describe('Queue Handler', () => {
             const repoRoot = path.resolve('/test/chat-status-sync');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
@@ -1540,7 +1546,7 @@ describe('Queue Handler', () => {
             // Start server after pre-populating — it restores the history with processId
             const srv = await startServer();
 
-            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             const chatTask = body.history.find((t: any) => t.id === 'task-chat-running');
@@ -1746,6 +1752,7 @@ describe('Queue Handler', () => {
             const repoRoot = path.resolve('/test/last-activity-turns');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
@@ -1770,7 +1777,7 @@ describe('Queue Handler', () => {
             }));
 
             const srv = await startServer();
-            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             const task = body.history.find((t: any) => t.id === 'task-activity-1');
@@ -1815,6 +1822,8 @@ describe('Queue Handler', () => {
             const repoRoot = path.resolve('/test/last-activity-no-ts');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const regStore = new FileProcessStore({ dataDir });
+            await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
@@ -1839,7 +1848,7 @@ describe('Queue Handler', () => {
             }));
 
             const srv = await startServer();
-            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             const task = body.history.find((t: any) => t.id === 'task-no-ts');
@@ -1864,6 +1873,7 @@ describe('Queue Handler', () => {
             const repoRoot = path.resolve('/test/last-activity-empty');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
@@ -1887,7 +1897,7 @@ describe('Queue Handler', () => {
             }));
 
             const srv = await startServer();
-            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             const task = body.history.find((t: any) => t.id === 'task-empty-turns');
@@ -1930,6 +1940,7 @@ describe('Queue Handler', () => {
             const repoRoot = path.resolve('/test/last-activity-sort');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
@@ -1968,7 +1979,7 @@ describe('Queue Handler', () => {
             }));
 
             const srv = await startServer();
-            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.history).toHaveLength(2);
@@ -2003,6 +2014,8 @@ describe('Queue Handler', () => {
             const repoRoot = path.resolve('/test/title-present');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const regStore = new FileProcessStore({ dataDir });
+            await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
@@ -2026,7 +2039,7 @@ describe('Queue Handler', () => {
             }));
 
             const srv = await startServer();
-            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             const task = body.history.find((t: any) => t.id === 'task-titled');
@@ -2057,6 +2070,8 @@ describe('Queue Handler', () => {
             const repoRoot = path.resolve('/test/title-absent');
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
+            const regStore = new FileProcessStore({ dataDir });
+            await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
             const queuesDir = path.join(dataDir, 'queues');
             fs.mkdirSync(queuesDir, { recursive: true });
             fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
@@ -2080,7 +2095,7 @@ describe('Queue Handler', () => {
             }));
 
             const srv = await startServer();
-            const res = await request(`${srv.url}/api/queue/history?type=chat`);
+            const res = await request(`${srv.url}/api/queue/history?type=chat&repoId=${repoId}`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             const task = body.history.find((t: any) => t.id === 'task-no-title');
@@ -2530,6 +2545,55 @@ describe('Queue Handler', () => {
             const srv = await startServer();
             const res = await request(`${srv.url}/api/queue/pause-marker/no-such-id`, { method: 'DELETE' });
             expect(res.status).toBe(404);
+        });
+    });
+
+    // ========================================================================
+    // Global Workspace Scoping
+    // ========================================================================
+
+    describe('Global workspace scoping', () => {
+        it('task enqueued without workingDirectory lands in global workspace queue', async () => {
+            const srv = await startServer();
+
+            // Enqueue a task with no workingDirectory or workspaceId
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask());
+            expect(res.status).toBe(201);
+
+            // GET /api/queue (no repoId) should return it
+            const listRes = await request(`${srv.url}/api/queue`);
+            const list = JSON.parse(listRes.body);
+            const allTasks = [...list.queued, ...list.running];
+            expect(allTasks.length).toBeGreaterThanOrEqual(1);
+        });
+
+        it('GET /api/queue (no repoId) returns only global workspace tasks', async () => {
+            const srv = await startServer();
+
+            // Register a non-global workspace and enqueue a task to it
+            const store = new FileProcessStore({ dataDir });
+            const repoDir = path.join(dataDir, 'test-repo');
+            fs.mkdirSync(repoDir, { recursive: true });
+            await store.registerWorkspace({ id: 'repo-1', name: 'Test Repo', rootPath: repoDir });
+
+            // Enqueue a task to the specific repo
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'repo task', workingDirectory: repoDir },
+            }));
+
+            // Enqueue a global task (no workingDirectory)
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                displayName: 'Global task',
+            }));
+
+            // GET /api/queue (no repoId) should NOT include the repo-specific task
+            const listRes = await request(`${srv.url}/api/queue`);
+            const list = JSON.parse(listRes.body);
+            const allTasks = [...list.queued, ...list.running];
+            const repoTasks = allTasks.filter((t: any) =>
+                t.payload?.workingDirectory === repoDir
+            );
+            expect(repoTasks).toHaveLength(0);
         });
     });
 });

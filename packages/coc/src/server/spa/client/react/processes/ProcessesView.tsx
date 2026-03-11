@@ -2,9 +2,8 @@
  * ProcessesView — global queue activity view for the Processes tab.
  *
  * Uses the same ActivityListPane + ActivityDetailPane UI as the per-repo
- * Activity tab, but fetches the global queue (no repoId filter) and then
- * filters out any tasks that belong to a specific repository (task.repoId set),
- * showing only truly global tasks not associated with any repo.
+ * Activity tab. Fetches the global queue (no repoId param) which the server
+ * scopes to the global workspace queue directly — no client-side filtering needed.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -36,14 +35,14 @@ export function ProcessesView() {
     const fetchQueue = useCallback(async () => {
         try {
             const data = await fetchApi('/queue');
-            const nextRunning = (data?.running || []).filter((t: any) => !t.repoId);
-            const nextQueued = (data?.queued || []).filter((t: any) => t.kind === 'pause-marker' || !t.repoId);
+            const nextRunning = data?.running || [];
+            const nextQueued = data?.queued || [];
             const nextStats = data?.stats || undefined;
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
             const historyData = await fetchApi('/queue/history').catch(() => null);
-            const nextHistory = (historyData?.history || []).filter((t: any) => !t.repoId);
+            const nextHistory = historyData?.history || [];
             setHistory(nextHistory);
 
             // Sync global queue context
@@ -64,12 +63,12 @@ export function ProcessesView() {
         fetchQueue();
     }, [fetchQueue]);
 
-    // Apply global WS updates — filter to global-only tasks (no repoId)
+    // Apply global WS updates — scoped to global workspace queue by the server
     useEffect(() => {
         if (!queueState.queueInitialized) return;
-        setRunning(queueState.running.filter((t: any) => !t.repoId));
-        setQueued(queueState.queued.filter((t: any) => t.kind === 'pause-marker' || !t.repoId));
-        setHistory(queueState.history.filter((t: any) => !t.repoId));
+        setRunning(queueState.running);
+        setQueued(queueState.queued);
+        setHistory(queueState.history);
         if (queueState.stats?.isPaused !== undefined) {
             setIsPaused(queueState.stats.isPaused);
         }

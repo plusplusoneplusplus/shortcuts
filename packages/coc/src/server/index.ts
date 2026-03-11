@@ -43,6 +43,7 @@ import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { defaultIsExclusive } from './queue-executor-bridge';
+import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { SchedulePersistence } from './schedule-persistence';
 import { ScheduleManager } from './schedule-manager';
 import { registerScheduleRoutes } from './schedule-handler';
@@ -224,8 +225,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerRepoRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);
+
+    // Bootstrap global workspace before queue routes so its rootPath is available
+    const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
+    bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
+
     // Queue routes now receive the bridge directly for per-repo routing
-    registerQueueRoutes(routes, bridge, store);
+    registerQueueRoutes(routes, bridge, store, globalWorkspace.rootPath);
     registerTaskRoutes(routes, store, dataDir);
     registerTaskWriteRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
@@ -598,6 +604,7 @@ export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from '@plusplusoneplusplus/coc-server';
 export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 export { registerQueueRoutes } from './queue-handler';
+export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './global-workspace';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 export { registerTaskGenerationRoutes } from './task-generation-handler';
 export { handleProcessStream } from '@plusplusoneplusplus/coc-server';

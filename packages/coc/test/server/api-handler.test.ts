@@ -344,8 +344,9 @@ describe('API Handler', () => {
             const listRes = await request(`${srv.url}/api/workspaces`);
             expect(listRes.status).toBe(200);
             const listed = JSON.parse(listRes.body);
-            expect(listed.workspaces).toHaveLength(1);
-            expect(listed.workspaces[0].id).toBe('ws-1');
+            const nonVirtual = listed.workspaces.filter((ws: any) => !ws.virtual);
+            expect(nonVirtual).toHaveLength(1);
+            expect(nonVirtual[0].id).toBe('ws-1');
         });
 
         it('should return 400 when required fields are missing', async () => {
@@ -1099,9 +1100,10 @@ describe('API Handler', () => {
             expect(body.byStatus.cancelled).toBe(1);
             expect(body.byStatus.queued).toBe(0);
 
-            expect(body.byWorkspace).toHaveLength(2);
-            const ws1 = body.byWorkspace.find((w: any) => w.workspaceId === 'ws-1');
-            const ws2 = body.byWorkspace.find((w: any) => w.workspaceId === 'ws-2');
+            const nonGlobalWorkspaces = body.byWorkspace.filter((w: any) => w.workspaceId !== 'global-workspace-00');
+            expect(nonGlobalWorkspaces).toHaveLength(2);
+            const ws1 = nonGlobalWorkspaces.find((w: any) => w.workspaceId === 'ws-1');
+            const ws2 = nonGlobalWorkspaces.find((w: any) => w.workspaceId === 'ws-2');
             expect(ws1.count).toBe(3);
             expect(ws1.name).toBe('frontend');
             expect(ws2.count).toBe(2);
@@ -1115,7 +1117,8 @@ describe('API Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.totalProcesses).toBe(0);
             expect(body.byStatus.running).toBe(0);
-            expect(body.byWorkspace).toEqual([]);
+            const nonGlobalWorkspaces = body.byWorkspace.filter((w: any) => w.workspaceId !== 'global-workspace-00');
+            expect(nonGlobalWorkspaces).toEqual([]);
         });
     });
 
