@@ -84,6 +84,13 @@ export interface RouterOptions {
  *   GET /wiki/:id/static/* → static files from wiki dir
  *   GET /*           → SPA fallback (client-side routing)
  */
+/** Set standard CORS headers on a response. */
+function setCorsHeaders(res: http.ServerResponse): void {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
@@ -164,28 +171,21 @@ export function createRequestHandler(
             const fileSuffix = wikiStaticMatch[2];
             const wikiDir = getWikiDir?.(wikiId);
             if (!wikiDir) {
-                // CORS headers for consistency
-                res.setHeader('Access-Control-Allow-Origin', '*');
-                res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-                res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+                setCorsHeaders(res);
                 send404(res, `Wiki not found: ${wikiId}`);
                 return;
             }
             const resolved = path.resolve(wikiDir, fileSuffix);
             // Security: prevent directory traversal
             if (!isWithinDirectory(resolved, wikiDir)) {
-                res.setHeader('Access-Control-Allow-Origin', '*');
-                res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-                res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+                setCorsHeaders(res);
                 send404(res, 'Invalid path');
                 return;
             }
             if (serveStaticFile(resolved, res)) {
                 return;
             }
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            setCorsHeaders(res);
             send404(res, `File not found: ${fileSuffix}`);
             return;
         }
