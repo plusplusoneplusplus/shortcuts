@@ -426,7 +426,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
         <div
             ref={popoverRef}
             data-testid="tool-result-popover"
-            className="fixed z-50 w-[600px] max-w-[calc(100vw-16px)] max-h-[300px] overflow-y-auto rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
+            className="fixed z-50 w-[900px] max-w-[calc(100vw-16px)] max-h-[300px] overflow-y-auto rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
             style={pos ? { top: pos.top, left: pos.left } : { top: anchorRect.bottom + 4, left: anchorRect.left, visibility: 'hidden' }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
