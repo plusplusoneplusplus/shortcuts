@@ -25,7 +25,10 @@ describe('useRecentSkills', () => {
 
         await waitFor(() => {
             expect(result.current.loaded).toBe(true);
-            expect(result.current.recentItems).toEqual(items);
+            expect(result.current.recentItems).toEqual([
+                { type: 'skill', name: 'review', timestamp: 1000 },
+                { type: 'skill', name: 'impl', description: 'Implement changes', timestamp: 900 },
+            ]);
         });
     });
 

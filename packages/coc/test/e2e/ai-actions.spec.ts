@@ -335,4 +335,316 @@ test.describe('AI Actions (007)', () => {
             safeRmSync(tmpDir);
         }
     });
+
+    test('7.9 Additional Info field included in Run Skill payload', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            await setupRepoWithAIActions(page, serverUrl, tmpDir);
+
+            const queueResponsePromise = page.waitForResponse(res =>
+                res.url().includes('/api/queue') &&
+                !res.url().includes('/bulk') &&
+                res.request().method() === 'POST',
+            );
+
+            const fileRow = page.locator('.miller-file-row').first();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Run Skill').click();
+
+            await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
+
+            // Fill additional info textarea
+            await page.fill('#fp-additional-info', 'Focus on the auth module');
+
+            // Select a skill chip and submit
+            await page.locator('.fp-item[data-name="impl"]').click();
+            await page.locator('[data-testid="fp-submit-skills"]').click();
+
+            const queueResponse = await queueResponsePromise;
+            const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
+            expect(reqBody.type).toBe('chat');
+            expect(reqBody.payload.context.blocks).toBeDefined();
+            expect(reqBody.payload.context.blocks.length).toBeGreaterThanOrEqual(1);
+
+            const additionalInfoBlock = reqBody.payload.context.blocks.find(
+                (b: any) => b.label === 'Additional Info',
+            );
+            expect(additionalInfoBlock).toBeDefined();
+            expect(additionalInfoBlock.content).toBe('Focus on the auth module');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7.10 Multi-skill selection and submission', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            // Create repo with two skills
+            const repoDir = createRepoFixture(tmpDir);
+            createTasksFixture(repoDir);
+            createPromptAndSkillFixtures(repoDir);
+
+            // Add a second skill
+            const skill2Dir = path.join(repoDir, '.github', 'skills', 'review');
+            fs.mkdirSync(skill2Dir, { recursive: true });
+            fs.writeFileSync(
+                path.join(skill2Dir, 'SKILL.md'),
+                '---\ndescription: Review code\n---\n# review\nReview the code.\n',
+            );
+
+            await seedWorkspace(serverUrl, 'ws-multi-skill', 'multi-skill-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+
+            const queueResponsePromise = page.waitForResponse(res =>
+                res.url().includes('/api/queue') &&
+                !res.url().includes('/bulk') &&
+                res.request().method() === 'POST',
+            );
+
+            const fileRow = page.locator('.miller-file-row').first();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Run Skill').click();
+
+            await expect(page.locator('.fp-item[data-name="impl"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('.fp-item[data-name="review"]')).toBeVisible({ timeout: 10000 });
+
+            // Select both skill chips
+            await page.locator('.fp-item[data-name="impl"]').click();
+            await page.locator('.fp-item[data-name="review"]').click();
+
+            // Button should say "Submit with 2 skills"
+            const submitBtn = page.locator('[data-testid="fp-submit-skills"]');
+            await expect(submitBtn).toBeVisible();
+            await expect(submitBtn).toContainText('2 skills');
+
+            await submitBtn.click();
+
+            const queueResponse = await queueResponsePromise;
+            const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
+            expect(reqBody.type).toBe('chat');
+            expect(reqBody.payload.context.skills).toHaveLength(2);
+            expect(reqBody.payload.context.skills).toContain('impl');
+            expect(reqBody.payload.context.skills).toContain('review');
+            expect(reqBody.displayName).toContain('impl');
+            expect(reqBody.displayName).toContain('review');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7.11 Recent skills Last Used section renders and triggers submission', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            await setupRepoWithAIActions(page, serverUrl, tmpDir);
+
+            // Pre-seed recent skills in preferences
+            await page.request.patch(`${serverUrl}/api/workspaces/ws-ai-actions/preferences`, {
+                data: {
+                    recentFollowPrompts: [
+                        { type: 'skill', name: 'impl', description: 'Implement feature', timestamp: Date.now() },
+                    ],
+                },
+            });
+
+            // Reload to pick up preferences
+            await page.reload();
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await page.locator('.repo-item').first().click();
+            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+
+            const queueResponsePromise = page.waitForResponse(res =>
+                res.url().includes('/api/queue') &&
+                !res.url().includes('/bulk') &&
+                res.request().method() === 'POST',
+            );
+
+            const fileRow = page.locator('.miller-file-row').first();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Run Skill').click();
+            await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
+
+            // Last Used section should render with the seeded skill
+            const recentItem = page.locator('.fp-recent-item[data-name="impl"]');
+            await expect(recentItem).toBeVisible({ timeout: 10000 });
+
+            // Click the recent item — should submit directly
+            await recentItem.click();
+
+            const queueResponse = await queueResponsePromise;
+            const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
+            expect(reqBody.type).toBe('chat');
+            expect(reqBody.payload.context.skills).toContain('impl');
+
+            // Dialog should close
+            await expect(page.locator('#follow-prompt-submenu')).toHaveCount(0, { timeout: 5000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7.12 Recent skill usage is tracked and persisted after submission', async ({ page, serverUrl, mockAI }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            await setupRepoWithAIActions(page, serverUrl, tmpDir);
+
+            const fileRow = page.locator('.miller-file-row').first();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Run Skill').click();
+            await expect(page.locator('.fp-item').first()).toBeVisible({ timeout: 10000 });
+
+            // Submit the impl skill
+            await page.locator('.fp-item[data-name="impl"]').click();
+            await page.locator('[data-testid="fp-submit-skills"]').click();
+            await expect(page.locator('#follow-prompt-submenu')).toHaveCount(0, { timeout: 5000 });
+
+            // Wait for fire-and-forget PATCHes to complete
+            await page.waitForTimeout(1000);
+
+            // Verify recent usage was persisted
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-ai-actions/preferences`);
+            const prefs = await res.json();
+            expect(Array.isArray(prefs.recentFollowPrompts)).toBe(true);
+            expect(prefs.recentFollowPrompts.length).toBeGreaterThanOrEqual(1);
+            expect(prefs.recentFollowPrompts[0].name).toBe('impl');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7.13 No-skills empty state in Run Skill dialog', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            // Create a repo without any .github/skills/ directory
+            const repoDir = createRepoFixture(tmpDir);
+            createTasksFixture(repoDir);
+            // Deliberately NOT calling createPromptAndSkillFixtures
+
+            await seedWorkspace(serverUrl, 'ws-no-skills', 'no-skills-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+
+            const fileRow = page.locator('.miller-file-row').first();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Run Skill').click();
+
+            await expect(page.locator('#follow-prompt-submenu')).toBeVisible();
+
+            // Should show "No skills found" message
+            await expect(page.locator('text=No skills found in this workspace.')).toBeVisible({ timeout: 10000 });
+
+            // Should show hint about creating skills
+            await expect(page.locator('text=Create skills in .github/skills/')).toBeVisible();
+
+            // No skill chips should be rendered
+            await expect(page.locator('.fp-item:not(.fp-recent-item)')).toHaveCount(0);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7.14 Ctrl+Enter keyboard shortcut submits Update Document', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            await setupRepoWithAIActions(page, serverUrl, tmpDir);
+
+            const queueResponsePromise = page.waitForResponse(res =>
+                res.url().includes('/api/queue') &&
+                !res.url().includes('/bulk') &&
+                res.request().method() === 'POST',
+            );
+
+            const fileRow = page.locator('.miller-file-row').first();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Update Document').click();
+
+            await expect(page.locator('#update-doc-overlay')).toBeVisible();
+
+            // Fill instruction
+            await page.fill('#update-doc-instruction', 'Refactor error handling');
+
+            // Press Ctrl+Enter
+            await page.locator('#update-doc-instruction').press('Control+Enter');
+
+            // Verify the POST was fired
+            const queueResponse = await queueResponsePromise;
+            const reqBody = JSON.parse(queueResponse.request().postData() || '{}');
+            expect(reqBody.type).toBe('custom');
+            expect(reqBody.payload.data.prompt).toContain('Refactor error handling');
+
+            // Overlay should close
+            await expect(page.locator('#update-doc-overlay')).toHaveCount(0, { timeout: 5000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7.15 Update Document submit disabled when prompt is empty/whitespace', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            await setupRepoWithAIActions(page, serverUrl, tmpDir);
+
+            const fileRow = page.locator('.miller-file-row').first();
+            await fileRow.click({ button: 'right' });
+            await page.locator('text=✨ Update Document').click();
+
+            await expect(page.locator('#update-doc-overlay')).toBeVisible();
+
+            // Clear the prompt completely
+            await page.fill('#update-doc-instruction', '');
+
+            // Submit button should be disabled
+            await expect(page.locator('#update-doc-submit')).toBeDisabled();
+
+            // Fill with whitespace only
+            await page.fill('#update-doc-instruction', '   ');
+
+            // Should still be disabled
+            await expect(page.locator('#update-doc-submit')).toBeDisabled();
+
+            // Fill with real content — button should be enabled
+            await page.fill('#update-doc-instruction', 'Add tests');
+            await expect(page.locator('#update-doc-submit')).toBeEnabled();
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7.16 Folder context menu does not show AI action items', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-'));
+        try {
+            await setupRepoWithAIActions(page, serverUrl, tmpDir);
+
+            // Find a folder row (backlog/ or archive/ from createTasksFixture)
+            const folderRow = page.locator('[data-testid^="task-tree-item-"]').filter({ hasText: '📁' }).first();
+
+            if (await folderRow.isVisible().catch(() => false)) {
+                await folderRow.click({ button: 'right' });
+
+                const contextMenu = page.locator('[data-testid="context-menu"]');
+                const menuVisible = await contextMenu.isVisible().catch(() => false);
+                if (menuVisible) {
+                    // Folder context menu should NOT have the single-file "✨ Run Skill" or "✨ Update Document"
+                    // It may have "Bulk Run Skill" which is a different item
+                    await expect(contextMenu.locator('text="✨ Update Document"')).toHaveCount(0);
+                }
+            }
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
 });

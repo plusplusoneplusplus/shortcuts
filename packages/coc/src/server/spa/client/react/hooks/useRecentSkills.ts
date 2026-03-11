@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../utils/config';
 
 export interface RecentSkillEntry {
+    type: 'prompt' | 'skill';
     name: string;
     description?: string;
     timestamp: number;
@@ -39,7 +40,7 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
                 if (!cancelled && Array.isArray(prefs.recentFollowPrompts)) {
                     const items: RecentSkillEntry[] = prefs.recentFollowPrompts
                         .filter((e: any) => e.name)
-                        .map((e: any) => ({ name: e.name, description: e.description, timestamp: e.timestamp }));
+                        .map((e: any) => ({ type: e.type || 'skill' as const, name: e.name, description: e.description, timestamp: e.timestamp }));
                     setRecentItems(items);
                 }
             } catch {
@@ -53,7 +54,7 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
 
     const trackUsage = useCallback((name: string, description?: string) => {
         setRecentItems(prev => {
-            const entry: RecentSkillEntry = { name, timestamp: Date.now() };
+            const entry: RecentSkillEntry = { type: 'skill', name, timestamp: Date.now() };
             if (description) entry.description = description;
 
             const filtered = prev.filter(e => e.name !== name);

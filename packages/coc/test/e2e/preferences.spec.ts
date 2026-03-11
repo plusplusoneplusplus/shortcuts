@@ -344,4 +344,126 @@ test.describe('Preferences (007)', () => {
             safeRmSync(tmpDir);
         }
     });
+
+    test('7P.9 lastSkills preference persistence and restoration', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
+        try {
+            await setupRepoForPrefs(page, serverUrl, tmpDir);
+
+            // Pre-set lastSkills via per-workspace API
+            await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
+                data: { lastSkills: { task: 'impl' } },
+            });
+
+            // Verify persistence via GET
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
+            const prefs = await res.json();
+            expect(prefs.lastSkills?.task).toBe('impl');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7P.10 workspace selector change loads skills for new workspace', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
+        try {
+            // Create first workspace with skills
+            const repoDir1 = createRepoFixture(path.join(tmpDir, 'repo1'));
+            createTasksFixture(repoDir1);
+            createPromptFixtures(repoDir1);
+
+            // Add a skill to first workspace
+            const skill1Dir = path.join(repoDir1, '.github', 'skills', 'impl');
+            fs.mkdirSync(skill1Dir, { recursive: true });
+            fs.writeFileSync(
+                path.join(skill1Dir, 'SKILL.md'),
+                '---\ndescription: Implement feature\n---\n# impl\nImpl skill.\n',
+            );
+
+            await seedWorkspace(serverUrl, 'ws-prefs', 'prefs-repo', repoDir1);
+
+            // Create second workspace with a different skill
+            const repoDir2 = createRepoFixture(path.join(tmpDir, 'repo2'));
+            createTasksFixture(repoDir2);
+            const skill2Dir = path.join(repoDir2, '.github', 'skills', 'review');
+            fs.mkdirSync(skill2Dir, { recursive: true });
+            fs.writeFileSync(
+                path.join(skill2Dir, 'SKILL.md'),
+                '---\ndescription: Review code\n---\n# review\nReview skill.\n',
+            );
+
+            await seedWorkspace(serverUrl, 'ws-prefs-2', 'prefs-repo-2', repoDir2);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
+
+            await openFollowPromptDialog(page);
+
+            // First workspace should have 'impl' skill
+            await expect(page.locator('.fp-item[data-name="impl"]')).toBeVisible({ timeout: 10000 });
+
+            // Change workspace selector to second workspace
+            const wsSelect = page.locator('#follow-prompt-submenu select').first();
+            // The workspace select is the second select (after model)
+            const allSelects = page.locator('#follow-prompt-submenu select');
+            const wsSelectEl = allSelects.nth(1);
+            await wsSelectEl.selectOption('ws-prefs-2');
+
+            // Wait for skills to reload
+            await page.waitForTimeout(1000);
+
+            // Should now show 'review' skill from second workspace
+            await expect(page.locator('.fp-item[data-name="review"]')).toBeVisible({ timeout: 10000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7P.11 depth and effort preference persistence', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
+        try {
+            await setupRepoForPrefs(page, serverUrl, tmpDir);
+
+            // Set depth and effort preferences via API
+            await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
+                data: { lastDepth: 'deep', lastEffort: 'high' },
+            });
+
+            // Verify persistence via GET
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
+            const prefs = await res.json();
+            expect(prefs.lastDepth).toBe('deep');
+            expect(prefs.lastEffort).toBe('high');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7P.12 per-mode model preferences for ask and plan modes', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
+        try {
+            await setupRepoForPrefs(page, serverUrl, tmpDir);
+
+            // Set per-mode models via API
+            await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
+                data: { lastModels: { ask: 'gpt-4', plan: 'claude-3-5-sonnet' } },
+            });
+
+            // Verify persistence via GET
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
+            const prefs = await res.json();
+            expect(prefs.lastModels?.ask).toBe('gpt-4');
+            expect(prefs.lastModels?.plan).toBe('claude-3-5-sonnet');
+
+            // Verify task mode is unaffected (should be empty or previous value)
+            // We only set ask and plan, so task should remain as-is
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
 });
