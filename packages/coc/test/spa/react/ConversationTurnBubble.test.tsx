@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
-import { mergeConsecutiveContentChunks } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
+import { mergeConsecutiveContentChunks, inferParentToolCalls } from '../../../src/server/spa/client/react/processes/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import * as formatUtils from '../../../src/server/spa/client/react/utils/format';
 
@@ -853,5 +853,232 @@ describe('ConversationTurnBubble — skill badges', () => {
             <ConversationTurnBubble turn={makeTurn({ role: 'assistant', skillNames: ['impl'] })} />
         );
         expect(container.querySelector('.skill-badges')).toBeNull();
+    });
+});
+
+describe('ConversationTurnBubble — parallel task rendering', () => {
+    it('renders parallel tasks as siblings, not a chain', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'task-a',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Task A' },
+                                startTime: '2026-03-01T10:00:00.000Z',
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'task-b',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Task B' },
+                                startTime: '2026-03-01T10:00:00.100Z',
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'task-c',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Task C' },
+                                startTime: '2026-03-01T10:00:00.200Z',
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'task-a',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Task A' },
+                                startTime: '2026-03-01T10:00:00.000Z',
+                                endTime: '2026-03-01T10:00:05.000Z',
+                                status: 'completed',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'task-b',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Task B' },
+                                startTime: '2026-03-01T10:00:00.100Z',
+                                endTime: '2026-03-01T10:00:06.000Z',
+                                status: 'completed',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'task-c',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Task C' },
+                                startTime: '2026-03-01T10:00:00.200Z',
+                                endTime: '2026-03-01T10:00:07.000Z',
+                                status: 'completed',
+                            },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        const taskA = container.querySelector('[data-tool-id="task-a"]');
+        const taskB = container.querySelector('[data-tool-id="task-b"]');
+        const taskC = container.querySelector('[data-tool-id="task-c"]');
+
+        expect(taskA).toBeTruthy();
+        expect(taskB).toBeTruthy();
+        expect(taskC).toBeTruthy();
+
+        // None of the parallel tasks should be nested inside another
+        expect(taskA?.contains(taskB as HTMLElement)).toBe(false);
+        expect(taskA?.contains(taskC as HTMLElement)).toBe(false);
+        expect(taskB?.contains(taskC as HTMLElement)).toBe(false);
+    });
+
+    it('still nests non-task tools inside their enclosing task', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'task-only',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Solo task' },
+                                startTime: '2026-03-01T10:00:00.000Z',
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'grep-inside',
+                                toolName: 'grep',
+                                args: { pattern: 'foo' },
+                                startTime: '2026-03-01T10:00:01.000Z',
+                                status: 'completed',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'task-only',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Solo task' },
+                                startTime: '2026-03-01T10:00:00.000Z',
+                                endTime: '2026-03-01T10:00:05.000Z',
+                                status: 'completed',
+                            },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        const taskCard = container.querySelector('[data-tool-id="task-only"]');
+        const grepTool = container.querySelector('[data-tool-id="grep-inside"]');
+
+        expect(taskCard).toBeTruthy();
+        expect(grepTool).toBeTruthy();
+        // The grep call should be nested inside the task
+        expect(taskCard?.contains(grepTool as HTMLElement)).toBe(true);
+    });
+});
+
+describe('inferParentToolCalls', () => {
+    it('does not chain parallel tasks', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.000Z', endTime: '2026-03-01T10:00:05.000Z', status: 'completed' },
+            { id: 'task-2', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.100Z', endTime: '2026-03-01T10:00:06.000Z', status: 'completed' },
+            { id: 'task-3', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.200Z', endTime: '2026-03-01T10:00:07.000Z', status: 'completed' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: false });
+        // All tasks should remain at root level — no auto-nesting
+        expect(result[0].parentToolCallId).toBeUndefined();
+        expect(result[1].parentToolCallId).toBeUndefined();
+        expect(result[2].parentToolCallId).toBeUndefined();
+    });
+
+    it('assigns non-task tool to single enclosing task', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.000Z', endTime: '2026-03-01T10:00:10.000Z', status: 'completed' },
+            { id: 'grep-1', toolName: 'grep', args: {}, startTime: '2026-03-01T10:00:01.000Z', endTime: '2026-03-01T10:00:02.000Z', status: 'completed' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: false });
+        expect(result.find(c => c.id === 'grep-1')?.parentToolCallId).toBe('task-1');
+    });
+
+    it('leaves non-task tool unassigned when multiple parallel tasks enclose it', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.000Z', endTime: '2026-03-01T10:00:10.000Z', status: 'completed' },
+            { id: 'task-2', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.100Z', endTime: '2026-03-01T10:00:11.000Z', status: 'completed' },
+            { id: 'grep-1', toolName: 'grep', args: {}, startTime: '2026-03-01T10:00:01.000Z', endTime: '2026-03-01T10:00:02.000Z', status: 'completed' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: false });
+        // Ambiguous — enclosed by both tasks, so leave unassigned
+        expect(result.find(c => c.id === 'grep-1')?.parentToolCallId).toBeUndefined();
+    });
+
+    it('preserves explicit parentToolCallId from SDK', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.000Z', endTime: '2026-03-01T10:00:10.000Z', status: 'completed' },
+            { id: 'task-2', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:01.000Z', endTime: '2026-03-01T10:00:05.000Z', status: 'completed', parentToolCallId: 'task-1' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: false });
+        expect(result.find(c => c.id === 'task-2')?.parentToolCallId).toBe('task-1');
+    });
+
+    it('assigns tools after a completed task to root when trailing fallback is disabled', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.000Z', endTime: '2026-03-01T10:00:05.000Z', status: 'completed' },
+            { id: 'view-1', toolName: 'view', args: {}, startTime: '2026-03-01T10:00:06.000Z', endTime: '2026-03-01T10:00:07.000Z', status: 'completed' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: false });
+        expect(result.find(c => c.id === 'view-1')?.parentToolCallId).toBeUndefined();
+    });
+
+    it('uses trailing fallback when enabled and timing is absent', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, status: 'completed' },
+            { id: 'view-1', toolName: 'view', args: {}, status: 'completed' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: true });
+        expect(result.find(c => c.id === 'view-1')?.parentToolCallId).toBe('task-1');
+    });
+
+    it('handles five parallel tasks without creating chains', () => {
+        const calls = Array.from({ length: 5 }, (_, i) => ({
+            id: `task-${i}`,
+            toolName: 'task',
+            args: {},
+            startTime: `2026-03-01T10:00:00.${String(i * 100).padStart(3, '0')}Z`,
+            endTime: `2026-03-01T10:00:${String(10 + i).padStart(2, '0')}.000Z`,
+            status: 'completed',
+        }));
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: false });
+        for (const call of result) {
+            expect(call.parentToolCallId).toBeUndefined();
+        }
     });
 });

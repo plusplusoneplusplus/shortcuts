@@ -195,9 +195,12 @@ function toMillis(iso?: string): number | null {
 
 /**
  * Infer parent relationships when events do not include explicit parent IDs.
- * This mirrors the legacy renderer behavior to keep subagent tool nesting.
+ * Uses interval-based lookup: a non-task tool is assigned to a task only when
+ * exactly one enclosing task interval exists. Ambiguous cases (multiple
+ * overlapping tasks, e.g. parallel tasks) are left unassigned.
+ * Task-to-task relationships are never inferred — they must come from the SDK.
  */
-function inferParentToolCalls(
+export function inferParentToolCalls(
     calls: RenderToolCall[],
     options?: { enableTrailingTaskFallback?: boolean }
 ): RenderToolCall[] {
@@ -217,37 +220,34 @@ function inferParentToolCalls(
         return a.originalIndex - b.originalIndex;
     });
 
-    const activeTaskStack: Array<{ id: string; endMs: number | null }> = [];
+    // Collect task intervals for interval-based parent lookup
+    const taskIntervals: Array<{ id: string; startMs: number | null; endMs: number | null }> = [];
+    for (const item of ordered) {
+        if (item.call.toolName === 'task') {
+            taskIntervals.push({ id: item.call.id, startMs: item.startMs, endMs: item.endMs });
+        }
+    }
 
     for (const item of ordered) {
-        const currentStart = item.startMs;
-        if (currentStart != null) {
-            while (activeTaskStack.length > 0) {
-                const top = activeTaskStack[activeTaskStack.length - 1];
-                if (top.endMs != null && top.endMs <= currentStart) {
-                    activeTaskStack.pop();
-                } else {
-                    break;
-                }
-            }
-        }
-
         const call = item.call;
-        const explicitParent = call.parentToolCallId;
-        const activeParent = activeTaskStack.length > 0
-            ? activeTaskStack[activeTaskStack.length - 1].id
-            : undefined;
+        if (call.parentToolCallId) continue; // Already has explicit parent
+        if (call.toolName === 'task') continue; // Never auto-nest tasks
+        const currentStart = item.startMs;
+        if (currentStart == null) continue;
 
-        if (!explicitParent && call.toolName !== 'task' && activeParent && currentStart != null) {
-            call.parentToolCallId = activeParent;
-        }
+        // Find task intervals that enclose this tool call's start time
+        const enclosing = taskIntervals.filter((t) => {
+            if (t.id === call.id) return false;
+            if (t.startMs == null || t.startMs > currentStart) return false;
+            // Task still running (no endMs) or ends after this call started
+            if (t.endMs != null && t.endMs <= currentStart) return false;
+            return true;
+        });
 
-        if (call.toolName === 'task') {
-            if (!call.parentToolCallId && activeParent && call.id !== activeParent && currentStart != null) {
-                call.parentToolCallId = activeParent;
-            }
-            activeTaskStack.push({ id: call.id, endMs: item.endMs });
+        if (enclosing.length === 1) {
+            call.parentToolCallId = enclosing[0].id;
         }
+        // Multiple enclosing tasks (parallel) → ambiguous, leave unassigned
     }
 
     if (enableTrailingTaskFallback) {
@@ -351,15 +351,11 @@ function buildAssistantRender(turn: ClientConversationTurn): {
                 ? activeTaskStack[activeTaskStack.length - 1]
                 : undefined;
 
-            // Timeline order is the most reliable signal for task enter/exit boundaries.
-            if (!incoming.parentToolCallId && activeParent) {
-                if (incoming.toolName === 'task') {
-                    if (item.type === 'tool-start' && incoming.id !== activeParent) {
-                        incoming.parentToolCallId = activeParent;
-                    }
-                } else {
-                    incoming.parentToolCallId = activeParent;
-                }
+            // Timeline order is the most reliable signal for non-task tool nesting.
+            // Task-to-task relationships are trusted from SDK parentToolCallId only;
+            // auto-nesting tasks creates false chains when tasks run in parallel.
+            if (!incoming.parentToolCallId && activeParent && incoming.toolName !== 'task') {
+                incoming.parentToolCallId = activeParent;
             }
 
             const existing = callsById.get(incoming.id);

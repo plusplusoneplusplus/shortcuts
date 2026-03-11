@@ -1382,6 +1382,8 @@ export class CopilotSDKService {
                         });
                     }
                     // Emit tool-complete or tool-failed event for real-time UI updates
+                    // Prefer event-data parentToolCallId (freshest from SDK) over captured-start value
+                    const completeParentId = event.data?.parentToolCallId || capturedTool?.parentToolCallId;
                     if (onToolEvent) {
                         try {
                             if (toolSuccess) {
@@ -1389,7 +1391,7 @@ export class CopilotSDKService {
                                     type: 'tool-complete',
                                     toolCallId,
                                     toolName: tracked?.toolName,
-                                    parentToolCallId: capturedTool?.parentToolCallId,
+                                    parentToolCallId: completeParentId,
                                     result: resultContent,
                                 });
                             } else {
@@ -1397,7 +1399,7 @@ export class CopilotSDKService {
                                     type: 'tool-failed',
                                     toolCallId,
                                     toolName: tracked?.toolName,
-                                    parentToolCallId: capturedTool?.parentToolCallId,
+                                    parentToolCallId: completeParentId,
                                     error: event.data?.error?.message || 'Unknown error',
                                 });
                             }
