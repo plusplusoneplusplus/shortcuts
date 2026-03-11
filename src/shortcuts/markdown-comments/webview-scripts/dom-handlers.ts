@@ -30,7 +30,6 @@ import {
     CustomInstructionDialog,
     ContextMenuSelection,
     getAIMenuConfig,
-    getPredefinedComments as getSharedPredefinedComments,
     SerializedPredefinedComment
 } from '../../shared/webview';
 import { buildFullDocumentAskAIContext, extractDocumentContext } from '../ask-ai-context-utils';
