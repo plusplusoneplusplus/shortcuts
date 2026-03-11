@@ -138,12 +138,15 @@ src/
 │       ├── helpers.ts        # Template helpers
 │       ├── types.ts          # Dashboard option types
 │       └── client/           # React SPA client
-│           └── react/repos/explorer/  # File explorer with Monaco Editor
-│               ├── ExplorerPanel.tsx   # Split-pane: FileTree + PreviewPane
-│               ├── PreviewPane.tsx     # Monaco editor for code, image/binary preview
-│               ├── MonacoFileEditor.tsx # Monaco wrapper with theme sync and Ctrl+S save
-│               ├── monaco-setup.ts    # Worker URL config (bundled, no CDN)
-│               └── FileTree.tsx       # Recursive file tree with search
+│           └── react/
+│               ├── shared/
+│               │   └── MarkdownReviewEditor.tsx  # Shared markdown review surface (see below)
+│               └── repos/explorer/  # File explorer with Monaco Editor
+│                   ├── ExplorerPanel.tsx   # Split-pane: FileTree + PreviewPane
+│                   ├── PreviewPane.tsx     # Monaco editor for code, image/binary preview
+│                   ├── MonacoFileEditor.tsx # Monaco wrapper with theme sync and Ctrl+S save
+│                   ├── monaco-setup.ts    # Worker URL config (bundled, no CDN)
+│                   └── FileTree.tsx       # Recursive file tree with search
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling
 ├── logger.ts             # Console logger - Colored output, spinners, and progress bars
 ├── output-formatter.ts   # Result formatting - Formats results as table/json/csv/markdown
@@ -154,6 +157,19 @@ src/
 │   ├── index.ts          # Validation module exports
 │   └── schemas.ts        # Pipeline YAML validation schemas
 ```
+
+## Markdown Review & Preview
+
+**MarkdownReviewEditor** (`src/server/spa/client/react/shared/MarkdownReviewEditor.tsx`) — shared React component used in task preview and process conversation dialogs. Props: `wsId`, `filePath`, `fetchMode` (`'tasks'|'auto'`), `showAiButtons`, `initialViewMode` (`'review'|'source'`).
+
+- **Review mode**: `renderMarkdownToHtml()` → highlight.js + Mermaid diagrams + code-block actions (via `useMarkdownPreview` hook)
+- **Source mode**: `renderSourceModeToHtml()` with `SourceEditor` (Ctrl+S save, dirty-state `●` indicator)
+- Non-markdown files auto-wrapped in fenced code blocks before rendering
+- Inline comment system: `useCommentAnchors` + `useCommentInteractions` for text-selection-based annotations
+
+**useMarkdownPreview** hook (`markdown-preview.tsx`) — shared rendering pipeline used by MarkdownReviewEditor, TaskPreview, FilePreview, and conversation bubbles. Delegates to `pipeline-core`'s markdown parsing (code blocks, tables, mermaid) and rendering functions.
+
+**Monaco Editor** (`repos/explorer/MonacoFileEditor.tsx`) — used in the repository explorer's PreviewPane for file viewing/editing with syntax highlighting and theme sync.
 
 ## Configuration
 
