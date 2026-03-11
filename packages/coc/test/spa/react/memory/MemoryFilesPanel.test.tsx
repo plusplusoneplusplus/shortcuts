@@ -201,4 +201,66 @@ describe('MemoryFilesPanel', () => {
             expect(screen.getByText((text) => text.includes('analyze.md'))).toBeDefined();
         });
     });
+
+    it('shows placeholder in right panel when no file is selected', async () => {
+        mockOverviewThenFiles();
+        await act(async () => {
+            render(<MemoryFilesPanel />);
+        });
+        await waitFor(() => {
+            expect(screen.getByText('Select a file to view its content')).toBeDefined();
+        });
+    });
+
+    it('uses left-right flex layout for observations panel', async () => {
+        mockOverviewThenFiles();
+        const { container } = await act(async () => {
+            return render(<MemoryFilesPanel />);
+        });
+        await waitFor(() => {
+            expect(screen.getByText('Global')).toBeDefined();
+        });
+        // The observations panel should use a flex row container
+        const flexRow = container.querySelector('.flex.flex-col.md\\:flex-row');
+        expect(flexRow).toBeTruthy();
+    });
+
+    it('hides placeholder after a file is selected and shown', async () => {
+        let call = 0;
+        mockFetch.mockImplementation(() => {
+            call++;
+            if (call === 1) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultOverview) });
+            }
+            if (call === 2) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultFileList) });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({
+                    metadata: { pipeline: 'review', timestamp: '2026-03-01T00:00:00.000Z' },
+                    content: 'Test content',
+                    filename: '2026-03-01T00-00-00.000Z-review.md',
+                }),
+            });
+        });
+
+        await act(async () => {
+            render(<MemoryFilesPanel />);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Select a file to view its content')).toBeDefined();
+        });
+
+        const fileButton = screen.getByText((text) => text.includes('review.md'));
+        await act(async () => {
+            fireEvent.click(fileButton);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Test content')).toBeDefined();
+            expect(screen.queryByText('Select a file to view its content')).toBeNull();
+        });
+    });
 });
