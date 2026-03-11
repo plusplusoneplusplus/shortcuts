@@ -633,7 +633,8 @@ describe('CLITaskExecutor', () => {
             expect((task.payload as any).processId).toBeUndefined();
             expect((task.payload as any).attachments).toBeUndefined();
             expect((task.payload as any).imageTempDir).toBeUndefined();
-            expect(task.displayName).toMatch(/Chat \(\d+ turns?\)/);
+            // displayName should remain unchanged (AI-generated title preserved)
+            expect(task.displayName).toBeUndefined();
         });
 
         it('should clear follow-up payload metadata when sdkSessionId is missing', async () => {

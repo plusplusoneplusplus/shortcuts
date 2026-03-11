@@ -302,9 +302,6 @@ export class CLITaskExecutor implements TaskExecutor {
             try {
                 await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments, followUpPayload.mode);
                 const duration = Date.now() - startTime;
-                const proc = await this.store.getProcess(followUpPayload.processId!);
-                const turnCount = proc?.conversationTurns?.length ?? 0;
-                task.displayName = `Chat (${turnCount} turns)`;
                 delete (task.payload as ChatPayload).processId;
                 delete (task.payload as ChatPayload).attachments;
                 delete (task.payload as ChatPayload).imageTempDir;
@@ -314,9 +311,6 @@ export class CLITaskExecutor implements TaskExecutor {
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 const duration = Date.now() - startTime;
-                const proc = await this.store.getProcess(followUpPayload.processId!);
-                const turnCount = proc?.conversationTurns?.length ?? 0;
-                task.displayName = `Chat (${turnCount} turns)`;
                 delete (task.payload as ChatPayload).processId;
                 delete (task.payload as ChatPayload).attachments;
                 delete (task.payload as ChatPayload).imageTempDir;

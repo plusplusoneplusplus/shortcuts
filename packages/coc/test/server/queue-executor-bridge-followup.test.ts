@@ -241,6 +241,37 @@ describe('execute() short-circuit for chat-followup tasks', () => {
     });
 
     // 9 -----------------------------------------------------------------------
+    it('should preserve original displayName after follow-up (not overwrite with generic turn count)', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        await store.addProcess(proc);
+
+        const task = followUpTask({ processId: 'proc-1', content: 'follow up', displayName: 'AI-generated title' });
+
+        await executor.execute(task);
+
+        expect(task.displayName).toBe('AI-generated title');
+    });
+
+    // 10 ----------------------------------------------------------------------
+    it('should preserve original displayName after follow-up failure', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        await store.addProcess(proc);
+
+        const spy = vi.spyOn(CLITaskExecutor.prototype as any, 'executeFollowUp');
+        spy.mockRejectedValue(new Error('boom'));
+
+        const task = followUpTask({ processId: 'proc-1', content: 'follow up', displayName: 'AI-generated title' });
+
+        await executor.execute(task);
+
+        expect(task.displayName).toBe('AI-generated title');
+
+        spy.mockRestore();
+    });
+
+    // 11 ----------------------------------------------------------------------
     it('should not perform extra queue transitions while executing a requeued follow-up', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
