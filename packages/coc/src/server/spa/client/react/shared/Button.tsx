@@ -7,6 +7,7 @@ export interface ButtonProps {
     size?: 'sm' | 'md' | 'lg';
     id?: string;
     'data-testid'?: string;
+    'aria-label'?: string;
     title?: string;
     disabled?: boolean;
     loading?: boolean;
@@ -46,6 +47,7 @@ export function Button(props: ButtonProps) {
         <button
             id={id}
             data-testid={props['data-testid']}
+            aria-label={props['aria-label']}
             title={title}
             type={type}
             onClick={onClick}

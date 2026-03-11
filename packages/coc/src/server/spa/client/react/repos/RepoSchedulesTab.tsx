@@ -2,7 +2,7 @@
  * RepoSchedulesTab — workspace-scoped schedule management with CRUD, run history.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, cn } from '../shared';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
@@ -346,21 +346,19 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                     />
                 </div>
             ) : selectedSchedule ? (
-                <div className="px-4 py-3">
-                    <ScheduleDetail
-                        schedule={selectedSchedule}
-                        workspaceId={workspaceId}
-                        history={history}
-                        editingId={editingId}
-                        onRunNow={handleRunNow}
-                        onPauseResume={handlePauseResume}
-                        onEdit={(id) => setEditingId(id)}
-                        onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); }}
-                        onDelete={handleDelete}
-                        onCancelEdit={() => setEditingId(null)}
-                        onSaved={() => { setEditingId(null); fetchSchedules(); }}
-                    />
-                </div>
+                <ScheduleDetail
+                    schedule={selectedSchedule}
+                    workspaceId={workspaceId}
+                    history={history}
+                    editingId={editingId}
+                    onRunNow={handleRunNow}
+                    onPauseResume={handlePauseResume}
+                    onEdit={(id) => setEditingId(id)}
+                    onDuplicate={(s) => { setDuplicateValues(s); setShowCreate(true); }}
+                    onDelete={handleDelete}
+                    onCancelEdit={() => setEditingId(null)}
+                    onSaved={() => { setEditingId(null); fetchSchedules(); }}
+                />
             ) : (
                 <div className="flex items-center justify-center h-full text-sm text-[#848484]">
                     {schedules.length === 0
@@ -453,9 +451,117 @@ export interface ScheduleDetailProps {
     onSaved: () => void;
 }
 
-export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved }: ScheduleDetailProps) {
+/** Status badge pill for Active / Paused / Running states. */
+function StatusBadge({ status, isRunning }: { status: string; isRunning: boolean }) {
+    if (isRunning) {
+        return (
+            <span
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                aria-label="Status: Running"
+                data-testid="status-badge"
+            >
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+                Running
+            </span>
+        );
+    }
+    if (status === 'active') {
+        return (
+            <span
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                aria-label="Status: Active"
+                data-testid="status-badge"
+            >
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                Active
+            </span>
+        );
+    }
+    if (status === 'paused') {
+        return (
+            <span
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300"
+                aria-label="Status: Paused"
+                data-testid="status-badge"
+            >
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
+                Paused
+            </span>
+        );
+    }
     return (
-        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 py-2.5">
+        <span
+            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-[#f3f3f3] dark:bg-[#333] text-[#848484]"
+            aria-label={`Status: ${status}`}
+            data-testid="status-badge"
+        >
+            {status}
+        </span>
+    );
+}
+
+/** Friendly label for onFailure raw values. */
+function failureLabel(raw: string): string {
+    switch (raw) {
+        case 'continue': return 'Continue on failure';
+        case 'stop': return 'Stop on failure';
+        case 'notify': return 'Notify on failure';
+        default: return raw;
+    }
+}
+
+/** Format milliseconds as a short duration string. */
+function formatDuration(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem ? `${m}m ${rem}s` : `${m}m`;
+}
+
+const HISTORY_PAGE_SIZE = 20;
+
+export function ScheduleDetail({ schedule, workspaceId, history: initialHistory, editingId, onRunNow, onPauseResume, onEdit, onDuplicate, onDelete, onCancelEdit, onSaved }: ScheduleDetailProps) {
+    const [showOutputId, setShowOutputId] = useState<string | null>(null);
+    const [history, setHistory] = useState<RunRecord[]>(initialHistory);
+    const [historyPage, setHistoryPage] = useState(1);
+    const [refreshing, setRefreshing] = useState(false);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Sync history from parent (initial load / schedule change)
+    useEffect(() => {
+        setHistory(initialHistory);
+        setHistoryPage(1);
+    }, [initialHistory, schedule.id]);
+
+    const refreshHistory = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            const data = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(schedule.id)}/history`);
+            setHistory(data?.history || []);
+        } catch { /* ignore */ }
+        setRefreshing(false);
+    }, [workspaceId, schedule.id]);
+
+    // Auto-poll every 3s while any run is in-progress
+    useEffect(() => {
+        const hasRunning = history.some(r => r.status === 'running');
+        if (hasRunning) {
+            pollRef.current = setInterval(refreshHistory, 3000);
+        } else {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        }
+        return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+    }, [history, refreshHistory]);
+
+    const targetBasename = schedule.target.split(/[/\\]/).pop() ?? schedule.target;
+    const paramEntries = Object.entries(schedule.params ?? {});
+    const visibleHistory = history.slice(0, historyPage * HISTORY_PAGE_SIZE);
+    const hasMore = history.length > visibleHistory.length;
+
+    return (
+        <div className="flex flex-col gap-0" data-testid="schedule-detail">
             {editingId === schedule.id ? (
                 <CreateScheduleForm
                     workspaceId={workspaceId}
@@ -475,74 +581,251 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                 />
             ) : (
                 <>
-                    {/* Actions */}
-                    <div className="flex gap-1.5 mb-2.5">
-                        <Button variant="primary" size="sm" onClick={() => onRunNow(schedule.id)}>Run Now</Button>
-                        <Button variant="secondary" size="sm" onClick={() => onPauseResume(schedule)}>
-                            {schedule.status === 'active' ? 'Pause' : 'Resume'}
-                        </Button>
-                        <Button variant="secondary" size="sm" disabled={schedule.isRunning} onClick={() => onEdit(schedule.id)} data-testid="edit-btn">Edit</Button>
-                        <Button variant="secondary" size="sm" onClick={() => onDuplicate(schedule)} data-testid="duplicate-btn">Duplicate</Button>
-                        <Button variant="danger" size="sm" onClick={() => onDelete(schedule.id)}>Delete</Button>
-                    </div>
-
-                    {/* Details */}
-                    <div className="text-xs text-[#616161] dark:text-[#999] space-y-1 mb-2.5">
-                        <div><span className="font-medium">Target:</span> {schedule.target}</div>
-                        <div><span className="font-medium">Schedule:</span> {schedule.cron} · {schedule.cronDescription}</div>
-                        {Object.keys(schedule.params).length > 0 && (
-                            <div><span className="font-medium">Params:</span> {JSON.stringify(schedule.params)}</div>
-                        )}
-                        <div><span className="font-medium">On Failure:</span> {schedule.onFailure}</div>
-                    </div>
-                </>
-            )}
-
-            {/* Run History */}
-            {history.length > 0 && (
-                <div>
-                    <div className="text-[10px] uppercase text-[#848484] font-medium mb-1">Run History</div>
-                    <div className="flex flex-col gap-0.5">
-                        {history.map(run => (
-                            <div key={run.id} className="text-[10px] text-[#616161] dark:text-[#999] py-0.5">
-                                <div className="flex items-center gap-2">
-                                    <span>
-                                        {run.status === 'completed' ? '✔' : run.status === 'failed' ? '✖' : run.status === 'running' ? '🔄' : '⚠'}
-                                    </span>
-                                    <span className="flex-1">{formatRelativeTime(run.startedAt)}</span>
-                                    {run.durationMs != null && (
-                                        <span>{Math.round(run.durationMs / 1000)}s</span>
+                    {/* ── Header zone ─────────────────────────────────────── */}
+                    <div className="px-3 pt-3 pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <div className="flex items-start gap-2 mb-1">
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h2 className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate" data-testid="schedule-name">
+                                        {`${schedule.targetType === 'script' ? '⚡' : '📄'} ${schedule.name}`}
+                                    </h2>
+                                    {schedule.isRunning && (
+                                        <span className="w-3 h-3 border-2 border-[#0078d4] border-t-transparent rounded-full animate-spin flex-shrink-0" aria-label="Running" data-testid="running-spinner" />
                                     )}
-                                    {run.exitCode != null && (
-                                        <span className={run.exitCode === 0 ? 'text-green-600' : 'text-red-500'}>
-                                            Exit: {run.exitCode}
-                                        </span>
-                                    )}
-                                    <span className={cn(
-                                        run.status === 'completed' ? 'text-green-600' :
-                                        run.status === 'failed' ? 'text-red-500' : ''
-                                    )}>
-                                        {run.status}
-                                    </span>
+                                    <StatusBadge status={schedule.status} isRunning={schedule.isRunning} />
                                 </div>
-                                {(run.stdout || run.stderr) && (
-                                    <details className="mt-0.5 ml-4">
-                                        <summary className="cursor-pointer text-[#0078d4] hover:underline select-none">
-                                            output
-                                        </summary>
-                                        <div className="mt-0.5 p-1.5 rounded bg-[#f3f3f3] dark:bg-[#1e1e1e] font-mono text-[9px] whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
-                                            {run.stdout && <div>{run.stdout}</div>}
-                                            {run.stderr && <div className="text-red-400">{run.stderr}</div>}
+                                <div className="text-[10px] text-[#848484] mt-0.5" data-testid="schedule-next-run">
+                                    {schedule.isRunning
+                                        ? 'Running now…'
+                                        : schedule.status === 'active' && schedule.nextRun
+                                            ? `Next run: ${formatRelativeTime(schedule.nextRun)}`
+                                            : schedule.status === 'paused'
+                                                ? 'Paused'
+                                                : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Action toolbar ──────────────────────────────────── */}
+                    <div className="px-3 py-2 flex items-center gap-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-wrap">
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={schedule.isRunning}
+                            onClick={() => onRunNow(schedule.id)}
+                            aria-label="Run schedule now"
+                        >
+                            ▶ Run Now
+                        </Button>
+                        <div className="w-px h-4 bg-[#d0d0d0] dark:bg-[#555] mx-0.5 flex-shrink-0" />
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onPauseResume(schedule)}
+                            aria-label={schedule.status === 'active' ? 'Pause schedule' : 'Resume schedule'}
+                        >
+                            {schedule.status === 'active' ? '⏸ Pause' : '▶ Resume'}
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={schedule.isRunning}
+                            onClick={() => onEdit(schedule.id)}
+                            aria-label="Edit schedule"
+                            data-testid="edit-btn"
+                        >
+                            ✏ Edit
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onDuplicate(schedule)}
+                            aria-label="Duplicate schedule"
+                            data-testid="duplicate-btn"
+                        >
+                            ⧉ Duplicate
+                        </Button>
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => onDelete(schedule.id)}
+                            aria-label="Delete schedule"
+                        >
+                            🗑 Delete
+                        </Button>
+                    </div>
+
+                    {/* ── Info section ────────────────────────────────────── */}
+                    <div className="px-3 py-2.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="schedule-info">
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+                            {/* Target */}
+                            <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Target</dt>
+                            <dd className="text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
+                                <span
+                                    className="font-medium truncate block"
+                                    title={schedule.target}
+                                    data-testid="target-basename"
+                                >
+                                    {targetBasename}
+                                </span>
+                                {schedule.target !== targetBasename && (
+                                    <span className="text-[10px] text-[#848484] dark:text-[#666] font-mono truncate block" title={schedule.target}>
+                                        {schedule.target}
+                                    </span>
+                                )}
+                            </dd>
+
+                            {/* Schedule */}
+                            <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Schedule</dt>
+                            <dd className="text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
+                                {schedule.cronDescription && (
+                                    <span className="block">{schedule.cronDescription}</span>
+                                )}
+                                <span className="text-[10px] font-mono text-[#848484] dark:text-[#666]">{schedule.cron}</span>
+                            </dd>
+
+                            {/* Params */}
+                            <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Params</dt>
+                            <dd className="min-w-0">
+                                {paramEntries.length === 0 ? (
+                                    <span className="text-[#848484]">None</span>
+                                ) : (
+                                    <div className="flex flex-wrap gap-1" data-testid="params-pills">
+                                        {paramEntries.map(([k, v]) => (
+                                            <span
+                                                key={k}
+                                                className="text-[10px] px-1.5 py-0.5 rounded bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#0078d4] dark:text-[#4fc3f7] font-mono"
+                                                data-testid={`param-pill-${k}`}
+                                            >
+                                                {k}={v}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </dd>
+
+                            {/* On Failure */}
+                            <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">On Failure</dt>
+                            <dd className="text-[#1e1e1e] dark:text-[#cccccc]">{failureLabel(schedule.onFailure)}</dd>
+
+                            {/* Output Folder — only when set */}
+                            {schedule.outputFolder && (
+                                <>
+                                    <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Output</dt>
+                                    <dd className="text-[10px] font-mono text-[#1e1e1e] dark:text-[#cccccc] truncate" title={schedule.outputFolder} data-testid="output-folder">
+                                        {schedule.outputFolder}
+                                    </dd>
+                                </>
+                            )}
+
+                            {/* Created */}
+                            <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Created</dt>
+                            <dd className="text-[#848484]">{formatRelativeTime(schedule.createdAt)}</dd>
+                        </dl>
+                    </div>
+
+                    {/* ── Run History ─────────────────────────────────────── */}
+                    <div className="px-3 py-2.5" data-testid="run-history">
+                        <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] uppercase text-[#848484] font-medium">
+                                Run History{history.length > 0 ? ` (${history.length})` : ''}
+                            </span>
+                            <button
+                                className="text-[10px] text-[#0078d4] hover:underline disabled:opacity-50 flex items-center gap-0.5"
+                                onClick={refreshHistory}
+                                disabled={refreshing}
+                                aria-label="Refresh run history"
+                                data-testid="refresh-history-btn"
+                            >
+                                {refreshing ? '…' : '↻'} Refresh
+                            </button>
+                        </div>
+
+                        {history.length === 0 ? (
+                            <div className="text-[11px] text-[#848484]" data-testid="no-runs-empty">
+                                No runs yet —{' '}
+                                <button
+                                    className="text-[#0078d4] hover:underline"
+                                    onClick={() => onRunNow(schedule.id)}
+                                    disabled={schedule.isRunning}
+                                    aria-label="Run this schedule"
+                                >
+                                    Run Now
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-0.5" data-testid="history-list">
+                                {visibleHistory.map(run => {
+                                    const isExpanded = showOutputId === run.id;
+                                    const hasOutput = !!(run.stdout || run.stderr);
+                                    return (
+                                        <div key={run.id} className="text-[11px] text-[#616161] dark:text-[#999] py-0.5" data-testid={`run-row-${run.id}`}>
+                                            <div className="grid items-center gap-2" style={{ gridTemplateColumns: '16px 1fr 44px 44px' }}>
+                                                {/* Status icon */}
+                                                <span className="flex-shrink-0 text-center" aria-label={`Run status: ${run.status}`}>
+                                                    {run.status === 'completed'
+                                                        ? <span className="text-green-600">✅</span>
+                                                        : run.status === 'failed'
+                                                            ? <span className="text-red-500">❌</span>
+                                                            : run.status === 'running'
+                                                                ? <span className="inline-block w-3 h-3 border-2 border-[#0078d4] border-t-transparent rounded-full animate-spin" aria-label="Running" />
+                                                                : <span className="text-yellow-500">⚠️</span>}
+                                                </span>
+                                                {/* Start time */}
+                                                <span className="truncate" title={run.startedAt}>{formatRelativeTime(run.startedAt)}</span>
+                                                {/* Duration */}
+                                                <span className="text-right font-mono text-[10px] text-[#848484]">
+                                                    {run.durationMs != null ? formatDuration(run.durationMs) : '—'}
+                                                </span>
+                                                {/* Exit code */}
+                                                <span className="text-right">
+                                                    {run.exitCode != null ? (
+                                                        <span className={cn(
+                                                            'text-[10px] px-1 py-0.5 rounded font-mono',
+                                                            run.exitCode === 0
+                                                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                                                : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                                        )} data-testid={`exit-code-${run.id}`}>
+                                                            {run.exitCode}
+                                                        </span>
+                                                    ) : null}
+                                                </span>
+                                            </div>
+                                            {hasOutput && (
+                                                <div className="ml-5 mt-0.5">
+                                                    <button
+                                                        className="text-[10px] text-[#0078d4] hover:underline select-none"
+                                                        onClick={() => setShowOutputId(isExpanded ? null : run.id)}
+                                                        aria-expanded={isExpanded}
+                                                        aria-label={isExpanded ? 'Hide output' : 'Show output'}
+                                                    >
+                                                        {isExpanded ? 'Hide output' : 'Show output'}
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <pre className="mt-0.5 p-1.5 rounded bg-[#f3f3f3] dark:bg-[#1e1e1e] font-mono text-[9px] whitespace-pre-wrap break-all overflow-y-auto max-h-48" data-testid={`output-block-${run.id}`}>
+                                                            {run.stdout && <span>{run.stdout}</span>}
+                                                            {run.stderr && <span className="text-red-400">{run.stderr}</span>}
+                                                        </pre>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-                                    </details>
+                                    );
+                                })}
+                                {hasMore && (
+                                    <button
+                                        className="mt-1 text-[10px] text-[#0078d4] hover:underline text-left"
+                                        onClick={() => setHistoryPage(p => p + 1)}
+                                        data-testid="load-more-history"
+                                    >
+                                        Load more ({history.length - visibleHistory.length} remaining)
+                                    </button>
                                 )}
                             </div>
-                        ))}
+                        )}
                     </div>
-                </div>
-            )}
-            {history.length === 0 && (
-                <div className="text-[10px] text-[#848484]">No runs yet</div>
+                </>
             )}
         </div>
     );
