@@ -1552,7 +1552,7 @@ describe('ActivityChatDetail semantic hooks', () => {
 
         await waitFor(() => {
             const errorBubble = container.querySelector('.chat-error-bubble');
-            expect(errorBubble).toBeDefined();
+            expect(errorBubble).toBeTruthy();
             expect(errorBubble!.classList.contains('bubble-error')).toBe(true);
         });
     });
@@ -1608,8 +1608,8 @@ describe('ActivityChatDetail semantic hooks', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
         await waitFor(() => {
-            const retryBtn = container.querySelector('.retry-btn');
-            expect(retryBtn).toBeDefined();
+            const retryBtn = container.querySelector('[data-testid="retry-btn"]');
+            expect(retryBtn).toBeTruthy();
             expect(retryBtn!.textContent).toBe('Retry');
         });
     });
