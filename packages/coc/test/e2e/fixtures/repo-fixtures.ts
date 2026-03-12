@@ -107,6 +107,40 @@ export function createTasksFixture(repoDir: string): void {
 }
 
 /**
+ * Populate the tasks directory with tasks including an empty subfolder.
+ *
+ * Structure created:
+ *   <tasksDir>/
+ *   ├── task-a.md              (pending)
+ *   ├── task-b.md              (done)
+ *   ├── feature.plan.md        (in-progress)
+ *   ├── backlog/
+ *   │   └── item.md            (future)
+ *   ├── archive/
+ *   │   └── old.md             (done)
+ *   └── empty-folder/          (no files)
+ */
+export function createTasksWithEmptyFolderFixture(repoDir: string): void {
+    const tasksDir = path.join(repoDir, '.vscode', 'tasks');
+    fs.mkdirSync(path.join(tasksDir, 'backlog'), { recursive: true });
+    fs.mkdirSync(path.join(tasksDir, 'archive'), { recursive: true });
+    fs.mkdirSync(path.join(tasksDir, 'empty-folder'), { recursive: true });
+
+    const files: Record<string, string> = {
+        'task-a.md': '---\nstatus: pending\n---\n\n# Task A\n\nRoot-level pending task.\n',
+        'task-b.md': '---\nstatus: done\n---\n\n# Task B\n\nRoot-level completed task.\n',
+        'feature.plan.md':
+            '---\nstatus: in-progress\n---\n\n# Feature Plan\n\nPlanning document.\n',
+        'backlog/item.md': '---\nstatus: future\n---\n\n# Backlog Item\n\nNested backlog task.\n',
+        'archive/old.md': '---\nstatus: done\n---\n\n# Old Task\n\nArchived task.\n',
+    };
+
+    for (const [rel, content] of Object.entries(files)) {
+        fs.writeFileSync(path.join(tasksDir, rel), content);
+    }
+}
+
+/**
  * Populate the tasks directory with a deeply nested structure for scroll tests.
  *
  * Structure created:
