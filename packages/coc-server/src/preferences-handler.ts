@@ -10,7 +10,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBody } from './api-handler';
+import { sendJSON, sendError } from './api-handler';
+import { parseBodyOrReject } from './shared/handler-utils';
 import type { Route } from './types';
 
 // ============================================================================
@@ -219,12 +220,8 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'PUT',
         pattern: '/api/preferences',
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const prefs = validatePreferences(body);
             writePreferences(dataDir, prefs);
@@ -239,12 +236,8 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'PATCH',
         pattern: '/api/preferences',
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const existing = readPreferences(dataDir);
             const patch = validatePreferences(body);

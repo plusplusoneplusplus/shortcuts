@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { ScheduleManager, describeCron, nextCronTime, parseCron } from './schedule-manager';
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager';
@@ -98,12 +98,8 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
         pattern: /^\/api\/workspaces\/([^/]+)\/schedules$/,
         handler: async (req, res, match) => {
             const repoId = decodeURIComponent(match![1]);
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const validation = validateScheduleInput(body);
             if (!validation.valid) {
@@ -139,12 +135,8 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
             const repoId = decodeURIComponent(match![1]);
             const scheduleId = decodeURIComponent(match![2]);
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (body.cron) {
                 try {

@@ -19,8 +19,9 @@ import {
     installBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
 } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, parseBody } from './api-handler';
-import { handleAPIError, notFound, invalidJSON, badRequest, internalError } from './errors';
+import { sendJSON } from './api-handler';
+import { handleAPIError, notFound, badRequest, internalError } from './errors';
+import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 import type { Route } from './types';
 
 // ============================================================================
@@ -269,17 +270,12 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
             const installPath = getSkillsInstallPath(ws.rootPath);
             let skills = listInstalledSkills(installPath);
-
-            // Sort skills by usage if preferences are available
             if (dataDir) {
                 try {
                     const prefsPath = path.join(dataDir, 'preferences.json');
@@ -304,12 +300,8 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills\/bundled$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const installPath = getSkillsInstallPath(ws.rootPath);
             const bundledSkills = getBundledSkills(installPath);
@@ -322,19 +314,11 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills\/scan$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.url || typeof body.url !== 'string') {
                 return handleAPIError(res, badRequest('`url` is required'));
@@ -356,19 +340,11 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills\/install$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const installPath = getSkillsInstallPath(ws.rootPath);
             const replace = body.replace === true;
@@ -417,7 +393,6 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills\/([^/]+)$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
             const skillName = decodeURIComponent(match![2]);
 
             // Reject route-collision names
@@ -425,12 +400,8 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
-
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
             const installPath = getSkillsInstallPath(ws.rootPath);
 
             // Validate skill path is within install path (security)
@@ -451,7 +422,6 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills\/([^/]+)$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
             const skillName = decodeURIComponent(match![2]);
 
             // Reject route-collision names
@@ -459,11 +429,8 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const installPath = getSkillsInstallPath(ws.rootPath);
             if (!isWithinDirectory(installPath, skillName)) {

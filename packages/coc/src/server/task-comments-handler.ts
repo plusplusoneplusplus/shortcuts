@@ -15,7 +15,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import {
     DEFAULT_AI_COMMANDS,
@@ -672,12 +672,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (!body.text || typeof body.text !== 'string') {
                 return sendError(res, 400, 'Missing required field: text');
             }
@@ -709,12 +705,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             try {
                 const comment = await manager.getComment(wsId, taskPath, commentId);
                 if (!comment) {
@@ -804,12 +796,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const documentContent: string | undefined = body.documentContent;
             if (!documentContent || typeof documentContent !== 'string') {
@@ -850,12 +838,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             const missing = findMissingField(body);
             if (missing) {
                 return sendError(res, 400, `Missing required field: ${missing}`);
@@ -883,12 +867,8 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             try {
                 const comment = await manager.updateComment(wsId, taskPath, commentId, body);
                 if (!comment) {

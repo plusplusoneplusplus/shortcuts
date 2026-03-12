@@ -11,7 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -347,12 +347,8 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'PUT',
         pattern: '/api/preferences',
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const global = validateGlobalPreferences(body);
             const existing = readPreferences(dataDir);
@@ -368,12 +364,8 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'PATCH',
         pattern: '/api/preferences',
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const existing = readPreferences(dataDir);
             const patch = validateGlobalPreferences(body);
@@ -403,12 +395,8 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'PUT',
         pattern: /^\/api\/workspaces\/([^/]+)\/preferences$/,
         handler: async (req, res, match) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const repoId = decodeURIComponent(match![1]);
             const repoPrefs = validatePerRepoPreferences(body);
@@ -426,12 +414,8 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/preferences$/,
         handler: async (req, res, match) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const repoId = decodeURIComponent(match![1]);
             const existing = readPreferences(dataDir);
@@ -474,12 +458,8 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/preferences\/skill-usage$/,
         handler: async (req, res, match) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body || typeof body.skillName !== 'string' || body.skillName.length === 0) {
                 return sendError(res, 400, '`skillName` is required');

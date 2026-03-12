@@ -16,7 +16,7 @@ import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { TaskManager, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { resolveTaskRoot } from './task-root-resolver';
 
@@ -65,15 +65,6 @@ const DEFAULT_SETTINGS: TasksViewerSettings = {
 };
 
 // ============================================================================
-// Workspace resolution helper
-// ============================================================================
-
-async function resolveWorkspace(store: ProcessStore, id: string) {
-    const workspaces = await store.getWorkspaces();
-    return workspaces.find(w => w.id === id);
-}
-
-// ============================================================================
 // Route Registration
 // ============================================================================
 
@@ -91,11 +82,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/files\/preview$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const parsed = url.parse(req.url || '/', true);
             const filePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
@@ -213,11 +201,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/content$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const parsed = url.parse(req.url || '/', true);
             const filePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
@@ -261,11 +246,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/settings$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             sendJSON(res, 200, {
@@ -283,11 +265,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const parsed = url.parse(req.url || '/', true);
             const folder = (typeof parsed.query.folder === 'string' && parsed.query.folder)
@@ -416,18 +395,11 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { name, type, folder, parent, docType } = body || {};
             if (!name || typeof name !== 'string' || !name.trim()) {
@@ -503,18 +475,11 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/content$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { path: filePath, content } = body || {};
             if (!filePath || typeof filePath !== 'string') {
@@ -559,18 +524,11 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
             const { path: itemPath } = body || {};
@@ -737,18 +695,11 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { path: itemPath } = body || {};
             if (!itemPath || typeof itemPath !== 'string') {
@@ -786,18 +737,12 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/move$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { sourcePath, destinationFolder, destinationWorkspaceId } = body || {};
             if (!sourcePath || typeof sourcePath !== 'string') {
@@ -811,7 +756,8 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
             const isCrossWorkspace = typeof destinationWorkspaceId === 'string' && destinationWorkspaceId !== id;
             let destWs = ws;
             if (isCrossWorkspace) {
-                const found = await resolveWorkspace(store, destinationWorkspaceId);
+                const destWorkspaces = await store.getWorkspaces();
+                const found = destWorkspaces.find(w => w.id === destinationWorkspaceId);
                 if (!found) {
                     return sendError(res, 404, 'Destination workspace not found');
                 }
@@ -917,18 +863,11 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/archive$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { path: itemPath, action } = body || {};
             if (!itemPath || typeof itemPath !== 'string') {

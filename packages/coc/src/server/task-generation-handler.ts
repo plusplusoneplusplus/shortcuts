@@ -33,19 +33,10 @@ import {
     AUTO_FOLDER_SENTINEL,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { resolveTaskRoot } from './task-root-resolver';
-
-// ============================================================================
-// Workspace resolution helper
-// ============================================================================
-
-async function resolveWorkspace(store: ProcessStore, id: string) {
-    const workspaces = await store.getWorkspaces();
-    return workspaces.find(w => w.id === id);
-}
 
 // ============================================================================
 // SSE Helpers
@@ -84,18 +75,11 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/generate$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { prompt, targetFolder, name, model, mode, depth } = body || {};
 
@@ -244,18 +228,11 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/discover$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { featureDescription, keywords, scope } = body || {};
 
@@ -307,18 +284,12 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/queue\/generate$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const ws = await resolveWorkspace(store, id);
-            if (!ws) {
-                return sendError(res, 404, 'Workspace not found');
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return sendError(res, 400, 'Invalid JSON body');
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const { prompt, targetFolder, name, model, mode, depth, priority, images } = body || {};
 

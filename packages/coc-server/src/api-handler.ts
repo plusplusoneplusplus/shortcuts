@@ -19,13 +19,14 @@ import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService,
 import type { Attachment, GitOpJob } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
 import { handleProcessStream, emitMessageQueued } from './sse-handler';
-import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, conflict, APIError } from './errors';
+import { handleAPIError, missingFields, notFound, badRequest, internalError, conflict, APIError } from './errors';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
 import { gitCache } from './git-cache';
 import { registerSkillRoutes } from './skill-handler';
 import { registerGlobalSkillRoutes } from './global-skill-handler';
 import type { ProcessWebSocketServer } from './websocket';
 import { getServerLogger } from './server-logger';
+import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -254,12 +255,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: '/api/workspaces',
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.id || !body.name || !body.rootPath) {
                 return handleAPIError(res, missingFields(['id', 'name', 'rootPath']));
@@ -315,12 +312,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         pattern: /^\/api\/workspaces\/([^/]+)$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const updates: Partial<Omit<WorkspaceInfo, 'id'>> = {};
             if (body.name !== undefined) { updates.name = body.name; }
@@ -341,12 +334,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git-info$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const dirty = getBranchService().hasUncommittedChanges(ws.rootPath);
             const branchStatus = getBranchService().getBranchStatus(ws.rootPath, dirty);
@@ -374,8 +363,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: '/api/git-info/batch',
         handler: async (req, res) => {
-            let body: any = {};
-            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             const { workspaceIds } = body;
             if (!Array.isArray(workspaceIds)) {
                 return handleAPIError(res, missingFields(['workspaceIds']));
@@ -424,12 +413,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
             const { mcpServers } = loadDefaultMcpConfig();
             const availableServers = Object.entries(mcpServers).map(([name, config]) => ({
                 name,
@@ -446,18 +431,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'PUT',
         pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (!Object.prototype.hasOwnProperty.call(body, 'enabledMcpServers')) {
                 return handleAPIError(res, missingFields(['enabledMcpServers']));
             }
@@ -480,12 +458,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills-config$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
             const disabledSkills: string[] = ws.disabledSkills ?? [];
             sendJSON(res, 200, { disabledSkills });
         },
@@ -496,18 +470,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'PUT',
         pattern: /^\/api\/workspaces\/([^/]+)\/skills-config$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (!Object.prototype.hasOwnProperty.call(body, 'disabledSkills')) {
                 return handleAPIError(res, missingFields(['disabledSkills']));
             }
@@ -530,12 +497,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
             const parsed = url.parse(req.url || '/', true);
             const limit = Math.min(Math.max(parseInt(String(parsed.query.limit || '50'), 10) || 50, 1), 200);
@@ -605,13 +569,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
             const hash = match![2];
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
 
             const cacheKey = `${id}:commit:${hash}`;
             const cached = gitCache.get<Record<string, string>>(cacheKey);
@@ -649,13 +610,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
             const hash = match![2];
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
 
             const cacheKey = `${id}:commit-files:${hash}`;
             const cached = gitCache.get<{ files: any[] }>(cacheKey);
@@ -686,13 +644,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/diff$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
             const hash = match![2];
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
 
             const cacheKey = `${id}:commit-diff:${hash}`;
             const cached = gitCache.get<{ diff: string }>(cacheKey);
@@ -716,14 +671,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/diff$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
             const hash = match![2];
             const filePath = decodeURIComponent(match![3]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
 
             const cacheKey = `${id}:commit-file-diff:${hash}:${filePath}`;
             const cached = gitCache.get<{ diff: string }>(cacheKey);
@@ -747,14 +699,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/content$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
             const hash = match![2];
             const filePath = decodeURIComponent(match![3]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
 
             const cacheKey = `${id}:commit-file-content:${hash}:${filePath}`;
             const cached = gitCache.get<{
@@ -804,12 +753,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
             const parsed = url.parse(req.url || '/', true);
             const refresh = parsed.query.refresh === 'true';
@@ -845,12 +791,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             try {
                 const rangeService = getGitRangeService();
@@ -870,12 +812,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/diff$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             try {
                 const rangeService = getGitRangeService();
@@ -896,13 +834,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files\/(.+)\/diff$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
             const filePath = decodeURIComponent(match![2]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
 
             try {
                 const rangeService = getGitRangeService();
@@ -929,12 +863,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             try {
                 const parsed = url.parse(req.url!, true).query;
@@ -967,12 +897,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-status$/,
         handler: async (_req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             try {
                 const uncommitted = branchService.hasUncommittedChanges(ws.rootPath);
@@ -989,19 +915,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.name) {
                 return handleAPIError(res, missingFields(['name']));
@@ -1018,19 +936,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/switch$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.name) {
                 return handleAPIError(res, missingFields(['name']));
@@ -1047,19 +958,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/rename$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.oldName || !body.newName) {
                 return handleAPIError(res, missingFields(['oldName', 'newName']));
@@ -1075,12 +978,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/(.+)$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const branchName = decodeURIComponent(match![2]);
             const parsed = url.parse(req.url!, true).query;
@@ -1095,12 +994,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/push$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
             let body: any = {};
             try {
@@ -1121,12 +1017,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/pull$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
             // Guard against concurrent pulls
             const running = await gitOpsStore.getRunning(id, 'pull');
@@ -1207,12 +1100,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/fetch$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
             let body: any = {};
             try {
@@ -1233,19 +1123,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/merge$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.branch || typeof body.branch !== 'string') {
                 return handleAPIError(res, missingFields(['branch']));
@@ -1262,19 +1145,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/stash$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any = {};
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const message: string | undefined = typeof body.message === 'string' ? body.message : undefined;
             const result = await branchService.stashChanges(ws.rootPath, message);
@@ -1288,12 +1164,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/stash\/pop$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) {
-                return handleAPIError(res, notFound('Workspace'));
-            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
             const result = await branchService.popStash(ws.rootPath);
             getWsServer?.()?.broadcastGitChanged(id, 'stash-pop');
@@ -1312,10 +1185,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
             const changes = await workingTreeService.getAllChanges(ws.rootPath);
             sendJSON(res, 200, { changes });
@@ -1327,13 +1198,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/stage$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any = {};
-            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.stageFile(ws.rootPath, body.filePath);
@@ -1347,13 +1217,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/unstage$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any = {};
-            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.unstageFile(ws.rootPath, body.filePath);
@@ -1367,13 +1236,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/discard$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any = {};
-            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.discardChanges(ws.rootPath, body.filePath);
@@ -1387,13 +1255,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/stage-batch$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any = {};
-            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (!Array.isArray(body.filePaths)) return handleAPIError(res, missingFields(['filePaths']));
 
             const result = await workingTreeService.stageFiles(ws.rootPath, body.filePaths);
@@ -1407,13 +1274,12 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/unstage-batch$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
 
-            let body: any = {};
-            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (!Array.isArray(body.filePaths)) return handleAPIError(res, missingFields(['filePaths']));
 
             const result = await workingTreeService.unstageFiles(ws.rootPath, body.filePaths);
@@ -1427,13 +1293,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/untracked$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
 
-            let body: any = {};
-            try { body = await parseBody(req); } catch { return handleAPIError(res, invalidJSON()); }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
             if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.deleteUntrackedFile(ws.rootPath, body.filePath);
@@ -1446,11 +1310,9 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/files\/(.+)\/diff$/,
         handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
             const filePath = decodeURIComponent(match![2]);
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === id);
-            if (!ws) return handleAPIError(res, notFound('Workspace'));
 
             const parsed = url.parse(req.url!, true).query;
             const stage = parsed.stage as string | undefined;
@@ -1600,12 +1462,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         method: 'POST',
         pattern: '/api/processes',
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.id || !body.promptPreview || !body.status || !body.startTime) {
                 return handleAPIError(res, missingFields(['id', 'promptPreview', 'status', 'startTime']));
@@ -1739,12 +1597,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 return handleAPIError(res, notFound('Process'));
             }
 
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             const updates: Partial<AIProcess> = {};
             if (body.status !== undefined) { updates.status = body.status; }
@@ -1821,12 +1675,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             // Parse and validate body first so malformed requests get 400
             // regardless of session state
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!body.content || typeof body.content !== 'string') {
                 return handleAPIError(res, missingFields(['content']));
