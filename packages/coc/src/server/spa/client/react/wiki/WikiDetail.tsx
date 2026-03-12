@@ -73,6 +73,13 @@ export function WikiDetail({ wikiId, embedded, initialTab, initialAdminTab, init
         }
     }, [state.wikiAutoGenerate, embedded, dispatch]);
 
+    // Sync active tab to global state so it can be restored when switching wikis
+    useEffect(() => {
+        if (!embedded) {
+            dispatch({ type: 'SET_WIKI_TAB', wikiId, tab: activeTab });
+        }
+    }, [activeTab, wikiId, embedded, dispatch]);
+
     // Consume initial tab from context (e.g. from hash routing or "→ Setup" CTA)
     useEffect(() => {
         if (embedded) return;

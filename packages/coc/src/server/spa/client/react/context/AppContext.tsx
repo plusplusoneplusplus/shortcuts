@@ -58,6 +58,8 @@ export interface AppContextState {
     activeSkillsSubTab: SkillsSubTab;
     /** Per-repo remembered sub-tab (in-memory only, resets on page refresh). */
     repoTabState: Record<string, RepoSubTab>;
+    /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
+    wikiTabState: Record<string, string>;
 }
 
 const initialState: AppContextState = {
@@ -95,6 +97,7 @@ const initialState: AppContextState = {
     activeMemorySubTab: 'entries',
     activeSkillsSubTab: 'installed',
     repoTabState: {},
+    wikiTabState: {},
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -149,7 +152,8 @@ export type AppAction =
     | { type: 'CLEAR_REPO_WIKI_INITIAL' }
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
-    | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab };
+    | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
+    | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -347,6 +351,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, activeMemorySubTab: action.tab };
         case 'SET_SKILLS_SUB_TAB':
             return { ...state, activeSkillsSubTab: action.tab };
+        case 'SET_WIKI_TAB':
+            return { ...state, wikiTabState: { ...state.wikiTabState, [action.wikiId]: action.tab } };
         default:
             return state;
     }

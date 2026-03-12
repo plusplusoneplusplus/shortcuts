@@ -75,15 +75,21 @@ function relativeTime(dateStr: string): string {
 
 export function WikiList() {
     const { wikis, reload } = useWiki();
-    const { dispatch } = useApp();
+    const { state, dispatch } = useApp();
     const [addOpen, setAddOpen] = useState(false);
     const [editWiki, setEditWiki] = useState<WikiData | null>(null);
     const [deleteWiki, setDeleteWiki] = useState<WikiData | null>(null);
 
     const selectWiki = useCallback((wikiId: string) => {
-        dispatch({ type: 'SELECT_WIKI', wikiId });
-        location.hash = '#wiki/' + encodeURIComponent(wikiId);
-    }, [dispatch]);
+        const savedTab = state.wikiTabState[wikiId];
+        if (savedTab && savedTab !== 'browse') {
+            dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId, tab: savedTab });
+            location.hash = '#wiki/' + encodeURIComponent(wikiId) + '/' + savedTab;
+        } else {
+            dispatch({ type: 'SELECT_WIKI', wikiId });
+            location.hash = '#wiki/' + encodeURIComponent(wikiId);
+        }
+    }, [dispatch, state.wikiTabState]);
 
     const setupWiki = useCallback((wikiId: string) => {
         dispatch({ type: 'SELECT_WIKI_WITH_TAB', wikiId, tab: 'admin' });
