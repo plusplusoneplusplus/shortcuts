@@ -24,7 +24,7 @@ Pure Node.js AI pipeline engine. No VS Code dependencies. Used by CoC CLI, Deep 
 | **utils** | `src/utils/` | File I/O, glob, HTTP, text matching, AI response parsing, template engine |
 | **git** | `src/git/` | `BranchService` (pull/push/fetch/merge/stash), `GitLogService`, `GitRangeService`, `WorkingTreeService`, `GitOpsStore` (background git op tracking, file-persisted to `~/.coc/git-ops/`), exec helpers, remote URL detection |
 | **templates** | `src/templates/` | `replicateCommit()`, prompt builder, result parser — commit template replication service |
-| **ado** | `src/ado/` | Azure DevOps integration: `AdoConnectionFactory`, `AdoWorkItemsService`, `AdoPullRequestsService` |
+| **ado** | `src/ado/` | Azure DevOps integration: `AdoConnectionFactory` (PAT + Azure CLI bearer token auth), `AdoWorkItemsService`, `AdoPullRequestsService` |
 | **skills** | `src/skills/` | Skill management: source detector, skill scanner, skill installer, bundled skills provider |
 
 Entry point: `src/index.ts` — re-exports all public API from the modules above.
