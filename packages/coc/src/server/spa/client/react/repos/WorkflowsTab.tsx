@@ -706,13 +706,6 @@ export function WorkflowsTab({ repo }: WorkflowsTabProps) {
         fetchTemplates();
     }, [workspaceId, fetchTemplates]);
 
-    // Reset template selection when workspace changes
-    useEffect(() => {
-        setSelectedTemplateName(null);
-        setShowTemplateCreate(false);
-        setEditingTemplateName(null);
-    }, [workspaceId]);
-
     // ── Template selection handler ──
 
     const handleSelectTemplate = (name: string) => {

@@ -249,6 +249,13 @@ describe('AppContext reducer', () => {
             expect(result.selectedRepoId).toBeNull();
         });
 
+        it('SET_SELECTED_REPO clears selectedWorkflowName and selectedWorkflowProcessId', () => {
+            const state = makeState({ selectedRepoId: 'repo-a', selectedWorkflowName: 'wf-1', selectedWorkflowProcessId: 'proc-1' });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            expect(result.selectedWorkflowName).toBeNull();
+            expect(result.selectedWorkflowProcessId).toBeNull();
+        });
+
         it('SET_REPO_SUB_TAB switches to activity', () => {
             const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
             expect(result.activeRepoSubTab).toBe('activity');

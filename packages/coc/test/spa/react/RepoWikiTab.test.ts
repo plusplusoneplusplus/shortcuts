@@ -203,7 +203,7 @@ describe('RepoWikiTab', () => {
         });
 
         it('should receive workspaceId and workspacePath props', () => {
-            expect(detailContent).toMatch(/RepoWikiTab\s+workspaceId=\{ws\.id\}\s+workspacePath=\{ws\.rootPath\}/);
+            expect(detailContent).toMatch(/RepoWikiTab\s+key=\{ws\.id\}\s+workspaceId=\{ws\.id\}\s+workspacePath=\{ws\.rootPath\}/);
         });
 
         it('should pass initialWikiId from state', () => {

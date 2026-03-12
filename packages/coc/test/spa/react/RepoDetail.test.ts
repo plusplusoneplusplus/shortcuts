@@ -395,6 +395,26 @@ describe('RepoDetail Git tab wiring', () => {
     it('mounts a fresh ExplorerPanel on every repo switch via key={ws.id}', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<ExplorerPanel key={ws.id}');
     });
+
+    it('mounts a fresh TasksPanel on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<TasksPanel key={ws.id}');
+    });
+
+    it('mounts a fresh RepoInfoTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoInfoTab key={ws.id}');
+    });
+
+    it('mounts a fresh WorkflowsTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<WorkflowsTab key={ws.id}');
+    });
+
+    it('mounts a fresh RepoWikiTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoWikiTab key={ws.id}');
+    });
+
+    it('mounts a fresh WorkflowDetailView on every repo switch via key={state.selectedWorkflowProcessId}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<WorkflowDetailView key={state.selectedWorkflowProcessId}');
+    });
 });
 
 describe('RepoDetail New Chat button removed from header', () => {

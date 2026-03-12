@@ -410,18 +410,18 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && "pb-14")}>
                 {activeSubTab === 'tasks' ? (
-                    <TasksPanel wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
+                    <TasksPanel key={ws.id} wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' ? "overflow-hidden" : "overflow-y-auto")}>
-                        {activeSubTab === 'info' && <RepoInfoTab repo={repo} />}
-                        {activeSubTab === 'workflows' && <WorkflowsTab repo={repo} />}
+                        {activeSubTab === 'info' && <RepoInfoTab key={ws.id} repo={repo} />}
+                        {activeSubTab === 'workflows' && <WorkflowsTab key={ws.id} repo={repo} />}
                         {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
-                        {activeSubTab === 'wiki' && <RepoWikiTab workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
+                        {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         {activeSubTab === 'copilot' && <RepoCopilotTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'explorer' && <ExplorerPanel key={ws.id} workspaceId={ws.id} />}
-                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView processId={state.selectedWorkflowProcessId} />}
+                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
                     </div>
                 )}
             </div>

@@ -202,7 +202,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 ? { ...state.repoTabState, [state.selectedRepoId]: state.activeRepoSubTab }
                 : state.repoTabState;
             const restoredTab = action.id ? (savedTabState[action.id] ?? 'info') : state.activeRepoSubTab;
-            return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab };
+            return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, selectedWorkflowName: null, selectedWorkflowProcessId: null };
         }
         case 'SET_REPO_SUB_TAB': {
             const updatedRepoTabState = state.selectedRepoId
