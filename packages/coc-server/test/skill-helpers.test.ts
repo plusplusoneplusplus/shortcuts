@@ -9,6 +9,7 @@ import {
     VARIABLES_REGEX,
     OUTPUT_REGEX,
     parseSkillMd,
+    parseYamlDescription,
     extractDescriptionFromMarkdown,
     listDirectoryFiles,
     listInstalledSkills,
@@ -97,6 +98,139 @@ describe('shared skill helpers', () => {
             expect(result.description).toBeUndefined();
             expect(result.version).toBeUndefined();
             expect(result.promptBody).toBeUndefined();
+        });
+    });
+
+    // ── parseYamlDescription ─────────────────────────────────
+
+    describe('parseYamlDescription', () => {
+        it('parses single-line description', () => {
+            expect(parseYamlDescription('description: A simple skill')).toBe('A simple skill');
+        });
+
+        it('parses block literal (|) multiline description', () => {
+            const fm = [
+                'name: humanizer',
+                'description: |',
+                '  Remove signs of AI-generated writing.',
+                '  Based on Wikipedia guide.',
+            ].join('\n');
+            expect(parseYamlDescription(fm)).toBe(
+                'Remove signs of AI-generated writing.\nBased on Wikipedia guide.'
+            );
+        });
+
+        it('parses block folded (>) multiline description', () => {
+            const fm = [
+                'name: test',
+                'description: >',
+                '  This is a long',
+                '  description that folds.',
+            ].join('\n');
+            expect(parseYamlDescription(fm)).toBe(
+                'This is a long description that folds.'
+            );
+        });
+
+        it('handles strip chomping indicator (|-)', () => {
+            const fm = [
+                'description: |-',
+                '  Stripped trailing newline.',
+            ].join('\n');
+            expect(parseYamlDescription(fm)).toBe('Stripped trailing newline.');
+        });
+
+        it('handles keep chomping indicator (|+)', () => {
+            const fm = [
+                'description: |+',
+                '  Keep trailing newline.',
+            ].join('\n');
+            expect(parseYamlDescription(fm)).toBe('Keep trailing newline.');
+        });
+
+        it('stops collecting at non-indented line', () => {
+            const fm = [
+                'description: |',
+                '  First line.',
+                '  Second line.',
+                'version: 1.0',
+            ].join('\n');
+            expect(parseYamlDescription(fm)).toBe('First line.\nSecond line.');
+        });
+
+        it('returns undefined for empty block scalar', () => {
+            const fm = [
+                'description: |',
+                'version: 1.0',
+            ].join('\n');
+            expect(parseYamlDescription(fm)).toBeUndefined();
+        });
+
+        it('returns undefined when no description field', () => {
+            expect(parseYamlDescription('name: test\nversion: 1.0')).toBeUndefined();
+        });
+
+        it('handles CRLF line endings', () => {
+            const fm = 'description: |\r\n  Line one.\r\n  Line two.\r\nversion: 1.0';
+            expect(parseYamlDescription(fm)).toBe('Line one.\nLine two.');
+        });
+    });
+
+    // ── parseSkillMd with block scalar ───────────────────────
+
+    describe('parseSkillMd with block scalar description', () => {
+        it('parses frontmatter with block literal description', () => {
+            const md = [
+                '---',
+                'name: humanizer',
+                'version: 2.2.0',
+                'description: |',
+                '  Remove signs of AI-generated writing from text.',
+                '  Use when editing or reviewing text.',
+                '---',
+                '',
+                '# Humanizer',
+            ].join('\n');
+
+            const result = parseSkillMd(md);
+            expect(result.description).toBe(
+                'Remove signs of AI-generated writing from text.\nUse when editing or reviewing text.'
+            );
+            expect(result.version).toBe('2.2.0');
+            expect(result.promptBody).toContain('# Humanizer');
+        });
+
+        it('parses frontmatter with block folded description', () => {
+            const md = [
+                '---',
+                'description: >',
+                '  A long description',
+                '  that gets folded.',
+                '---',
+                '',
+                'Body text.',
+            ].join('\n');
+
+            const result = parseSkillMd(md);
+            expect(result.description).toBe('A long description that gets folded.');
+        });
+    });
+
+    // ── extractDescriptionFromMarkdown with block scalar ─────
+
+    describe('extractDescriptionFromMarkdown with block scalar', () => {
+        it('extracts block literal description from frontmatter', () => {
+            const md = [
+                '---',
+                'description: |',
+                '  Multi-line description.',
+                '  Second line.',
+                '---',
+                '# Heading',
+            ].join('\n');
+            expect(extractDescriptionFromMarkdown(md)).toBe(
+                'Multi-line description.\nSecond line.'
+            );
         });
     });
 

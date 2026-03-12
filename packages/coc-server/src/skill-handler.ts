@@ -97,8 +97,7 @@ export function parseSkillMd(content: string): {
     const fmMatch = content.match(FRONTMATTER_REGEX);
     if (fmMatch) {
         const fm = fmMatch[1];
-        const descMatch = fm.match(DESCRIPTION_REGEX);
-        if (descMatch) description = descMatch[1];
+        description = parseYamlDescription(fm);
         const verMatch = fm.match(VERSION_REGEX);
         if (verMatch) version = verMatch[1];
         const varMatch = fm.match(VARIABLES_REGEX);
@@ -194,13 +193,47 @@ export function getSkillDetail(installPath: string, skillName: string): SkillInf
 export const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
 export const DESCRIPTION_REGEX = /^description:\s*["']?(.+?)["']?\s*$/m;
 
+/**
+ * Parse the `description` field from YAML frontmatter, handling both
+ * single-line values and YAML block scalars (`|` and `>`).
+ */
+export function parseYamlDescription(frontmatter: string): string | undefined {
+    // Try block scalar (| or >) first
+    const blockMatch = frontmatter.match(/^description:\s*([|>])[-+]?\s*$/m);
+    if (blockMatch) {
+        const style = blockMatch[1]; // '|' or '>'
+        const startIdx = blockMatch.index! + blockMatch[0].length;
+        const rest = frontmatter.slice(startIdx).replace(/^\r?\n/, '');
+        const lines = rest.split(/\r?\n/);
+        const descLines: string[] = [];
+        for (const line of lines) {
+            if (/^\s+\S/.test(line)) {
+                descLines.push(line.replace(/^\s+/, ''));
+            } else if (line.trim() === '' && descLines.length > 0) {
+                descLines.push('');
+            } else {
+                break;
+            }
+        }
+        while (descLines.length > 0 && descLines[descLines.length - 1] === '') {
+            descLines.pop();
+        }
+        if (descLines.length === 0) return undefined;
+        return style === '|' ? descLines.join('\n') : descLines.join(' ');
+    }
+
+    // Fall back to single-line match
+    const singleMatch = frontmatter.match(DESCRIPTION_REGEX);
+    return singleMatch ? singleMatch[1] : undefined;
+}
+
 export function extractDescriptionFromMarkdown(content: string): string | undefined {
     // Try YAML frontmatter first
     const fmMatch = content.match(FRONTMATTER_REGEX);
     if (fmMatch) {
-        const descMatch = fmMatch[1].match(DESCRIPTION_REGEX);
-        if (descMatch) {
-            return descMatch[1];
+        const desc = parseYamlDescription(fmMatch[1]);
+        if (desc) {
+            return desc;
         }
     }
 
