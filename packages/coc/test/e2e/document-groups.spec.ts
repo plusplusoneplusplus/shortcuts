@@ -130,4 +130,41 @@ test.describe('Document Groups (013)', () => {
             safeRmSync(tmpDir);
         }
     });
+
+    test('13.4 delete group removes all grouped files from disk', async ({ page, serverUrl, dataDir }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-docgroup-'));
+        try {
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
+            const tasksDir = taskRoot;
+
+            // Verify both files exist on disk
+            expect(fs.existsSync(path.join(tasksDir, 'feature.plan.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDir, 'feature.spec.md'))).toBe(true);
+
+            // Right-click on "feature" group row
+            const featureRow = page.locator('[data-testid="task-tree-item-feature"]');
+            await expect(featureRow).toBeVisible({ timeout: 10000 });
+            await featureRow.click({ button: 'right' });
+
+            // Context menu should appear with "Delete" option
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
+            await expect(page.getByRole('menuitem', { name: /^Delete$/ })).toBeVisible();
+
+            // Click "Delete"
+            await page.getByRole('menuitem', { name: /^Delete$/ }).click();
+
+            // Confirm in the custom Delete dialog
+            await expect(page.getByText('Are you sure you want to delete')).toBeVisible({ timeout: 5000 });
+            await page.getByRole('button', { name: 'Delete' }).click();
+
+            // Group row should disappear
+            await expect(page.locator('[data-testid="task-tree-item-feature"]')).toHaveCount(0, { timeout: 10000 });
+
+            // Both grouped files should be deleted on disk
+            expect(fs.existsSync(path.join(tasksDir, 'feature.plan.md'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDir, 'feature.spec.md'))).toBe(false);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
 });

@@ -235,4 +235,88 @@ test.describe('Task CRUD (010)', () => {
             safeRmSync(tmpDir);
         }
     });
+
+    test('10.7 create subfolder inside existing folder', async ({ page, serverUrl, dataDir }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
+        try {
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
+
+            // Navigate into the "backlog" folder
+            const backlogRow = page.locator('[data-testid="task-tree-item-backlog"]');
+            await expect(backlogRow).toBeVisible();
+            await backlogRow.click();
+
+            // Wait for column 1 to appear (inside backlog)
+            await expect(page.locator('[data-testid="miller-column-1"]')).toBeVisible({ timeout: 5000 });
+
+            // Right-click on backlog to open folder context menu
+            await backlogRow.click({ button: 'right' });
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
+
+            // Click "Create Subfolder"
+            await page.getByRole('menuitem', { name: /Create Subfolder/ }).click();
+
+            // Input dialog should appear
+            await expect(page.locator('#task-input-dialog-overlay')).toBeVisible({ timeout: 5000 });
+
+            // Enter subfolder name and submit
+            await page.fill('[data-testid="folder-action-input"]', 'sprint-1');
+            await page.click('#task-dialog-form button[type="submit"]');
+
+            // Dialog should close
+            await expect(page.locator('#task-input-dialog-overlay')).toBeHidden({ timeout: 5000 });
+
+            // New subfolder should appear in the task tree
+            await expect(page.locator('[data-testid="task-tree-item-sprint-1"]')).toBeVisible({ timeout: 10000 });
+
+            // Verify directory was created on disk
+            const subfolderPath = path.join(taskRoot, 'backlog', 'sprint-1');
+            expect(fs.existsSync(subfolderPath)).toBe(true);
+            expect(fs.statSync(subfolderPath).isDirectory()).toBe(true);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('10.8 rename folder via context menu', async ({ page, serverUrl, dataDir }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-crud-'));
+        try {
+            const { repoDir, taskRoot } = await setupRepoWithTasks(page, serverUrl, tmpDir, dataDir);
+
+            // Verify backlog folder exists
+            const origFolder = path.join(taskRoot, 'backlog');
+            expect(fs.existsSync(origFolder)).toBe(true);
+
+            // Right-click on "backlog" folder row
+            const folderRow = page.locator('[data-testid="task-tree-item-backlog"]');
+            await expect(folderRow).toBeVisible();
+            await folderRow.click({ button: 'right' });
+
+            // Context menu should appear
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
+
+            // Click "Rename Folder"
+            await page.getByRole('menuitem', { name: /Rename Folder/ }).click();
+
+            // Input dialog should appear with current name pre-filled
+            await expect(page.locator('#task-input-dialog-overlay')).toBeVisible({ timeout: 5000 });
+
+            // Clear and enter new folder name
+            await page.fill('[data-testid="folder-action-input"]', 'icebox');
+            await page.click('#task-dialog-form button[type="submit"]');
+
+            // Dialog should close
+            await expect(page.locator('#task-input-dialog-overlay')).toBeHidden({ timeout: 5000 });
+
+            // Folder row should show new name
+            await expect(page.locator('[data-testid="task-tree-item-icebox"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="task-tree-item-backlog"]')).toHaveCount(0, { timeout: 5000 });
+
+            // Old directory gone, new directory exists on disk
+            expect(fs.existsSync(origFolder)).toBe(false);
+            expect(fs.existsSync(path.join(taskRoot, 'icebox'))).toBe(true);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
 });

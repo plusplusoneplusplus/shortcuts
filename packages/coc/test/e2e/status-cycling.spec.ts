@@ -134,4 +134,38 @@ test.describe('Status Cycling (011)', () => {
             safeRmSync(tmpDir);
         }
     });
+
+    test('11.4 future status icon and persistence', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-status-'));
+        try {
+            await setupRepoWithTasks(page, serverUrl, tmpDir);
+
+            // backlog/item.md has status: future in the fixture — verify 📋 icon
+            // First navigate into backlog folder
+            const backlogRow = page.locator('[data-testid="task-tree-item-backlog"]');
+            await expect(backlogRow).toBeVisible();
+            await backlogRow.click();
+
+            await expect(page.locator('[data-testid="miller-column-1"]')).toBeVisible({ timeout: 5000 });
+
+            const itemRow = page.locator('.miller-file-row', { hasText: 'item' });
+            await expect(itemRow).toBeVisible({ timeout: 5000 });
+            await expect(itemRow).toContainText('📋');
+
+            // Also set task-b (done) to future via context menu
+            const taskBRow = page.locator('.miller-file-row', { hasText: 'task-b' });
+            // Navigate back to root by clicking root column item
+            await page.locator('[data-testid="miller-column-0"]').locator('.miller-file-row', { hasText: 'task-b' }).click({ button: 'right' });
+
+            await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
+            await page.getByRole('menuitem', { name: /change status/i }).hover();
+            await expect(page.locator('[data-testid^="context-submenu-"]').first()).toBeVisible({ timeout: 5000 });
+            await page.getByRole('menuitem', { name: /future/i }).click();
+
+            // task-b should now show 📋
+            await expect(page.locator('.miller-file-row', { hasText: 'task-b' })).toContainText('📋', { timeout: 10000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
 });
