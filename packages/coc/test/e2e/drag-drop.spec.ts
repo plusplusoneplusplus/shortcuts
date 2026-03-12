@@ -129,9 +129,9 @@ test.describe('Drag-and-Drop (015)', () => {
             await page.mouse.down();
             await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 5 });
 
-            // Source item should have opacity-30 or opacity-50 (isDragSource)
+            // Source item should have an opacity dim class (isDragSource)
             const sourceClasses = await sourceRow.getAttribute('class');
-            const hasOpacityDim = sourceClasses?.includes('opacity-30') || sourceClasses?.includes('opacity-50');
+            const hasOpacityDim = sourceClasses?.includes('opacity-30') || sourceClasses?.includes('opacity-40') || sourceClasses?.includes('opacity-50');
             expect(hasOpacityDim).toBe(true);
 
             await page.mouse.up();

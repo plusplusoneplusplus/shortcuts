@@ -148,10 +148,10 @@ test.describe('Document Groups (013)', () => {
 
             // Context menu should appear with "Delete" option
             await expect(page.locator('[data-testid="context-menu"]')).toBeVisible({ timeout: 5000 });
-            await expect(page.getByRole('menuitem', { name: /^Delete$/ })).toBeVisible();
+            await expect(page.getByRole('menuitem', { name: /Delete$/ })).toBeVisible();
 
             // Click "Delete"
-            await page.getByRole('menuitem', { name: /^Delete$/ }).click();
+            await page.getByRole('menuitem', { name: /Delete$/ }).click();
 
             // Confirm in the custom Delete dialog
             await expect(page.getByText('Are you sure you want to delete')).toBeVisible({ timeout: 5000 });

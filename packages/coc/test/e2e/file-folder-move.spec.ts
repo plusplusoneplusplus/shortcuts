@@ -154,9 +154,8 @@ test.describe('File and Folder Move (016)', () => {
             // Source folder (backlog) should NOT be in the destination list
             await expect(page.locator('[data-testid="move-dest-backlog"]')).toHaveCount(0);
 
-            // Select "archive" folder as destination (Tasks Root is default)
-            // The archive folder is also in the tree
-            await page.locator('[data-testid="move-dest-root"]').click();
+            // Select "archive" folder as destination (backlog is at root, cannot move it to root)
+            await page.locator('[data-testid="move-dest-archive"]').click();
             await page.getByRole('button', { name: /^Move$/ }).click();
 
             // Dialog should close
