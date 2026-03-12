@@ -116,3 +116,45 @@ test.describe('Tasks real-time: API delete (015)', () => {
         }
     });
 });
+
+// ================================================================
+// 15.3 — Renamed task file reflects in UI
+// ================================================================
+
+test.describe('Tasks real-time: file rename (015)', () => {
+    test('15.3 renamed task file reflects in UI without page refresh', async ({ page, serverUrl, dataDir }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rt-tasks-rename-'));
+        const repoDir = createRepoFixture(tmpDir);
+        createTasksFixture(repoDir);
+        const taskRoot = getTaskRoot(dataDir, 'ws-rt-rename');
+
+        try {
+            await navigateToTasksTab(page, serverUrl, repoDir, 'ws-rt-rename');
+
+            // Confirm task-a is visible in the UI
+            await expect(page.locator('[data-testid="task-tree"]')).toContainText('task-a', {
+                timeout: 10000,
+            });
+
+            // Verify task-a exists on disk in the data dir task root
+            const oldPath = path.join(taskRoot, 'task-a.md');
+            expect(fs.existsSync(oldPath)).toBe(true);
+
+            // Rename task-a.md → renamed-task.md (triggers TaskWatcher change event)
+            const newPath = path.join(taskRoot, 'renamed-task.md');
+            fs.renameSync(oldPath, newPath);
+
+            // renamed-task should appear in UI without page refresh
+            await expect(page.locator('[data-testid="task-tree"]')).toContainText('renamed-task', {
+                timeout: 15000,
+            });
+
+            // task-a should no longer appear
+            await expect(page.locator('.miller-file-row', { hasText: 'task-a' })).toHaveCount(0, {
+                timeout: 10000,
+            });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});

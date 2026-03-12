@@ -456,7 +456,7 @@ export function AdminPanel() {
                 {configLoading ? (
                     <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
                 ) : configError ? (
-                    <div className="text-sm text-red-500">{configError}</div>
+                    <div data-testid="admin-config-error" className="text-sm text-red-500">{configError}</div>
                 ) : (
                     <>
                         {config?.configFilePath && (
@@ -468,6 +468,7 @@ export function AdminPanel() {
                             <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Model</label>
                                 <input
+                                    id="admin-config-model"
                                     className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
                                     value={configForm.model}
                                     onChange={e => setConfigForm(f => ({ ...f, model: e.target.value }))}
@@ -477,6 +478,7 @@ export function AdminPanel() {
                             <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Parallelism</label>
                                 <input
+                                    id="admin-config-parallel"
                                     type="number"
                                     min={1}
                                     className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
@@ -488,6 +490,7 @@ export function AdminPanel() {
                             <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Timeout</label>
                                 <input
+                                    id="admin-config-timeout"
                                     type="number"
                                     min={1}
                                     placeholder="3600 (1 h default)"
@@ -502,6 +505,7 @@ export function AdminPanel() {
                             <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
                                 <label className="text-xs w-24 text-[#616161] dark:text-[#999]">Output</label>
                                 <select
+                                    id="admin-config-output"
                                     className="flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full"
                                     value={configForm.output}
                                     onChange={e => setConfigForm(f => ({ ...f, output: e.target.value }))}
@@ -522,7 +526,7 @@ export function AdminPanel() {
                             <div>Serve Data Dir: {String(resolved.serve?.dataDir ?? '—')} <SourceBadge source={sources['serve.dataDir']} /></div>
                         </div>
 
-                        <Button size="sm" onClick={handleSaveConfig} loading={configSaving}>Save</Button>
+                        <Button id="admin-config-save" size="sm" onClick={handleSaveConfig} loading={configSaving}>Save</Button>
                     </>
                 )}
             </Card>
@@ -636,7 +640,7 @@ export function AdminPanel() {
                     </div>
                     <div className="text-[10px] text-[#848484] ml-[6.5rem]">Number of follow-up suggestions (1–5).</div>
                 </div>
-                <Button size="sm" onClick={handleSaveChatSettings} loading={chatSaving}>Save</Button>
+                <Button id="admin-chat-save" size="sm" onClick={handleSaveChatSettings} loading={chatSaving}>Save</Button>
             </Card>
 
             {/* Preferences */}

@@ -95,3 +95,42 @@ test.describe('Repo real-time: task list', () => {
         }
     });
 });
+
+// ================================================================
+// 8.3 — Process status change updates stats badge
+// ================================================================
+
+test.describe('Repo real-time: process status change', () => {
+    test('running→completed process status change updates stats badge', async ({ page, serverUrl }) => {
+        // Seed workspace and a running process
+        await seedWorkspace(serverUrl, 'ws-rt-status', 'rt-status-repo', '/tmp/rt-status');
+        await seedProcess(serverUrl, 'rt-status-running', {
+            status: 'running',
+            workspaceId: 'ws-rt-status',
+        });
+
+        // Navigate to repos tab and select the repo
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('.meta-grid')).toBeVisible();
+
+        // Verify running=1 in stats
+        const runningItem = page.locator('.meta-item', { hasText: 'Running' });
+        await expect(runningItem).toContainText('1');
+
+        // Allow WS connection to settle
+        await page.waitForTimeout(1000);
+
+        // PATCH the process status to 'completed' via REST API
+        await request(`${serverUrl}/api/processes/rt-status-running`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'completed' }),
+        });
+
+        // Stats badge should update: running goes to 0 / completed goes up
+        // After status change, Running count should no longer show 1
+        await expect(runningItem).not.toContainText('1', { timeout: 20000 });
+    });
+});

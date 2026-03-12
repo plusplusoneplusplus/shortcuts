@@ -493,4 +493,63 @@ test.describe('Admin Panel (008)', () => {
         expect(await replaceRadio.isChecked()).toBe(true);
         expect(await mergeRadio.isChecked()).toBe(false);
     });
+
+    // ----------------------------------------------------------------
+    // TC16: Wipe with includeWikis=true verifies DELETE sends flag
+    // ----------------------------------------------------------------
+
+    test('8.20 wipe with includeWikis=true sends includeWikis=true to DELETE', async ({ page, serverUrl }) => {
+        await seedProcess(serverUrl, 'admin-wipe-wikis-1', { status: 'completed' });
+
+        await navigateToAdmin(page, serverUrl);
+
+        // Check the include wikis checkbox
+        await page.check('#admin-include-wikis');
+        expect(await page.isChecked('#admin-include-wikis')).toBe(true);
+
+        // Click Wipe Data to get token
+        await page.click('#admin-wipe-btn');
+        await expect(page.locator('#admin-wipe-confirm')).toBeVisible({ timeout: 5000 });
+
+        // Intercept DELETE to verify includeWikis=true in URL
+        const deletePromise = page.waitForRequest(req =>
+            req.method() === 'DELETE' && req.url().includes('/api/admin/data'),
+        );
+
+        await page.click('#admin-wipe-confirm');
+
+        const deleteReq = await deletePromise;
+        expect(deleteReq.url()).toContain('includeWikis=true');
+
+        // Wipe should succeed
+        await expect(page.locator('#admin-wipe-status')).toContainText('wiped successfully', { timeout: 10000 });
+    });
+
+    // ----------------------------------------------------------------
+    // TC17: Stats API re-called after wipe
+    // ----------------------------------------------------------------
+
+    test('8.21 stats API is called after wipe completes', async ({ page, serverUrl }) => {
+        await seedProcess(serverUrl, 'admin-stats-wipe-1', { status: 'completed' });
+
+        await navigateToAdmin(page, serverUrl);
+
+        // Wait for initial stat load to finish (not loading indicator "…")
+        await expect(page.locator('#admin-stat-processes')).not.toHaveText('…', { timeout: 5000 });
+
+        // Perform wipe
+        await page.click('#admin-wipe-btn');
+        await expect(page.locator('#admin-wipe-confirm')).toBeVisible({ timeout: 5000 });
+
+        // Intercept the stats re-load that happens after wipe
+        const statsReloadPromise = page.waitForRequest(req =>
+            req.url().includes('/admin/data/stats'),
+        );
+
+        await page.click('#admin-wipe-confirm');
+        await expect(page.locator('#admin-wipe-status')).toContainText('wiped successfully', { timeout: 10000 });
+
+        // Stats API should have been called again (loadStats() is called after wipe)
+        await statsReloadPromise;
+    });
 });
