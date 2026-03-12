@@ -5,6 +5,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { cn } from '../shared';
 import { groupReposByRemote } from './repoGrouping';
 import { AddRepoDialog } from './AddRepoDialog';
@@ -102,6 +103,7 @@ function MiniRepoItem({
 
 export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHoverEnd, unseenCounts }: MiniReposSidebarProps) {
     const { state, dispatch } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
     const [addOpen, setAddOpen] = useState(false);
 
     const groups = useMemo(
@@ -111,14 +113,16 @@ export function MiniReposSidebar({ repos, onRefresh, onItemHoverStart, onItemHov
 
     const selectRepo = useCallback((id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
         location.hash = '#repos/' + encodeURIComponent(id);
-    }, [dispatch]);
+    }, [dispatch, queueDispatch]);
 
     const expandAndSelect = useCallback((id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
         dispatch({ type: 'TOGGLE_REPOS_SIDEBAR' });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
         location.hash = '#repos/' + encodeURIComponent(id);
-    }, [dispatch]);
+    }, [dispatch, queueDispatch]);
 
     return (
         <nav

@@ -611,7 +611,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     const handleCancel = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
         onBack?.();
     };
 

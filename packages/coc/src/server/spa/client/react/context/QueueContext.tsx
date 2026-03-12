@@ -38,6 +38,8 @@ export interface QueueContextState {
     drainQueued: number;
     drainRunning: number;
     selectedTaskId: string | null;
+    /** Per-repo task selection to prevent cross-repo contamination. */
+    selectedTaskIdByRepo: Record<string, string | null>;
     /** Incremented each time the user clicks an already-selected task to force a refresh. */
     refreshVersion: number;
     queueInitialized: boolean;
@@ -82,6 +84,7 @@ const initialState: QueueContextState = {
     drainQueued: 0,
     drainRunning: 0,
     selectedTaskId: null,
+    selectedTaskIdByRepo: {},
     refreshVersion: 0,
     queueInitialized: false,
 };
@@ -103,7 +106,7 @@ export type QueueAction =
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
-    | { type: 'SELECT_QUEUE_TASK'; id: string | null }
+    | { type: 'SELECT_QUEUE_TASK'; id: string | null; repoId?: string }
     | { type: 'REFRESH_SELECTED_QUEUE_TASK' }
     | { type: 'CHAT_STREAMING_STARTED'; workspaceId: string }
     | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string };
@@ -186,8 +189,13 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return { ...state, showHistory: !state.showHistory };
         case 'SET_FOLLOW_UP_STREAMING':
             return { ...state, isFollowUpStreaming: action.value, currentStreamingTurnIndex: action.turnIndex };
-        case 'SELECT_QUEUE_TASK':
-            return { ...state, selectedTaskId: action.id };
+        case 'SELECT_QUEUE_TASK': {
+            const next: Partial<QueueContextState> = { selectedTaskId: action.id };
+            if (action.repoId) {
+                next.selectedTaskIdByRepo = { ...state.selectedTaskIdByRepo, [action.repoId]: action.id };
+            }
+            return { ...state, ...next };
+        }
         case 'REFRESH_SELECTED_QUEUE_TASK':
             return { ...state, refreshVersion: state.refreshVersion + 1 };
         case 'CHAT_STREAMING_STARTED': {

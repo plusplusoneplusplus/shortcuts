@@ -38,7 +38,7 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
     useQueue: () => ({
-        state: { selectedTaskId: null, repoQueueMap: {} },
+        state: { selectedTaskId: null, selectedTaskIdByRepo: {}, repoQueueMap: {} },
         dispatch: mockQueueDispatch,
     }),
 }));

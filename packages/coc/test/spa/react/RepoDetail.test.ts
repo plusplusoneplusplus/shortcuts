@@ -379,6 +379,22 @@ describe('RepoDetail Git tab wiring', () => {
     it('mounts a fresh RepoGitTab on every repo switch via key={ws.id}', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
     });
+
+    it('mounts a fresh RepoActivityTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoActivityTab key={ws.id}');
+    });
+
+    it('mounts a fresh RepoSchedulesTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoSchedulesTab key={ws.id}');
+    });
+
+    it('mounts a fresh RepoCopilotTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoCopilotTab key={ws.id}');
+    });
+
+    it('mounts a fresh ExplorerPanel on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<ExplorerPanel key={ws.id}');
+    });
 });
 
 describe('RepoDetail New Chat button removed from header', () => {

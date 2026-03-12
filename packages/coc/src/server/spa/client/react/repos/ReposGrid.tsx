@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { fetchApi } from '../hooks/useApi';
 import { Button, cn } from '../shared';
 import { RepoCard } from './RepoCard';
@@ -38,6 +39,7 @@ interface ReposGridProps {
 
 export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const { state, dispatch } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>(loadGroupExpandedState);
     const [addOpen, setAddOpen] = useState(false);
 
@@ -75,6 +77,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
 
     const selectRepo = (id: string) => {
         dispatch({ type: 'SET_SELECTED_REPO', id });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
         location.hash = '#repos/' + encodeURIComponent(id);
     };
 

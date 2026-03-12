@@ -35,7 +35,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { dispatch: appDispatch } = useApp();
-    const selectedTaskId = queueState.selectedTaskId;
+    const selectedTaskId = queueState.selectedTaskIdByRepo[workspaceId] ?? null;
     const { isMobile, isTablet } = useBreakpoint();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: isTablet ? 256 : 320,
@@ -110,7 +110,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             })
             .catch(() => {
                 if (cancelled) return;
-                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
                 const activityBase = '#repos/' + encodeURIComponent(workspaceId) + '/activity';
@@ -158,7 +158,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             return;
         }
         markSeen(id);
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id, repoId: workspaceId });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(id);

@@ -24,6 +24,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         drainQueued: 0,
         drainRunning: 0,
         selectedTaskId: null,
+        selectedTaskIdByRepo: {},
         refreshVersion: 0,
         queueInitialized: false,
         ...overrides,

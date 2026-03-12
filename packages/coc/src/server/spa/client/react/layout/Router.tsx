@@ -228,9 +228,9 @@ export function Router() {
                     }
                     // Activity deep-link handling — select queue task when task ID present
                     if (parts[2] === 'activity' && parts[3]) {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]) });
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]), repoId });
                     } else if (parts[2] === 'activity') {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }
                     // Git commit deep-link handling
                     if (parts[2] === 'git' && parts[3]) {
