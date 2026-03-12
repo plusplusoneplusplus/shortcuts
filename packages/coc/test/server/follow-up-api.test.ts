@@ -247,7 +247,7 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined);
+            expect(requeueSpy).toHaveBeenCalledWith('parent-task-1', 'Follow-up that should not re-execute parent', undefined, undefined, undefined, 'enqueue');
             expect((bridgeWithRequeue.enqueue as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
@@ -441,7 +441,7 @@ describe('POST /api/processes/:id/message', () => {
             });
 
             expect(res.status).toBe(202);
-            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan');
+            expect(requeueSpy).toHaveBeenCalledWith('parent-mode-1', 'plan this', undefined, undefined, 'plan', 'enqueue');
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });

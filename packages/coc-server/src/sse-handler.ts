@@ -10,9 +10,51 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
 import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
 import { getServerLogger } from './server-logger';
+
+// ============================================================================
+// SSE Event Payload Types
+// ============================================================================
+
+/** Fired immediately after the server accepts a follow-up message. */
+export interface MessageQueuedPayload {
+    /** Zero-based index of this turn in the conversation. */
+    turnIndex: number;
+    /** The resolved delivery mode (after defaulting). */
+    deliveryMode: 'immediate' | 'enqueue';
+    /** Position in the follow-up queue (1-based). 0 when deliveryMode === 'immediate'. */
+    queuePosition: number;
+}
+
+/** Fired when an immediate-mode message is actively being injected into a live session. */
+export interface MessageSteeringPayload {
+    /** Zero-based turn index — matches the turnIndex in the preceding message-queued event. */
+    turnIndex: number;
+}
+
+// ============================================================================
+// SSE Emitter Helpers
+// ============================================================================
+
+/** Emit a `message-queued` event on a process's SSE channel. */
+export function emitMessageQueued(store: ProcessStore, processId: string, payload: MessageQueuedPayload): void {
+    store.emitProcessEvent(processId, {
+        type: 'message-queued',
+        turnIndex: payload.turnIndex,
+        deliveryMode: payload.deliveryMode,
+        queuePosition: payload.queuePosition,
+    } as ProcessOutputEvent);
+}
+
+/** Emit a `message-steering` event on a process's SSE channel. */
+export function emitMessageSteering(store: ProcessStore, processId: string, payload: MessageSteeringPayload): void {
+    store.emitProcessEvent(processId, {
+        type: 'message-steering',
+        turnIndex: payload.turnIndex,
+    } as ProcessOutputEvent);
+}
 
 /**
  * Handle SSE streaming for a single process.
@@ -142,6 +184,16 @@ export async function handleProcessStream(
                 tokenUsage: event.tokenUsage,
                 sessionTokenLimit: event.sessionTokenLimit,
                 sessionCurrentTokens: event.sessionCurrentTokens,
+            });
+        } else if (event.type === 'message-queued') {
+            sendEvent(res, 'message-queued', {
+                turnIndex: event.turnIndex,
+                deliveryMode: event.deliveryMode,
+                queuePosition: event.queuePosition,
+            });
+        } else if (event.type === 'message-steering') {
+            sendEvent(res, 'message-steering', {
+                turnIndex: event.turnIndex,
             });
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {

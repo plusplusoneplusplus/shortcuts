@@ -118,7 +118,8 @@ export type {
 } from './websocket';
 
 // SSE streaming
-export { handleProcessStream } from './sse-handler';
+export { handleProcessStream, emitMessageQueued, emitMessageSteering } from './sse-handler';
+export type { MessageQueuedPayload, MessageSteeringPayload } from './sse-handler';
 
 // Task types (domain-specific payload types and guards)
 export {

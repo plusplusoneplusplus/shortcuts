@@ -131,7 +131,7 @@ describe('execute() short-circuit for chat-followup tasks', () => {
 
         await executor.execute(task);
 
-        expect(spy).toHaveBeenCalledWith('proc-1', 'follow up', attachments, undefined);
+        expect(spy).toHaveBeenCalledWith('proc-1', 'follow up', attachments, undefined, undefined);
 
         spy.mockRestore();
     });

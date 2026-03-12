@@ -16,14 +16,14 @@ import type { TokenUsage } from './copilot-sdk-wrapper/types';
  * Used by SSE streaming to push real-time output to clients.
  */
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
     status?: AIProcessStatus;
     /** Human-readable duration string (for 'complete' events). */
     duration?: string;
-    /** Zero-based conversation turn index (for tool events). */
+    /** Zero-based conversation turn index (for tool events, message-queued, message-steering). */
     turnIndex?: number;
     /** Unique tool call identifier (for tool events). */
     toolCallId?: string;
@@ -57,6 +57,10 @@ export interface ProcessOutputEvent {
     sessionTokenLimit?: number;
     /** Session-level current tokens (for 'token-usage' events). */
     sessionCurrentTokens?: number;
+    /** Resolved delivery mode (for 'message-queued' events). */
+    deliveryMode?: 'immediate' | 'enqueue';
+    /** 1-based queue position; 0 for immediate mode (for 'message-queued' events). */
+    queuePosition?: number;
 }
 
 /**

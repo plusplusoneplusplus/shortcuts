@@ -18,7 +18,7 @@ import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcess
 import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig, detectRemoteUrl, GitOpsStore } from '@plusplusoneplusplus/pipeline-core';
 import type { Attachment, GitOpJob } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
-import { handleProcessStream } from './sse-handler';
+import { handleProcessStream, emitMessageQueued } from './sse-handler';
 import { handleAPIError, invalidJSON, missingFields, notFound, badRequest, internalError, conflict, APIError } from './errors';
 import { saveImagesToTempFiles, cleanupTempDir, isImageDataUrl } from './image-utils';
 import { gitCache } from './git-cache';
@@ -33,14 +33,14 @@ import { getServerLogger } from './server-logger';
  * and will be moved in a later commit.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
     findTaskByProcessId?(processId: string): { id: string; type: string } | undefined;
     /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void>;
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }
@@ -1883,6 +1883,15 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const VALID_MODES = ['ask', 'plan', 'autopilot'];
             const modeOverride: string | undefined = typeof body.mode === 'string' && VALID_MODES.includes(body.mode) ? body.mode : undefined;
 
+            // Validate optional deliveryMode (immediate | enqueue), default to 'enqueue'
+            const VALID_DELIVERY_MODES = ['immediate', 'enqueue'];
+            if (body.deliveryMode !== undefined && body.deliveryMode !== null) {
+                if (typeof body.deliveryMode !== 'string' || !VALID_DELIVERY_MODES.includes(body.deliveryMode)) {
+                    return handleAPIError(res, badRequest(`Invalid deliveryMode: must be one of ${VALID_DELIVERY_MODES.join(', ')}`));
+                }
+            }
+            const deliveryMode: 'immediate' | 'enqueue' = (body.deliveryMode === 'immediate') ? 'immediate' : 'enqueue';
+
             const processUpdate: Record<string, unknown> = {
                 conversationTurns: updatedTurns,
                 status: 'running',
@@ -1909,7 +1918,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 const parentTask = bridge.findTaskByProcessId?.(id);
                 if (parentTask && bridge.requeueForFollowUp) {
                     // Reuse the parent task: update its payload and requeue from history
-                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride);
+                    await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode);
                 } else {
                     // Fallback: create a new task (no parent found or requeueForFollowUp unavailable)
                     await bridge.enqueue({
@@ -1924,18 +1933,26 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                             workingDirectory: process.workingDirectory,
                             readonly: (process as any).payload?.readonly,
                             ...(modeOverride ? { mode: modeOverride } : {}),
+                            deliveryMode,
                         },
                         config: {},
                         displayName,
                     });
                 }
             } else {
-                bridge.executeFollowUp(id, messageContent, attachments, modeOverride).catch(() => {
+                bridge.executeFollowUp(id, messageContent, attachments, modeOverride, deliveryMode).catch(() => {
                     // Error handling is done inside executeFollowUp
                 }).finally(() => {
                     if (imageTempDir) { cleanupTempDir(imageTempDir); }
                 });
             }
+
+            // Emit message-queued SSE event so clients get real-time acknowledgment
+            emitMessageQueued(store, id, {
+                turnIndex,
+                deliveryMode,
+                queuePosition: deliveryMode === 'immediate' ? 0 : 1,
+            });
 
             globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${turnIndex}\n`);
 

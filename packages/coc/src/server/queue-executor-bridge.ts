@@ -26,6 +26,7 @@ import type { RunWorkflowPayload, RunScriptPayload, ChatPayload, ChatMode } from
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,
+    emitMessageSteering,
     isChatPayload,
     isChatFollowUp,
     isRunWorkflowPayload,
@@ -35,7 +36,7 @@ import {
     hasReplicationContext,
     saveImagesToTempFiles,
 } from '@plusplusoneplusplus/coc-server';
-import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
     approveAllPermissions,
     applyDeepModePrefix,
@@ -155,11 +156,11 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
  * Implemented by CLITaskExecutor, surfaced via the bridge factory.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string): Promise<void>;
     /** Check whether the underlying SDK session for a process is still alive. */
     isSessionAlive(processId: string): Promise<boolean>;
     /** Requeue an existing completed task for a follow-up message. */
-    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void>;
+    requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
 }
@@ -237,7 +238,7 @@ export class CLITaskExecutor implements TaskExecutor {
         return ws?.id ?? rootPath;
     }
 
-    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void> {
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void> {
         if (!this.queueManager) {
             throw new Error('Queue manager is not available');
         }
@@ -257,6 +258,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 attachments,
                 imageTempDir,
                 ...(mode ? { mode } : {}),
+                ...(deliveryMode ? { deliveryMode } : {}),
             },
         });
 
@@ -308,7 +310,7 @@ export class CLITaskExecutor implements TaskExecutor {
             }
 
             try {
-                await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments, followUpPayload.mode);
+                await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments, followUpPayload.mode, (followUpPayload as any).deliveryMode);
                 const duration = Date.now() - startTime;
                 delete (task.payload as ChatPayload).processId;
                 delete (task.payload as ChatPayload).attachments;
@@ -589,7 +591,7 @@ export class CLITaskExecutor implements TaskExecutor {
      * 4. On completion, append assistant turn to conversationTurns
      * 5. Update process status back to 'completed'
      */
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode): Promise<void> {
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
 
@@ -653,6 +655,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 ? { mode: 'append' as const, content: historyContext + (systemMessage ? '\n\n' + systemMessage.content : '') }
                 : systemMessage;
 
+            const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
+
             const result = await this.aiService.sendMessage({
                 prompt: followUpMessage,
                 sessionId: process.sdkSessionId,
@@ -661,6 +665,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
+                deliveryMode: resolvedDeliveryMode,
                 tools: suggestTools.length > 0 ? suggestTools : undefined,
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {});
@@ -684,6 +689,12 @@ export class CLITaskExecutor implements TaskExecutor {
                     () => process.conversationTurns?.length ?? 0,
                 ),
             });
+
+            // Emit message-steering SSE event for immediate-mode messages
+            if (resolvedDeliveryMode === 'immediate') {
+                const turnIndex = process.conversationTurns?.length ?? 0;
+                emitMessageSteering(this.store, processId, { turnIndex: turnIndex - 1 });
+            }
 
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
