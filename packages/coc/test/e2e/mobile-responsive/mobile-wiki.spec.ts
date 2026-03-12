@@ -11,7 +11,7 @@ import * as path from 'path';
 
 test.use({ viewport: MOBILE, hasTouch: true });
 
-test.describe.skip('Mobile Wiki', () => {
+test.describe('Mobile Wiki', () => {
     let tmpDir: string;
 
     test.beforeEach(() => {

@@ -53,6 +53,39 @@ test.describe('Cross-Viewport Deep Links', () => {
         }
     });
 
+    test('deeplinks: #repos/:id/:subTab resolves at mobile viewport', async ({ page, serverUrl }) => {
+        await page.setViewportSize(MOBILE);
+        await seedWorkspace(serverUrl, 'dl-mob-sub-ws', 'dl-mob-sub-repo');
+        await page.goto(`${serverUrl}/#repos/dl-mob-sub-ws/activity`);
+
+        // Repo detail should open with the sub-tab active
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+
+        // MobileTabBar should be visible (mobile sub-tab navigation)
+        const mobileTabBar = page.locator('[data-testid="mobile-tab-bar"]');
+        await expect(mobileTabBar).toBeVisible({ timeout: 5000 });
+    });
+
+    test('deeplinks: #repos/:id resolves at tablet viewport', async ({ page, serverUrl }) => {
+        await page.setViewportSize(TABLET);
+        await seedWorkspace(serverUrl, 'dl-tab-ws', 'dl-tab-repo');
+        await page.goto(`${serverUrl}/#repos/dl-tab-ws`);
+
+        // Tablet two-pane: sidebar + detail content visible
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="responsive-sidebar"]')).toBeVisible({ timeout: 5000 });
+    });
+
+    test('deeplinks: #processes/:id resolves at tablet viewport', async ({ page, serverUrl }) => {
+        await page.setViewportSize(TABLET);
+        const task = await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Tablet DeepLink' });
+        const taskId = task.id as string;
+        await page.goto(`${serverUrl}/#process/queue_${encodeURIComponent(taskId)}`);
+
+        // At tablet width, two-pane with detail visible
+        await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 10000 });
+    });
+
     test('deeplinks: #admin resolves at all viewports', async ({ page, serverUrl }) => {
         for (const vp of [MOBILE, TABLET, DESKTOP]) {
             await page.setViewportSize(vp);

@@ -116,4 +116,34 @@ test.describe('Mobile Navigation', () => {
             }
         }
     });
+
+    test('mobile: tapping bottom nav Skills switches to Skills view', async ({ page, serverUrl }) => {
+        await page.goto(serverUrl);
+
+        const bottomNav = page.locator('[data-testid="bottom-nav"]');
+        await expect(bottomNav).toBeVisible({ timeout: 10000 });
+
+        const skillsBtn = bottomNav.locator('button[data-tab="skills"]');
+        if (await skillsBtn.count() > 0) {
+            await skillsBtn.tap();
+            // Skills view should be rendered
+            await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
+        }
+    });
+
+    test('mobile: admin panel stat cards stack vertically at 375px', async ({ page, serverUrl }) => {
+        await page.setViewportSize({ width: 375, height: 812 });
+        await page.goto(`${serverUrl}/#admin`);
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
+
+        const procBox = await page.locator('#admin-stat-processes').boundingBox();
+        const wikiBox = await page.locator('#admin-stat-wikis').boundingBox();
+        const diskBox = await page.locator('#admin-stat-disk').boundingBox();
+
+        if (procBox && wikiBox && diskBox) {
+            // On mobile, cards should stack in a single column (different y positions)
+            expect(wikiBox.y).toBeGreaterThan(procBox.y);
+            expect(diskBox.y).toBeGreaterThan(wikiBox.y);
+        }
+    });
 });

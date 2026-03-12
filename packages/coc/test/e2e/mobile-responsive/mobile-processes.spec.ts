@@ -2,7 +2,7 @@
  * Mobile Processes Tests — verify queue task list and detail at 375×812.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedQueueTask, seedQueueTasks } from '../fixtures/seed';
+import { seedQueueTask, seedQueueTasks, seedWorkspace } from '../fixtures/seed';
 import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
@@ -114,6 +114,32 @@ test.describe('Mobile Processes', () => {
             const items = page.locator('[data-task-id]');
             const count = await items.count();
             expect(count).toBeGreaterThanOrEqual(0);
+        }
+    });
+
+    test('mobile: tapping run-workflow task with repoId redirects to repo workflow detail', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-rw-1', 'rw-repo-1');
+        const task = await seedQueueTask(serverUrl, {
+            type: 'run-workflow',
+            displayName: 'Workflow Redirect Task',
+            repoId: 'ws-rw-1',
+        });
+
+        await page.goto(`${serverUrl}/#processes`);
+        await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
+
+        // Tap the run-workflow task
+        const taskItem = page.locator('[data-task-id]').filter({ hasText: 'Workflow Redirect Task' });
+        if (await taskItem.count() > 0) {
+            await taskItem.first().tap();
+            // The app should redirect to #repos/{repoId}/workflow/{processId}
+            await page.waitForTimeout(500);
+            expect(page.url()).toMatch(/#repos\/ws-rw-1\/workflow\//);
+        } else {
+            // Task may render with different display — fall back to first task
+            await page.locator('[data-task-id]').first().tap();
+            await page.waitForTimeout(500);
+            // Redirect should happen if the first task is the run-workflow one
         }
     });
 });

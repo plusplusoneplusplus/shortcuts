@@ -97,6 +97,70 @@ test.describe('Mobile Touch Interaction', () => {
         }
     });
 
+    test('mobile: swipe-left on sidebar drawer dismisses it', async ({ page, serverUrl }) => {
+        await page.goto(serverUrl);
+        await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 10000 });
+
+        // Open the sidebar drawer via hamburger
+        const hamburger = page.locator('#hamburger-btn');
+        await expect(hamburger).toBeVisible();
+        await hamburger.tap();
+
+        const drawer = page.locator('[data-testid="sidebar-drawer"]');
+        if (await drawer.count() > 0) {
+            await expect(drawer).toBeVisible({ timeout: 3000 });
+
+            const box = await drawer.boundingBox();
+            if (box) {
+                const startX = box.x + box.width * 0.5;
+                const startY = box.y + box.height * 0.5;
+                // Simulate a 70px leftward swipe (> SWIPE_THRESHOLD=50)
+                await page.evaluate(({ sx, sy }) => {
+                    const el = document.querySelector('[data-testid="sidebar-drawer"]');
+                    if (!el) return;
+                    const makeTouch = (x: number, y: number) =>
+                        new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
+                    el.dispatchEvent(new TouchEvent('touchstart', {
+                        touches: [makeTouch(sx, sy)],
+                        changedTouches: [makeTouch(sx, sy)],
+                        bubbles: true, cancelable: true,
+                    }));
+                    el.dispatchEvent(new TouchEvent('touchmove', {
+                        touches: [makeTouch(sx - 70, sy)],
+                        changedTouches: [makeTouch(sx - 70, sy)],
+                        bubbles: true, cancelable: true,
+                    }));
+                    el.dispatchEvent(new TouchEvent('touchend', {
+                        touches: [],
+                        changedTouches: [makeTouch(sx - 70, sy)],
+                        bubbles: true, cancelable: true,
+                    }));
+                }, { sx: startX, sy: startY });
+
+                // Drawer should be dismissed after swipe-left
+                await expect(drawer).toBeHidden({ timeout: 3000 });
+            }
+        }
+    });
+
+    test('mobile: Escape key closes the sidebar drawer', async ({ page, serverUrl }) => {
+        await page.goto(serverUrl);
+        await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 10000 });
+
+        const hamburger = page.locator('#hamburger-btn');
+        await expect(hamburger).toBeVisible();
+        await hamburger.tap();
+
+        const drawer = page.locator('[data-testid="sidebar-drawer"]');
+        if (await drawer.count() > 0) {
+            await expect(drawer).toBeVisible({ timeout: 3000 });
+
+            // Press Escape — the MobileDrawer's handleKeyDown on the backdrop handles it
+            await page.keyboard.press('Escape');
+            await expect(drawer).toBeHidden({ timeout: 3000 });
+        }
+    });
+
     test('mobile: back button is visible and tappable', async ({ page, serverUrl }) => {
         await seedQueueTask(serverUrl, { type: 'chat', displayName: 'Touch Back Test' });
         await page.goto(`${serverUrl}/#processes`);
