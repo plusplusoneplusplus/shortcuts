@@ -30,7 +30,6 @@ import {
     approveAllPermissions,
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
-    generateTaskId,
     AUTO_FOLDER_SENTINEL,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plusplusoneplusplus/pipeline-core';
