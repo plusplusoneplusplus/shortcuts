@@ -1081,4 +1081,195 @@ describe('inferParentToolCalls', () => {
             expect(call.parentToolCallId).toBeUndefined();
         }
     });
+
+    it('does not auto-nest read_agent under a task via interval inference', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, startTime: '2026-03-01T10:00:00.000Z', endTime: '2026-03-01T10:00:10.000Z', status: 'completed' },
+            { id: 'ra-1', toolName: 'read_agent', args: { agent_id: 'agent-0' }, startTime: '2026-03-01T10:00:02.000Z', endTime: '2026-03-01T10:00:03.000Z', status: 'completed' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: false });
+        expect(result.find(c => c.id === 'ra-1')?.parentToolCallId).toBeUndefined();
+    });
+
+    it('does not auto-nest read_agent via trailing task fallback', () => {
+        const calls = [
+            { id: 'task-1', toolName: 'task', args: {}, status: 'completed' },
+            { id: 'ra-1', toolName: 'read_agent', args: { agent_id: 'agent-0' }, status: 'completed' },
+        ];
+
+        const result = inferParentToolCalls(calls, { enableTrailingTaskFallback: true });
+        expect(result.find(c => c.id === 'ra-1')?.parentToolCallId).toBeUndefined();
+    });
+});
+
+describe('ConversationTurnBubble — read_agent content nesting', () => {
+    it('nests content inside read_agent card, not at top level', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'task-1',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Report time' },
+                                startTime: '2026-03-12T10:00:00.000Z',
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'task-1',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Report time' },
+                                startTime: '2026-03-12T10:00:00.000Z',
+                                endTime: '2026-03-12T10:00:02.000Z',
+                                status: 'completed',
+                                result: 'Agent started in background with agent_id: agent-0',
+                            },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'ra-1',
+                                toolName: 'read_agent',
+                                args: { agent_id: 'agent-0', wait: true, timeout: 10 },
+                                startTime: '2026-03-12T10:00:03.000Z',
+                                status: 'running',
+                            },
+                        },
+                        {
+                            type: 'content',
+                            content: 'The current system time is unavailable.',
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'ra-1',
+                                toolName: 'read_agent',
+                                args: { agent_id: 'agent-0', wait: true, timeout: 10 },
+                                startTime: '2026-03-12T10:00:03.000Z',
+                                endTime: '2026-03-12T10:00:04.000Z',
+                                status: 'completed',
+                                result: 'agent completed',
+                            },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        const readAgentCard = container.querySelector('[data-tool-id="ra-1"]');
+        expect(readAgentCard).toBeTruthy();
+
+        const readAgentChildren = readAgentCard?.querySelector('.tool-call-children');
+        expect(readAgentChildren).toBeTruthy();
+        expect(readAgentChildren?.textContent).toContain('The current system time is unavailable.');
+
+        const topLevelContent = container.querySelector('.chat-message-content');
+        const topMarkdownViews = topLevelContent?.querySelectorAll(':scope > [data-testid="markdown-view"]') ?? [];
+        for (const mv of topMarkdownViews) {
+            expect(mv.textContent).not.toContain('The current system time is unavailable.');
+        }
+    });
+
+    it('nests content correctly for parallel read_agent calls', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'task-a', toolName: 'task', args: { description: 'Task A' }, startTime: '2026-03-12T10:00:00.000Z', status: 'running' },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'task-b', toolName: 'task', args: { description: 'Task B' }, startTime: '2026-03-12T10:00:00.100Z', status: 'running' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: { id: 'task-a', toolName: 'task', args: { description: 'Task A' }, startTime: '2026-03-12T10:00:00.000Z', endTime: '2026-03-12T10:00:02.000Z', status: 'completed' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: { id: 'task-b', toolName: 'task', args: { description: 'Task B' }, startTime: '2026-03-12T10:00:00.100Z', endTime: '2026-03-12T10:00:02.100Z', status: 'completed' },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'ra-a', toolName: 'read_agent', args: { agent_id: 'agent-a', wait: true }, startTime: '2026-03-12T10:00:03.000Z', status: 'running' },
+                        },
+                        { type: 'content', content: 'Result from agent A' },
+                        {
+                            type: 'tool-complete',
+                            toolCall: { id: 'ra-a', toolName: 'read_agent', args: { agent_id: 'agent-a', wait: true }, startTime: '2026-03-12T10:00:03.000Z', endTime: '2026-03-12T10:00:04.000Z', status: 'completed' },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'ra-b', toolName: 'read_agent', args: { agent_id: 'agent-b', wait: true }, startTime: '2026-03-12T10:00:04.000Z', status: 'running' },
+                        },
+                        { type: 'content', content: 'Result from agent B' },
+                        {
+                            type: 'tool-complete',
+                            toolCall: { id: 'ra-b', toolName: 'read_agent', args: { agent_id: 'agent-b', wait: true }, startTime: '2026-03-12T10:00:04.000Z', endTime: '2026-03-12T10:00:05.000Z', status: 'completed' },
+                        },
+                        { type: 'content', content: 'Both agents completed.' },
+                    ],
+                })}
+            />
+        );
+
+        const raA = container.querySelector('[data-tool-id="ra-a"]');
+        const raB = container.querySelector('[data-tool-id="ra-b"]');
+        expect(raA).toBeTruthy();
+        expect(raB).toBeTruthy();
+
+        const childrenA = raA?.querySelector('.tool-call-children');
+        const childrenB = raB?.querySelector('.tool-call-children');
+        expect(childrenA?.textContent).toContain('Result from agent A');
+        expect(childrenA?.textContent).not.toContain('Result from agent B');
+        expect(childrenB?.textContent).toContain('Result from agent B');
+        expect(childrenB?.textContent).not.toContain('Result from agent A');
+    });
+
+    it('renders read_agent at root level (not nested under task)', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'task-1', toolName: 'task', args: { description: 'My task' }, startTime: '2026-03-12T10:00:00.000Z', status: 'running' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: { id: 'task-1', toolName: 'task', args: { description: 'My task' }, startTime: '2026-03-12T10:00:00.000Z', endTime: '2026-03-12T10:00:02.000Z', status: 'completed' },
+                        },
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'ra-1', toolName: 'read_agent', args: { agent_id: 'agent-0' }, startTime: '2026-03-12T10:00:03.000Z', status: 'running' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: { id: 'ra-1', toolName: 'read_agent', args: { agent_id: 'agent-0' }, startTime: '2026-03-12T10:00:03.000Z', endTime: '2026-03-12T10:00:04.000Z', status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        const taskCard = container.querySelector('[data-tool-id="task-1"]');
+        const raCard = container.querySelector('[data-tool-id="ra-1"]');
+        expect(taskCard).toBeTruthy();
+        expect(raCard).toBeTruthy();
+        expect(taskCard?.contains(raCard as HTMLElement)).toBe(false);
+    });
 });

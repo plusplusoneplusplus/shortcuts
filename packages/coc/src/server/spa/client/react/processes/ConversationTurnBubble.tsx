@@ -231,7 +231,7 @@ export function inferParentToolCalls(
     for (const item of ordered) {
         const call = item.call;
         if (call.parentToolCallId) continue; // Already has explicit parent
-        if (call.toolName === 'task') continue; // Never auto-nest tasks
+        if (call.toolName === 'task' || call.toolName === 'read_agent') continue; // Never auto-nest stack-managed tools
         const currentStart = item.startMs;
         if (currentStart == null) continue;
 
@@ -258,6 +258,7 @@ export function inferParentToolCalls(
                 lastTaskId = call.id;
                 continue;
             }
+            if (call.toolName === 'read_agent') continue; // read_agent manages its own nesting
             if (!call.parentToolCallId && lastTaskId) {
                 call.parentToolCallId = lastTaskId;
             }
@@ -353,8 +354,9 @@ function buildAssistantRender(turn: ClientConversationTurn): {
 
             // Timeline order is the most reliable signal for non-task tool nesting.
             // Task-to-task relationships are trusted from SDK parentToolCallId only;
-            // auto-nesting tasks creates false chains when tasks run in parallel.
-            if (!incoming.parentToolCallId && activeParent && incoming.toolName !== 'task') {
+            // auto-nesting tasks/read_agent creates false chains when tasks run in parallel.
+            const isStackManaged = incoming.toolName === 'task' || incoming.toolName === 'read_agent';
+            if (!incoming.parentToolCallId && activeParent && !isStackManaged) {
                 incoming.parentToolCallId = activeParent;
             }
 
@@ -367,10 +369,10 @@ function buildAssistantRender(turn: ClientConversationTurn): {
                 chunks.push({ kind: 'tool', key: `tool-${incoming.id}`, toolId: incoming.id });
             }
 
-            if (item.type === 'tool-start' && incoming.toolName === 'task') {
+            if (item.type === 'tool-start' && isStackManaged) {
                 removeFromTaskStack(activeTaskStack, incoming.id);
                 activeTaskStack.push(incoming.id);
-            } else if ((item.type === 'tool-complete' || item.type === 'tool-failed') && incoming.toolName === 'task') {
+            } else if ((item.type === 'tool-complete' || item.type === 'tool-failed') && isStackManaged) {
                 removeFromTaskStack(activeTaskStack, incoming.id);
             }
         }

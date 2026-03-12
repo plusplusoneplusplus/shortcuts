@@ -128,6 +128,11 @@ function getToolSummary(toolName: string, args: any): string {
             }
             return parts.join(' ');
         }
+        case 'read_agent': {
+            const agentId = args.agent_id ? String(args.agent_id) : '';
+            const wait = args.wait ? ' (wait)' : '';
+            return agentId ? `Agent ${agentId}${wait}` : '';
+        }
         case 'task_complete': {
             if (typeof args.summary === 'string' && args.summary.trim()) {
                 const s = args.summary.trim();
@@ -397,7 +402,7 @@ export function ToolCallView({
         return renderMarkdownToHtml(taskCompleteSummary);
     }, [isTaskComplete, taskCompleteSummary]);
 
-    const hasHoverResult = (name === 'task' || name === 'view' || isShellLike || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit') && !!resultText;
+    const hasHoverResult = (name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit') && !!resultText;
 
     const clearTimers = useCallback(() => {
         if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }

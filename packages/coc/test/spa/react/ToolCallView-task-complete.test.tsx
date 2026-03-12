@@ -137,3 +137,47 @@ describe('ToolCallView — suggest_follow_ups summary', () => {
         expect(header.textContent).toContain('Run the tests · Review the diff · Deploy to staging');
     });
 });
+
+describe('ToolCallView — read_agent summary', () => {
+    it('shows agent ID in header summary', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'ra-1',
+                toolName: 'read_agent',
+                args: { agent_id: 'agent-0', wait: true, timeout: 10 },
+                status: 'completed',
+                result: 'agent completed',
+            }} />
+        );
+        const header = getHeader(container)!;
+        expect(header.textContent).toContain('Agent agent-0 (wait)');
+    });
+
+    it('shows agent ID without wait flag when wait is false', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'ra-2',
+                toolName: 'read_agent',
+                args: { agent_id: 'agent-5' },
+                status: 'completed',
+            }} />
+        );
+        const header = getHeader(container)!;
+        expect(header.textContent).toContain('Agent agent-5');
+        expect(header.textContent).not.toContain('(wait)');
+    });
+
+    it('shows empty summary when agent_id is missing', () => {
+        const { container } = render(
+            <ToolCallView toolCall={{
+                id: 'ra-3',
+                toolName: 'read_agent',
+                args: {},
+                status: 'completed',
+            }} />
+        );
+        const header = getHeader(container)!;
+        expect(header.textContent).toContain('read_agent');
+        expect(header.textContent).not.toContain('Agent');
+    });
+});
