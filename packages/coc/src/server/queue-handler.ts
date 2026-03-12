@@ -102,6 +102,7 @@ function serializeTask(task: QueuedTask): Record<string, unknown> {
         result: task.result,
         error: task.error,
         retryCount: task.retryCount,
+        frozen: task.frozen ?? undefined,
     };
 }
 
