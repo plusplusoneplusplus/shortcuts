@@ -2,6 +2,12 @@
 
 Guidance for AI agents working in this repository. NEVER create document files unless explicitly asked.
 
+## Key Design Choice (Maintained manually, AI should NEVER update this section)
+- CoC:
+    - multi-repo support is required. Never design or implement a feature that would break multi-repo scenario. 
+    - copilot-sdk wrapper should NEVER add a sendFollowUp method or something similar. copilot-sdk-wrapper layer or above should NEVER try to add keep-alive/session-object cache.
+    - Prefer use file path in the prompt instead of expanding the prompt with file's content.
+
 ## Monorepo Overview
 
 Three products plus shared infrastructure, all in one npm workspaces monorepo:
