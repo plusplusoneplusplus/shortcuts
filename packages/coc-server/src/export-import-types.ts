@@ -29,6 +29,15 @@ export interface CLIConfig {
     mcpConfig?: string;
     timeout?: number;
     persist?: boolean;
+    showReportIntent?: boolean;
+    toolCompactness?: 0 | 1 | 2;
+    groupSingleLineMessages?: boolean;
+    chat?: {
+        followUpSuggestions?: {
+            enabled?: boolean;
+            count?: number;
+        };
+    };
     serve?: {
         port?: number;
         host?: string;

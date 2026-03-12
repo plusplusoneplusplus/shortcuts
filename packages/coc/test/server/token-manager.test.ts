@@ -10,7 +10,7 @@ import {
     resetImportToken,
     wipeTokenManager,
     importTokenManager,
-} from '../../src/server/admin-handler';
+} from '@plusplusoneplusplus/coc-server';
 
 describe('TokenManager', () => {
     let manager: TokenManager;

@@ -17,7 +17,7 @@ import type {
     QueueSnapshot,
 } from './export-import-types';
 import { EXPORT_SCHEMA_VERSION } from './export-import-types';
-import { readPreferences } from './preferences-handler';
+import { PREFERENCES_FILE_NAME } from './preferences-handler';
 
 // ============================================================================
 // Public API
@@ -45,8 +45,11 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
     // Gather image blobs from disk
     const imageBlobs = readBlobFiles(dataDir);
 
-    // Gather preferences
-    const preferences = readPreferences(dataDir) as any;
+    // Gather preferences (raw JSON to preserve all fields regardless of schema)
+    const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
+    const preferences = fs.existsSync(prefFile)
+        ? JSON.parse(fs.readFileSync(prefFile, 'utf-8'))
+        : {};
 
     // Gather server config (optional, injected from CLI layer)
     const configPath = path.join(dataDir, 'config.yaml');

@@ -9,6 +9,7 @@
 
 import type * as http from 'http';
 import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+export type { Route } from './shared/router';
 
 /** Options for the `coc serve` CLI command. */
 export interface ServeCommandOptions {
@@ -36,6 +37,8 @@ export interface ServeCommandOptions {
     logLevel?: string;
     /** Directory for .ndjson log files. Defaults to <dataDir>/logs for serve. */
     logDir?: string;
+    /** Exit code to use when a restart is requested via POST /api/admin/restart (default: 75). */
+    restartExitCode?: number;
 }
 
 /** Options for the wiki module within the execution server. */
@@ -98,17 +101,6 @@ export interface ExecutionServer {
     url: string;
     /** Gracefully shut the server down. */
     close: (options?: ServerCloseOptions) => Promise<{ drainOutcome?: 'completed' | 'timeout' }>;
-}
-
-/**
- * Route definition for the router table.
- * `pattern` is either an exact string or a RegExp.
- * `method` defaults to `'GET'` when omitted.
- */
-export interface Route {
-    method?: string;
-    pattern: string | RegExp;
-    handler: (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => void | Promise<void>;
 }
 
 /**

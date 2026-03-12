@@ -19,8 +19,9 @@ import type {
     QueueSnapshot,
 } from './export-import-types';
 import { validateExportPayload } from './export-import-types';
-import { readPreferences, writePreferences } from './preferences-handler';
+import { PREFERENCES_FILE_NAME } from './preferences-handler';
 import { getRepoQueueFilePath } from './queue/queue-persistence';
+import { atomicWriteJson } from './shared/fs-utils';
 
 // ============================================================================
 // Public API
@@ -112,7 +113,7 @@ async function replaceImport(
 
     // 7. Restore preferences
     try {
-        writePreferences(dataDir, payload.preferences as any);
+        atomicWriteJson(path.join(dataDir, PREFERENCES_FILE_NAME), payload.preferences ?? {});
     } catch (err: any) {
         result.errors.push(`Failed to write preferences: ${err.message}`);
     }
@@ -192,8 +193,12 @@ async function mergeImport(
 
     // 5. Merge preferences
     try {
-        const existing = readPreferences(dataDir);
-        writePreferences(dataDir, { ...existing, ...(payload.preferences as any) });
+        const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
+        let existing: Record<string, unknown> = {};
+        if (fs.existsSync(prefFile)) {
+            existing = JSON.parse(fs.readFileSync(prefFile, 'utf-8'));
+        }
+        atomicWriteJson(prefFile, { ...existing, ...(payload.preferences as any) });
     } catch (err: any) {
         result.errors.push(`Failed to merge preferences: ${err.message}`);
     }
@@ -218,10 +223,6 @@ function writeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
         if (!repoId) { continue; }
         const filePath = getRepoQueueFilePath(dataDir, repoId);
         try {
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
             const state = {
                 version: 3,
                 savedAt: new Date().toISOString(),
@@ -231,9 +232,7 @@ function writeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
                 history: snap.history,
                 isPaused: snap.isPaused ?? false,
             };
-            const tmpPath = filePath + '.tmp';
-            fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
-            fs.renameSync(tmpPath, filePath);
+            atomicWriteJson(filePath, state);
             written++;
         } catch (err: any) {
             errors.push(`Failed to write queue file for ${rootPath}: ${err.message}`);
@@ -287,10 +286,6 @@ function mergeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
                 }
             }
 
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
             const state = {
                 version: 3,
                 savedAt: new Date().toISOString(),
@@ -300,9 +295,7 @@ function mergeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
                 history: mergedHistory,
                 isPaused: existingIsPaused || (snap.isPaused ?? false),
             };
-            const tmpPath = filePath + '.tmp';
-            fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
-            fs.renameSync(tmpPath, filePath);
+            atomicWriteJson(filePath, state);
             written++;
         } catch (err: any) {
             errors.push(`Failed to merge queue file for ${rootPath}: ${err.message}`);
@@ -321,17 +314,12 @@ function mergeQueueFiles(dataDir: string, snapshots: QueueSnapshot[], errors: st
  */
 function writeBlobFiles(dataDir: string, blobs: ImageBlobEntry[], errors: string[]): number {
     let written = 0;
+    const blobsDir = path.join(dataDir, 'blobs');
     for (const entry of blobs) {
         if (!entry.taskId) { continue; }
-        const blobsDir = path.join(dataDir, 'blobs');
         const filePath = path.join(blobsDir, `${entry.taskId}.images.json`);
         try {
-            if (!fs.existsSync(blobsDir)) {
-                fs.mkdirSync(blobsDir, { recursive: true });
-            }
-            const tmpPath = filePath + '.tmp';
-            fs.writeFileSync(tmpPath, JSON.stringify(entry.images), 'utf-8');
-            fs.renameSync(tmpPath, filePath);
+            atomicWriteJson(filePath, entry.images);
             written++;
         } catch (err: any) {
             errors.push(`Failed to write blob file for task ${entry.taskId}: ${err.message}`);
@@ -346,18 +334,13 @@ function writeBlobFiles(dataDir: string, blobs: ImageBlobEntry[], errors: string
  */
 function mergeBlobFiles(dataDir: string, blobs: ImageBlobEntry[], errors: string[]): number {
     let written = 0;
+    const blobsDir = path.join(dataDir, 'blobs');
     for (const entry of blobs) {
         if (!entry.taskId) { continue; }
-        const blobsDir = path.join(dataDir, 'blobs');
         const filePath = path.join(blobsDir, `${entry.taskId}.images.json`);
         if (fs.existsSync(filePath)) { continue; }
         try {
-            if (!fs.existsSync(blobsDir)) {
-                fs.mkdirSync(blobsDir, { recursive: true });
-            }
-            const tmpPath = filePath + '.tmp';
-            fs.writeFileSync(tmpPath, JSON.stringify(entry.images), 'utf-8');
-            fs.renameSync(tmpPath, filePath);
+            atomicWriteJson(filePath, entry.images);
             written++;
         } catch (err: any) {
             errors.push(`Failed to write blob file for task ${entry.taskId}: ${err.message}`);

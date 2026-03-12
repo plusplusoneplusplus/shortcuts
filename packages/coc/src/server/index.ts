@@ -21,7 +21,7 @@ import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { resolveTaskRoot } from './task-root-resolver';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
-import { registerAdminRoutes } from './admin-handler';
+import { registerAdminRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerDiffCommentsRoutes } from './diff-comments-handler';
 import { registerWikiRoutes } from './wiki';
@@ -51,6 +51,7 @@ import { OutputPruner } from './output-pruner';
 import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
 import { resolveConfig } from '../config';
+import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/pipeline-core';
 import { createCLIAIInvoker } from '../ai-invoker';
 
@@ -258,7 +259,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
-    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence });
+    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence, restartExitCode: 75, configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile } });
     registerScheduleRoutes(routes, scheduleManager);
 
     // Register memory routes
@@ -640,10 +641,8 @@ export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments
 export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
 export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
 export type { DiffCommentsStorage } from './diff-comments-handler';
-export { registerAdminRoutes, resetWipeToken } from './admin-handler';
-export type { AdminRouteOptions } from './admin-handler';
-export { DataWiper } from './data-wiper';
-export type { WipeOptions, WipeResult } from './data-wiper';
+export { registerAdminRoutes, resetWipeToken, DataWiper } from '@plusplusoneplusplus/coc-server';
+export type { AdminRouteOptions, WipeOptions, WipeResult } from '@plusplusoneplusplus/coc-server';
 export { SchedulePersistence, getRepoScheduleFilePath } from './schedule-persistence';
 export type { PersistedScheduleState } from './schedule-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';

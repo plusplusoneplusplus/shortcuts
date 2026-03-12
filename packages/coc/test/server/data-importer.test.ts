@@ -16,8 +16,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { importData } from '../../src/server/data-importer';
-import { DataWiper } from '../../src/server/data-wiper';
+import { importData, DataWiper } from '@plusplusoneplusplus/coc-server';
 import {
     EXPORT_SCHEMA_VERSION,
     type CoCExportPayload,

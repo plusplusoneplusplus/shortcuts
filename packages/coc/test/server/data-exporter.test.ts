@@ -15,7 +15,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { exportAllData } from '../../src/server/data-exporter';
+import { exportAllData } from '@plusplusoneplusplus/coc-server';
+import { loadConfigFile } from '../../src/config';
 import {
     validateExportPayload,
     EXPORT_SCHEMA_VERSION,
@@ -180,7 +181,7 @@ describe('exportAllData', () => {
     it('includes serverConfig when config.yaml exists', async () => {
         writeFile(path.join(dataDir, 'config.yaml'), 'model: gpt-4\nparallel: 10\n');
 
-        const payload = await exportAllData({ store, dataDir });
+        const payload = await exportAllData({ store, dataDir, loadConfigFile });
 
         expect(payload.serverConfig).toBeDefined();
         expect(payload.serverConfig!.model).toBe('gpt-4');

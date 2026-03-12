@@ -20,8 +20,7 @@ import { importData } from './data-importer';
 import { validateExportPayload } from './export-import-types';
 import type { CoCExportPayload, ImportMode } from './export-import-types';
 import type { ProcessWebSocketServer } from './websocket';
-import type { QueuePersistence } from './queue/queue-persistence';
-import type { CLIConfig } from './export-import-types';
+import type { QueuePersistence, CLIConfig } from './export-import-types';
 
 // ============================================================================
 // Token Management
@@ -114,6 +113,8 @@ export interface AdminRouteOptions {
     getQueuePersistence?: () => QueuePersistence | undefined;
     /** Config file functions (injected from CLI layer). */
     configFunctions?: AdminConfigFunctions;
+    /** Exit code to use for restart (injected to avoid circular import). Defaults to 75. */
+    restartExitCode?: number;
 }
 
 /**
@@ -189,10 +190,10 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output'];
+            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count'];
             const hasEditableKey = editableKeys.some(k => k in body);
             if (!hasEditableKey) {
-                return handleAPIError(res, badRequest('Request body must contain at least one editable field: model, parallel, timeout, output'));
+                return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
             }
 
             // Validate editable fields
@@ -209,13 +210,48 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 }
             }
             if ('timeout' in body) {
-                if (typeof body.timeout !== 'number' || body.timeout <= 0) {
-                    errors.push('timeout must be a number greater than 0');
+                if (body.timeout !== null && (typeof body.timeout !== 'number' || body.timeout <= 0)) {
+                    errors.push('timeout must be a number greater than 0, or null to clear');
                 }
             }
             if ('output' in body) {
                 if (typeof body.output !== 'string' || !(VALID_OUTPUT_VALUES as readonly string[]).includes(body.output)) {
                     errors.push(`output must be one of: ${VALID_OUTPUT_VALUES.join(', ')}`);
+                }
+            }
+            if ('showReportIntent' in body) {
+                if (typeof body.showReportIntent !== 'boolean') {
+                    errors.push('showReportIntent must be a boolean');
+                }
+            }
+            if ('toolCompactness' in body) {
+                if (
+                    typeof body.toolCompactness !== 'number' ||
+                    !Number.isInteger(body.toolCompactness) ||
+                    body.toolCompactness < 0 ||
+                    body.toolCompactness > 2
+                ) {
+                    errors.push('toolCompactness must be 0, 1, or 2');
+                }
+            }
+            if ('groupSingleLineMessages' in body) {
+                if (typeof body.groupSingleLineMessages !== 'boolean') {
+                    errors.push('groupSingleLineMessages must be a boolean');
+                }
+            }
+
+            // Validate nested chat.followUpSuggestions fields
+            const chatBody = body['chat.followUpSuggestions.enabled'] !== undefined || body['chat.followUpSuggestions.count'] !== undefined
+                ? body : null;
+            if (chatBody && 'chat.followUpSuggestions.enabled' in chatBody) {
+                if (typeof chatBody['chat.followUpSuggestions.enabled'] !== 'boolean') {
+                    errors.push('chat.followUpSuggestions.enabled must be a boolean');
+                }
+            }
+            if (chatBody && 'chat.followUpSuggestions.count' in chatBody) {
+                const count = chatBody['chat.followUpSuggestions.count'];
+                if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 5) {
+                    errors.push('chat.followUpSuggestions.count must be an integer between 1 and 5');
                 }
             }
 
@@ -227,8 +263,29 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             const existing: CLIConfig = configFunctions?.loadConfigFile?.(configPath) ?? {};
             if ('model' in body) { existing.model = body.model as string; }
             if ('parallel' in body) { existing.parallel = body.parallel as number; }
-            if ('timeout' in body) { existing.timeout = body.timeout as number; }
+            if ('timeout' in body) {
+                if (body.timeout === null) {
+                    delete existing.timeout;
+                } else {
+                    existing.timeout = body.timeout as number;
+                }
+            }
             if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
+            if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
+            if ('toolCompactness' in body) { existing.toolCompactness = body.toolCompactness as CLIConfig['toolCompactness']; }
+            if ('groupSingleLineMessages' in body) { existing.groupSingleLineMessages = body.groupSingleLineMessages as boolean; }
+
+            // Handle nested chat.followUpSuggestions fields
+            if ('chat.followUpSuggestions.enabled' in body) {
+                if (!existing.chat) { existing.chat = {}; }
+                if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
+                existing.chat.followUpSuggestions.enabled = body['chat.followUpSuggestions.enabled'] as boolean;
+            }
+            if ('chat.followUpSuggestions.count' in body) {
+                if (!existing.chat) { existing.chat = {}; }
+                if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
+                existing.chat.followUpSuggestions.count = body['chat.followUpSuggestions.count'] as number;
+            }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
 
@@ -405,6 +462,23 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             sendJSON(res, 200, result);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/admin/restart — Rebuild & restart the server
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/admin/restart',
+        handler: async (_req, res) => {
+            const exitCode = options.restartExitCode ?? 75;
+            sendJSON(res, 200, { message: 'Server is restarting...' });
+
+            // Give the response time to flush, then exit with the restart code
+            setTimeout(() => {
+                process.exit(exitCode);
+            }, 200);
         },
     });
 }

@@ -24,8 +24,8 @@ import {
     dim,
 } from '../logger';
 import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { DataWiper } from '../server/data-wiper';
-import type { WipeResult } from '../server/data-wiper';
+import { DataWiper } from '@plusplusoneplusplus/coc-server';
+import type { WipeResult } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types
