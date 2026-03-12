@@ -26,9 +26,7 @@ interface Skill {
     relativePath?: string;
 }
 
-interface SkillDetail extends Skill {
-    relativePath?: string;
-}
+interface SkillDetail extends Skill {}
 
 interface BundledSkill {
     name: string;
