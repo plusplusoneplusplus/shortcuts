@@ -558,7 +558,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         const content = cleanedPrompt || rawContent;
 
         setSuggestions([]);
-        lastFailedMessageRef.current = rawContent;
         setFollowUpInput('');
         clearDraft(taskId);
         slashCommands.dismissMenu();
@@ -588,20 +587,24 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             if (response.status === 410) {
                 setSessionExpired(true);
                 setError('Session expired.');
+                lastFailedMessageRef.current = rawContent;
                 removeStreamingPlaceholder();
                 return;
             }
             if (!response.ok) {
                 const body = await response.json().catch(() => null);
                 setError(body?.error || `Failed to send message (${response.status})`);
+                lastFailedMessageRef.current = rawContent;
                 removeStreamingPlaceholder();
                 return;
             }
 
+            lastFailedMessageRef.current = '';
             clearImages();
             await waitForFollowUpCompletion(processId);
         } catch (err: any) {
             setError(err?.message || 'Failed to send follow-up message.');
+            lastFailedMessageRef.current = rawContent;
             removeStreamingPlaceholder();
         } finally {
             setSending(false);
@@ -839,13 +842,17 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                         </div>
                     )}
                     {error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
-                    {error && lastFailedMessageRef.current && (
-                        <button
-                            className="retry-btn text-xs underline text-[#f14c4c]"
+                    {error && (
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            data-testid="retry-btn"
+                            loading={sending}
+                            disabled={sending}
                             onClick={() => retryLastMessage()}
                         >
                             Retry
-                        </button>
+                        </Button>
                     )}
                     {suggestions.length > 0 && !sending && task?.status !== 'running' && (
                         <SuggestionChips

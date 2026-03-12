@@ -329,15 +329,61 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain('lastFailedMessageRef');
         });
 
-        it('stores rawContent in lastFailedMessageRef before sending', () => {
-            const sendBlock = source.substring(source.indexOf('const sendFollowUp'));
-            expect(sendBlock).toContain('lastFailedMessageRef.current = rawContent');
+        it('stores rawContent in lastFailedMessageRef on error paths (not before send)', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const handleCancel'),
+            );
+            // Should NOT set lastFailedMessageRef eagerly before the fetch request
+            const preamble = sendBlock.substring(0, sendBlock.indexOf('const response = await fetch'));
+            expect(preamble).not.toContain('lastFailedMessageRef.current = rawContent');
+
+            // Should set it on each error path (410, !ok, catch)
+            const matches = sendBlock.match(/lastFailedMessageRef\.current = rawContent/g);
+            expect(matches).not.toBeNull();
+            expect(matches!.length).toBeGreaterThanOrEqual(3);
         });
 
-        it('renders Retry button when error and lastFailedMessageRef', () => {
-            expect(source).toContain('error && lastFailedMessageRef.current');
-            expect(source).toContain('Retry');
-            expect(source).toContain('retryLastMessage()');
+        it('clears lastFailedMessageRef on successful send', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const handleCancel'),
+            );
+            expect(sendBlock).toContain("lastFailedMessageRef.current = ''");
+        });
+
+        it('renders Retry button when error is set (not gated on lastFailedMessageRef)', () => {
+            // The retry button is shown whenever error is truthy
+            const errorBubbleIdx = source.indexOf('chat-error-bubble');
+            const retrySection = source.substring(
+                errorBubbleIdx,
+                errorBubbleIdx + 600,
+            );
+            // Should NOT require lastFailedMessageRef.current in the render condition
+            expect(retrySection).not.toContain('error && lastFailedMessageRef.current');
+            expect(retrySection).toContain('Retry');
+            expect(retrySection).toContain('retryLastMessage()');
+        });
+
+        it('uses the shared Button component for the retry button', () => {
+            const errorBubbleIdx = source.indexOf('chat-error-bubble');
+            const retrySection = source.substring(
+                errorBubbleIdx,
+                errorBubbleIdx + 600,
+            );
+            expect(retrySection).toContain('<Button');
+            expect(retrySection).toContain('variant="danger"');
+            expect(retrySection).toContain('data-testid="retry-btn"');
+        });
+
+        it('retry button shows spinner and is disabled while sending', () => {
+            const retryBtnIdx = source.indexOf('data-testid="retry-btn"');
+            const retrySection = source.substring(
+                retryBtnIdx - 200,
+                retryBtnIdx + 200,
+            );
+            expect(retrySection).toContain('loading={sending}');
+            expect(retrySection).toContain('disabled={sending}');
         });
 
         it('retryLastMessage calls sendFollowUp with stored content', () => {
