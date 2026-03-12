@@ -2,6 +2,7 @@
  * Mobile Navigation Tests — verify bottom nav and tab navigation at 375×812.
  */
 import { expect, test } from '../fixtures/server-fixture';
+import { seedWorkspace } from '../fixtures/seed';
 import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
@@ -145,5 +146,20 @@ test.describe('Mobile Navigation', () => {
             expect(wikiBox.y).toBeGreaterThan(procBox.y);
             expect(diskBox.y).toBeGreaterThan(wikiBox.y);
         }
+    });
+
+    test('mobile: bottom nav hides when a repo is selected', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-mobile-hide-1', 'mobile-hide-repo', '/tmp/mobile-hide-repo');
+        await page.goto(serverUrl);
+
+        const bottomNav = page.locator('[data-testid="bottom-nav"]');
+        await expect(bottomNav).toBeVisible({ timeout: 10000 });
+
+        // Select a repo — BottomNav returns null when selectedRepoId is truthy
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('.repo-item').first().tap();
+
+        // BottomNav should be removed from the DOM
+        await expect(bottomNav).toHaveCount(0, { timeout: 10000 });
     });
 });
