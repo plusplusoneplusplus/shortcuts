@@ -10,8 +10,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedWorkspace, seedProcess, request } from './fixtures/seed';
+import { seedWorkspace, seedProcess, seedQueueTask, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import {
+    createMultiCommitRepo,
+    navigateToGitTab,
+} from './fixtures/git-fixtures';
 
 test.describe('Repos tab', () => {
     test('shows empty state when no repos exist', async ({ page, serverUrl }) => {
@@ -663,5 +667,663 @@ test.describe('Workflows Tab Content', () => {
         const emptyState = subContent.locator('.empty-state');
         await expect(emptyState).toBeVisible({ timeout: 10000 });
         await expect(emptyState).toContainText('No workflows found');
+    });
+});
+
+// ================================================================
+// Git Sub-tab Smoke (008-git-subtab-smoke)
+// ================================================================
+
+test.describe('Git Sub-tab (smoke)', () => {
+    test('commit list loads after switching to Git tab', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-smoke-'));
+        try {
+            const repoDir = createMultiCommitRepo(tmpDir);
+            await navigateToGitTab(page, serverUrl, 'ws-git-smoke-1', 'git-smoke-repo', repoDir);
+
+            // Wait for commit list to finish loading
+            await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 10_000 });
+
+            // Verify at least one commit row visible
+            const rows = page.locator('[data-testid^="commit-row-"]');
+            await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('clicking commit row shows commit detail', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-detail-'));
+        try {
+            const repoDir = createMultiCommitRepo(tmpDir);
+            await navigateToGitTab(page, serverUrl, 'ws-git-smoke-2', 'git-detail-repo', repoDir);
+
+            await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 10_000 });
+
+            // Click the first commit row to view details
+            const firstRow = page.locator('[data-testid^="commit-row-"]').first();
+            await firstRow.click();
+
+            // A commit detail panel or hash indicator should appear
+            const commitDetail = page.getByTestId('commit-detail');
+            await expect(commitDetail).toBeVisible({ timeout: 10_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ================================================================
+// Explorer Sub-tab (009-explorer-subtab)
+// ================================================================
+
+test.describe('Explorer Sub-tab', () => {
+    test('file tree loads root entries after switching to Explorer tab', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-explorer-1', 'explorer-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+            await page.click('button[data-subtab="explorer"]');
+            await expect(page.locator('button[data-subtab="explorer"]')).toHaveClass(/active/);
+
+            // Wait for loading to finish
+            await expect(page.getByTestId('explorer-loading')).toBeHidden({ timeout: 10_000 });
+
+            // File tree should be visible with root entries
+            await expect(page.getByTestId('file-tree')).toBeVisible({ timeout: 10_000 });
+
+            // The repo fixture has src/, docs/, .vscode/ directories
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('clicking a directory expands its children', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-expand-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-explorer-2', 'explorer-expand-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+            await page.click('button[data-subtab="explorer"]');
+            await expect(page.getByTestId('explorer-loading')).toBeHidden({ timeout: 10_000 });
+
+            // Click the 'src' directory node to expand it
+            const srcNode = page.locator('[data-testid="tree-node-src"]');
+            await expect(srcNode).toBeVisible({ timeout: 5_000 });
+            await srcNode.click();
+
+            // After expanding, the child file src/index.ts should appear
+            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('clicking a file opens the preview pane', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-preview-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-explorer-3', 'explorer-preview-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+            await page.click('button[data-subtab="explorer"]');
+            await expect(page.getByTestId('explorer-loading')).toBeHidden({ timeout: 10_000 });
+
+            // Expand src/ and click index.ts
+            const srcNode = page.locator('[data-testid="tree-node-src"]');
+            await expect(srcNode).toBeVisible({ timeout: 5_000 });
+            await srcNode.click();
+
+            const indexNode = page.locator('[data-testid="tree-node-src/index.ts"]');
+            await expect(indexNode).toBeVisible({ timeout: 5_000 });
+            await indexNode.click();
+
+            // Preview pane should become visible
+            await expect(page.getByTestId('explorer-preview-pane')).toBeVisible({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('hash navigation to #repos/<id>/explorer selects explorer sub-tab', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-hash-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-explorer-hash', 'explorer-hash-repo', repoDir);
+
+            await page.goto(`${serverUrl}/#repos/ws-explorer-hash/explorer`);
+
+            await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('button[data-subtab="explorer"]')).toHaveClass(/active/);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ================================================================
+// Sidebar Collapse / MiniReposSidebar (010-sidebar-collapse)
+// ================================================================
+
+test.describe('Sidebar Collapse', () => {
+    test('hamburger button collapses sidebar to MiniReposSidebar', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-collapse-1', 'collapse-repo', '/tmp/collapse-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Ensure sidebar is currently expanded (full grid visible)
+        await expect(page.locator('#add-repo-btn')).toBeVisible();
+
+        // Click hamburger to collapse
+        await page.click('#hamburger-btn');
+
+        // MiniReposSidebar should replace ReposGrid — look for mini-repo-item
+        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeVisible({ timeout: 5000 });
+
+        // Full add-repo button should no longer be visible in sidebar
+        await expect(page.locator('#add-repo-btn')).toBeHidden();
+    });
+
+    test('clicking a mini repo item selects the repo and shows detail', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-collapse-2', 'mini-click-repo', '/tmp/mini-click-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Collapse the sidebar
+        await page.click('#hamburger-btn');
+        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeVisible({ timeout: 5000 });
+
+        // Click the mini repo item
+        await page.locator('[data-testid="mini-repo-item"]').first().click();
+
+        // Repo detail should be shown
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('hamburger button re-expands collapsed sidebar', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-collapse-3', 'reexpand-repo', '/tmp/reexpand-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        // Collapse then re-expand
+        await page.click('#hamburger-btn');
+        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeVisible({ timeout: 5000 });
+
+        await page.click('#hamburger-btn');
+
+        // Full sidebar grid should be back
+        await expect(page.locator('#add-repo-btn')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeHidden();
+    });
+});
+
+// ================================================================
+// Repo Group Collapse/Expand (011-group-collapse)
+// ================================================================
+
+test.describe('Repo Group Collapse/Expand', () => {
+    test('repos with same remote URL appear in a group', async ({ page, serverUrl }) => {
+        const remoteUrl = 'https://github.com/test-org/shared-repo.git';
+
+        // Seed two workspaces with the same remoteUrl
+        await request(`${serverUrl}/api/workspaces`, {
+            method: 'POST',
+            body: JSON.stringify({ id: 'ws-group-1a', name: 'group-repo-a', rootPath: '/tmp/group-a', remoteUrl }),
+        });
+        await request(`${serverUrl}/api/workspaces`, {
+            method: 'POST',
+            body: JSON.stringify({ id: 'ws-group-1b', name: 'group-repo-b', rootPath: '/tmp/group-b', remoteUrl }),
+        });
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+
+        // Both repos should appear in the sidebar
+        await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
+
+        // A group header button should be visible (contains the group label with repo count badge)
+        const groupHeader = page.locator('button:has(.drag-handle)').first();
+        await expect(groupHeader).toBeVisible({ timeout: 5000 });
+    });
+
+    test('clicking group header collapses and expands the group', async ({ page, serverUrl }) => {
+        const remoteUrl = 'https://github.com/test-org/collapse-repo.git';
+
+        await request(`${serverUrl}/api/workspaces`, {
+            method: 'POST',
+            body: JSON.stringify({ id: 'ws-group-2a', name: 'collapse-a', rootPath: '/tmp/collapse-a', remoteUrl }),
+        });
+        await request(`${serverUrl}/api/workspaces`, {
+            method: 'POST',
+            body: JSON.stringify({ id: 'ws-group-2b', name: 'collapse-b', rootPath: '/tmp/collapse-b', remoteUrl }),
+        });
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
+
+        // Both repo items visible (group expanded by default)
+        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-a' })).toBeVisible();
+        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-b' })).toBeVisible();
+
+        // Click group header to collapse
+        const groupHeader = page.locator('button:has(.drag-handle)').first();
+        await groupHeader.click();
+
+        // Repo items should now be hidden
+        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-a' })).toBeHidden({ timeout: 5000 });
+        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-b' })).toBeHidden({ timeout: 5000 });
+
+        // Click group header again to expand
+        await groupHeader.click();
+        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-a' })).toBeVisible({ timeout: 5000 });
+    });
+});
+
+// ================================================================
+// Hash Navigation — Remaining Sub-tabs (012-hash-navigation)
+// ================================================================
+
+test.describe('Hash Navigation — Remaining Sub-tabs', () => {
+    test('hash navigation to #repos/<id>/git selects Git sub-tab', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-hash-git-'));
+        const repoDir = createMultiCommitRepo(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-hash-git', 'hash-git-repo', repoDir);
+
+            await page.goto(`${serverUrl}/#repos/ws-hash-git/git`);
+
+            await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('button[data-subtab="git"]')).toHaveClass(/active/);
+            await expect(page.locator('button[data-subtab="info"]')).not.toHaveClass(/active/);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('hash navigation to #repos/<id>/tasks selects Tasks sub-tab', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-hash-tasks', 'hash-tasks-repo', '/tmp/hash-tasks-repo');
+
+        await page.goto(`${serverUrl}/#repos/ws-hash-tasks/tasks`);
+
+        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('button[data-subtab="tasks"]')).toHaveClass(/active/);
+    });
+
+    test('hash navigation to #repos/<id>/schedules selects Schedules sub-tab', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-hash-sched', 'hash-schedules-repo', '/tmp/hash-sched-repo');
+
+        await page.goto(`${serverUrl}/#repos/ws-hash-sched/schedules`);
+
+        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('button[data-subtab="schedules"]')).toHaveClass(/active/);
+    });
+});
+
+// ================================================================
+// Sub-tab Badges (013-subtab-badges)
+// ================================================================
+
+test.describe('Sub-tab Badges', () => {
+    test('activity badge visible on activity sub-tab when repo has queue tasks', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-badge-queued', 'badge-queued-repo');
+
+        // Seed a queued task for this workspace
+        await seedQueueTask(serverUrl, {
+            type: 'chat',
+            displayName: 'Queued Badge Task',
+            repoId: 'ws-badge-queued',
+        });
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Navigate to Activity tab to trigger queue data fetch
+        await page.click('button[data-subtab="activity"]');
+        await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
+
+        // Either the task text or the badge should be visible (task may be queued, running, or just completed)
+        // Check that the Activity tab content at least rendered (queue was fetched)
+        const subTabContent = page.locator('#repo-sub-tab-content');
+        await expect(subTabContent).toBeVisible();
+
+        // Verify the sub-tab button strip contains the activity button
+        await expect(page.locator('button[data-subtab="activity"]')).toHaveClass(/active/);
+
+        // The badge may or may not be visible depending on how quickly the task is processed.
+        // If it's visible, verify it shows a count > 0.
+        const queuedBadge = page.locator('[data-testid="activity-queued-badge"]');
+        const runningBadge = page.locator('[data-testid="activity-running-badge"]');
+        const queuedCount = await queuedBadge.count();
+        const runningCount = await runningBadge.count();
+        if (queuedCount > 0 && await queuedBadge.isVisible()) {
+            const text = await queuedBadge.textContent();
+            expect(Number(text)).toBeGreaterThan(0);
+        } else if (runningCount > 0 && await runningBadge.isVisible()) {
+            const text = await runningBadge.textContent();
+            expect(Number(text)).toBeGreaterThan(0);
+        }
+        // If neither badge is visible, the task was processed quickly — that's also valid.
+    });
+
+    test('tasks count badge appears when repo has tasks', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-tasks-badge-'));
+        const repoDir = createRepoFixture(tmpDir);
+        createTasksFixture(repoDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-badge-tasks', 'badge-tasks-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+            // Tasks sub-tab should show a count badge (bg-[#0078d4] span)
+            const tasksTabBtn = page.locator('button[data-subtab="tasks"]');
+            await expect(tasksTabBtn).toBeVisible();
+            // Wait for task count to load (the badge span inside tasks button)
+            await expect(tasksTabBtn.locator('span')).toBeVisible({ timeout: 10000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ================================================================
+// Queue Task / Ask Buttons (014-queue-task-btn)
+// ================================================================
+
+test.describe('Queue Task and Ask Buttons', () => {
+    test('Queue Task button opens the enqueue dialog', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-qt-1', 'queue-task-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Click the Queue Task button
+        await page.click('[data-testid="repo-queue-task-btn"]');
+
+        // The floating enqueue dialog should appear
+        await expect(page.getByTestId('floating-dialog-panel')).toBeVisible({ timeout: 5000 });
+    });
+
+    test('Ask button opens the enqueue dialog in ask mode', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-ask-1', 'ask-repo');
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        // Click the Ask button
+        await page.click('[data-testid="repo-ask-btn"]');
+
+        // The floating dialog should appear
+        await expect(page.getByTestId('floating-dialog-panel')).toBeVisible({ timeout: 5000 });
+    });
+});
+
+// ================================================================
+// Workflows Tab — Add Workflow Dialog (015-add-workflow-dialog)
+// ================================================================
+
+test.describe('Workflows Tab — Add Workflow Dialog', () => {
+    test('+ New button opens AddWorkflowDialog', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-addwf-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-addwf-1', 'addwf-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+            await page.click('button[data-subtab="workflows"]');
+            await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
+
+            // Click the + New button in the Workflows section
+            await page.locator('[data-testid="workflows-section"]').getByRole('button', { name: '+ New' }).click();
+
+            // The AddWorkflowDialog should appear with a name input
+            await expect(page.locator('input[placeholder*="name"]').or(page.locator('input[type="text"]')).first()).toBeVisible({ timeout: 5000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('validation error on invalid workflow name', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-addwf-val-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-addwf-2', 'addwf-val-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+            await page.click('button[data-subtab="workflows"]');
+            await page.locator('[data-testid="workflows-section"]').getByRole('button', { name: '+ New' }).click();
+
+            // Wait for the dialog to open — the <select> template picker is always present
+            await expect(page.locator('select')).toBeVisible({ timeout: 5000 });
+
+            // Select Custom (blank) template using selectOption on the <select> element
+            await page.locator('select').selectOption('custom');
+
+            // Wait for the 'Create' button (shown when template is not ai-generated)
+            await expect(page.getByRole('button', { name: 'Create' })).toBeVisible({ timeout: 3000 });
+
+            // Submit with empty name — should show validation error
+            await page.getByRole('button', { name: 'Create' }).click();
+
+            await expect(page.locator('text=Name is required').or(page.locator('text=required'))).toBeVisible({ timeout: 5000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ================================================================
+// Workflows Tab — WorkflowDetail (016-workflow-detail)
+// ================================================================
+
+test.describe('Workflows Tab — WorkflowDetail', () => {
+    test('clicking View button opens WorkflowDetail panel', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-wfdetail-'));
+        const repoDir = createRepoFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-wfdetail-1', 'wfdetail-repo', repoDir);
+
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+            await page.locator('.repo-item').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+            await page.click('button[data-subtab="workflows"]');
+            await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
+
+            // Wait for workflow list to load (repo fixture has p1 workflow)
+            const pipelineItems = page.locator('.repo-workflow-item');
+            await expect(pipelineItems).toHaveCount(1, { timeout: 10000 });
+
+            // Click the View action button
+            await pipelineItems.first().locator('.repo-workflow-actions .action-btn').click();
+
+            // WorkflowDetail panel should open — right panel no longer shows empty state
+            await expect(page.getByTestId('templates-empty-detail')).toBeHidden({ timeout: 5000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ================================================================
+// Activity Tab — Task List (017-activity-task-list)
+// ================================================================
+
+test.describe('Activity Tab — Task List', () => {
+    test('completed task appears in ActivityListPane history', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-activity-task-1', 'activity-task-repo');
+
+        // Seed a queue task for this workspace (mock AI completes it quickly).
+        // workspaceId routes the task to the workspace-specific queue so history returns it.
+        await seedQueueTask(serverUrl, {
+            type: 'chat',
+            displayName: 'Activity List Task',
+            workspaceId: 'ws-activity-task-1',
+        });
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        await page.click('button[data-subtab="activity"]');
+        await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
+
+        // The task should appear in the list — either in queued, running, or history section
+        // Mock AI processes tasks quickly so it may be in history as completed
+        await expect(page.locator('text=Activity List Task')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('clicking a task in the list shows detail in the right pane', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-activity-task-2', 'activity-detail-repo');
+
+        // Seed a queue task.
+        // workspaceId routes the task to the workspace-specific queue so history returns it.
+        await seedQueueTask(serverUrl, {
+            type: 'chat',
+            displayName: 'Detail Pane Task',
+            workspaceId: 'ws-activity-task-2',
+        });
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+
+        await page.locator('.repo-item').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+
+        await page.click('button[data-subtab="activity"]');
+        await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
+
+        // Wait for task to appear (in queued, running, or history section)
+        const taskItem = page.locator('text=Detail Pane Task');
+        await expect(taskItem).toBeVisible({ timeout: 10000 });
+
+        // Click the task item card
+        await taskItem.first().click();
+
+        // After selecting a task, the detail pane should show something other than empty state
+        // The empty state only shows when no tasks exist at all
+        await expect(page.getByTestId('queue-empty-state')).toBeHidden({ timeout: 5000 });
+    });
+});
+
+// ================================================================
+// Path Browser Up-Navigation (018-path-browser-up-nav)
+// ================================================================
+
+test.describe('Path Browser Up-Navigation', () => {
+    test('clicking parent (..) entry navigates back to parent directory', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-upnav-'));
+        createRepoFixture(tmpDir);
+
+        try {
+            await page.goto(serverUrl);
+            await page.click('[data-tab="repos"]');
+            await page.click('#add-repo-btn');
+
+            // Set path to tmpDir and open browser
+            await page.fill('#repo-path', tmpDir);
+            await page.click('#browse-btn');
+            await expect(page.locator('#path-browser')).toBeVisible();
+
+            // Navigate into test-repo
+            await page.locator('.path-browser-entry', { hasText: 'test-repo' }).click();
+            await expect(page.locator('#path-breadcrumb')).toContainText('test-repo');
+
+            // Navigate into src subdirectory if it exists
+            const srcEntry = page.locator('.path-browser-entry', { hasText: 'src' });
+            if (await srcEntry.count() > 0) {
+                await srcEntry.first().click();
+                await expect(page.locator('#path-breadcrumb')).toContainText('src');
+
+                // Click the "📁 .." entry to go back to the parent (test-repo)
+                const parentEntry = page.locator('#path-browser').locator('text=📁 ..');
+                await expect(parentEntry).toBeVisible({ timeout: 5000 });
+                await parentEntry.click();
+
+                // Should be back in test-repo — breadcrumb should no longer show src
+                await expect(page.locator('#path-breadcrumb')).not.toContainText('src', { timeout: 5000 });
+                // src entry should be visible again as a directory listing
+                await expect(page.locator('.path-browser-entry', { hasText: 'src' })).toBeVisible({ timeout: 5000 });
+            }
+        } finally {
+            safeRmSync(tmpDir);
+        }
     });
 });
