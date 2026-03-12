@@ -348,6 +348,7 @@ export {
     SDKInvocationResult,
     SDKAvailabilityResult,
     AgentMode,
+    DeliveryMode,
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,

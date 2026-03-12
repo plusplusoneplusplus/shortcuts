@@ -48,6 +48,8 @@ import {
     setTrustedFolderHomeOverride,
     // Tool Event types
     ToolEvent,
+    // Delivery mode type
+    DeliveryMode,
 } from '../../src/copilot-sdk-wrapper';
 
 // Import from the ai/ barrel (backward compatibility)
@@ -253,6 +255,40 @@ describe('Copilot SDK Wrapper Module', () => {
                 path: '/tmp/test.txt',
             };
             expect(attachment.type).toBe('file');
+        });
+    });
+
+    describe('DeliveryMode type', () => {
+        it('should accept immediate and enqueue values', () => {
+            const immediate: DeliveryMode = 'immediate';
+            const enqueue: DeliveryMode = 'enqueue';
+            expect(immediate).toBe('immediate');
+            expect(enqueue).toBe('enqueue');
+        });
+
+        it('should be optional on SendMessageOptions', () => {
+            const opts: AiSendMessageOptions = {
+                prompt: 'Hello',
+            };
+            expect(opts.deliveryMode).toBeUndefined();
+        });
+
+        it('should be accepted on SendMessageOptions', () => {
+            const opts: AiSendMessageOptions = {
+                prompt: 'Hello',
+                deliveryMode: 'enqueue',
+            };
+            expect(opts.deliveryMode).toBe('enqueue');
+        });
+
+        it('should coexist with mode (AgentMode) without conflict', () => {
+            const opts: AiSendMessageOptions = {
+                prompt: 'Hello',
+                mode: 'autopilot',
+                deliveryMode: 'enqueue',
+            };
+            expect(opts.mode).toBe('autopilot');
+            expect(opts.deliveryMode).toBe('enqueue');
         });
     });
 

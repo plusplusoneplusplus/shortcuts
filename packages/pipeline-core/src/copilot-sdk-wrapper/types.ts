@@ -383,6 +383,12 @@ export interface SendMessageOptions {
      * When not specified, the SDK default mode is used.
      */
     mode?: AgentMode;
+
+    /**
+     * Controls when the message is dispatched.
+     * Defaults to `'immediate'` when omitted.
+     */
+    deliveryMode?: DeliveryMode;
 }
 
 /**
@@ -416,6 +422,13 @@ export interface ToolEvent {
  * - `autopilot`: AI executes autonomously
  */
 export type AgentMode = 'interactive' | 'plan' | 'autopilot';
+
+/**
+ * Controls when a message is dispatched to the Copilot session.
+ * - `immediate` (default): send as soon as the caller invokes the method.
+ * - `enqueue`: add to an ordered queue; dispatched when the session is idle.
+ */
+export type DeliveryMode = 'immediate' | 'enqueue';
 
 // ============================================================================
 // Read-Only Mode Constants

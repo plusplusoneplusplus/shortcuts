@@ -24,6 +24,7 @@ export {
     SDKAvailabilityResult,
     // Agent mode types
     AgentMode,
+    DeliveryMode,
     // Permission types
     PermissionRequest,
     PermissionRequestResult,

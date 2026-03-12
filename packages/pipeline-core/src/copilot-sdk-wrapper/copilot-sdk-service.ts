@@ -25,6 +25,7 @@ import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
 import { DEFAULT_AI_IDLE_TIMEOUT_MS } from '../config/defaults';
 import {
     Attachment,
+    DeliveryMode,
     MCPServerConfig,
     MCPControlOptions,
     SendMessageOptions,
@@ -142,7 +143,7 @@ interface ICopilotSession {
     /** Event handler for streaming responses. Returns an unsubscribe function. */
     on?(handler: (event: ISessionEvent) => void): (() => void);
     /** Send a message without waiting (for streaming) */
-    send?(options: { prompt: string; attachments?: Attachment[] }): Promise<void>;
+    send?(options: { prompt: string; attachments?: Attachment[]; deliveryMode?: DeliveryMode }): Promise<void>;
     /** RPC API for session control (mode, model, etc.) */
     rpc?: {
         mode: {
