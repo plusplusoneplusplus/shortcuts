@@ -11,9 +11,9 @@
  * 3. Notify callback with affected component IDs
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import type { ComponentGraph } from './types';
+import { DebouncedWatcherRegistry } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types
@@ -41,100 +41,61 @@ const DEFAULT_DEBOUNCE_MS = 2000;
 // FileWatcher
 // ============================================================================
 
+/** Fixed key used by FileWatcher for its single-directory watcher. */
+const WATCHER_KEY = 'default';
+
 export class FileWatcher {
-    private watcher: fs.FSWatcher | null = null;
-    private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    private changedFiles: Set<string> = new Set();
+    private registry: DebouncedWatcherRegistry<typeof WATCHER_KEY>;
     private options: FileWatcherOptions;
-    private _isWatching = false;
 
     constructor(options: FileWatcherOptions) {
         this.options = options;
+        this.registry = new DebouncedWatcherRegistry(options.debounceMs ?? DEFAULT_DEBOUNCE_MS);
     }
 
     /**
      * Start watching the repository for changes.
      */
     start(): void {
-        if (this._isWatching) return;
+        if (this.registry.isWatching(WATCHER_KEY)) return;
 
-        const { repoPath, debounceMs = DEFAULT_DEBOUNCE_MS } = this.options;
+        const { repoPath } = this.options;
 
-        const changeHandler = (_eventType: string, filename: string | null) => {
-            if (!filename) return;
-            if (shouldIgnore(filename)) return;
-
-            this.changedFiles.add(filename);
-
-            if (this.debounceTimer) {
-                clearTimeout(this.debounceTimer);
-            }
-            this.debounceTimer = setTimeout(() => {
-                this.processChanges();
-            }, debounceMs);
-        };
-
-        try {
-            // `recursive: true` requires Node 19+ on Linux; fall back to
-            // non-recursive watching on older runtimes.
-            try {
-                this.watcher = fs.watch(repoPath, { recursive: true }, changeHandler);
-            } catch {
-                this.watcher = fs.watch(repoPath, changeHandler);
-            }
-
-            this.watcher.on('error', (err) => {
-                if (this.options.onError) {
-                    this.options.onError(err instanceof Error ? err : new Error(String(err)));
+        this.registry.watch(
+            WATCHER_KEY,
+            repoPath,
+            (_key, changedFiles) => {
+                const affectedIds = this.findAffectedComponents(changedFiles);
+                if (affectedIds.length > 0) {
+                    this.options.onChange(affectedIds);
                 }
-            });
-
-            this._isWatching = true;
-        } catch (err) {
-            if (this.options.onError) {
-                this.options.onError(err instanceof Error ? err : new Error(String(err)));
-            }
-        }
+            },
+            {
+                shouldIgnore,
+                onError: (_key, err) => {
+                    this.options.onError?.(err);
+                },
+            },
+        );
     }
 
     /**
      * Stop watching.
      */
     stop(): void {
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-            this.debounceTimer = null;
-        }
-        if (this.watcher) {
-            this.watcher.close();
-            this.watcher = null;
-        }
-        this.changedFiles.clear();
-        this._isWatching = false;
+        this.registry.unwatch(WATCHER_KEY);
     }
 
     /**
      * Whether the watcher is currently active.
      */
     get isWatching(): boolean {
-        return this._isWatching;
+        return this.registry.isWatching(WATCHER_KEY);
     }
 
     // ========================================================================
     // Private
     // ========================================================================
-
-    private processChanges(): void {
-        const files = Array.from(this.changedFiles);
-        this.changedFiles.clear();
-
-        // Determine which components are affected
-        const affectedIds = this.findAffectedComponents(files);
-
-        if (affectedIds.length > 0) {
-            this.options.onChange(affectedIds);
-        }
-    }
 
     /**
      * Determine which components are affected by the changed files.

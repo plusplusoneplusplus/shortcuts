@@ -13,6 +13,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { DebouncedWatcherRegistry } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types
@@ -27,8 +28,7 @@ export type TemplatesChangedCallback = (workspaceId: string) => void;
 const DEBOUNCE_MS = 300;
 
 export class TemplateWatcher {
-    private watchers = new Map<string, fs.FSWatcher>();
-    private timers = new Map<string, ReturnType<typeof setTimeout>>();
+    private registry = new DebouncedWatcherRegistry<string>(DEBOUNCE_MS);
     private onTemplatesChanged: TemplatesChangedCallback;
 
     constructor(onTemplatesChanged: TemplatesChangedCallback) {
@@ -40,7 +40,7 @@ export class TemplateWatcher {
      * No-ops gracefully if the directory does not exist.
      */
     watchWorkspace(workspaceId: string, rootPath: string): void {
-        if (this.watchers.has(workspaceId)) {
+        if (this.registry.isWatching(workspaceId)) {
             return;
         }
 
@@ -55,79 +55,34 @@ export class TemplateWatcher {
             return;
         }
 
-        try {
-            const watcher = fs.watch(templatesDir, { recursive: true }, (_event, _filename) => {
-                this.debounceFire(workspaceId);
-            });
-
-            watcher.on('error', (_err) => {
-                this.cleanupWatcher(workspaceId);
-            });
-
-            this.watchers.set(workspaceId, watcher);
-        } catch {
-            // fs.watch can throw on some platforms if the path disappears
-        }
+        this.registry.watch(
+            workspaceId,
+            templatesDir,
+            (key, _changedFiles) => this.onTemplatesChanged(key),
+            {
+                onError: (key) => this.registry.unwatch(key),
+            },
+        );
     }
 
     /**
      * Stop watching a workspace's templates directory.
      */
     unwatchWorkspace(workspaceId: string): void {
-        this.cleanupWatcher(workspaceId);
+        this.registry.unwatch(workspaceId);
     }
 
     /**
      * Close all watchers (called on server shutdown).
      */
     closeAll(): void {
-        for (const [id] of this.watchers) {
-            this.cleanupWatcher(id);
-        }
+        this.registry.closeAll();
     }
 
     /**
      * Returns whether a workspace is currently being watched.
      */
     isWatching(workspaceId: string): boolean {
-        return this.watchers.has(workspaceId);
-    }
-
-    // ========================================================================
-    // Private
-    // ========================================================================
-
-    private debounceFire(workspaceId: string): void {
-        const existing = this.timers.get(workspaceId);
-        if (existing) {
-            clearTimeout(existing);
-        }
-
-        const timer = setTimeout(() => {
-            this.timers.delete(workspaceId);
-            if (this.watchers.has(workspaceId)) {
-                this.onTemplatesChanged(workspaceId);
-            }
-        }, DEBOUNCE_MS);
-
-        this.timers.set(workspaceId, timer);
-    }
-
-    private cleanupWatcher(workspaceId: string): void {
-        const timer = this.timers.get(workspaceId);
-        if (timer) {
-            clearTimeout(timer);
-            this.timers.delete(workspaceId);
-        }
-
-        const watcher = this.watchers.get(workspaceId);
-        if (watcher) {
-            try {
-                watcher.close();
-            } catch {
-                // Ignore close errors
-            }
-            this.watchers.delete(workspaceId);
-        }
+        return this.registry.isWatching(workspaceId);
     }
 }

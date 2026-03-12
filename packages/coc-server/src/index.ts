@@ -169,6 +169,10 @@ export { registerGlobalSkillRoutes } from './global-skill-handler';
 // Repos (file explorer)
 export * from './repos';
 
+// Debounced watcher registry (shared utility for file watching with debounce)
+export { DebouncedWatcherRegistry } from './shared/debounced-watcher-registry';
+export type { WatchOptions } from './shared/debounced-watcher-registry';
+
 // Memory management
 export { registerMemoryRoutes } from './memory/memory-routes';
 export { readMemoryConfig, writeMemoryConfig, validateMemoryConfig, DEFAULT_MEMORY_CONFIG, MEMORY_CONFIG_FILE_NAME } from './memory/memory-config-handler';
