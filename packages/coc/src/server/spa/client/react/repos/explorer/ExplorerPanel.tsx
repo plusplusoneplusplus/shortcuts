@@ -14,6 +14,7 @@ import { PreviewPane } from './PreviewPane';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
+import { ExactOpen } from './ExactOpen';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 
@@ -53,6 +54,9 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
 
     // Quick Open state (Ctrl+P)
     const [quickOpenVisible, setQuickOpenVisible] = useState(false);
+
+    // Exact Open state (Ctrl+O)
+    const [exactOpenVisible, setExactOpenVisible] = useState(false);
 
     // Fetch root entries on mount
     useEffect(() => {
@@ -240,13 +244,19 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         }
     }, [searchQuery, childrenMap, rootEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Keyboard shortcut: '/' to focus search, Escape to clear, Ctrl+P for Quick Open
+    // Keyboard shortcut: '/' to focus search, Escape to clear, Ctrl+P for Quick Open, Ctrl+O for Exact Open
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             // Ctrl+P / Cmd+P → Quick Open
             if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
                 e.preventDefault();
                 setQuickOpenVisible(true);
+                return;
+            }
+            // Ctrl+O / Cmd+O → Exact Open
+            if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                e.preventDefault();
+                setExactOpenVisible(true);
                 return;
             }
             if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
@@ -415,6 +425,14 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 workspaceId={workspaceId}
                 open={quickOpenVisible}
                 onClose={() => setQuickOpenVisible(false)}
+                onFileSelect={handleQuickOpenSelect}
+            />
+
+            {/* Exact Open (Ctrl+O) */}
+            <ExactOpen
+                workspaceId={workspaceId}
+                open={exactOpenVisible}
+                onClose={() => setExactOpenVisible(false)}
                 onFileSelect={handleQuickOpenSelect}
             />
         </div>

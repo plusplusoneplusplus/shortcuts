@@ -12,6 +12,8 @@ export { SearchBar } from './SearchBar';
 export type { SearchBarProps } from './SearchBar';
 export { QuickOpen, fuzzyMatch, highlightFuzzy } from './QuickOpen';
 export type { QuickOpenProps } from './QuickOpen';
+export { ExactOpen, exactMatchScore } from './ExactOpen';
+export type { ExactOpenProps } from './ExactOpen';
 export { Breadcrumbs } from './Breadcrumbs';
 export type { BreadcrumbsProps } from './Breadcrumbs';
 export type { TreeEntry } from './types';
