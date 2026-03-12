@@ -221,6 +221,30 @@ describe('DAGNode', () => {
         });
     });
 
+    describe('duration overlay', () => {
+        it('renders dag-duration-overlay-{phase} for completed node with durationMs', () => {
+            const { container } = renderNode({ phase: 'map', state: 'completed', durationMs: 3500 });
+            const overlay = container.querySelector('[data-testid="dag-duration-overlay-map"]');
+            expect(overlay).not.toBeNull();
+        });
+
+        it('duration overlay text shows formatted duration', () => {
+            const { container } = renderNode({ phase: 'reduce', state: 'completed', durationMs: 2200 });
+            const overlay = container.querySelector('[data-testid="dag-duration-overlay-reduce"]');
+            expect(overlay?.textContent).toBeTruthy();
+        });
+
+        it('does not render duration overlay when state is not completed', () => {
+            const { container } = renderNode({ phase: 'map', state: 'running', durationMs: 1000 });
+            expect(container.querySelector('[data-testid="dag-duration-overlay-map"]')).toBeNull();
+        });
+
+        it('does not render duration overlay when durationMs is null', () => {
+            const { container } = renderNode({ phase: 'map', state: 'completed' });
+            expect(container.querySelector('[data-testid="dag-duration-overlay-map"]')).toBeNull();
+        });
+    });
+
     describe('validation error pin', () => {
         it('renders error pin when validationErrors provided', () => {
             const { container } = renderNode({}, { validationErrors: ['Bad input'] });

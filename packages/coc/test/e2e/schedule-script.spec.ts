@@ -208,4 +208,56 @@ test.describe('Schedule Script', () => {
         const inner = result.result as Record<string, unknown>;
         expect(inner.exitCode).not.toBe(0);
     });
+
+    test('API: script schedule captures stderr separately from stdout', async ({ serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-sched-api4', 'sched-api4', '/ws/sched-api4');
+        const schedule = await seedSchedule(serverUrl, {
+            name: 'Stderr Test',
+            target: `node -e "process.stderr.write('err-output')"`,
+            workspaceId: 'ws-sched-api4',
+        });
+
+        // Trigger run
+        const runRes = await request(
+            `${serverUrl}/api/workspaces/ws-sched-api4/schedules/${schedule.id}/run`,
+            { method: 'POST' },
+        );
+        expect(runRes.status).toBe(200);
+        const run = (JSON.parse(runRes.body) as { run: Record<string, unknown> }).run;
+        const taskId = (run.processId as string).replace('queue_', '');
+
+        const task = await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+        expect(task.status).toBe('completed');
+
+        const result = task.result as Record<string, unknown>;
+        const inner = result.result as Record<string, unknown>;
+        expect(inner.stderr).toContain('err-output');
+    });
+
+    test('UI: create prompt-type schedule shows [Prompt] badge', async ({ page, serverUrl }) => {
+        await seedWorkspace(serverUrl, 'ws-sched-prompt', 'sched-prompt', '/ws/sched-prompt');
+
+        await navigateToSchedules(page, serverUrl);
+        await expect(page.getByText('No schedules for this repo yet.')).toBeVisible({ timeout: 10_000 });
+
+        // Open create form
+        await page.locator('#repo-detail-content').getByRole('button', { name: '+ New', exact: true }).click();
+        await expect(page.locator('[data-testid="template-picker"]')).toBeVisible({ timeout: 10_000 });
+
+        // Fill name and prompt (default type is prompt, no need to switch)
+        await page.fill('[placeholder="Name (e.g., Daily Report)"]', 'My Prompt Schedule');
+        // Leave targetType as default (prompt) and fill the prompt textarea
+        const promptInput = page.locator('[data-testid="target-input"], textarea[placeholder*="Prompt"]').first();
+        if (await promptInput.isVisible()) {
+            await promptInput.fill('Analyze the project status');
+        }
+
+        // Submit
+        await page.getByRole('button', { name: 'Create' }).click();
+
+        // [Prompt] badge should appear in the list
+        await expect(
+            page.locator('.repo-schedule-item:has-text("[Prompt]")'),
+        ).toBeVisible({ timeout: 10_000 });
+    });
 });

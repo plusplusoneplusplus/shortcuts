@@ -203,4 +203,32 @@ test.describe('Workflow DAG Chart', () => {
             safeRmSync(tmpDir);
         }
     });
+
+    test('zoom-out button decreases zoom level', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-dag-'));
+        const repoDir = createWorkflowFixture(tmpDir);
+
+        try {
+            await seedWorkspace(serverUrl, 'ws-dag-6', 'dag-repo', repoDir);
+            await navigateToPipeline(page, serverUrl);
+
+            await expect(
+                page.locator('[data-testid="workflow-dag-container"]'),
+            ).toBeVisible({ timeout: 10_000 });
+
+            const controls = page.locator('[data-testid="zoom-controls"]');
+            const label = page.locator('[data-testid="zoom-label"]');
+
+            // Zoom in twice to reach 150%
+            await controls.locator('button[title="Zoom in"]').click();
+            await controls.locator('button[title="Zoom in"]').click();
+            await expect(label).toHaveText('150%');
+
+            // Zoom out — label should decrease from 150%
+            await controls.locator('button[title="Zoom out"]').click();
+            await expect(label).not.toHaveText('150%');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
 });
