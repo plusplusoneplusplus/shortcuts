@@ -15,8 +15,3 @@ export interface DashboardOptions {
     projectDir?: string;
 }
 
-export interface ScriptOptions {
-    defaultTheme: 'light' | 'dark' | 'auto';
-    wsPath: string;
-    apiBasePath: string;
-}
