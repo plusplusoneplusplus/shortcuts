@@ -124,6 +124,36 @@ describe('ActivityListPane pinned chats', () => {
         });
     });
 
+    describe('title tooltip on truncated elements', () => {
+        it('pinned section task name has title attribute', () => {
+            expect(source).toContain("title={task.displayName || task.type || 'Task'}");
+        });
+
+        it('QueueTaskItem task name has title attribute', () => {
+            expect(source).toContain('title={name}>{name}');
+        });
+
+        it('prompt preview lines have title={p} in IIFE renders', () => {
+            const matches = source.match(/title=\{p\}/g);
+            // 3 sections: pinned, unpinned, archived
+            expect(matches).not.toBeNull();
+            expect(matches!.length).toBeGreaterThanOrEqual(3);
+        });
+
+        it('QueueTaskItem prompt preview has title attribute', () => {
+            expect(source).toContain('title={promptPreview}>{promptPreview}');
+        });
+
+        it('title attributes appear on truncate spans', () => {
+            // Every title={task.displayName...} should be on a span with truncate class
+            const titlePattern = /className=\{cn\("truncate".*?\}\s+title=\{task\.displayName/g;
+            const matches = source.match(titlePattern);
+            // 3 sections: pinned, unpinned, archived
+            expect(matches).not.toBeNull();
+            expect(matches!.length).toBe(3);
+        });
+    });
+
     describe('archive support', () => {
         describe('props interface', () => {
             it('declares archivedChatIds prop', () => {

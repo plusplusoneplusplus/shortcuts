@@ -512,7 +512,7 @@ export function ActivityListPane({
                                                     <span className="shrink-0">
                                                         {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                     </span>
-                                                    <span className={cn("truncate", isUnseen && "font-semibold")}>
+                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
                                                     {hasPinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
@@ -521,7 +521,7 @@ export function ActivityListPane({
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")}>{p}</div> : null; })()}
+                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
                                             {task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
@@ -583,7 +583,7 @@ export function ActivityListPane({
                                                     <span className="shrink-0">
                                                         {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                     </span>
-                                                    <span className={cn("truncate", isUnseen && "font-semibold")}>
+                                                    <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                         {task.displayName || task.type || 'Task'}
                                                     </span>
                                                     {hasUnpinnedDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
@@ -592,7 +592,7 @@ export function ActivityListPane({
                                                     {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                                 </span>
                                             </div>
-                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")}>{p}</div> : null; })()}
+                                            {(() => { const p = getTaskPromptPreview(task); return p ? <div className={cn("text-[10px] mt-0.5 truncate", isUnseen ? "text-[#1e1e1e] dark:text-[#cccccc]" : "text-[#848484] dark:text-[#999]")} title={p}>{p}</div> : null; })()}
                                             {task.error && (
                                                 <div className="text-[10px] text-red-500 mt-0.5 truncate">
                                                     {task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error}
@@ -635,7 +635,7 @@ export function ActivityListPane({
                                                 <span className="shrink-0">
                                                     {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
                                                 </span>
-                                                <span className={cn("truncate", isUnseen && "font-semibold")}>
+                                                <span className={cn("truncate", isUnseen && "font-semibold")} title={task.displayName || task.type || 'Task'}>
                                                     {task.displayName || task.type || 'Task'}
                                                 </span>
                                             </span>
@@ -643,7 +643,7 @@ export function ActivityListPane({
                                                 {task.completedAt ? formatRelativeTime(new Date(task.completedAt).toISOString()) : ''}
                                             </span>
                                         </div>
-                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]">{p}</div> : null; })()}
+                                        {(() => { const p = getTaskPromptPreview(task); return p ? <div className="text-[10px] mt-0.5 truncate text-[#848484] dark:text-[#999]" title={p}>{p}</div> : null; })()}
                                     </Card>
                                 );
                             })}
@@ -689,7 +689,7 @@ export function QueueTaskItem({ task, status, now, selected, onClick, onContextM
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
                     <span className="shrink-0">{task.frozen ? '❄️' : icon}</span>
-                    <span className="truncate">{name}</span>
+                    <span className="truncate" title={name}>{name}</span>
                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                 </div>
                 {elapsed && (
@@ -699,7 +699,7 @@ export function QueueTaskItem({ task, status, now, selected, onClick, onContextM
                 )}
             </div>
             {promptPreview && (
-                <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate">{promptPreview}</div>
+                <div className="text-[10px] text-[#848484] dark:text-[#999] mt-0.5 truncate" title={promptPreview}>{promptPreview}</div>
             )}
             {showProgress && progress && progress.total > 0 && (
                 <div className="mt-1" data-testid="workflow-progress-indicator">
