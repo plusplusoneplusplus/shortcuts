@@ -1,9 +1,11 @@
 /**
  * GitPanelHeader — fixed header strip for the git left panel.
  *
- * Shows branch name pill, ahead/behind badge, and a refresh button
- * that spins while refreshing.
+ * Shows branch name pill, ahead/behind badge, a split action button
+ * (Pull as default + chevron dropdown for Fetch/Pull/Push), and a refresh button.
  */
+
+import { useState, useEffect, useRef } from 'react';
 
 interface GitPanelHeaderProps {
     branch: string;
@@ -24,6 +26,27 @@ const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg
 
 export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, fetching, pulling, pushing }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
+    const hasAnyAction = onFetch || onPull || onPush;
+    const isActioning = fetching || pulling || pushing;
+
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!dropdownOpen) return;
+        function handleClickOutside(e: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [dropdownOpen]);
+
+    function handleAction(fn?: () => void) {
+        setDropdownOpen(false);
+        fn?.();
+    }
 
     return (
         <>
@@ -61,48 +84,93 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Git action buttons */}
-            {onFetch && (
-                <button
-                    className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
-                    onClick={onFetch}
-                    disabled={fetching}
-                    title="Fetch from remote"
-                    data-testid="git-fetch-btn"
-                >
-                    <svg className={`w-3 h-3 ${fetching ? 'git-refresh-spin' : ''}`} viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M8 1a.5.5 0 01.5.5v5.793l2.146-2.147a.5.5 0 01.708.708l-3 3a.5.5 0 01-.708 0l-3-3a.5.5 0 11.708-.708L7.5 7.293V1.5A.5.5 0 018 1zM2 13.5a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z" />
-                    </svg>
-                    Fetch
-                </button>
-            )}
-            {onPull && (
-                <button
-                    className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
-                    onClick={onPull}
-                    disabled={pulling}
-                    title="Pull --rebase from remote"
-                    data-testid="git-pull-btn"
-                >
-                    <svg className={`w-3 h-3 ${pulling ? 'git-refresh-spin' : ''}`} viewBox="0 0 16 16" fill="currentColor">
-                        <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
-                    </svg>
-                    Pull
-                </button>
-            )}
-            {onPush && (
-                <button
-                    className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
-                    onClick={onPush}
-                    disabled={pushing}
-                    title="Push to remote"
-                    data-testid="git-push-btn"
-                >
-                    <svg className={`w-3 h-3 ${pushing ? 'git-refresh-spin' : ''}`} viewBox="0 0 16 16" fill="currentColor">
-                        <path fillRule="evenodd" d="M8 15a.5.5 0 01-.5-.5V2.707L4.354 5.854a.5.5 0 11-.708-.708l4-4a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L8.5 2.707V14.5a.5.5 0 01-.5.5z" />
-                    </svg>
-                    Push
-                </button>
+            {/* Split action button (Fetch / Pull / Push) */}
+            {hasAnyAction && (
+                <div className="relative flex items-center" ref={dropdownRef} data-testid="git-sync-split-btn">
+                    {/* Primary action: Pull */}
+                    <button
+                        className="git-action-btn flex items-center gap-1 px-1.5 py-0.5 rounded-l text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50 border-r border-[#d0d0d0] dark:border-[#555]"
+                        onClick={() => handleAction(onPull)}
+                        disabled={!!isActioning}
+                        title="Pull --rebase from remote"
+                        data-testid="git-sync-primary-btn"
+                    >
+                        {isActioning ? (
+                            <svg className="w-3 h-3 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
+                                <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
+                                <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+                            </svg>
+                        ) : (
+                            <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+                                <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
+                            </svg>
+                        )}
+                        Pull
+                    </button>
+
+                    {/* Chevron toggle */}
+                    <button
+                        className="git-action-btn flex items-center px-1 py-0.5 rounded-r text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] disabled:opacity-50"
+                        onClick={() => setDropdownOpen(prev => !prev)}
+                        disabled={!!isActioning}
+                        title="More git actions"
+                        data-testid="git-sync-dropdown-toggle"
+                        type="button"
+                    >
+                        ▾
+                    </button>
+
+                    {/* Dropdown menu */}
+                    {dropdownOpen && (
+                        <div
+                            className="absolute right-0 top-full mt-1 z-30 min-w-[110px] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#d0d0d0] dark:border-[#555] rounded shadow-md py-1"
+                            data-testid="git-sync-dropdown"
+                        >
+                            {onFetch && (
+                                <button
+                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                                    onClick={() => handleAction(onFetch)}
+                                    title="Fetch from remote"
+                                    data-testid="git-fetch-btn"
+                                    type="button"
+                                >
+                                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M8 1a.5.5 0 01.5.5v5.793l2.146-2.147a.5.5 0 01.708.708l-3 3a.5.5 0 01-.708 0l-3-3a.5.5 0 11.708-.708L7.5 7.293V1.5A.5.5 0 018 1zM2 13.5a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z" />
+                                    </svg>
+                                    Fetch
+                                </button>
+                            )}
+                            {onPull && (
+                                <button
+                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                                    onClick={() => handleAction(onPull)}
+                                    title="Pull --rebase from remote"
+                                    data-testid="git-pull-btn"
+                                    type="button"
+                                >
+                                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                        <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
+                                    </svg>
+                                    Pull
+                                </button>
+                            )}
+                            {onPush && (
+                                <button
+                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                                    onClick={() => handleAction(onPush)}
+                                    title="Push to remote"
+                                    data-testid="git-push-btn"
+                                    type="button"
+                                >
+                                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                        <path fillRule="evenodd" d="M8 15a.5.5 0 01-.5-.5V2.707L4.354 5.854a.5.5 0 11-.708-.708l4-4a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L8.5 2.707V14.5a.5.5 0 01-.5.5z" />
+                                    </svg>
+                                    Push
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
             )}
 
             {/* Refresh button */}
