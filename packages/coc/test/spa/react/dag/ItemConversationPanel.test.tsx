@@ -163,7 +163,7 @@ describe('ItemConversationPanel', () => {
             expect.objectContaining({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: 'Can you explain more?' }),
+                body: JSON.stringify({ content: 'Can you explain more?', deliveryMode: 'enqueue' }),
             }),
         );
 
@@ -379,9 +379,9 @@ describe('ItemConversationPanel', () => {
         fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
         expect(fetchMock).toHaveBeenCalledTimes(1); // only initial fetch
 
-        // Ctrl+Enter should send
+        // Plain Enter should send (enqueue mode)
         await act(async () => {
-            fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+            fireEvent.keyDown(textarea, { key: 'Enter' });
         });
 
         // Second fetch call = POST message
@@ -411,6 +411,160 @@ describe('ItemConversationPanel', () => {
 
         await waitFor(() => {
             expect(screen.getByTestId('item-conversation-error')).toBeDefined();
+        });
+    });
+
+    describe('always-enabled input', () => {
+        it('textarea is not disabled when sending is true (input stays live)', async () => {
+            fetchMock
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                })
+                .mockImplementation(() => new Promise(() => {})); // POST never resolves
+
+            render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+            });
+
+            const textarea = screen.getByTestId('item-conversation-textarea') as HTMLTextAreaElement;
+            fireEvent.change(textarea, { target: { value: 'first message' } });
+
+            // Trigger send — sending becomes true
+            await act(async () => {
+                fireEvent.keyDown(textarea, { key: 'Enter' });
+            });
+
+            // Textarea should NOT be disabled even while sending
+            expect(textarea.disabled).toBe(false);
+        });
+
+        it('textarea is disabled when sessionExpired is true', async () => {
+            fetchMock
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                })
+                .mockResolvedValueOnce({
+                    ok: false,
+                    status: 410,
+                    json: () => Promise.resolve({}),
+                });
+
+            render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+            });
+
+            const textarea = screen.getByTestId('item-conversation-textarea') as HTMLTextAreaElement;
+            fireEvent.change(textarea, { target: { value: 'test' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Send'));
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('item-conversation-expired')).toBeDefined();
+            });
+
+            expect(textarea.disabled).toBe(true);
+        });
+
+        it('includes deliveryMode in POST body', async () => {
+            fetchMock
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                })
+                .mockResolvedValueOnce({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({}),
+                })
+                .mockResolvedValue({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                });
+
+            const mockEs = {
+                addEventListener: vi.fn(),
+                close: vi.fn(),
+                onerror: null as any,
+            };
+            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+
+            render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+            });
+
+            const textarea = screen.getByTestId('item-conversation-textarea');
+            fireEvent.change(textarea, { target: { value: 'test message' } });
+
+            // Plain Enter → enqueue
+            await act(async () => {
+                fireEvent.keyDown(textarea, { key: 'Enter' });
+            });
+
+            const postCall = fetchMock.mock.calls.find(
+                (c: any[]) => c[1]?.method === 'POST',
+            );
+            expect(postCall).toBeDefined();
+            const body = JSON.parse(postCall![1].body);
+            expect(body.deliveryMode).toBe('enqueue');
+
+            vi.unstubAllGlobals();
+        });
+
+        it('Ctrl+Enter sends with immediate delivery mode', async () => {
+            fetchMock
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                })
+                .mockResolvedValueOnce({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({}),
+                })
+                .mockResolvedValue({
+                    ok: true,
+                    json: () => Promise.resolve(makeProcessResponse()),
+                });
+
+            const mockEs = {
+                addEventListener: vi.fn(),
+                close: vi.fn(),
+                onerror: null as any,
+            };
+            vi.stubGlobal('EventSource', vi.fn(() => mockEs));
+
+            render(<ItemConversationPanel processId="child-1" onClose={vi.fn()} isDark={false} />);
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('item-conversation-loading')).toBeNull();
+            });
+
+            const textarea = screen.getByTestId('item-conversation-textarea');
+            fireEvent.change(textarea, { target: { value: 'urgent message' } });
+
+            // Ctrl+Enter → immediate
+            await act(async () => {
+                fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+            });
+
+            const postCall = fetchMock.mock.calls.find(
+                (c: any[]) => c[1]?.method === 'POST',
+            );
+            expect(postCall).toBeDefined();
+            const body = JSON.parse(postCall![1].body);
+            expect(body.deliveryMode).toBe('immediate');
+
+            vi.unstubAllGlobals();
         });
     });
 });

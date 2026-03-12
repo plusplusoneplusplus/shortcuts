@@ -39,8 +39,41 @@ import type { ClientConversationTurn } from '../types/dashboard';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
 import { getDraft, setDraft, clearDraft, pruneExpired } from '../hooks/useDraftStore';
+import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
+
+// A message waiting to be sent after the current AI turn completes.
+interface QueuedMessage {
+    id: string;           // crypto.randomUUID() — used as React key and bubble identifier
+    content: string;
+    deliveryMode: DeliveryMode;
+    status: 'pending-send' | 'queued' | 'steering';
+}
+
+const QueuedBubble: React.FC<{ msg: QueuedMessage }> = ({ msg }) => {
+    const icon =
+        msg.status === 'steering' ? '⚡' :
+        msg.status === 'queued'   ? '🕐' :
+        '…';
+    const label =
+        msg.status === 'steering' ? 'steering' :
+        msg.status === 'queued'   ? 'queued' :
+        'sending…';
+    return (
+        <div className="turn-bubble turn-bubble--optimistic" data-status={msg.status} style={{
+            opacity: msg.status === 'steering' ? 0.9 : 0.75,
+            borderLeft: `3px solid ${msg.status === 'steering' ? 'var(--color-warning, #e8912d)' : 'var(--color-accent-muted, #0078d4)'}`,
+            fontStyle: 'italic',
+            padding: '8px 12px',
+            borderRadius: '6px',
+        }}>
+            <span>{icon}</span>{' '}
+            <span>{msg.content}</span>{' '}
+            <span style={{ fontSize: '0.75em', color: 'var(--color-text-secondary, #848484)', marginLeft: '0.5em' }}>{label}</span>
+        </div>
+    );
+};
 
 const MODE_BORDER_COLORS: Record<'ask' | 'plan' | 'autopilot', { border: string; ring: string }> = {
     autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus:ring-green-500/50' },
@@ -84,10 +117,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
+    const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const lastFailedMessageRef = useRef<string>('');
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
     const selectedModeRef = useRef<'ask' | 'plan' | 'autopilot'>('autopilot');
+    const flushQueueRef = useRef<(() => void) | null>(null);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const followUpEventSourceRef = useRef<EventSource | null>(null);
@@ -113,7 +148,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const processId = task?.processId ?? (taskId ? `queue_${taskId}` : null);
     const isPending = task?.status === 'queued';
     const isTerminal = task?.status === 'completed' || task?.status === 'failed' || task?.status === 'cancelled';
-    const inputDisabled = isPending || task?.status === 'cancelled' || sending || sessionExpired;
+    const inputDisabled = isPending || task?.status === 'cancelled' || sessionExpired;
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
@@ -404,6 +439,19 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         es.addEventListener('tool-complete', handleToolSSE('tool-complete'));
         es.addEventListener('tool-failed', handleToolSSE('tool-failed'));
 
+        es.addEventListener('message-queued', (event: Event) => {
+            try {
+                const { optimisticId } = JSON.parse((event as MessageEvent).data);
+                setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'queued' as const } : m));
+            } catch { /* ignore */ }
+        });
+        es.addEventListener('message-steering', (event: Event) => {
+            try {
+                const { optimisticId } = JSON.parse((event as MessageEvent).data);
+                setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'steering' as const } : m));
+            } catch { /* ignore */ }
+        });
+
         const closeSSE = () => {
             es.close();
             eventSourceRef.current = null;
@@ -415,6 +463,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             // Mark the task as no longer running so the streaming placeholder is removed
             setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' as const } : prev);
             void refreshConversation(processId);
+            // Drain queue: remove steering messages and flush next queued message
+            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+            setTimeout(() => { flushQueueRef.current?.(); }, 0);
         };
 
         es.addEventListener('done', finish);
@@ -514,6 +565,39 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     // Cleanup on unmount
     useEffect(() => () => { stopStreaming(); closeFollowUpStream(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Keep flushQueueRef in sync with latest pendingQueue for stale-closure-safe drain
+    useEffect(() => {
+        flushQueueRef.current = () => {
+            if (pendingQueue.length === 0 || !processId) return;
+            const [next, ...rest] = pendingQueue;
+            setPendingQueue(rest);
+            setSending(true);
+            queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
+            const timestamp = new Date().toISOString();
+            setTurnsAndRef(prev => ([
+                ...prev,
+                { role: 'user' as const, content: next.content, timestamp, timeline: [] },
+                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [] },
+            ]));
+            fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: next.content, mode: selectedModeRef.current, deliveryMode: next.deliveryMode }),
+            })
+                .then(async (response) => {
+                    if (!response.ok) { removeStreamingPlaceholder(); return; }
+                    await waitForFollowUpCompletion(processId);
+                })
+                .catch(() => { removeStreamingPlaceholder(); })
+                .finally(() => {
+                    setSending(false);
+                    queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
+                    setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+                    setTimeout(() => { flushQueueRef.current?.(); }, 0);
+                });
+        };
+    }, [pendingQueue, processId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const waitForFollowUpCompletion = async (pid: string) => {
         if (typeof EventSource === 'undefined') {
             await refreshConversation(pid);
@@ -546,10 +630,22 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
                 } catch { /* ignore */ }
             });
+            es.addEventListener('message-queued', (event: Event) => {
+                try {
+                    const { optimisticId } = JSON.parse((event as MessageEvent).data);
+                    setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'queued' as const } : m));
+                } catch { /* ignore */ }
+            });
+            es.addEventListener('message-steering', (event: Event) => {
+                try {
+                    const { optimisticId } = JSON.parse((event as MessageEvent).data);
+                    setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'steering' as const } : m));
+                } catch { /* ignore */ }
+            });
         });
     };
 
-    const sendFollowUp = async (overrideContent?: string) => {
+    const sendFollowUp = async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue') => {
         const rawContent = (overrideContent ?? followUpInput).trim();
         if (!rawContent || !processId || inputDisabled) return;
 
@@ -562,6 +658,34 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         clearDraft(taskId);
         slashCommands.dismissMenu();
         setError(null);
+
+        if (sending) {
+            // AI turn in progress — push to client-side queue and show optimistic bubble
+            const qm: QueuedMessage = {
+                id: crypto.randomUUID(),
+                content: rawContent,
+                deliveryMode,
+                status: 'pending-send',
+            };
+            setPendingQueue(prev => [...prev, qm]);
+            // Immediately POST to server (server will enqueue or steer as appropriate)
+            await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content,
+                    images: images.length > 0 ? images : undefined,
+                    mode: selectedMode,
+                    deliveryMode,
+                    optimisticId: qm.id,
+                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
+                }),
+            }).catch(() => {});
+            clearImages();
+            return;
+        }
+
+        // No turn in flight — send normally
         setSending(true);
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
 
@@ -580,6 +704,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     content,
                     images: images.length > 0 ? images : undefined,
                     mode: selectedMode,
+                    deliveryMode,
                     ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
                 }),
             });
@@ -609,6 +734,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         } finally {
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
+            // Drain: remove steering messages consumed by the completed turn, then flush next
+            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
+            setTimeout(() => { flushQueueRef.current?.(); }, 0);
         }
     };
 
@@ -805,6 +933,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                                     <ConversationTurnBubble key={i} turn={turn} taskId={taskId} />
                                 ));
                             })()}
+                            {/* Optimistic queued bubbles */}
+                            {pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}
                         </div>
                     )}
                 </div>
@@ -881,7 +1011,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                                 rows={1}
                                 value={followUpInput}
                                 disabled={inputDisabled}
-                                placeholder={sessionExpired ? 'Session expired.' : sending ? 'Waiting for response...' : 'Send a message... (type / for skills)'}
+                                placeholder={sessionExpired ? 'Session expired.' : 'Send a message... (type / for skills)'}
                                 className={cn('w-full min-h-[34px] max-h-28 resize-y rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60', MODE_BORDER_COLORS[selectedMode].border, MODE_BORDER_COLORS[selectedMode].ring)}
                                 onChange={e => {
                                     const val = e.target.value;
@@ -908,9 +1038,17 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                                         });
                                         return;
                                     }
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        void sendFollowUp();
+                                    if (e.key === 'Enter') {
+                                        if (e.ctrlKey || e.metaKey) {
+                                            // Ctrl+Enter or Cmd+Enter → immediate steering
+                                            e.preventDefault();
+                                            void sendFollowUp(undefined, 'immediate');
+                                        } else if (!e.shiftKey) {
+                                            // Plain Enter → enqueue (default)
+                                            e.preventDefault();
+                                            void sendFollowUp(undefined, 'enqueue');
+                                        }
+                                        // Shift+Enter → newline (fall through)
                                     }
                                 }}
                                 onPaste={addFromPaste}

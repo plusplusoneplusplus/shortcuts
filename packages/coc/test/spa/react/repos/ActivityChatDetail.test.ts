@@ -289,8 +289,19 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain('content,');
         });
 
-        it('handles Enter key without Shift for send', () => {
-            expect(source).toContain("e.key === 'Enter' && !e.shiftKey");
+        it('handles Enter key with delivery mode routing', () => {
+            // Plain Enter → enqueue
+            expect(source).toContain("void sendFollowUp(undefined, 'enqueue')");
+            // Ctrl+Enter → immediate
+            expect(source).toContain("void sendFollowUp(undefined, 'immediate')");
+        });
+
+        it('includes deliveryMode in POST body', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const handleCancel'),
+            );
+            expect(sendBlock).toContain('deliveryMode');
         });
     });
 
@@ -607,6 +618,181 @@ describe('ActivityChatDetail', () => {
 
         it('MODE_BORDER_COLORS is typed as Record over all mode variants', () => {
             expect(source).toContain("Record<'ask' | 'plan' | 'autopilot'");
+        });
+    });
+
+    describe('always-enabled input', () => {
+        it('inputDisabled does not include sending', () => {
+            const expr = source.substring(
+                source.indexOf('const inputDisabled'),
+                source.indexOf('const inputDisabled') + 200,
+            );
+            expect(expr).not.toContain('sending');
+        });
+
+        it('imports DeliveryMode from pipeline-core', () => {
+            expect(source).toContain("import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core'");
+        });
+
+        it('declares QueuedMessage interface with correct status union', () => {
+            expect(source).toContain("status: 'pending-send' | 'queued' | 'steering'");
+        });
+
+        it('declares pendingQueue state', () => {
+            expect(source).toContain('useState<QueuedMessage[]>([])');
+        });
+
+        it('declares flushQueueRef', () => {
+            expect(source).toContain('flushQueueRef');
+        });
+    });
+
+    describe('keyboard routing', () => {
+        it('Ctrl+Enter submits with immediate delivery mode', () => {
+            expect(source).toContain("void sendFollowUp(undefined, 'immediate')");
+        });
+
+        it('plain Enter submits with enqueue delivery mode', () => {
+            expect(source).toContain("void sendFollowUp(undefined, 'enqueue')");
+        });
+
+        it('Shift+Enter falls through for newline', () => {
+            const keyBlock = source.substring(
+                source.indexOf("void sendFollowUp(undefined, 'immediate')") - 200,
+                source.indexOf("void sendFollowUp(undefined, 'enqueue')") + 200,
+            );
+            expect(keyBlock).toContain('!e.shiftKey');
+        });
+
+        it('detects Ctrl or Meta key for immediate mode', () => {
+            expect(source).toContain('e.ctrlKey || e.metaKey');
+        });
+    });
+
+    describe('client-side queue', () => {
+        it('queues messages when sending is true', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const handleCancel'),
+            );
+            expect(sendBlock).toContain('if (sending)');
+            expect(sendBlock).toContain('setPendingQueue(prev => [...prev, qm])');
+        });
+
+        it('assigns crypto.randomUUID() as queue message id', () => {
+            expect(source).toContain('crypto.randomUUID()');
+        });
+
+        it('includes optimisticId in queued POST body', () => {
+            const sendBlock = source.substring(
+                source.indexOf('const sendFollowUp'),
+                source.indexOf('const handleCancel'),
+            );
+            expect(sendBlock).toContain('optimisticId: qm.id');
+        });
+
+        it('sends deliveryMode in POST body for normal sends', () => {
+            const sendBlock = source.substring(
+                source.indexOf('// No turn in flight'),
+                source.indexOf('const handleCancel'),
+            );
+            expect(sendBlock).toContain('deliveryMode,');
+        });
+    });
+
+    describe('SSE queue events', () => {
+        it('handles message-queued SSE event in main SSE', () => {
+            expect(source).toContain("es.addEventListener('message-queued'");
+        });
+
+        it('handles message-steering SSE event in main SSE', () => {
+            expect(source).toContain("es.addEventListener('message-steering'");
+        });
+
+        it('updates pending queue status on message-queued', () => {
+            const handler = source.substring(
+                source.indexOf("es.addEventListener('message-queued'"),
+                source.indexOf("es.addEventListener('message-queued'") + 300,
+            );
+            expect(handler).toContain("status: 'queued' as const");
+        });
+
+        it('updates pending queue status on message-steering', () => {
+            const handler = source.substring(
+                source.indexOf("es.addEventListener('message-steering'"),
+                source.indexOf("es.addEventListener('message-steering'") + 300,
+            );
+            expect(handler).toContain("status: 'steering' as const");
+        });
+
+        it('handles message-queued SSE in follow-up stream', () => {
+            const followUpSSE = source.substring(
+                source.indexOf('const waitForFollowUpCompletion'),
+                source.indexOf('const waitForFollowUpCompletion') + 3000,
+            );
+            expect(followUpSSE).toContain("'message-queued'");
+        });
+
+        it('handles message-steering SSE in follow-up stream', () => {
+            const followUpSSE = source.substring(
+                source.indexOf('const waitForFollowUpCompletion'),
+                source.indexOf('const waitForFollowUpCompletion') + 3000,
+            );
+            expect(followUpSSE).toContain("'message-steering'");
+        });
+    });
+
+    describe('queue drain on done', () => {
+        it('removes steering messages from queue on done', () => {
+            const finishBlock = source.substring(
+                source.indexOf('const finish = () => {'),
+                source.indexOf('const finish = () => {') + 500,
+            );
+            expect(finishBlock).toContain("m.status !== 'steering'");
+        });
+
+        it('calls flushQueueRef.current on done', () => {
+            const finishBlock = source.substring(
+                source.indexOf('const finish = () => {'),
+                source.indexOf('const finish = () => {') + 800,
+            );
+            expect(finishBlock).toContain('flushQueueRef.current?.()');
+        });
+
+        it('drains in sendFollowUp finally block', () => {
+            const finallyBlock = source.substring(
+                source.indexOf('// Drain: remove steering messages consumed by the completed turn'),
+                source.indexOf('// Drain: remove steering messages consumed by the completed turn') + 400,
+            );
+            expect(finallyBlock).toContain('flushQueueRef.current?.()');
+        });
+    });
+
+    describe('optimistic bubble rendering', () => {
+        it('defines QueuedBubble component', () => {
+            expect(source).toContain('const QueuedBubble');
+        });
+
+        it('QueuedBubble shows lightning bolt for steering status', () => {
+            expect(source).toContain("'steering' ? '⚡'");
+        });
+
+        it('QueuedBubble shows clock for queued status', () => {
+            expect(source).toContain("'queued'   ? '🕐'");
+        });
+
+        it('QueuedBubble shows correct labels', () => {
+            expect(source).toContain("'steering' ? 'steering'");
+            expect(source).toContain("'queued'   ? 'queued'");
+            expect(source).toContain("'sending…'");
+        });
+
+        it('renders pendingQueue as QueuedBubble components', () => {
+            expect(source).toContain('{pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}');
+        });
+
+        it('renders queued bubbles with data-status attribute', () => {
+            expect(source).toContain('data-status={msg.status}');
         });
     });
 });

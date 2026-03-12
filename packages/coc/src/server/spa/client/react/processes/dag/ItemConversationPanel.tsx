@@ -11,6 +11,7 @@ import { Badge, Button, Spinner } from '../../shared';
 import { ConversationTurnBubble } from '../ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import type { ClientConversationTurn } from '../../types/dashboard';
+import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
 
 export interface ItemConversationPanelProps {
     processId: string;
@@ -162,7 +163,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
         });
     }, []);
 
-    const sendFollowUp = useCallback(async () => {
+    const sendFollowUp = useCallback(async (deliveryMode: DeliveryMode = 'enqueue') => {
         const content = inputValue.trim();
         if (!content || sending) return;
 
@@ -181,7 +182,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
             const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
+                body: JSON.stringify({ content, deliveryMode }),
             });
 
             if (response.status === 410) {
@@ -233,7 +234,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                 fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content }),
+                    body: JSON.stringify({ content, deliveryMode: 'enqueue' as DeliveryMode }),
                 }).then(async response => {
                     if (!response.ok) {
                         setTurns(prev => prev.map((t, i) =>
@@ -254,7 +255,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
         }
     }, [turns, processId, waitForFollowUpCompletion]);
 
-    const inputDisabled = sending || sessionExpired;
+    const inputDisabled = sessionExpired;
     const proc = processData?.process ?? processData;
     const status = proc?.status ?? 'queued';
 
@@ -355,7 +356,15 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                     placeholder="Follow up…"
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => {
-                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void sendFollowUp(); }
+                        if (e.key === 'Enter') {
+                            if (e.ctrlKey || e.metaKey) {
+                                e.preventDefault();
+                                void sendFollowUp('immediate');
+                            } else if (!e.shiftKey) {
+                                e.preventDefault();
+                                void sendFollowUp('enqueue');
+                            }
+                        }
                     }}
                     data-testid="item-conversation-textarea"
                     className="w-full border rounded p-2 text-sm resize-none bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#3c3c3c]"
