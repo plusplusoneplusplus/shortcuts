@@ -101,6 +101,72 @@ export function createFeatureBranchRepo(tmpDir: string): string {
 }
 
 /**
+ * Create a repo with multiple unstaged files for Stage All tests.
+ *
+ * Based on createMultiCommitRepo, then adds:
+ *  - Unstaged: modifies src/index.ts and src/utils.ts without staging
+ *  - Staged: adds src/staged.ts and stages it
+ *  - Untracked: creates src/untracked1.ts and src/untracked2.ts without adding
+ */
+export function createDirtyWorkingTreeRepoMultiple(tmpDir: string): string {
+    const repoDir = createMultiCommitRepo(tmpDir);
+
+    // Unstaged changes: modify tracked files
+    fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export default { dirty: true };\n');
+    fs.writeFileSync(path.join(repoDir, 'src', 'utils.ts'), 'export function helper() { return 1; }\n');
+
+    // Staged change
+    fs.writeFileSync(path.join(repoDir, 'src', 'staged.ts'), 'export const staged = true;\n');
+    execSync('git add src/staged.ts', { cwd: repoDir, stdio: 'ignore' });
+
+    // Untracked files
+    fs.writeFileSync(path.join(repoDir, 'src', 'untracked1.ts'), '// new file 1\n');
+    fs.writeFileSync(path.join(repoDir, 'src', 'untracked2.ts'), '// new file 2\n');
+
+    return repoDir;
+}
+
+/**
+ * Create a repo with a local remote and unpushed commits.
+ *
+ * Creates a bare remote, clones it, pushes initial commits, then adds
+ * one more commit without pushing — so the API returns unpushedCount > 0.
+ */
+export function createRepoWithUnpushedCommits(tmpDir: string): string {
+    const bareDir = path.join(tmpDir, 'bare-remote.git');
+    const repoDir = path.join(tmpDir, 'work-repo');
+
+    // Create a bare remote
+    fs.mkdirSync(bareDir, { recursive: true });
+    execSync('git init --bare', { cwd: bareDir, stdio: 'ignore' });
+
+    // Clone the bare remote
+    execSync(`git clone "${bareDir}" "${repoDir}"`, { stdio: 'ignore' });
+    execSync('git config user.name "test"', { cwd: repoDir, stdio: 'ignore' });
+    execSync('git config user.email "test@test"', { cwd: repoDir, stdio: 'ignore' });
+
+    // Initial commits pushed to remote
+    fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export default {};\n');
+    execSync('git add -A && git commit -m "feat: initial setup"', {
+        cwd: repoDir, stdio: 'ignore', shell: true as any,
+    });
+    fs.writeFileSync(path.join(repoDir, 'src', 'utils.ts'), 'export function helper() {}\n');
+    execSync('git add -A && git commit -m "feat: add utils"', {
+        cwd: repoDir, stdio: 'ignore', shell: true as any,
+    });
+    execSync('git push origin HEAD', { cwd: repoDir, stdio: 'ignore' });
+
+    // Unpushed commit (not pushed to remote)
+    fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export default { v: 2 };\n');
+    execSync('git add -A && git commit -m "fix: local-only change"', {
+        cwd: repoDir, stdio: 'ignore', shell: true as any,
+    });
+
+    return repoDir;
+}
+
+/**
  * Navigate from the SPA root to the Git sub-tab for a given workspace.
  *
  * Steps:

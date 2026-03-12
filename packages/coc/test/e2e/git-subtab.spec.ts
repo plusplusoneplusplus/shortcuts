@@ -14,6 +14,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import {
     createMultiCommitRepo,
     createDirtyWorkingTreeRepo,
+    createDirtyWorkingTreeRepoMultiple,
     createFeatureBranchRepo,
     navigateToGitTab,
 } from './fixtures/git-fixtures';
@@ -225,6 +226,98 @@ test.describe('Git sub-tab — WorkingTree', () => {
 
             // After discard, index.ts should no longer appear in unstaged section
             await expect(fileRow(unstaged, 'index.ts')).toBeHidden({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('delete action removes untracked file', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-wt-'));
+        try {
+            const repoDir = createDirtyWorkingTreeRepo(tmpDir);
+            await navigateToGitTab(page, serverUrl, 'ws-wt-5', 'wt-delete', repoDir);
+
+            await expect(page.getByTestId('working-tree')).toBeVisible({ timeout: 10_000 });
+            await expect(page.getByTestId('working-changes-content')).toBeVisible({ timeout: 10_000 });
+
+            // Verify untracked.ts is in untracked section
+            const untracked = page.getByTestId('working-tree-untracked');
+            const untrackedRow = fileRow(untracked, 'untracked.ts');
+            await expect(untrackedRow).toBeVisible();
+
+            // Click delete button
+            const deleteBtn = actionBtn(untrackedRow, 'delete-btn');
+            const [deleteResp] = await Promise.all([
+                page.waitForResponse(resp =>
+                    resp.url().includes('/git/changes/untracked') && resp.status() === 200,
+                ),
+                deleteBtn.click({ force: true }),
+            ]);
+
+            // After delete, untracked.ts should no longer appear
+            await expect(fileRow(untracked, 'untracked.ts')).toBeHidden({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('stage all moves all unstaged files to staged', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-wt-'));
+        try {
+            const repoDir = createDirtyWorkingTreeRepoMultiple(tmpDir);
+            await navigateToGitTab(page, serverUrl, 'ws-wt-6', 'wt-stageall', repoDir);
+
+            await expect(page.getByTestId('working-tree')).toBeVisible({ timeout: 10_000 });
+            await expect(page.getByTestId('working-changes-content')).toBeVisible({ timeout: 10_000 });
+
+            // Verify unstaged section has files
+            const unstaged = page.getByTestId('working-tree-unstaged');
+            await expect(fileRow(unstaged, 'index.ts')).toBeVisible();
+            await expect(fileRow(unstaged, 'utils.ts')).toBeVisible();
+
+            // Click '+ All' button in unstaged section
+            const stageAllBtn = page.getByTestId('working-tree-unstaged-stage-all');
+            const [batchResp] = await Promise.all([
+                page.waitForResponse(resp =>
+                    resp.url().includes('/git/changes/stage-batch') && resp.status() === 200,
+                ),
+                stageAllBtn.click({ force: true }),
+            ]);
+
+            // After stage all, files should move to staged section
+            const staged = page.getByTestId('working-tree-staged');
+            await expect(fileRow(staged, 'index.ts')).toBeVisible({ timeout: 5_000 });
+            await expect(fileRow(staged, 'utils.ts')).toBeVisible({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('unstage all moves all staged files back', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-git-wt-'));
+        try {
+            const repoDir = createDirtyWorkingTreeRepo(tmpDir);
+            await navigateToGitTab(page, serverUrl, 'ws-wt-7', 'wt-unstageall', repoDir);
+
+            await expect(page.getByTestId('working-tree')).toBeVisible({ timeout: 10_000 });
+            await expect(page.getByTestId('working-changes-content')).toBeVisible({ timeout: 10_000 });
+
+            // Verify staged section has staged.ts
+            const staged = page.getByTestId('working-tree-staged');
+            await expect(fileRow(staged, 'staged.ts')).toBeVisible();
+
+            // Click '− All' button in staged section
+            const unstageAllBtn = page.getByTestId('working-tree-staged-unstage-all');
+            const [batchResp] = await Promise.all([
+                page.waitForResponse(resp =>
+                    resp.url().includes('/git/changes/unstage-batch') && resp.status() === 200,
+                ),
+                unstageAllBtn.click({ force: true }),
+            ]);
+
+            // After unstage all, staged.ts should move to untracked (it was a new file)
+            const untracked = page.getByTestId('working-tree-untracked');
+            await expect(fileRow(untracked, 'staged.ts')).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
         }
