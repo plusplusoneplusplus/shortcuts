@@ -284,6 +284,16 @@ export interface SendMessageOptions {
     prompt: string;
     /** Optional model override (e.g., 'gpt-5', 'claude-sonnet-4.6') */
     model?: string;
+    /**
+     * SDK session ID to resume. When provided, `sendMessage()` calls
+     * `client.resumeSession()` instead of `client.createSession()`, letting
+     * the SDK server supply full conversation history natively.
+     *
+     * If resume fails (session expired/invalid), falls back to
+     * `createSession()` automatically. The caller detects the new session ID
+     * via `onSessionCreated`.
+     */
+    sessionId?: string;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
     /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 4 hours) */

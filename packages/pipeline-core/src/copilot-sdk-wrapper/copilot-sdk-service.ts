@@ -118,6 +118,12 @@ interface ISessionOptions {
  */
 interface ICopilotClient {
     createSession(options?: ISessionOptions): Promise<ICopilotSession>;
+    /**
+     * Resume an existing server-side session by ID.
+     * The SDK server retains full conversation history so the caller does not
+     * need to replay prior turns.
+     */
+    resumeSession?(sessionId: string, options?: ISessionOptions): Promise<ICopilotSession>;
     stop(): Promise<void>;
 }
 
@@ -588,11 +594,26 @@ export class CopilotSDKService {
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0 
                 ? JSON.stringify(sessionOptions) 
                 : '(default)';
-            aiLog.debug({ cwd: options.workingDirectory, sessionOptionsStr }, 'Creating session');
 
-            session = await client.createSession(sessionOptions);
+            // Resume an existing SDK session or create a new one
+            if (options.sessionId && client.resumeSession) {
+                aiLog.debug({ cwd: options.workingDirectory, sessionId: options.sessionId, sessionOptionsStr }, 'Resuming session');
+                try {
+                    session = await client.resumeSession(options.sessionId, sessionOptions);
+                    aiLog.debug({ sessionId: session.sessionId }, 'Session resumed');
+                } catch (resumeError) {
+                    const resumeMsg = resumeError instanceof Error ? resumeError.message : String(resumeError);
+                    aiLog.warn({ sessionId: options.sessionId, error: resumeMsg }, 'Session resume failed — falling back to createSession');
+                    session = await client.createSession(sessionOptions);
+                    aiLog.debug({ sessionId: session.sessionId }, 'Fallback session created');
+                }
+            } else {
+                aiLog.debug({ cwd: options.workingDirectory, sessionOptionsStr }, 'Creating session');
+                session = await client.createSession(sessionOptions);
+                aiLog.debug({ sessionId: session.sessionId }, 'Session created');
+            }
+
             const sessionLog = createSessionLogger(session.sessionId);
-            aiLog.debug({ sessionId: session.sessionId }, 'Session created');
             options.onSessionCreated?.(session.sessionId);
 
             // Set agent mode if specified

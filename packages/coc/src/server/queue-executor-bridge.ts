@@ -628,8 +628,14 @@ export class CLITaskExecutor implements TaskExecutor {
         }
         const systemMessage = buildModeSystemMessage(currentMode, autoFolderContextForFollowUp);
 
-        // Build conversation history context for the fresh session
-        const historyContext = this.buildConversationHistoryContext(process.conversationTurns);
+        // When an SDK session ID exists, resume it natively instead of
+        // replaying conversation history as a system message.
+        const canResumeSession = !!process.sdkSessionId;
+
+        // Build conversation history context only when we cannot resume the SDK session
+        const historyContext = canResumeSession
+            ? undefined
+            : this.buildConversationHistoryContext(process.conversationTurns);
 
         // Initialize output buffer for this follow-up
         this.outputBuffers.set(processId, '');
@@ -649,6 +655,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
             const result = await this.aiService.sendMessage({
                 prompt: followUpMessage,
+                sessionId: process.sdkSessionId,
                 mode: agentMode,
                 workingDirectory,
                 systemMessage: historySystemMessage,

@@ -39,9 +39,9 @@ sendMessage(cwd="/project-b")  →  CopilotClient(cwd="/project-b")  →  Sessio
 
 ## Session Lifecycle
 
-### `sendMessage()` Flow (Session-Per-Request)
+### `sendMessage()` Flow (Session-Per-Request or Session-Resume)
 
-Each `sendMessage()` call creates a fresh client and session, uses it for one request, then destroys both. No session reuse or persistence occurs between calls.
+Each `sendMessage()` call creates a fresh client. If `options.sessionId` is provided, it resumes the existing server-side session (retaining full conversation history); otherwise it creates a new session. Both paths converge to the same execution and cleanup flow.
 
 ```
 1. isAvailable() → check SDK exists
@@ -50,17 +50,23 @@ Each `sendMessage()` call creates a fresh client and session, uses it for one re
    - model, streaming, tools, availableTools, excludedTools
    - MCP config: loadDefaultMcpConfig() → merge with explicit config
    - Wrap onPermissionRequest with logging + ToolCall capture
-4. client.createSession(sessionOptions)
-5. trackSession(session) → register in activeSessions
-6. Route to execution path:
+4. Session creation:
+   - IF options.sessionId AND client.resumeSession exists
+     → client.resumeSession(sessionId, sessionOptions)
+     → on failure: fall back to client.createSession(sessionOptions) + warn
+   - ELSE
+     → client.createSession(sessionOptions)
+5. onSessionCreated callback fires with session.sessionId
+6. trackSession(session) → register in activeSessions
+7. Route to execution path:
    - IF streaming || onStreamingChunk || timeoutMs > 120000
      → sendWithStreaming()
    - ELSE
      → sendWithTimeout() → session.sendAndWait (SDK 120s internal cap)
-7. Empty-response handling:
+8. Empty-response handling:
    - turnCount > 0 + empty text → SUCCESS (tool-based execution, no summary)
    - turnCount == 0 + empty text → failure
-8. FINALLY (always):
+9. FINALLY (always):
    - untrackSession
    - session.destroy() + client.stop()
 ```
@@ -161,7 +167,8 @@ Config location respects `XDG_CONFIG_HOME` env var, defaulting to `~/.copilot/co
 ## Key Design Decisions
 
 1. **One client per session** — `cwd` is baked into the child process at spawn time; no client reuse across different working directories. Concurrency is bounded by the queue's limiter (exclusive=1, shared=5), not by the SDK layer.
-2. **Streaming is the default path** — any `timeoutMs > 120000` or `onStreamingChunk` callback automatically uses the streaming event API (SDK's `sendAndWait` has a hardcoded 120s `session.idle` timeout).
+2. **Session resume for multi-turn chat** — `sendMessage({ sessionId })` calls `client.resumeSession()`, letting the SDK server provide full conversation history natively. Falls back to `createSession()` if resume fails (session expired). `session.destroy()` is local cleanup only — the server persists the session.
+3. **Streaming is the default path** — any `timeoutMs > 120000` or `onStreamingChunk` callback automatically uses the streaming event API (SDK's `sendAndWait` has a hardcoded 120s `session.idle` timeout).
 3. **Empty text + turns > 0 = success** — tool-heavy agents (e.g., `impl` skill) may produce no text summary but have done work via tool calls (file edits, shell commands).
 4. **Multi-turn grace timer** — `turn_end` → 2s timer → `turn_start` cancels. Correctly handles multi-step MCP tool loops without settling prematurely.
 5. **MCP `{}` escape hatch** — passing `mcpServers: {}` explicitly disables all MCP servers regardless of the user's config file.
