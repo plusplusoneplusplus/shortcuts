@@ -825,7 +825,7 @@ test.describe('Queue Task Conversation – Error Handling', () => {
 
         // Error bubble with retry button
         await expect(page.locator('.bubble-error')).toBeVisible({ timeout: 3000 });
-        await expect(page.locator('.retry-btn')).toBeVisible();
+        await expect(page.locator('[data-testid="retry-btn"]')).toBeVisible();
     });
 });
 
