@@ -1228,3 +1228,37 @@ export {
     type ItemResult as WorkflowItemResult,
     type FlatWorkflowResult,
 } from './workflow';
+
+// ============================================================================
+// Provider Abstractions (pull requests + work items)
+// ============================================================================
+
+export {
+    ProviderType,
+    type Identity as ProviderIdentity,
+    type Comment as ProviderComment,
+    type CommentThread as ProviderCommentThread,
+    type PullRequestStatus as ProviderPullRequestStatus,
+    type ReviewVote,
+    type Reviewer,
+    type PullRequest as ProviderPullRequest,
+    type WorkItem as ProviderWorkItem,
+    type SearchCriteria as ProviderSearchCriteria,
+    type CreatePullRequestInput,
+    type UpdatePullRequestInput,
+    type CreateWorkItemInput,
+    type UpdateWorkItemInput,
+} from './providers';
+
+export type {
+    IProviderConfig,
+    AdoProviderConfig,
+    GitHubProviderConfig,
+    IPullRequestsService,
+    IWorkItemsService,
+} from './providers';
+
+export { AdoPullRequestsAdapter } from './ado/ado-pull-requests-adapter';
+export { AdoWorkItemsAdapter } from './ado/ado-work-items-adapter';
+
+export { GitHubPullRequestsAdapter, GitHubIssuesAdapter } from './github';

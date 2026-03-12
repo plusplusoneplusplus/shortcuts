@@ -11,3 +11,5 @@ export {
     type GitPullRequestCommentThread,
     type IdentityRefWithVote,
 } from './pull-requests-service';
+export { AdoPullRequestsAdapter } from './ado-pull-requests-adapter';
+export { AdoWorkItemsAdapter } from './ado-work-items-adapter';
