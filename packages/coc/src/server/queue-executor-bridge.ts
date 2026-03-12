@@ -229,6 +229,14 @@ export class CLITaskExecutor implements TaskExecutor {
         this.queueManager = qm;
     }
 
+    /** Resolve a workspace ID for a given root path by matching against registered workspaces. */
+    private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
+        const workspaces = await this.store.getWorkspaces();
+        const normalized = path.resolve(rootPath);
+        const ws = workspaces.find(w => path.resolve(w.rootPath) === normalized);
+        return ws?.id ?? rootPath;
+    }
+
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void> {
         if (!this.queueManager) {
             throw new Error('Queue manager is not available');
@@ -343,6 +351,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 priority: task.priority,
                 model: task.config.model,
                 mode: (task.payload as any)?.mode,
+                workspaceId: (task.payload as any)?.workspaceId,
                 workflowName: isRunWorkflowPayload(task.payload)
                     ? path.basename(task.payload.workflowPath)
                     : undefined,
@@ -611,7 +620,8 @@ export class CLITaskExecutor implements TaskExecutor {
         // Inject read-only system message for ask/plan modes
         let autoFolderContextForFollowUp: AutoFolderContext | undefined;
         if (workingDirectory) {
-            const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: workingDirectory }).absolutePath;
+            const wsId = (process.metadata?.workspaceId as string) ?? await this.resolveWorkspaceIdForPath(workingDirectory);
+            const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
             const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
             const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
@@ -1004,7 +1014,8 @@ export class CLITaskExecutor implements TaskExecutor {
             const chatWorkingDir = this.getWorkingDirectory(task);
             let autoFolderContextForChat: AutoFolderContext | undefined;
             if (chatWorkingDir) {
-                const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: chatWorkingDir, workspaceId: payload.workspaceId || chatWorkingDir }).absolutePath;
+                const chatWsId = payload.workspaceId || await this.resolveWorkspaceIdForPath(chatWorkingDir);
+                const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: chatWorkingDir, workspaceId: chatWsId }).absolutePath;
                 const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
                 const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
                 autoFolderContextForChat = { tasksRoot, existingFolders };
@@ -1303,7 +1314,7 @@ export class CLITaskExecutor implements TaskExecutor {
         const workingDirectory = payload.workingDirectory || this.defaultWorkingDirectory || '';
 
         const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-        const wsId = payload.workspaceId || workingDirectory;
+        const wsId = payload.workspaceId || await this.resolveWorkspaceIdForPath(workingDirectory);
         const tasksBase = resolveTaskRoot({ dataDir: effectiveDataDir, rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
         const isAutoFolder = tg.targetFolder === AUTO_FOLDER_SENTINEL;
         const resolvedTarget = (isAutoFolder || !tg.targetFolder)
