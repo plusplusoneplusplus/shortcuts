@@ -638,7 +638,7 @@ export class CopilotSDKService {
             let capturedToolCalls: ToolCall[] | undefined;
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
                 const idleTimeoutMs = options.idleTimeoutMs ?? CopilotSDKService.DEFAULT_IDLE_TIMEOUT_MS;
-                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, options.attachments);
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, options.attachments, options.deliveryMode, options.sessionId);
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
                 turnCount = streamingResult.turnCount;
@@ -1038,8 +1038,9 @@ export class CopilotSDKService {
         timeoutMs: number,
         attachments?: Attachment[]
     ): Promise<{ data?: { content?: string } }> {
-        // Pass timeout directly to SDK's sendAndWait method
-        // Note: SDK internally limits this to 120 seconds for the session.idle event
+        // DeliveryMode (immediate/enqueue) is a streaming-only concept and
+        // does not apply to sendAndWait(). options.deliveryMode is intentionally
+        // not forwarded here.
         return session.sendAndWait({ prompt, attachments }, timeoutMs);
     }
 
@@ -1073,7 +1074,9 @@ export class CopilotSDKService {
         toolCallsMap?: Map<string, ToolCall>,
         onToolEvent?: (event: ToolEvent) => void,
         idleTimeoutMs?: number,
-        attachments?: Attachment[]
+        attachments?: Attachment[],
+        deliveryMode?: DeliveryMode,
+        callerSessionId?: string
     ): Promise<StreamingResult> {
         return new Promise((resolve, reject) => {
             const sessionLog = createSessionLogger(session.sessionId);
@@ -1445,8 +1448,19 @@ export class CopilotSDKService {
                 }
             });
 
+            // One-shot session guard: deliveryMode has no meaningful effect
+            // without a prior session queue to enqueue into.
+            if (deliveryMode && !callerSessionId) {
+                sessionLog.warn(
+                    'deliveryMode is set but this is a one-shot session — ' +
+                    'delivery mode is only meaningful for resumed sessions ' +
+                    '(pass sessionId to resume). The option will be forwarded ' +
+                    'to session.send() but may have no observable effect.'
+                );
+            }
+
             // Send the message (without waiting)
-            session.send!({ prompt, attachments }).catch(error => {
+            session.send!({ prompt, attachments, deliveryMode }).catch(error => {
                 settleError(error instanceof Error ? error : new Error(String(error)));
             });
         });
