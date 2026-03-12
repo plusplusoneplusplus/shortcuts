@@ -45,6 +45,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [hashCopied, setHashCopied] = useState(false);
+    const [headerCollapsed, setHeaderCollapsed] = useState(false);
+    const [manualOverride, setManualOverride] = useState(false);
 
     const diffUrl = filePath
         ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
@@ -118,6 +120,34 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
     }, []);
 
+    // Reset collapse state on commit change
+    useEffect(() => {
+        setHeaderCollapsed(false);
+        setManualOverride(false);
+    }, [hash]);
+
+    // Auto-collapse on scroll (only in full-commit view)
+    useEffect(() => {
+        if (filePath) return;
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        const handleScroll = () => {
+            if (el.scrollTop > 24) {
+                if (!manualOverride) setHeaderCollapsed(true);
+            } else {
+                setManualOverride(false);
+                setHeaderCollapsed(false);
+            }
+        };
+        el.addEventListener('scroll', handleScroll);
+        return () => el.removeEventListener('scroll', handleScroll);
+    }, [filePath, manualOverride]);
+
+    const handleToggleHeader = useCallback(() => {
+        setManualOverride(true);
+        setHeaderCollapsed(c => !c);
+    }, []);
+
     const handleCopyHash = useCallback(() => {
         copyToClipboard(commit?.hash ?? hash).then(() => {
             setHashCopied(true);
@@ -134,38 +164,68 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         <div className="commit-detail flex flex-col h-full overflow-hidden" data-testid="commit-detail">
             {/* Commit info header — only for full-commit view, not per-file view */}
             {commit && !filePath && (
-                <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="commit-info-header">
-                    <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-1.5 break-words" data-testid="commit-info-subject">
-                        {commit.subject}
-                    </div>
-                    <div className="flex flex-col gap-0.5 text-[11px] text-[#616161] dark:text-[#999]">
-                        <div data-testid="commit-info-author">
-                            <span className="font-semibold text-[#1e1e1e] dark:text-[#ccc]">{commit.author}</span>
-                            {commit.authorEmail && <span className="ml-1">&lt;{commit.authorEmail}&gt;</span>}
-                        </div>
-                        <div data-testid="commit-info-date">{formattedDate}</div>
-                        <div className="flex items-center gap-1" data-testid="commit-info-hash">
-                            <span className="font-mono text-[#0078d4] dark:text-[#3794ff]">{commit.hash.substring(0, 8)}</span>
-                            <button
-                                onClick={handleCopyHash}
-                                className="text-[10px] px-1.5 py-0 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-[#616161] dark:text-[#999]"
-                                data-testid="commit-info-copy-hash"
-                            >
-                                {hashCopied ? 'Copied!' : 'Copy'}
-                            </button>
-                        </div>
-                        {commit.parentHashes.length > 0 && (
-                            <div className="font-mono text-[10px]" data-testid="commit-info-parents">
-                                Parents: {commit.parentHashes.map(p => p.substring(0, 7)).join(', ')}
-                            </div>
-                        )}
-                    </div>
-                    {commit.body && (
-                        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 mt-1.5" data-testid="commit-info-body">
-                            <pre className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap font-sans leading-relaxed m-0">{commit.body}</pre>
+                <>
+                    {/* Summary bar — visible when collapsed */}
+                    {headerCollapsed && (
+                        <div
+                            data-testid="commit-info-summary"
+                            className="flex items-center gap-2 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] cursor-pointer"
+                            onClick={handleToggleHeader}
+                        >
+                            <span className="text-[10px] text-[#848484]">▶</span>
+                            <span className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] truncate flex-1">{commit.subject}</span>
+                            <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400">{commit.hash.slice(0, 7)}</span>
                         </div>
                     )}
-                </div>
+                    {/* Full header — collapsible */}
+                    <div
+                        style={{
+                            maxHeight: headerCollapsed ? 0 : 500,
+                            opacity: headerCollapsed ? 0 : 1,
+                            overflow: 'hidden',
+                            transition: 'max-height 180ms ease-in-out, opacity 180ms ease-in-out',
+                        }}
+                    >
+                        <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] relative" data-testid="commit-info-header">
+                            <button
+                                data-testid="commit-info-collapse-btn"
+                                onClick={handleToggleHeader}
+                                className="absolute top-2 right-2 text-[10px] text-[#848484] px-1 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                                title="Collapse"
+                            >▼</button>
+                            <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-1.5 break-words" data-testid="commit-info-subject">
+                                {commit.subject}
+                            </div>
+                            <div className="flex flex-col gap-0.5 text-[11px] text-[#616161] dark:text-[#999]">
+                                <div data-testid="commit-info-author">
+                                    <span className="font-semibold text-[#1e1e1e] dark:text-[#ccc]">{commit.author}</span>
+                                    {commit.authorEmail && <span className="ml-1">&lt;{commit.authorEmail}&gt;</span>}
+                                </div>
+                                <div data-testid="commit-info-date">{formattedDate}</div>
+                                <div className="flex items-center gap-1" data-testid="commit-info-hash">
+                                    <span className="font-mono text-[#0078d4] dark:text-[#3794ff]">{commit.hash.substring(0, 8)}</span>
+                                    <button
+                                        onClick={handleCopyHash}
+                                        className="text-[10px] px-1.5 py-0 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-[#616161] dark:text-[#999]"
+                                        data-testid="commit-info-copy-hash"
+                                    >
+                                        {hashCopied ? 'Copied!' : 'Copy'}
+                                    </button>
+                                </div>
+                                {commit.parentHashes.length > 0 && (
+                                    <div className="font-mono text-[10px]" data-testid="commit-info-parents">
+                                        Parents: {commit.parentHashes.map(p => p.substring(0, 7)).join(', ')}
+                                    </div>
+                                )}
+                            </div>
+                            {commit.body && (
+                                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 mt-1.5" data-testid="commit-info-body">
+                                    <pre className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap font-sans leading-relaxed m-0">{commit.body}</pre>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </>
             )}
             {/* Diff label with comment toggle */}
             {filePath && (
