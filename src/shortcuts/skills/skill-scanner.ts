@@ -107,6 +107,7 @@ async function scanGitHubWithGhCli(
         const listCmd = `gh api repos/${github.owner}/${github.repo}/contents/${repoPath}?ref=${github.branch}`;
         
         let directories: string[];
+        let items: any[] = [];
         try {
             const { stdout } = await execAsync(listCmd);
             const parsed = parseGitHubApiResponse(stdout);
@@ -116,7 +117,7 @@ async function scanGitHubWithGhCli(
             }
             
             // Handle array response (directory listing)
-            const items = Array.isArray(parsed) ? parsed : [parsed];
+            items = Array.isArray(parsed) ? parsed : [parsed];
             directories = items
                 .filter((item: any) => item.type === 'dir')
                 .map((item: any) => item.name);
@@ -148,6 +149,20 @@ async function scanGitHubWithGhCli(
                 error: `Failed to access GitHub repository: ${err.message}`,
                 skills: []
             };
+        }
+
+        // Check if SKILL.md exists as a direct file in this listing (root-level skill)
+        const hasRootSkillMd = items.some((item: any) => item.type === 'file' && item.name === SKILL_FILE);
+        if (hasRootSkillMd) {
+            const skillName = path.basename(repoPath) || github.repo;
+            const description = await getGitHubSkillDescriptionWithGhCli(github, repoPath);
+            skills.push({
+                name: skillName,
+                description,
+                path: repoPath,
+                alreadyExists: safeExists(path.join(installPath, skillName))
+            });
+            return { success: true, skills };
         }
 
         // Check each directory for SKILL.md
@@ -258,6 +273,20 @@ async function scanGitHubWithHttp(
                 error: `Failed to access GitHub repository. The repository may be private or the path may not exist. Error: ${err.message}`,
                 skills: []
             };
+        }
+
+        // Check if SKILL.md exists as a direct file in this listing (root-level skill)
+        const hasRootSkillMd = response.some((item: any) => item.type === 'file' && item.name === SKILL_FILE);
+        if (hasRootSkillMd) {
+            const skillName = path.basename(repoPath) || github.repo;
+            const description = await getGitHubSkillDescriptionWithHttp(github, repoPath);
+            skills.push({
+                name: skillName,
+                description,
+                path: repoPath,
+                alreadyExists: safeExists(path.join(installPath, skillName))
+            });
+            return { success: true, skills };
         }
 
         // Filter to directories only
