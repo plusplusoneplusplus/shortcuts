@@ -232,10 +232,12 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     );
 
     useEffect(() => {
+        currentHunkIndexRef.current = -1;
         onLinesReady?.(diffLines);
     }, [diffLines, onLinesReady]);
 
     const containerRef = useRef<HTMLDivElement>(null);
+    const currentHunkIndexRef = useRef<number>(-1);
 
     useImperativeHandle(ref, () => ({
         scrollToNextHunk: () => {
@@ -243,20 +245,13 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             if (!container) return;
             const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
             if (edits.length === 0) return;
+            const next = (currentHunkIndexRef.current + 1) % edits.length;
+            currentHunkIndexRef.current = next;
             const scrollParent = getScrollableAncestor(container);
             const parentTop = scrollParent.getBoundingClientRect().top;
             const centerOffset = scrollParent.clientHeight / 3;
-            for (const edit of edits) {
-                if (edit.getBoundingClientRect().top > parentTop + 20) {
-                    scrollParent.scrollTo({
-                        top: scrollParent.scrollTop + edit.getBoundingClientRect().top - parentTop - centerOffset,
-                        behavior: 'smooth',
-                    });
-                    return;
-                }
-            }
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + edits[0].getBoundingClientRect().top - parentTop - centerOffset,
+                top: scrollParent.scrollTop + edits[next].getBoundingClientRect().top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
@@ -265,20 +260,14 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             if (!container) return;
             const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
             if (edits.length === 0) return;
+            const startIndex = currentHunkIndexRef.current === -1 ? 0 : currentHunkIndexRef.current;
+            const prev = (startIndex - 1 + edits.length) % edits.length;
+            currentHunkIndexRef.current = prev;
             const scrollParent = getScrollableAncestor(container);
             const parentTop = scrollParent.getBoundingClientRect().top;
             const centerOffset = scrollParent.clientHeight / 3;
-            for (let i = edits.length - 1; i >= 0; i--) {
-                if (edits[i].getBoundingClientRect().top < parentTop - 5) {
-                    scrollParent.scrollTo({
-                        top: scrollParent.scrollTop + edits[i].getBoundingClientRect().top - parentTop - centerOffset,
-                        behavior: 'smooth',
-                    });
-                    return;
-                }
-            }
             scrollParent.scrollTo({
-                top: scrollParent.scrollTop + edits[edits.length - 1].getBoundingClientRect().top - parentTop - centerOffset,
+                top: scrollParent.scrollTop + edits[prev].getBoundingClientRect().top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
