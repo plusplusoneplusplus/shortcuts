@@ -216,6 +216,12 @@ function extractTaskPath(
 
     const candidates: string[] = [];
 
+    // New ChatPayload format: context.files[] replaces planFilePath/promptFilePath
+    if (Array.isArray(payload.context?.files)) {
+        for (const f of payload.context.files) {
+            if (typeof f === 'string') candidates.push(f);
+        }
+    }
     if (typeof payload.planFilePath === 'string') {
         candidates.push(payload.planFilePath);
     }
@@ -346,6 +352,53 @@ describe('extractTaskPath — with WS broadcast-shaped items', () => {
         };
         expect(extractTaskPath(wsItem, wsRoot, tasksFolder)).toBe('feature/impl.md');
     });
+
+    it('extracts path from payload.context.files (ChatPayload WS shape)', () => {
+        const item = {
+            id: 'chat-1',
+            payload: {
+                context: {
+                    files: ['/data/repos/abc/tasks/feature/chat-plan.md'],
+                },
+            },
+        };
+        expect(extractTaskPath(item, wsRoot, tasksFolder)).toBe('feature/chat-plan.md');
+    });
+
+    it('prefers context.files over planFilePath', () => {
+        const item = {
+            id: 'chat-2',
+            payload: {
+                context: {
+                    files: ['/data/repos/abc/tasks/feature/from-context.md'],
+                },
+                planFilePath: '/data/repos/abc/tasks/feature/from-plan.md',
+            },
+        };
+        expect(extractTaskPath(item, wsRoot, tasksFolder)).toBe('feature/from-context.md');
+    });
+
+    it('falls back to planFilePath when context.files is empty', () => {
+        const item = {
+            id: 'chat-3',
+            payload: {
+                context: { files: [] },
+                planFilePath: '/data/repos/abc/tasks/feature/fallback.md',
+            },
+        };
+        expect(extractTaskPath(item, wsRoot, tasksFolder)).toBe('feature/fallback.md');
+    });
+
+    it('skips non-string entries in context.files', () => {
+        const item = {
+            id: 'chat-4',
+            payload: {
+                context: { files: [null, 42, '/data/repos/abc/tasks/feature/valid.md'] },
+                planFilePath: '/data/repos/abc/tasks/feature/other.md',
+            },
+        };
+        expect(extractTaskPath(item, wsRoot, tasksFolder)).toBe('feature/valid.md');
+    });
 });
 
 // ── mapQueued payload passthrough ──────────────────────────────────────
@@ -366,6 +419,9 @@ function mapQueued(t: any) {
             planFilePath: (t.payload as any)?.planFilePath,
             filePath: (t.payload as any)?.filePath,
             workingDirectory: (t.payload as any)?.workingDirectory,
+            context: (t.payload as any)?.context?.files
+                ? { files: (t.payload as any).context.files }
+                : undefined,
             data: (t.payload as any)?.data ? {
                 originalTaskPath: (t.payload as any)?.data?.originalTaskPath,
             } : undefined,
@@ -499,6 +555,69 @@ describe('mapQueued — payload passthrough', () => {
             },
         };
         const wsItem = mapQueued(fullTask);
+        const relPath = extractTaskPath(wsItem, '/home/user/project', '/data/repos/abc/tasks');
+        expect(relPath).toBe('queue-refresh/fix.md');
+    });
+
+    it('includes payload.context.files in mapped output (ChatPayload fix)', () => {
+        const task = {
+            id: 'chat-1', repoId: 'r1', type: 'chat', priority: 1,
+            status: 'queued', displayName: 'Chat Task', createdAt: '2025-01-01',
+            payload: {
+                kind: 'chat',
+                context: {
+                    files: ['/data/repos/abc/tasks/feat/chat-plan.md'],
+                    blocks: [{ type: 'text', content: 'Large user-supplied additional info that should stay server-side' }],
+                },
+                workingDirectory: '/workspace',
+            },
+        };
+        const mapped = mapQueued(task);
+        // context.files should be present for pill rendering
+        expect(mapped.payload.context?.files).toEqual(['/data/repos/abc/tasks/feat/chat-plan.md']);
+        // context.blocks should NOT be broadcast (avoid bloating WS messages)
+        expect((mapped.payload.context as any)?.blocks).toBeUndefined();
+    });
+
+    it('sets context to undefined when payload has no context.files', () => {
+        const task = {
+            id: '7', repoId: 'r1', type: 'pipeline', priority: 1,
+            status: 'queued', displayName: 'Task 7', createdAt: '2025-01-01',
+            payload: { planFilePath: '/data/repos/abc/tasks/x.md' },
+        };
+        const mapped = mapQueued(task);
+        expect(mapped.payload.context).toBeUndefined();
+    });
+
+    it('sets context to undefined when context exists but has no files array', () => {
+        const task = {
+            id: '8', repoId: 'r1', type: 'pipeline', priority: 1,
+            status: 'queued', displayName: 'Task 8', createdAt: '2025-01-01',
+            payload: {
+                context: { blocks: [{ type: 'text', content: 'some text' }] },
+            },
+        };
+        const mapped = mapQueued(task);
+        expect(mapped.payload.context).toBeUndefined();
+    });
+
+    it('end-to-end: extractTaskPath resolves context.files after mapQueued (ChatPayload WS fix)', () => {
+        // This is the exact bug scenario: FollowPromptDialog enqueues with context.files,
+        // mapQueued must preserve it so the pill renders without a page refresh.
+        const chatTask = {
+            id: 'e2e-chat', repoId: 'repo-1', type: 'chat', priority: 1,
+            status: 'queued', displayName: 'Chat E2E', createdAt: '2025-01-01',
+            payload: {
+                kind: 'chat',
+                context: {
+                    files: ['/data/repos/abc/tasks/queue-refresh/fix.md'],
+                    blocks: [{ type: 'text', content: 'Additional info (should not be broadcast)' }],
+                },
+                workingDirectory: '/home/user/project',
+            },
+        };
+        const wsItem = mapQueued(chatTask);
+        // Pill path resolution must succeed from the WS broadcast shape
         const relPath = extractTaskPath(wsItem, '/home/user/project', '/data/repos/abc/tasks');
         expect(relPath).toBe('queue-refresh/fix.md');
     });

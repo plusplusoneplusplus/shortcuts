@@ -371,6 +371,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             planFilePath: (t.payload as any)?.planFilePath,
             filePath: (t.payload as any)?.filePath,
             workingDirectory: (t.payload as any)?.workingDirectory,
+            context: (t.payload as any)?.context?.files
+                ? { files: (t.payload as any).context.files }
+                : undefined,
             data: (t.payload as any)?.data ? {
                 originalTaskPath: (t.payload as any)?.data?.originalTaskPath,
             } : undefined,
