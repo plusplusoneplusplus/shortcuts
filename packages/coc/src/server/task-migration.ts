@@ -76,8 +76,7 @@ function listFilesRecursive(dir: string, base: string = dir): string[] {
 export async function migrateTasksToRepoScoped(options: MigrationOptions): Promise<MigrationResult> {
     const { workspaceRoot, workspaceId, dataDir, dryRun = false, force = false } = options;
     const sourcePath = path.join(workspaceRoot, '.vscode', 'tasks');
-    const repoId = workspaceId;
-    const targetPath = path.join(dataDir, 'repos', repoId, 'tasks');
+    const targetPath = path.join(dataDir, 'repos', workspaceId, 'tasks');
 
     const result: MigrationResult = {
         migrated: false,
