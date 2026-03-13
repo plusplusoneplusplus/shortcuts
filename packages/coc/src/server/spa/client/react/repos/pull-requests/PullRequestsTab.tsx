@@ -12,6 +12,7 @@ import { useApp } from '../../context/AppContext';
 import { PullRequestRow } from './PullRequestRow';
 import { PullRequestDetail } from './PullRequestDetail';
 import type { PullRequest, PrStatus } from './pr-utils';
+import { ProviderConfigPanel } from './ProviderConfigPanel';
 
 export interface PullRequestsTabProps {
     repoId: string;
@@ -135,19 +136,13 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                 />
             </div>
 
-            {/* Unconfigured placeholder (replaced by ProviderConfigPanel in commit 006) */}
+            {/* Unconfigured provider — prompts user to configure credentials */}
             {unconfigured && (
-                <div
-                    className="px-4 py-3 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800"
-                    data-testid="unconfigured-panel"
-                >
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        Pull requests require provider configuration.
-                        {unconfigured.detected && (
-                            <> Detected: <strong>{unconfigured.detected}</strong></>
-                        )}
-                    </p>
-                </div>
+                <ProviderConfigPanel
+                    detected={unconfigured.detected}
+                    remoteUrl={unconfigured.remoteUrl}
+                    onConfigured={() => fetchPrs(true)}
+                />
             )}
 
             {/* Error state */}

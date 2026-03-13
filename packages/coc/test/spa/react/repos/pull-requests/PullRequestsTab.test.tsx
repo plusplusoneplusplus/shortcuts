@@ -200,11 +200,11 @@ describe('load more', () => {
 // ── Unconfigured state (401) ───────────────────────────────────────────────────
 
 describe('unconfigured state', () => {
-    it('renders unconfigured panel on 401 with unconfigured error', async () => {
+    it('renders ProviderConfigPanel on 401 with unconfigured error', async () => {
         mockFetchError(401, { error: 'unconfigured', detected: 'github', remoteUrl: 'https://github.com/org/repo' });
         await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getByTestId('unconfigured-panel')).toBeInTheDocument());
-        expect(screen.getByText(/github/)).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('provider-config-panel')).toBeInTheDocument());
+        expect(screen.getAllByText(/github/i).length).toBeGreaterThan(0);
     });
 });
 
