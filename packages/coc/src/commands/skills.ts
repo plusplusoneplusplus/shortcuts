@@ -22,6 +22,7 @@ import {
     DEFAULT_SKILLS_SETTINGS,
     setLogger,
 } from '@plusplusoneplusplus/pipeline-core';
+import { listInstalledSkills } from '@plusplusoneplusplus/coc-server';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 
 // Wire a basic Pino-backed logger for pipeline-core operations in skills commands
@@ -39,39 +40,6 @@ function getGlobalSkillsDir(): string {
 
 function getInstallPath(workspaceRoot: string, installPathOverride?: string): string {
     return path.join(workspaceRoot, installPathOverride || DEFAULT_SKILLS_SETTINGS.installPath);
-}
-
-function listInstalledSkills(installPath: string): Array<{ name: string; description?: string }> {
-    if (!fs.existsSync(installPath)) return [];
-    const skills: Array<{ name: string; description?: string }> = [];
-    try {
-        const entries = fs.readdirSync(installPath, { withFileTypes: true });
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const skillMdPath = path.join(installPath, entry.name, 'SKILL.md');
-            if (!fs.existsSync(skillMdPath)) continue;
-            let description: string | undefined;
-            try {
-                const content = fs.readFileSync(skillMdPath, 'utf-8');
-                description = extractDescription(content);
-            } catch { /* ignore */ }
-            skills.push({ name: entry.name, description });
-        }
-    } catch { /* ignore */ }
-    return skills;
-}
-
-function extractDescription(content: string): string | undefined {
-    const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length === 0) return undefined;
-    const start = lines[0].startsWith('#') ? 1 : 0;
-    for (let i = start; i < lines.length; i++) {
-        const l = lines[i];
-        if (!l.startsWith('#') && !l.startsWith('---') && !l.startsWith('```')) {
-            return l.length > 80 ? l.substring(0, 77) + '...' : l;
-        }
-    }
-    return lines[0].startsWith('#') ? lines[0].replace(/^#+\s*/, '') : undefined;
 }
 
 // ============================================================================

@@ -12,16 +12,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import {
-    detectSource,
-    scanForSkills,
-    installSkills,
     getBundledSkills,
-    installBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
+    isWithinDirectory,
 } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, parseBody } from './api-handler';
-import { handleAPIError, notFound, invalidJSON, badRequest, internalError } from './errors';
-import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, isWithinDirectory } from './skill-handler';
+import { handleAPIError, notFound, invalidJSON, badRequest } from './errors';
+import { sortSkillsByUsage, listInstalledSkills, getSkillDetail } from './skill-handler';
+import { createSkillRouteHandlers } from './skill-route-handlers';
 import type { Route } from './types';
 
 // ============================================================================
@@ -104,25 +102,8 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
         method: 'POST',
         pattern: /^\/api\/skills\/scan$/,
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
-
-            if (!body.url || typeof body.url !== 'string') {
-                return handleAPIError(res, badRequest('`url` is required'));
-            }
-
-            // detectSource requires a workspace root for local paths; use dataDir as fallback
-            const sourceResult = detectSource(body.url, dataDir);
-            if (!sourceResult.success) {
-                return sendJSON(res, 200, { success: false, error: sourceResult.error, skills: [] });
-            }
-
-            const scanResult = await scanForSkills(sourceResult.source, globalDir);
-            sendJSON(res, 200, scanResult);
+            const { handleScan } = createSkillRouteHandlers({ installPath: globalDir, sourceRoot: dataDir });
+            await handleScan(req, res);
         },
     });
 
@@ -131,54 +112,12 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
         method: 'POST',
         pattern: /^\/api\/skills\/install$/,
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
-
-            const replace = body.replace === true;
-
-            // Ensure global dir exists
-            fs.mkdirSync(globalDir, { recursive: true });
-
-            // Handle bundled skills
-            if (body.source === 'bundled') {
-                const allBundled = getBundledSkills(globalDir);
-                const selectedNames: string[] = Array.isArray(body.skills) ? body.skills : allBundled.map((s: any) => s.name);
-                const toInstall = allBundled.filter((s: any) => selectedNames.includes(s.name));
-
-                if (toInstall.length === 0) {
-                    return sendJSON(res, 200, { installed: 0, skipped: 0, failed: 0, details: [] });
-                }
-
-                const result = await installBundledSkills(toInstall, globalDir, async () => replace);
-                sendJSON(res, 200, result);
-                return;
-            }
-
-            // Handle GitHub/local source
-            if (!body.url || typeof body.url !== 'string') {
-                return handleAPIError(res, badRequest('`url` is required for non-bundled installs'));
-            }
-
-            const sourceResult = detectSource(body.url, dataDir);
-            if (!sourceResult.success) {
-                return handleAPIError(res, badRequest(sourceResult.error));
-            }
-
-            let skills = body.skillsToInstall;
-            if (!Array.isArray(skills) || skills.length === 0) {
-                const scanResult = await scanForSkills(sourceResult.source, globalDir);
-                if (!scanResult.success) {
-                    return handleAPIError(res, badRequest(scanResult.error || 'Scan failed'));
-                }
-                skills = scanResult.skills;
-            }
-
-            const result = await installSkills(skills, sourceResult.source, globalDir, async () => replace);
-            sendJSON(res, 200, result);
+            const { handleInstall } = createSkillRouteHandlers({
+                installPath: globalDir,
+                sourceRoot: dataDir,
+                ensureInstallDir: true,
+            });
+            await handleInstall(req, res);
         },
     });
 
@@ -238,7 +177,7 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
             }
 
             // Validate skill path is within global dir (security)
-            if (!isWithinDirectory(globalDir, skillName)) {
+            if (!isWithinDirectory(path.join(globalDir, skillName), globalDir)) {
                 return handleAPIError(res, badRequest('Invalid skill name'));
             }
 
@@ -262,23 +201,8 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
                 return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
             }
 
-            if (!isWithinDirectory(globalDir, skillName)) {
-                return handleAPIError(res, badRequest('Invalid skill name'));
-            }
-            const skillPath = path.join(globalDir, skillName);
-
-            const skillMdPath = path.join(skillPath, 'SKILL.md');
-            if (!fs.existsSync(skillMdPath)) {
-                return handleAPIError(res, notFound('Skill'));
-            }
-
-            try {
-                fs.rmSync(skillPath, { recursive: true, force: true });
-                res.writeHead(204);
-                res.end();
-            } catch (err: any) {
-                return handleAPIError(res, internalError(`Failed to delete skill: ${err.message}`));
-            }
+            const { handleDelete } = createSkillRouteHandlers({ installPath: globalDir, sourceRoot: dataDir });
+            await handleDelete(res, skillName);
         },
     });
 
