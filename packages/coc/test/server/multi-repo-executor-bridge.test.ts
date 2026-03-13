@@ -372,7 +372,7 @@ describe('MultiRepoQueueExecutorBridge', () => {
     // ========================================================================
 
     describe('findTaskByProcessId', () => {
-        it('finds a task by processId across repos', () => {
+        it('finds a queued task by processId and returns status', () => {
             const { bridge } = createBridge();
             bridge.getOrCreateBridge('/repo/find-test');
             const manager = bridge.registry.getQueueForRepo('/repo/find-test');
@@ -382,14 +382,55 @@ describe('MultiRepoQueueExecutorBridge', () => {
                 priority: 'normal',
                 payload: { kind: 'chat', prompt: 'Hello' },
                 config: {},
-                processId: 'proc-123',
+                processId: 'proc-queued',
+                displayName: 'Chat',
+            });
+
+            const found = bridge.findTaskByProcessId('proc-queued');
+            expect(found).toEqual({ id: taskId, type: 'chat', status: 'queued' });
+
+            bridge.dispose();
+        });
+
+        it('finds a running task by processId and returns status "running"', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/find-running');
+            const manager = bridge.registry.getQueueForRepo('/repo/find-running');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Hello' },
+                config: {},
+                processId: 'proc-running',
+                displayName: 'Chat',
+            });
+            manager.markStarted(taskId);
+
+            const found = bridge.findTaskByProcessId('proc-running');
+            expect(found).toEqual({ id: taskId, type: 'chat', status: 'running' });
+
+            bridge.dispose();
+        });
+
+        it('finds a completed task by processId and returns status "completed"', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/find-completed');
+            const manager = bridge.registry.getQueueForRepo('/repo/find-completed');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Hello' },
+                config: {},
+                processId: 'proc-completed',
                 displayName: 'Chat',
             });
             manager.markStarted(taskId);
             manager.markCompleted(taskId);
 
-            const found = bridge.findTaskByProcessId('proc-123');
-            expect(found).toEqual({ id: taskId, type: 'chat' });
+            const found = bridge.findTaskByProcessId('proc-completed');
+            expect(found).toEqual({ id: taskId, type: 'chat', status: 'completed' });
 
             bridge.dispose();
         });
@@ -413,6 +454,82 @@ describe('MultiRepoQueueExecutorBridge', () => {
         it('exposes requeueForFollowUp method', () => {
             const { bridge } = createBridge();
             expect(typeof (bridge as any).requeueForFollowUp).toBe('function');
+            bridge.dispose();
+        });
+
+        it('succeeds when task is in completed history', async () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/requeue-test');
+            const manager = bridge.registry.getQueueForRepo('/repo/requeue-test');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Original' },
+                config: {},
+                processId: 'proc-requeue',
+                displayName: 'Chat',
+            });
+            manager.markStarted(taskId);
+            manager.markCompleted(taskId);
+
+            // Should not throw — task is in history
+            await expect(
+                bridge.requeueForFollowUp(taskId, 'Follow-up message')
+            ).resolves.toBeUndefined();
+
+            // Task should be back in the queue
+            const requeued = manager.getTask(taskId);
+            expect(requeued?.status).toBe('queued');
+            expect((requeued?.payload as any)?.prompt).toBe('Follow-up message');
+
+            bridge.dispose();
+        });
+
+        it('throws when task is running (not in history)', async () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/requeue-running');
+            const manager = bridge.registry.getQueueForRepo('/repo/requeue-running');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Original' },
+                config: {},
+                processId: 'proc-running-requeue',
+                displayName: 'Chat',
+            });
+            manager.markStarted(taskId);
+
+            // Task is running — requeueFromHistory returns false → should throw
+            await expect(
+                bridge.requeueForFollowUp(taskId, 'Follow-up while running')
+            ).rejects.toThrow(/not available in history/);
+
+            bridge.dispose();
+        });
+
+        it('passes deliveryMode through to task payload', async () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/requeue-delivery');
+            const manager = bridge.registry.getQueueForRepo('/repo/requeue-delivery');
+
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', prompt: 'Original' },
+                config: {},
+                processId: 'proc-delivery',
+                displayName: 'Chat',
+            });
+            manager.markStarted(taskId);
+            manager.markCompleted(taskId);
+
+            await bridge.requeueForFollowUp(taskId, 'Follow-up', undefined, undefined, undefined, 'immediate');
+
+            const requeued = manager.getTask(taskId);
+            expect((requeued?.payload as any)?.deliveryMode).toBe('immediate');
+
             bridge.dispose();
         });
     });

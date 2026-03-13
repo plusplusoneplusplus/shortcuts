@@ -39,7 +39,7 @@ export interface QueueExecutorBridge {
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used to locate the parent chat task for follow-up re-activation. */
-    findTaskByProcessId?(processId: string): { id: string; type: string } | undefined;
+    findTaskByProcessId?(processId: string): { id: string; type: string; status: string } | undefined;
     /** Requeue an existing task for a follow-up message (reuses the parent task instead of creating a ghost child). */
     requeueForFollowUp?(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void>;
     /** Cancel a running process by aborting its live AI session. */
@@ -1766,7 +1766,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
                 const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
                 // Look up the original chat task so the follow-up can reuse it
                 const parentTask = bridge.findTaskByProcessId?.(id);
-                if (parentTask && bridge.requeueForFollowUp) {
+                if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
                     // Reuse the parent task: update its payload and requeue from history
                     await bridge.requeueForFollowUp(parentTask.id, messageContent, attachments, imageTempDir, modeOverride, deliveryMode);
                 } else {

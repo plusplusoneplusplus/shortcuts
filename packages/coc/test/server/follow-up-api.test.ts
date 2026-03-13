@@ -215,7 +215,7 @@ describe('POST /api/processes/:id/message', () => {
             const requeueSpy = vi.fn().mockResolvedValue(undefined);
             const bridgeWithRequeue = createMockBridge();
             (bridgeWithRequeue as any).requeueForFollowUp = requeueSpy;
-            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-task-1', type: 'chat' });
+            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-task-1', type: 'chat', status: 'completed' });
 
             // Create a fresh server with the augmented bridge
             const freshRoutes: Route[] = [];
@@ -409,7 +409,7 @@ describe('POST /api/processes/:id/message', () => {
             const requeueSpy = vi.fn().mockResolvedValue(undefined);
             const bridgeWithRequeue = createMockBridge();
             (bridgeWithRequeue as any).requeueForFollowUp = requeueSpy;
-            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-mode-1', type: 'chat' });
+            (bridgeWithRequeue as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-mode-1', type: 'chat', status: 'completed' });
 
             const freshRoutes: Route[] = [];
             registerApiRoutes(freshRoutes, store, bridgeWithRequeue);

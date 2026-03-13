@@ -242,13 +242,13 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
 
     /**
      * Find a task by its processId across all per-repo queues.
-     * Returns the task id and type if found.
+     * Returns the task id, type, and status if found.
      */
-    findTaskByProcessId(processId: string): { id: string; type: string } | undefined {
+    findTaskByProcessId(processId: string): { id: string; type: string; status: string } | undefined {
         for (const manager of this.registry.getAllQueues().values()) {
             for (const task of manager.getAll()) {
                 if (task.processId === processId) {
-                    return { id: task.id, type: task.type };
+                    return { id: task.id, type: task.type, status: task.status };
                 }
             }
         }
@@ -259,7 +259,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      * Requeue an existing task for a follow-up message.
      * Updates the task's payload with the follow-up prompt, then moves it from history → queued.
      */
-    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string): Promise<void> {
+    async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void> {
         for (const manager of this.registry.getAllQueues().values()) {
             const task = manager.getTask(taskId);
             if (!task) continue;
@@ -275,6 +275,7 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
                     attachments,
                     imageTempDir,
                     ...(mode ? { mode } : {}),
+                    ...(deliveryMode ? { deliveryMode } : {}),
                 },
             });
 
