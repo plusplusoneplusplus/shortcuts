@@ -14,6 +14,7 @@
  * - POST /api/workspaces/:id/git/merge
  * - POST /api/workspaces/:id/git/stash
  * - POST /api/workspaces/:id/git/stash/pop
+ * - POST /api/workspaces/:id/git/reset
  *
  * Uses mocked BranchService via vi.mock to avoid actual git calls.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -907,6 +908,119 @@ describe('Git Branches API endpoints', () => {
 
             expect(res.status).toBe(200);
             expect(res.json()).toEqual({ success: false, error: 'No stash entries found.' });
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/reset — Hard reset
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/reset', () => {
+        beforeEach(() => {
+            mockExecSync.mockReset();
+        });
+
+        it('should hard-reset to a commit hash by default', async () => {
+            mockExecSync.mockReturnValue('');
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234' }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({ success: true });
+            expect(mockExecSync).toHaveBeenCalledWith(
+                'git reset --hard abc1234',
+                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            );
+        });
+
+        it('should respect explicit mode=hard', async () => {
+            mockExecSync.mockReturnValue('');
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', mode: 'hard' }),
+            });
+
+            expect(mockExecSync).toHaveBeenCalledWith(
+                'git reset --hard abc1234',
+                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            );
+        });
+
+        it('should support mode=soft', async () => {
+            mockExecSync.mockReturnValue('');
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', mode: 'soft' }),
+            });
+
+            expect(mockExecSync).toHaveBeenCalledWith(
+                'git reset --soft abc1234',
+                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            );
+        });
+
+        it('should support mode=mixed', async () => {
+            mockExecSync.mockReturnValue('');
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', mode: 'mixed' }),
+            });
+
+            expect(mockExecSync).toHaveBeenCalledWith(
+                'git reset --mixed abc1234',
+                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            );
+        });
+
+        it('should default to hard when mode is an invalid value', async () => {
+            mockExecSync.mockReturnValue('');
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', mode: 'rebase' }),
+            });
+
+            expect(mockExecSync).toHaveBeenCalledWith(
+                'git reset --hard abc1234',
+                expect.objectContaining({ cwd: WORKSPACE_ROOT }),
+            );
+        });
+
+        it('should return 400 when hash is missing', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should return 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/nonexistent/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234' }),
+            });
+
+            expect(res.status).toBe(404);
+            expect(res.json().error).toMatch(/not found/i);
+        });
+
+        it('should return 400 when git reset fails', async () => {
+            mockExecSync.mockImplementation(() => { throw new Error('fatal: Could not reset HEAD'); });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'badHash' }),
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.json().error).toMatch(/fatal: Could not reset HEAD/);
         });
     });
 });

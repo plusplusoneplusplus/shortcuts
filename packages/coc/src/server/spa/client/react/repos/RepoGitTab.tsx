@@ -363,6 +363,24 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+    const handleHardReset = useCallback(async (commit: GitCommitItem) => {
+        closeContextMenu();
+        const shortHash = commit.hash.slice(0, 7);
+        if (!window.confirm(`Reset to ${shortHash}? This will discard all uncommitted changes.`)) return;
+        setActionError(null);
+        try {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/reset`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hash: commit.hash, mode: 'hard' }),
+            });
+            if (result.success === false) throw new Error(result.error || 'Reset failed');
+            refreshAll();
+        } catch (err: any) {
+            setActionError(err.message || 'Reset failed');
+        }
+    }, [closeContextMenu, workspaceId, refreshAll]);
+
     const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
         const commit = commits.find(c => c.hash === commitHash);
         if (!commit) return;
@@ -449,6 +467,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '🔍',
                 onClick: () => { handleSelect(commit); },
             });
+            items.push({ label: '', separator: true, onClick: () => {} });
+            items.push({
+                label: 'Hard Reset to Here',
+                icon: '⏪',
+                onClick: () => handleHardReset(commit),
+            });
         }
 
         if (skills.length > 0) {
@@ -467,7 +491,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSelect]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSelect, handleHardReset]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {

@@ -1174,6 +1174,38 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // POST /api/workspaces/:id/git/reset — Reset HEAD to a commit
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/reset$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!body.hash || typeof body.hash !== 'string') {
+                return handleAPIError(res, missingFields(['hash']));
+            }
+
+            const allowedModes = ['hard', 'soft', 'mixed'];
+            const mode: string = typeof body.mode === 'string' && allowedModes.includes(body.mode)
+                ? body.mode
+                : 'hard';
+
+            try {
+                execGitSync(`reset --${mode} ${body.hash}`, ws.rootPath);
+                gitCache.invalidateMutable(id);
+                getWsServer?.()?.broadcastGitChanged(id, 'reset');
+                sendJSON(res, 200, { success: true });
+            } catch (err: any) {
+                return handleAPIError(res, badRequest('Failed to reset: ' + (err.message || 'unknown error')));
+            }
+        },
+    });
+
     // ------------------------------------------------------------------
     // Working-tree endpoints (via WorkingTreeService)
     // ------------------------------------------------------------------
