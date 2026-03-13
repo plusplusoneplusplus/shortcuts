@@ -60,6 +60,10 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
 }));
 
+vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+    useApp: () => ({ state: { workspaces: [] }, dispatch: vi.fn() }),
+}));
+
 function setupFetch(content = '# Hello') {
     const fetchSpy = vi.fn().mockImplementation((input: RequestInfo | URL) => {
         const url = String(input);

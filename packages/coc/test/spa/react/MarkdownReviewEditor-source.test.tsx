@@ -70,6 +70,11 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
 }));
 
+/* ── Mock useApp ── */
+vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+    useApp: () => ({ state: { workspaces: [] }, dispatch: vi.fn() }),
+}));
+
 const RAW_CONTENT = '# Hello\nSome content here';
 
 function mockJsonResponse(body: any, ok = true, status = 200): Response {

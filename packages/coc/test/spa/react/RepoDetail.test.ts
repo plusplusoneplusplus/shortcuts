@@ -34,13 +34,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 8 entries', () => {
-        expect(SUB_TABS).toHaveLength(8);
+    it('has exactly 9 entries', () => {
+        expect(SUB_TABS).toHaveLength(9);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'explorer', 'tasks', 'activity', 'workflows', 'schedules', 'copilot']);
+        expect(keys).toEqual(['info', 'git', 'explorer', 'tasks', 'pull-requests', 'activity', 'workflows', 'schedules', 'copilot']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {
@@ -52,8 +52,8 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[2].key).toBe('explorer');
     });
 
-    it('activity is the fifth entry (after tasks)', () => {
-        expect(SUB_TABS[4].key).toBe('activity');
+    it('activity is the sixth entry (after pull-requests)', () => {
+        expect(SUB_TABS[5].key).toBe('activity');
     });
 
     it('tasks tab has label "Plans"', () => {
