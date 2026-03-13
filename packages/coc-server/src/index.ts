@@ -164,6 +164,7 @@ export { setServerLogger, getServerLogger, createRequestLogger, createWSLogger, 
 
 // Skill management
 export { registerSkillRoutes, sortSkillsByUsage } from './skill-handler';
+export { registerInstructionRoutes } from './instruction-handler';
 export { registerGlobalSkillRoutes } from './global-skill-handler';
 
 // Repos (file explorer)
