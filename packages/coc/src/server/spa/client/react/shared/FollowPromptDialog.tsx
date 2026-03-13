@@ -39,7 +39,7 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 
 export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: FollowPromptDialogProps) {
     const { state } = useApp();
-    const { models: savedModels, setModel, loaded: prefsLoaded } = usePreferences(wsId);
+    const { models: savedModels, skills: savedSkills, setModel, setSkill, loaded: prefsLoaded } = usePreferences(wsId);
     const model = savedModels.task;
     const { recentItems, trackUsage } = useRecentSkills(wsId);
     const { addToast } = useGlobalToast();
@@ -71,6 +71,15 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         })();
         return () => { cancelled = true; };
     }, [selectedWsId]);
+
+    // Pre-populate selectedSkills from saved plan preference when both are ready
+    useEffect(() => {
+        if (!prefsLoaded || savedSkills.plan.length === 0 || skills.length === 0) return;
+        setSelectedSkills(prev => {
+            if (prev.length > 0) return prev;
+            return savedSkills.plan.filter(name => skills.some(s => s.name === name));
+        });
+    }, [prefsLoaded, savedSkills.plan, skills]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const toggleSkill = useCallback((name: string) => {
         setSelectedSkills(prev =>
@@ -147,6 +156,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                 throw new Error(data.error || `HTTP ${res.status}`);
             }
             setSelectedSkills([]);
+            setSkill('plan', skillNames);
             addToast('Queued successfully', 'success');
             onClose();
         } catch (err: any) {
@@ -154,7 +164,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         } finally {
             setSubmitting(false);
         }
-    }, [selectedWsId, taskPath, taskName, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage]);
+    }, [selectedWsId, taskPath, taskName, model, additionalInfo, state.workspaces, addToast, onClose, trackUsage, setSkill]);
 
     return (
         <>

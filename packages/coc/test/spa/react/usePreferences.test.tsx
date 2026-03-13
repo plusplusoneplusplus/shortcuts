@@ -187,6 +187,22 @@ describe('usePreferences', () => {
         it('loads skills from GET /api/workspaces/:id/preferences', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
+                json: () => Promise.resolve({ lastSkills: { task: ['impl'], ask: ['go-deep'] } }),
+            });
+
+            const { result } = renderHook(() => usePreferences('my-repo'));
+
+            await waitFor(() => {
+                expect(result.current.loaded).toBe(true);
+                expect(result.current.skills.task).toEqual(['impl']);
+                expect(result.current.skills.ask).toEqual(['go-deep']);
+                expect(result.current.skills.plan).toEqual([]);
+            });
+        });
+
+        it('loads skills and normalizes legacy single strings to arrays', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
                 json: () => Promise.resolve({ lastSkills: { task: 'impl', ask: 'go-deep' } }),
             });
 
@@ -194,27 +210,26 @@ describe('usePreferences', () => {
 
             await waitFor(() => {
                 expect(result.current.loaded).toBe(true);
-                expect(result.current.skills.task).toBe('impl');
-                expect(result.current.skills.ask).toBe('go-deep');
-                expect(result.current.skills.plan).toBe('');
+                expect(result.current.skills.task).toEqual(['impl']);
+                expect(result.current.skills.ask).toEqual(['go-deep']);
             });
         });
 
-        it('defaults skills to empty strings when API fails', async () => {
+        it('defaults skills to empty arrays when API fails', async () => {
             mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
             const { result } = renderHook(() => usePreferences('my-repo'));
 
             await waitFor(() => {
                 expect(result.current.loaded).toBe(true);
-                expect(result.current.skills).toEqual({ task: '', ask: '', plan: '' });
+                expect(result.current.skills).toEqual({ task: [], ask: [], plan: [] });
             });
         });
 
         it('setSkill updates skill state for the given mode immediately', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ lastSkills: { task: 'impl' } }),
+                json: () => Promise.resolve({ lastSkills: { task: ['impl'] } }),
             });
             mockFetch.mockResolvedValueOnce({ ok: true });
 
@@ -225,13 +240,13 @@ describe('usePreferences', () => {
             });
 
             act(() => {
-                result.current.setSkill('task', 'go-deep');
+                result.current.setSkill('task', ['go-deep']);
             });
 
-            expect(result.current.skills.task).toBe('go-deep');
+            expect(result.current.skills.task).toEqual(['go-deep']);
         });
 
-        it('setSkill fires PATCH /api/workspaces/:id/preferences with lastSkills', async () => {
+        it('setSkill fires PATCH /api/workspaces/:id/preferences with lastSkills array', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 json: () => Promise.resolve({ lastSkills: {} }),
@@ -245,7 +260,7 @@ describe('usePreferences', () => {
             });
 
             act(() => {
-                result.current.setSkill('ask', 'impl');
+                result.current.setSkill('ask', ['impl', 'go-deep']);
             });
 
             await waitFor(() => {
@@ -254,7 +269,7 @@ describe('usePreferences', () => {
                 );
                 expect(patchCalls.length).toBe(1);
                 const body = JSON.parse(patchCalls[0][1].body);
-                expect(body.lastSkills).toEqual({ ask: 'impl' });
+                expect(body.lastSkills).toEqual({ ask: ['impl', 'go-deep'] });
             });
         });
 
@@ -303,7 +318,7 @@ describe('usePreferences', () => {
             expect(result.current.models).toEqual({ task: '', ask: '', plan: '' });
             expect(result.current.depth).toBe('');
             expect(result.current.effort).toBe('');
-            expect(result.current.skills).toEqual({ task: '', ask: '', plan: '' });
+            expect(result.current.skills).toEqual({ task: [], ask: [], plan: [] });
         });
 
         it('setModel updates local state but does not persist', async () => {

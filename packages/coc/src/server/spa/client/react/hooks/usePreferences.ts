@@ -10,9 +10,9 @@ import { getApiBase } from '../utils/config';
 export type SkillMode = 'task' | 'ask' | 'plan';
 
 export interface LastSkillsByMode {
-    task: string;
-    ask: string;
-    plan: string;
+    task: string[];
+    ask: string[];
+    plan: string[];
 }
 
 export interface LastModelsByMode {
@@ -32,11 +32,11 @@ export interface UsePreferencesResult {
     effort: string;
     setEffort: (e: string) => void;
     skills: LastSkillsByMode;
-    setSkill: (mode: SkillMode, s: string) => void;
+    setSkill: (mode: SkillMode, s: string[]) => void;
     loaded: boolean;
 }
 
-const EMPTY_SKILLS: LastSkillsByMode = { task: '', ask: '', plan: '' };
+const EMPTY_SKILLS: LastSkillsByMode = { task: [], ask: [], plan: [] };
 const EMPTY_MODELS: LastModelsByMode = { task: '', ask: '', plan: '' };
 
 export function usePreferences(repoId?: string): UsePreferencesResult {
@@ -86,10 +86,15 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                         setEffortState(prefs.lastEffort);
                     }
                     if (typeof prefs.lastSkills === 'object' && prefs.lastSkills !== null) {
+                        const normalizeArr = (val: unknown): string[] => {
+                            if (Array.isArray(val)) return val.filter((s): s is string => typeof s === 'string');
+                            if (typeof val === 'string' && val) return [val];
+                            return [];
+                        };
                         setSkillsState({
-                            task: typeof prefs.lastSkills.task === 'string' ? prefs.lastSkills.task : '',
-                            ask: typeof prefs.lastSkills.ask === 'string' ? prefs.lastSkills.ask : '',
-                            plan: typeof prefs.lastSkills.plan === 'string' ? prefs.lastSkills.plan : '',
+                            task: normalizeArr(prefs.lastSkills.task),
+                            ask: normalizeArr(prefs.lastSkills.ask),
+                            plan: normalizeArr(prefs.lastSkills.plan),
                         });
                     }
                 }
@@ -132,7 +137,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         }).catch(() => {});
     }, [repoId]);
 
-    const setSkill = useCallback((mode: SkillMode, s: string) => {
+    const setSkill = useCallback((mode: SkillMode, s: string[]) => {
         setSkillsState(prev => ({ ...prev, [mode]: s }));
         if (!repoId) return;
         fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId) + '/preferences', {

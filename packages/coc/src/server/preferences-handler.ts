@@ -21,11 +21,11 @@ import type { Route } from '@plusplusoneplusplus/coc-server';
 /** Skill interaction mode — determines which last-used skill preference to read/write. */
 export type SkillMode = 'task' | 'ask' | 'plan';
 
-/** Per-mode last-used skill names. */
+/** Per-mode last-used skill names (array supports multi-skill combinations). */
 export interface LastSkillsByMode {
-    task?: string;
-    ask?: string;
-    plan?: string;
+    task?: string[];
+    ask?: string[];
+    plan?: string[];
 }
 
 /** Per-mode last-used AI model names. */
@@ -161,8 +161,15 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         const raw = obj.lastSkills as Record<string, unknown>;
         const validated: LastSkillsByMode = {};
         for (const mode of ['task', 'ask', 'plan'] as const) {
-            if (typeof raw[mode] === 'string') {
-                validated[mode] = raw[mode] as string;
+            const val = raw[mode];
+            if (typeof val === 'string' && val.length > 0) {
+                // Backwards compat: coerce legacy single string to array
+                validated[mode] = [val];
+            } else if (Array.isArray(val)) {
+                const arr = val.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0);
+                if (arr.length > 0) {
+                    validated[mode] = arr;
+                }
             }
         }
         if (Object.keys(validated).length > 0) {

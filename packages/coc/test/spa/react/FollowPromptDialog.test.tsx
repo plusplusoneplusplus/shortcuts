@@ -630,4 +630,100 @@ describe('FollowPromptDialog', () => {
             expect(files.every((f: string) => !f.includes('.vscode/tasks'))).toBe(true);
         });
     });
+
+    it('persists multi-skill combination via PATCH on submit', async () => {
+        const onClose = vi.fn();
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [{ name: 'impl' }, { name: 'code-review' }] }),
+                });
+            }
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue/tasks')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            if (opts?.method === 'PATCH') {
+                return Promise.resolve({ ok: true });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog(onClose);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('impl')).toBeDefined();
+        });
+
+        // Toggle both skills
+        await act(async () => {
+            fireEvent.click(screen.getByText('impl'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('code-review'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('fp-submit-skills')).toBeDefined();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('fp-submit-skills'));
+        });
+
+        await waitFor(() => {
+            // Should PATCH preferences with the plan skill array (from setSkill)
+            const allPatchCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) =>
+                    opts?.method === 'PATCH' && url.includes('/workspaces/') && url.includes('/preferences') && !url.includes('/skill-usage')
+            );
+            const skillPatchCall = allPatchCalls.find(([_, opts]: [string, any]) => {
+                try { return JSON.parse(opts.body)?.lastSkills != null; } catch { return false; }
+            });
+            expect(skillPatchCall).toBeDefined();
+            const body = JSON.parse(skillPatchCall![1].body);
+            expect(body.lastSkills.plan).toEqual(['impl', 'code-review']);
+        });
+    });
+
+    it('pre-selects saved plan skills when dialog opens', async () => {
+        mockFetch.mockImplementation((url: string) => {
+            if (url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ lastSkills: { plan: ['impl', 'code-review'] } }),
+                });
+            }
+            if (url.includes('/skills')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ skills: [{ name: 'impl' }, { name: 'code-review' }, { name: 'other' }] }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog();
+        });
+
+        await waitFor(() => {
+            // Both saved skills should be pre-selected (active chip class)
+            const implBtn = screen.getByText('impl').closest('button')!;
+            const reviewBtn = screen.getByText('code-review').closest('button')!;
+            expect(implBtn.className).toContain('bg-[#0078d4]');
+            expect(reviewBtn.className).toContain('bg-[#0078d4]');
+            // Non-saved skill should not be pre-selected
+            const otherBtn = screen.getByText('other').closest('button')!;
+            expect(otherBtn.className).not.toContain('bg-[#0078d4]');
+        });
+    });
 });

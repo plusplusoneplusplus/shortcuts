@@ -978,16 +978,19 @@ describe('EnqueueDialog', () => {
         // Submit the task
         fireEvent.click(screen.getByText('Enqueue'));
 
-        // Verify PATCH was called with lastSkills.task as JSON array on submit
+        // Verify PATCH was called with lastSkills.task as array on submit
         await waitFor(() => {
             const patchCalls = fetchSpy.mock.calls.filter(
                 ([u, opts]: [string, any]) =>
                     typeof u === 'string' && u.includes('/preferences') && !u.includes('/skill-usage') && opts?.method === 'PATCH'
             );
             expect(patchCalls.length).toBeGreaterThanOrEqual(1);
-            const lastPatch = patchCalls[patchCalls.length - 1];
-            const body = JSON.parse(lastPatch[1].body);
-            expect(body.lastSkills).toEqual({ task: '["impl"]' });
+            const skillPatch = patchCalls.find(([_, opts]: [string, any]) => {
+                try { return JSON.parse(opts.body)?.lastSkills != null; } catch { return false; }
+            });
+            expect(skillPatch).toBeDefined();
+            const body = JSON.parse(skillPatch![1].body);
+            expect(body.lastSkills).toEqual({ task: ['impl'] });
         });
     });
 
@@ -1676,16 +1679,16 @@ describe('EnqueueDialog mode-switch state isolation', () => {
 
     /** Sets up fetch mock that returns per-mode preferences, skills, and models. */
     function setupFetchForModeSwitch(opts: {
-        taskSkills?: string;
-        askSkills?: string;
+        taskSkills?: string[];
+        askSkills?: string[];
         taskModel?: string;
         askModel?: string;
         availableSkills?: Array<{ name: string; description?: string }>;
         availableModels?: string[];
     }) {
         const {
-            taskSkills = '',
-            askSkills = '',
+            taskSkills = [],
+            askSkills = [],
             taskModel = '',
             askModel = '',
             availableSkills = [
@@ -1747,8 +1750,8 @@ describe('EnqueueDialog mode-switch state isolation', () => {
 
     it('switching from task to ask mode applies ask-mode skills, not task-mode skills', async () => {
         setupFetchForModeSwitch({
-            taskSkills: '["impl"]',
-            askSkills: '["go-deep"]',
+            taskSkills: ['impl'],
+            askSkills: ['go-deep'],
         });
 
         render(
@@ -1822,8 +1825,8 @@ describe('EnqueueDialog mode-switch state isolation', () => {
 
     it('switching from ask to task mode clears ask skills and applies task skills', async () => {
         setupFetchForModeSwitch({
-            taskSkills: '["impl"]',
-            askSkills: '["go-deep"]',
+            taskSkills: ['impl'],
+            askSkills: ['go-deep'],
         });
 
         render(
@@ -1859,8 +1862,8 @@ describe('EnqueueDialog mode-switch state isolation', () => {
 
     it('switching to mode with no saved skills clears selected skills', async () => {
         setupFetchForModeSwitch({
-            taskSkills: '["impl"]',
-            askSkills: '',  // no saved ask skills
+            taskSkills: ['impl'],
+            askSkills: [],  // no saved ask skills
         });
 
         render(

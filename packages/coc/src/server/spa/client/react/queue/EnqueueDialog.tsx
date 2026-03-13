@@ -121,20 +121,10 @@ export function EnqueueDialog() {
         prevModeRef.current = isAskMode;
 
         const mode = isAskMode ? 'ask' : 'task';
-        const savedSkill = savedSkills[mode];
-        if (savedSkill && skills.length > 0 && (modeChanged || selectedSkills.length === 0)) {
-            try {
-                const parsed = JSON.parse(savedSkill);
-                if (Array.isArray(parsed)) {
-                    const valid = parsed.filter((s: string) => skills.some(sk => sk.name === s));
-                    if (valid.length > 0) { setSelectedSkills(valid); return; }
-                }
-            } catch { /* not JSON, treat as single skill name */ }
-            const match = skills.find(s => s.name === savedSkill);
-            if (match) {
-                setSelectedSkills([savedSkill]);
-                return;
-            }
+        const savedSkillArr = savedSkills[mode];
+        if (savedSkillArr && savedSkillArr.length > 0 && skills.length > 0 && (modeChanged || selectedSkills.length === 0)) {
+            const valid = savedSkillArr.filter((s: string) => skills.some(sk => sk.name === s));
+            if (valid.length > 0) { setSelectedSkills(valid); return; }
         }
         if (modeChanged) setSelectedSkills([]);
     }, [savedSkills, skills, isAskMode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -232,7 +222,7 @@ export function EnqueueDialog() {
             }
             setPrompt('');
             setSelectedSkills([]);
-            persistSkill(isAskMode ? 'ask' : 'task', JSON.stringify(effectiveSkills));
+            persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
                 if (sk && workspaceId) {

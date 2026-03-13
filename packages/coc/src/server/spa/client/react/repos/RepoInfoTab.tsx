@@ -18,9 +18,9 @@ interface LastModelsByMode {
 }
 
 interface LastSkillsByMode {
-    task?: string;
-    ask?: string;
-    plan?: string;
+    task?: string | string[];
+    ask?: string | string[];
+    plan?: string | string[];
 }
 
 interface PerRepoPreferences {
@@ -35,6 +35,20 @@ interface PerRepoPreferences {
 const STATUS_ICON: Record<string, string> = {
     running: '⏳', completed: '✓', failed: '✗', cancelled: '🚫', queued: '⏳',
 };
+
+/** Format a skill value that may be a string (legacy) or string[] (new). */
+function formatSkillValue(val: string | string[] | undefined): string {
+    if (!val || (Array.isArray(val) && val.length === 0)) return 'none';
+    if (Array.isArray(val)) return val.join(', ');
+    return val || 'none';
+}
+
+/** Check if a skill value (string or string[]) has any content. */
+function hasSkillValue(val: string | string[] | undefined): boolean {
+    if (!val) return false;
+    if (Array.isArray(val)) return val.length > 0;
+    return val.length > 0;
+}
 
 export function RepoInfoTab({ repo }: RepoInfoTabProps) {
     const ws = repo.workspace;
@@ -143,7 +157,9 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                     !preferences.lastModel &&
                     !preferences.lastDepth &&
                     !preferences.lastEffort &&
-                    !(preferences.lastSkills?.task || preferences.lastSkills?.ask || preferences.lastSkills?.plan) &&
+                    !hasSkillValue(preferences.lastSkills?.task) &&
+                    !hasSkillValue(preferences.lastSkills?.ask) &&
+                    !hasSkillValue(preferences.lastSkills?.plan) &&
                     !preferences.recentFollowPrompts?.length
                 ) ? (
                     <div className="text-xs text-[#848484]" id="repo-preferences-empty">No preferences set</div>
@@ -153,9 +169,9 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                         <MetaRow label="Ask Model" value={preferences.lastModels?.ask || preferences.lastModel || 'default'} />
                         <MetaRow label="Depth" value={preferences.lastDepth || 'default'} />
                         <MetaRow label="Effort" value={preferences.lastEffort || 'default'} />
-                        <MetaRow label="Task Skill" value={preferences.lastSkills?.task || 'none'} />
-                        <MetaRow label="Ask Skill" value={preferences.lastSkills?.ask || 'none'} />
-                        <MetaRow label="Plan Skill" value={preferences.lastSkills?.plan || 'none'} />
+                        <MetaRow label="Task Skill" value={formatSkillValue(preferences.lastSkills?.task)} />
+                        <MetaRow label="Ask Skill" value={formatSkillValue(preferences.lastSkills?.ask)} />
+                        <MetaRow label="Plan Skill" value={formatSkillValue(preferences.lastSkills?.plan)} />
                         <MetaRow label="Recent Prompts" value={String(preferences.recentFollowPrompts?.length ?? 0)} />
                     </div>
                 )}
