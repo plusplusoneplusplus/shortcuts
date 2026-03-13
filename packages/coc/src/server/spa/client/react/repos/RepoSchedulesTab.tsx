@@ -854,6 +854,35 @@ interface ScheduleTemplate {
 
 export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
     {
+        id: 'run-workflow',
+        label: 'Run workflow',
+        emoji: '🚀',
+        name: 'Run Workflow',
+        target: 'pipelines/my-pipeline/pipeline.yaml',
+        cronExpr: '0 9 * * *',
+        intervalValue: '1',
+        intervalUnit: 'days',
+        mode: 'cron',
+        params: [],
+        hint: 'Ensure the workflow YAML file exists at the specified target path',
+    },
+    {
+        id: 'run-script',
+        label: 'Run Script',
+        emoji: '🖥️',
+        name: 'Script Runner',
+        target: '',
+        targetType: 'script',
+        cronExpr: '0 * * * *',
+        intervalValue: '1',
+        intervalUnit: 'hours',
+        mode: 'cron',
+        params: [
+            { key: 'workingDirectory', placeholder: '.' },
+        ],
+        hint: 'Enter a shell command or path to a script to execute on the schedule.',
+    },
+    {
         id: 'auto-commit',
         label: 'Auto-commit directory',
         emoji: '💾',
@@ -868,19 +897,6 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
             { key: 'message', placeholder: 'chore: auto-save' },
         ],
         hint: 'Target file must exist at .vscode/schedules/auto-commit.md',
-    },
-    {
-        id: 'run-workflow',
-        label: 'Run workflow',
-        emoji: '🚀',
-        name: 'Run Workflow',
-        target: 'pipelines/my-pipeline/pipeline.yaml',
-        cronExpr: '0 9 * * *',
-        intervalValue: '1',
-        intervalUnit: 'days',
-        mode: 'cron',
-        params: [],
-        hint: 'Ensure the workflow YAML file exists at the specified target path',
     },
     {
         id: 'pull-sync',
@@ -912,22 +928,6 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
             { key: 'maxAgeDays', placeholder: '7' },
         ],
         hint: 'Target file must exist at .vscode/schedules/clean-outputs.md',
-    },
-    {
-        id: 'run-script',
-        label: 'Run Script',
-        emoji: '🖥️',
-        name: 'Script Runner',
-        target: '',
-        targetType: 'script',
-        cronExpr: '0 * * * *',
-        intervalValue: '1',
-        intervalUnit: 'hours',
-        mode: 'cron',
-        params: [
-            { key: 'workingDirectory', placeholder: '.' },
-        ],
-        hint: 'Enter a shell command or path to a script to execute on the schedule.',
     },
 ];
 
