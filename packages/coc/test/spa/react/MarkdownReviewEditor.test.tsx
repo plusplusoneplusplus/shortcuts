@@ -82,6 +82,12 @@ vi.mock('../../../src/server/spa/client/react/context/ToastContext', () => ({
     useGlobalToast: () => ({ addToast: mockAddToast, removeToast: vi.fn(), toasts: [] }),
 }));
 
+/* ── Mock useApp ── */
+let mockWorkspaces: any[] = [];
+vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
+    useApp: () => ({ state: { workspaces: mockWorkspaces }, dispatch: vi.fn() }),
+}));
+
 function mockJsonResponse(body: any, ok = true, status = 200): Response {
     return {
         ok,
@@ -132,6 +138,7 @@ describe('MarkdownReviewEditor', () => {
 
     beforeEach(() => {
         hookOverrides = {};
+        mockWorkspaces = [];
         fetchSpy = setupFetchSpy();
         mockAddComment.mockReset();
         mockAskAI.mockReset();
@@ -536,6 +543,79 @@ describe('MarkdownReviewEditor', () => {
 
             const copied = writeTextMock.mock.calls[0][0] as string;
             expect(copied).toContain('(unknown file)');
+        });
+
+        it('uses absolute path when workspace rootPath is available', async () => {
+            mockWorkspaces = [{ id: 'ws1', rootPath: '/home/user/project' }];
+            const writeTextMock = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+            const result = render(
+                <MarkdownReviewEditor wsId="ws1" filePath=".vscode/tasks/my-plan.md" fetchMode="tasks" />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+
+            const preview = document.querySelector('#task-preview-body')!;
+            fireEvent.contextMenu(preview, { clientX: 100, clientY: 100 });
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Copy with Context'));
+            });
+
+            const copied = writeTextMock.mock.calls[0][0] as string;
+            expect(copied.startsWith('/home/user/project/.vscode/tasks/my-plan.md')).toBe(true);
+            result.unmount();
+        });
+
+        it('normalizes Windows backslashes in rootPath to forward slashes', async () => {
+            mockWorkspaces = [{ id: 'ws1', rootPath: 'C:\\Users\\user\\project' }];
+            const writeTextMock = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+            const result = render(
+                <MarkdownReviewEditor wsId="ws1" filePath=".vscode/tasks/plan.md" fetchMode="tasks" />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+
+            const preview = document.querySelector('#task-preview-body')!;
+            fireEvent.contextMenu(preview, { clientX: 100, clientY: 100 });
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Copy with Context'));
+            });
+
+            const copied = writeTextMock.mock.calls[0][0] as string;
+            expect(copied).not.toContain('\\');
+            expect(copied.startsWith('C:/Users/user/project/.vscode/tasks/plan.md')).toBe(true);
+            result.unmount();
+        });
+
+        it('falls back to relative filePath when workspace is not in state', async () => {
+            mockWorkspaces = [{ id: 'other-ws', rootPath: '/some/path' }];
+            const writeTextMock = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+            const result = render(
+                <MarkdownReviewEditor wsId="ws1" filePath="relative/path.md" fetchMode="tasks" />
+            );
+            await waitFor(() => {
+                expect(document.querySelector('#task-preview-body')).toBeTruthy();
+            });
+
+            const preview = document.querySelector('#task-preview-body')!;
+            fireEvent.contextMenu(preview, { clientX: 100, clientY: 100 });
+
+            await act(async () => {
+                fireEvent.click(screen.getByText('Copy with Context'));
+            });
+
+            const copied = writeTextMock.mock.calls[0][0] as string;
+            expect(copied.startsWith('relative/path.md')).toBe(true);
+            result.unmount();
         });
     });
 

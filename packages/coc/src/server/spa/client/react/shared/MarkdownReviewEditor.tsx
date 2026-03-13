@@ -32,6 +32,8 @@ import { useGlobalToast } from '../context/ToastContext';
 import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { getLanguageFromFileName } from '../repos/useSyntaxHighlight';
+import { useApp } from '../context/AppContext';
+import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
@@ -82,6 +84,12 @@ export function MarkdownReviewEditor({
     initialScrollTop,
     onScrollTopChange,
 }: MarkdownReviewEditorProps) {
+    const { state: appState } = useApp();
+    const workspaceRootPath = useMemo(() => {
+        const ws = appState.workspaces.find((w: any) => w.id === wsId);
+        return ws?.rootPath ? toForwardSlashes(ws.rootPath).replace(/\/+$/, '') : '';
+    }, [appState.workspaces, wsId]);
+
     const [rawContent, setRawContent] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -535,7 +543,10 @@ export function MarkdownReviewEditor({
 
     const handleCopyWithContext = useCallback(async () => {
         const text = savedSelection?.text || rawContent;
-        const pathLabel = filePath || '(unknown file)';
+        const absolutePath = workspaceRootPath
+            ? toForwardSlashes(workspaceRootPath + '/' + filePath)
+            : filePath || '(unknown file)';
+        const pathLabel = absolutePath || '(unknown file)';
         const formatted = `${pathLabel}\n\`\`\`\n${text}\n\`\`\``;
         try {
             await navigator.clipboard.writeText(formatted);
@@ -543,7 +554,7 @@ export function MarkdownReviewEditor({
         } catch {
             addToast('Failed to copy — clipboard access denied', 'error');
         }
-    }, [savedSelection, rawContent, filePath, addToast]);
+    }, [savedSelection, rawContent, filePath, workspaceRootPath, addToast]);
 
     const handleSwitchToReview = useCallback(() => {
         if (isDirty) {
