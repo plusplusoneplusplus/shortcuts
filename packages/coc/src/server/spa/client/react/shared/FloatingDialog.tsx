@@ -57,6 +57,8 @@ export interface FloatingDialogProps {
      * (e.g. a full-height chat view).
      */
     noPadding?: boolean;
+    /** Optional id applied to the close (×) button for test selection. */
+    closeButtonId?: string;
 }
 
 /**
@@ -82,6 +84,7 @@ export function FloatingDialog({
     maxWidth,
     maxHeight,
     noPadding = false,
+    closeButtonId,
 }: FloatingDialogProps) {
     const panelRef = useRef<HTMLDivElement>(null);
     const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
@@ -274,6 +277,7 @@ export function FloatingDialog({
                         </button>
                     )}
                     <button
+                        id={closeButtonId}
                         data-testid="dialog-close-btn"
                         className={cn(
                             !onMinimize && 'ml-auto',

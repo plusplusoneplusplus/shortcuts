@@ -147,6 +147,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 resizable
                 minWidth={360}
                 minHeight={200}
+                closeButtonId="update-doc-close"
                 footer={
                     <>
                         <Button id="update-doc-cancel" variant="secondary" onClick={onClose}>Cancel</Button>

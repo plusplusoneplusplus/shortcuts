@@ -158,7 +158,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
 
     return (
         <>
-            <FloatingDialog open onClose={onClose} title="Run Skill" id="follow-prompt-submenu" resizable minWidth={360} minHeight={200}>
+            <FloatingDialog open onClose={onClose} title="Run Skill" id="follow-prompt-submenu" closeButtonId="fp-close" resizable minWidth={360} minHeight={200}>
                 <div className="flex flex-col gap-4">
                     {/* Model select */}
                     <div className="flex flex-col gap-1">
