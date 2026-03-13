@@ -39,6 +39,7 @@ import {
 import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
     approveAllPermissions,
+    loadInstructions,
     applyDeepModePrefix,
     AUTO_FOLDER_SENTINEL,
     buildAutoFolderLocationBlock,
@@ -115,6 +116,30 @@ function buildModeSystemMessage(mode: ChatMode | undefined, autoFolderContext?: 
         ? `\n\n${buildAutoFolderLocationBlock(toForwardSlashes(autoFolderContext.tasksRoot), autoFolderContext.existingFolders)}`
         : '';
     return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE + planFolderSuffix };
+}
+
+/**
+ * Appends per-repo custom instructions (from `.github/coc/`) to an existing
+ * system message config.  If no instructions exist for the repo/mode, the
+ * original config is returned unchanged.
+ */
+async function withRepoInstructions(
+    systemMessage: SystemMessageConfig | undefined,
+    workingDirectory: string | undefined,
+    mode: ChatMode | undefined
+): Promise<SystemMessageConfig | undefined> {
+    if (!workingDirectory || !mode) return systemMessage;
+    let instructions: string | undefined;
+    try {
+        instructions = await loadInstructions(workingDirectory, mode);
+    } catch {
+        return systemMessage;
+    }
+    if (!instructions) return systemMessage;
+    const appended = systemMessage
+        ? systemMessage.content + '\n\n' + instructions
+        : instructions;
+    return { mode: 'append' as const, content: appended };
 }
 
 // ============================================================================
@@ -628,7 +653,11 @@ export class CLITaskExecutor implements TaskExecutor {
             const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
             autoFolderContextForFollowUp = { tasksRoot, existingFolders };
         }
-        const systemMessage = buildModeSystemMessage(currentMode, autoFolderContextForFollowUp);
+        const systemMessage = await withRepoInstructions(
+            buildModeSystemMessage(currentMode, autoFolderContextForFollowUp),
+            workingDirectory,
+            currentMode
+        );
 
         // When an SDK session ID exists, resume it natively instead of
         // replaying conversation history as a system message.
@@ -1038,7 +1067,11 @@ export class CLITaskExecutor implements TaskExecutor {
                 const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
                 autoFolderContextForChat = { tasksRoot, existingFolders };
             }
-            const systemMessage = buildModeSystemMessage(payload.mode, autoFolderContextForChat);
+            const systemMessage = await withRepoInstructions(
+                buildModeSystemMessage(payload.mode, autoFolderContextForChat),
+                chatWorkingDir,
+                payload.mode
+            );
             return this.executeWithAI(task, prompt + countSuffix, { tools: tools.length > 0 ? tools : undefined, systemMessage });
         }
 

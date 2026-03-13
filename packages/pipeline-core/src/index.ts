@@ -812,11 +812,18 @@ export {
     // Types
     PromptFileInfo,
     SkillInfo,
+    InstructionFileSet,
     // Prompt file discovery
     findPromptFiles,
     // Skill discovery
-    findSkills
+    findSkills,
+    // Instruction file discovery
+    findInstructionFiles,
+    loadInstructions,
+    MAX_INSTRUCTION_SIZE,
+    INSTRUCTION_DIR,
 } from './discovery';
+export type { InstructionMode } from './discovery';
 
 // ============================================================================
 // Git
