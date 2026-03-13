@@ -54,8 +54,8 @@ describe('TABS constant', () => {
         expect(tabs).toContain('memory');
     });
 
-    it('has exactly 4 entries (wiki hidden)', () => {
-        expect(TABS).toHaveLength(4);
+    it('has exactly 5 entries (wiki hidden)', () => {
+        expect(TABS).toHaveLength(5);
     });
 
     it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
@@ -66,7 +66,7 @@ describe('TABS constant', () => {
         const tabs = ALL_TABS.map(t => t.tab);
         expect(tabs).toContain('wiki');
         expect(tabs).toContain('skills');
-        expect(ALL_TABS).toHaveLength(5);
+        expect(ALL_TABS).toHaveLength(6);
     });
 
     it('TABS excludes wiki when SHOW_WIKI_TAB is false', () => {

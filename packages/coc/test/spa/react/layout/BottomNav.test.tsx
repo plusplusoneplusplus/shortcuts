@@ -46,7 +46,7 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         expect(screen.getByTestId('bottom-nav')).toBeTruthy();
         const buttons = screen.getAllByRole('button');
-        expect(buttons).toHaveLength(4);
+        expect(buttons).toHaveLength(5);
     });
 
     it('hidden on desktop viewport', () => {
