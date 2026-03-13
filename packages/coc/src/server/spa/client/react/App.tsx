@@ -34,7 +34,8 @@ interface MarkdownReviewDialogState {
     fetchMode: 'tasks' | 'auto';
 }
 
-interface WorkspaceLike {
+/* @internal – exported for testing only */
+export interface WorkspaceLike {
     id: string;
     rootPath?: string;
 }
@@ -50,17 +51,18 @@ function getFileName(path: string): string {
 }
 
 
-function resolveWorkspaceForPath(filePath: string, workspaces: WorkspaceLike[]): WorkspaceLike | null {
-    const normalizedPath = normalizePath(filePath);
+/* @internal – exported for testing only */
+export function resolveWorkspaceForPath(filePath: string, workspaces: WorkspaceLike[]): WorkspaceLike | null {
+    const normalizedPath = normalizePath(filePath).toLowerCase();
     let best: WorkspaceLike | null = null;
 
     for (const ws of workspaces) {
         if (!ws?.rootPath) continue;
-        const normalizedRoot = normalizePath(ws.rootPath).replace(/\/+$/, '');
+        const normalizedRoot = normalizePath(ws.rootPath).replace(/\/+$/, '').toLowerCase();
         if (!normalizedRoot) continue;
 
         if (normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + '/')) {
-            if (!best || normalizedRoot.length > normalizePath(best.rootPath || '').length) {
+            if (!best || normalizedRoot.length > normalizePath(best.rootPath || '').toLowerCase().length) {
                 best = ws;
             }
         }
@@ -292,9 +294,7 @@ function AppInner() {
 
             const fullPath = filePath;
 
-            const matchedWorkspace = resolveWorkspaceForPath(fullPath, appState.workspaces || []);
-            const fallbackWorkspace = appState.workspaces?.[0];
-            const workspace = matchedWorkspace || fallbackWorkspace;
+            const workspace = resolveWorkspaceForPath(fullPath, appState.workspaces || []);
             if (!workspace?.id) return;
 
             const taskRelativePath = toTaskRelativePath(fullPath, workspace.rootPath || '');
