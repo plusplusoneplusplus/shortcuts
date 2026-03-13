@@ -178,6 +178,44 @@ describe('buildCreateTaskPromptWithName', () => {
             expect(prompt).toContain('C:/Users/dev/data/repos/abc/tasks');
             expect(prompt).not.toContain('dev\\data');
         });
+
+        it('should start with "Create a task plan document for:" when name is provided', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName('retry-logic', 'Add retry', tasksRoot, ctx);
+            expect(prompt).toMatch(/^Create a task plan document for:/);
+        });
+
+        it('should start with "Create a task plan document for:" when name is not provided', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName(undefined, 'Some task', tasksRoot, ctx);
+            expect(prompt).toMatch(/^Create a task plan document for:/);
+        });
+
+        it('should wrap constraints in <rule> tags when name is provided', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName('retry-logic', 'Add retry', tasksRoot, ctx);
+            expect(prompt).toContain('<rule>');
+            expect(prompt).toContain('</rule>');
+            expect(prompt.indexOf('<rule>')).toBeGreaterThan(prompt.indexOf('Create a task plan document for:'));
+        });
+
+        it('should wrap constraints in <rule> tags when name is not provided', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName(undefined, 'Some task', tasksRoot, ctx);
+            expect(prompt).toContain('<rule>');
+            expect(prompt).toContain('</rule>');
+            expect(prompt.indexOf('<rule>')).toBeGreaterThan(prompt.indexOf('Create a task plan document for:'));
+        });
+
+        it('should place Save location inside <rule> block', () => {
+            const ctx: AutoFolderContext = { tasksRoot, existingFolders };
+            const prompt = buildCreateTaskPromptWithName('my-task', 'desc', tasksRoot, ctx);
+            const ruleStart = prompt.indexOf('<rule>');
+            const ruleEnd = prompt.indexOf('</rule>');
+            const saveIdx = prompt.indexOf('Save location:');
+            expect(saveIdx).toBeGreaterThan(ruleStart);
+            expect(saveIdx).toBeLessThan(ruleEnd);
+        });
     });
 });
 

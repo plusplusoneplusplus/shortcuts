@@ -147,18 +147,22 @@ export function buildCreateTaskPromptWithName(
 
         if (name && name.trim()) {
             const descLine = description ? `\n${description}` : '';
-            return `Save location: ${tasksRoot}/<chosen-folder>/${name}.plan.md
+            return `Create a task plan document for: ${name}${descLine}
+
+<rule>
+Save location: ${tasksRoot}/<chosen-folder>/${name}.plan.md
 Folder options: ${folderList}
 Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
-
-Create a task plan document for: ${name}${descLine}`;
+</rule>`;
         } else {
             const desc = description || '(General task)';
-            return `Save location: ${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md
+            return `Create a task plan document for: ${desc}
+
+<rule>
+Save location: ${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md
 Folder options: ${folderList}
 Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
-
-Create a task plan document for: ${desc}`;
+</rule>`;
         }
     }
 
