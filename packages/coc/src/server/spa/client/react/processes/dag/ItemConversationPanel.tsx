@@ -10,6 +10,7 @@ import { getApiBase } from '../../utils/config';
 import { Badge, Button, Spinner } from '../../shared';
 import { ConversationTurnBubble } from '../ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
+import { getProcessWorkspaceId } from '../../utils/workspace';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
 
@@ -258,6 +259,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
     const inputDisabled = sessionExpired;
     const proc = processData?.process ?? processData;
     const status = proc?.status ?? 'queued';
+    const wsId = getProcessWorkspaceId(proc) ?? undefined;
 
     const panelContent = (
         <div
@@ -331,6 +333,7 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                         key={i}
                         turn={turn}
                         onRetry={turn.isError ? handleRetry : undefined}
+                        wsId={wsId}
                     />
                 ))}
                 <div ref={scrollRef} />

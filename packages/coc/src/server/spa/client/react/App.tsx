@@ -270,17 +270,32 @@ function AppInner() {
             if (wsIdHint) {
                 const hintedWorkspace = (appState.workspaces as WorkspaceLike[] || []).find(ws => ws.id === wsIdHint);
                 if (hintedWorkspace) {
-                    const rootNormalized = normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
-                    const displayPath = rootNormalized ? `${rootNormalized}/.vscode/tasks/${filePath}` : filePath;
-                    setReviewDialog({
-                        open: true,
-                        minimized: false,
-                        scrollTop: 0,
-                        wsId: hintedWorkspace.id,
-                        filePath,
-                        displayPath,
-                        fetchMode: 'tasks',
-                    });
+                    if (isAbsolutePath(filePath)) {
+                        // Absolute path from chat click — determine fetchMode by task membership
+                        const taskRelativePath = toTaskRelativePath(filePath, hintedWorkspace.rootPath || '');
+                        setReviewDialog({
+                            open: true,
+                            minimized: false,
+                            scrollTop: 0,
+                            wsId: hintedWorkspace.id,
+                            filePath: taskRelativePath ?? filePath,
+                            displayPath: filePath,
+                            fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',
+                        });
+                    } else {
+                        // Task-relative path from TaskTree — existing behaviour
+                        const rootNormalized = normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
+                        const displayPath = rootNormalized ? `${rootNormalized}/.vscode/tasks/${filePath}` : filePath;
+                        setReviewDialog({
+                            open: true,
+                            minimized: false,
+                            scrollTop: 0,
+                            wsId: hintedWorkspace.id,
+                            filePath,
+                            displayPath,
+                            fetchMode: 'tasks',
+                        });
+                    }
                     return;
                 }
             }

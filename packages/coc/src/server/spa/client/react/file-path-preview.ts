@@ -504,9 +504,10 @@ function initFilePathPreviewDelegation(): void {
         const fullPath = target.getAttribute('data-full-path');
         if (!fullPath) return;
 
+        const wsId = target.closest('[data-ws-id]')?.getAttribute('data-ws-id') || undefined;
         hideTooltip();
         window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-            detail: { filePath: fullPath },
+            detail: { filePath: fullPath, wsId },
         }));
     });
 
@@ -549,9 +550,10 @@ function initFilePathPreviewDelegation(): void {
         const fullPath = link.getAttribute('data-full-path');
         if (!fullPath) return;
 
+        const wsId = link.closest('[data-ws-id]')?.getAttribute('data-ws-id') || undefined;
         hideTooltip();
         window.dispatchEvent(new CustomEvent('coc-open-markdown-review', {
-            detail: { filePath: fullPath },
+            detail: { filePath: fullPath, wsId },
         }));
     });
 

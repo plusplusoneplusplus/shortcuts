@@ -63,6 +63,8 @@ interface ConversationTurnBubbleProps {
     onRetry?: () => void;
     /** Process type (e.g. 'run-script') — used to label non-AI responses differently. */
     processType?: string;
+    /** Workspace ID — stamped as data-ws-id so file-path click handlers can route to the right workspace. */
+    wsId?: string;
 }
 
 interface RenderToolCall {
@@ -548,7 +550,7 @@ function TokenUsageBadge({ tokenUsage }: { tokenUsage: ClientTokenUsage }) {
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, processType }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === 'run-script';
     const assistantRender = !isUser ? buildAssistantRender(turn) : null;
@@ -683,7 +685,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType }: C
             'chat-message', isUser ? 'user' : 'assistant',
             turn.streaming && 'streaming',
             turn.isError && 'error'
-        )}>
+        )}
+            {...(wsId ? { 'data-ws-id': wsId } : {})}
+        >
             <div
                 className={cn(
                     'group w-full max-w-[95%] rounded-lg border px-3 py-2 shadow-sm',

@@ -377,7 +377,7 @@ export function ProcessDetail() {
                 ) : (
                     <div className="space-y-3" ref={turnsContainerRef}>
                         {turns.map((turn, i) => (
-                            <ConversationTurnBubble key={i} turn={turn} processType={metadataProcess?.type} />
+                            <ConversationTurnBubble key={i} turn={turn} processType={metadataProcess?.type} wsId={wsId ?? undefined} />
                         ))}
                     </div>
                 )}
