@@ -4,7 +4,7 @@
  * Validates scroll-to-bottom, mode selector, slash commands, retry-on-error,
  * cancel/move-to-top, PendingTaskInfoPanel, conversation caching,
  * rich SSE streaming (chunk/tool events), image paste, session expiry,
- * and copy conversation.
+ * copy conversation, and wsId propagation to ConversationTurnBubble.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -839,6 +839,21 @@ describe('ActivityChatDetail', () => {
             expect(resetBlock).toContain('setPendingQueue([])');
             expect(resetBlock).toContain('setSending(false)');
             expect(resetBlock).toContain('setIsStreaming(false)');
+        });
+    });
+
+    describe('wsId propagation to ConversationTurnBubble (file-path click fix)', () => {
+        it('passes wsId={workspaceId} to ConversationTurnBubble', () => {
+            expect(source).toContain('wsId={workspaceId}');
+        });
+
+        it('ConversationTurnBubble render includes both taskId and wsId props', () => {
+            const bubbleCall = source.substring(
+                source.indexOf('<ConversationTurnBubble'),
+                source.indexOf('<ConversationTurnBubble') + 200,
+            );
+            expect(bubbleCall).toContain('taskId={taskId}');
+            expect(bubbleCall).toContain('wsId={workspaceId}');
         });
     });
 });

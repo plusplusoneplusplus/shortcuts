@@ -933,7 +933,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                                         ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
                                         : turns;
                                 return renderTurns.map((turn, i) => (
-                                    <ConversationTurnBubble key={i} turn={turn} taskId={taskId} />
+                                    <ConversationTurnBubble key={i} turn={turn} taskId={taskId} wsId={workspaceId} />
                                 ));
                             })()}
                             {/* Optimistic queued bubbles */}
