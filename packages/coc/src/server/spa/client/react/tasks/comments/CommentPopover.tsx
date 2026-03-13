@@ -227,7 +227,7 @@ export function CommentPopover({
     return ReactDOM.createPortal(
         <div
             ref={popoverRef}
-            className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-2.5 flex flex-col gap-1.5"
+            className="fixed z-[10003] min-w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-2.5 flex flex-col gap-1.5 overflow-hidden resize"
             style={{ top: clampedPos.top, left: clampedPos.left }}
             data-testid="comment-popover"
         >

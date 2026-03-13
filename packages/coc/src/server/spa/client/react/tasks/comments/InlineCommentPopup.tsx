@@ -109,7 +109,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
             {/* Textarea */}
             <textarea
                 ref={textareaRef}
-                className="w-full p-2 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y min-h-[60px]"
+                className="w-full p-2 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-none flex-1 min-h-[60px]"
                 placeholder="Add your comment…"
                 value={text}
                 onChange={e => setText(e.target.value)}
@@ -165,7 +165,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
     return ReactDOM.createPortal(
         <div
             ref={popupRef}
-            className="fixed z-[10003] w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-3 flex flex-col gap-2"
+            className="fixed z-[10003] min-w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-3 flex flex-col gap-2 overflow-hidden resize"
             style={{ top: clampedPos.top, left: clampedPos.left }}
             data-testid="inline-comment-popup"
         >
