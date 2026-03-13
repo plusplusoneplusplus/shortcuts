@@ -326,7 +326,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 displayName: name || prompt.trim().slice(0, 60),
             };
 
-            const repoBridge = bridge.getOrCreateBridge(ws.rootPath);
+            bridge.getOrCreateBridge(ws.rootPath);
             const queueManager = bridge.registry.getQueueForRepo(ws.rootPath);
             const taskId = queueManager.enqueue(taskInput);
 
