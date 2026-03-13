@@ -24,6 +24,14 @@ const chatMarked = new Marked({
         html(raw: string) {
             return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         },
+        link(href: string, title: string | null | undefined, text: string): string {
+            const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
+            const titleAttr = title ? ` title="${title}"` : '';
+            if (isExternal) {
+                return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+            }
+            return `<a href="${href}"${titleAttr}>${text}</a>`;
+        },
     },
 });
 

@@ -122,6 +122,36 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('Click me');
     });
 
+    it('opens https links in a new tab with rel=noopener', () => {
+        const html = chatMarkdownToHtml('[Example](https://example.com)');
+        expect(html).toContain('target="_blank"');
+        expect(html).toContain('rel="noopener noreferrer"');
+    });
+
+    it('opens http links in a new tab with rel=noopener', () => {
+        const html = chatMarkdownToHtml('[Local](http://localhost:3000)');
+        expect(html).toContain('target="_blank"');
+        expect(html).toContain('rel="noopener noreferrer"');
+    });
+
+    it('opens mailto links in a new tab with rel=noopener', () => {
+        const html = chatMarkdownToHtml('[Email](mailto:user@example.com)');
+        expect(html).toContain('target="_blank"');
+        expect(html).toContain('rel="noopener noreferrer"');
+    });
+
+    it('does not add target="_blank" to anchor links', () => {
+        const html = chatMarkdownToHtml('[Section](#section-id)');
+        expect(html).not.toContain('target="_blank"');
+        expect(html).toContain('href="#section-id"');
+    });
+
+    it('preserves title attribute on external links', () => {
+        const html = chatMarkdownToHtml('[Docs](https://docs.example.com "Documentation")');
+        expect(html).toContain('title="Documentation"');
+        expect(html).toContain('target="_blank"');
+    });
+
     // --- Tables ---
 
     it('renders tables', () => {
