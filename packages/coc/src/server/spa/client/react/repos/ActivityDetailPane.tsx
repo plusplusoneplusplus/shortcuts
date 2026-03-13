@@ -75,5 +75,5 @@ export function ActivityDetailPane({ selectedTaskId, onBack, workspaceId }: Acti
         );
     }
 
-    return <ActivityChatDetail taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} />;
+    return <ActivityChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} />;
 }
