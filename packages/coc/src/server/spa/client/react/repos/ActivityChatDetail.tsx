@@ -248,6 +248,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         stopStreaming();
         closeFollowUpStream();
         queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
+        setPendingQueue([]);
+        setSending(false);
+        setIsStreaming(false);
 
         // Restore draft for the new taskId
         const draft = getDraft(currentTaskId);

@@ -795,4 +795,40 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain('data-status={msg.status}');
         });
     });
+
+    describe('chat-switch state reset (pendingQueue bubble leak fix)', () => {
+        it('resets pendingQueue in the taskId-change useEffect', () => {
+            const resetBlock = source.substring(
+                source.indexOf('Load task + conversation on mount / taskId change'),
+                source.indexOf('Load task + conversation on mount / taskId change') + 2000,
+            );
+            expect(resetBlock).toContain('setPendingQueue([])');
+        });
+
+        it('resets sending in the taskId-change useEffect', () => {
+            const resetBlock = source.substring(
+                source.indexOf('Load task + conversation on mount / taskId change'),
+                source.indexOf('Load task + conversation on mount / taskId change') + 2000,
+            );
+            expect(resetBlock).toContain('setSending(false)');
+        });
+
+        it('resets isStreaming in the taskId-change useEffect', () => {
+            const resetBlock = source.substring(
+                source.indexOf('Load task + conversation on mount / taskId change'),
+                source.indexOf('Load task + conversation on mount / taskId change') + 2000,
+            );
+            expect(resetBlock).toContain('setIsStreaming(false)');
+        });
+
+        it('resets pendingQueue, sending and isStreaming before restoring draft', () => {
+            const resetBlock = source.substring(
+                source.indexOf('Load task + conversation on mount / taskId change'),
+                source.indexOf('Restore draft for the new taskId'),
+            );
+            expect(resetBlock).toContain('setPendingQueue([])');
+            expect(resetBlock).toContain('setSending(false)');
+            expect(resetBlock).toContain('setIsStreaming(false)');
+        });
+    });
 });
