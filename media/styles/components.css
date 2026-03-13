@@ -726,12 +726,8 @@ body.vscode-light .hljs-type {
     border: 1px solid var(--vscode-widget-border, #454545);
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    position: fixed;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 460px;
-    max-width: calc(100vw - 40px);
+    max-width: 480px;
+    width: 90%;
     max-height: 90vh;
     overflow: hidden;
     display: flex;

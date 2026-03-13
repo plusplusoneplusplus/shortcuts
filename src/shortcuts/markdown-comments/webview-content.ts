@@ -413,9 +413,6 @@ export function getWebviewContent(
                 <button id="fpCopyPromptBtn" class="btn btn-secondary">Copy Prompt</button>
                 <button id="fpExecuteBtn" class="btn btn-primary">Execute</button>
             </div>
-            <div class="resize-handle resize-handle-se" data-resize="se"></div>
-            <div class="resize-handle resize-handle-e" data-resize="e"></div>
-            <div class="resize-handle resize-handle-s" data-resize="s"></div>
         </div>
     </div>
 
@@ -440,9 +437,6 @@ export function getWebviewContent(
                 <button id="udCancelBtn" class="btn btn-secondary">Cancel</button>
                 <button id="udSubmitBtn" class="btn btn-primary">Update</button>
             </div>
-            <div class="resize-handle resize-handle-se" data-resize="se"></div>
-            <div class="resize-handle resize-handle-e" data-resize="e"></div>
-            <div class="resize-handle resize-handle-s" data-resize="s"></div>
         </div>
     </div>
 
@@ -471,9 +465,6 @@ export function getWebviewContent(
                 <button id="rpCancelBtn" class="btn btn-secondary">Cancel</button>
                 <button id="rpSubmitBtn" class="btn btn-primary">Refresh Plan</button>
             </div>
-            <div class="resize-handle resize-handle-se" data-resize="se"></div>
-            <div class="resize-handle resize-handle-e" data-resize="e"></div>
-            <div class="resize-handle resize-handle-s" data-resize="s"></div>
         </div>
     </div>
 

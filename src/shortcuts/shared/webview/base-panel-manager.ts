@@ -141,15 +141,10 @@ export function setupPanelDrag(
         startX = event.clientX;
         startY = event.clientY;
         
-        // Get current visual position (correct even with CSS transform)
+        // Get current position
         const rect = panel.getBoundingClientRect();
         initialLeft = rect.left;
         initialTop = rect.top;
-
-        // Clear any CSS transform so explicit left/top take full effect
-        panel.style.transform = '';
-        panel.style.left = initialLeft + 'px';
-        panel.style.top = initialTop + 'px';
 
         // Ensure we're using fixed positioning for dragging
         panel.style.position = 'fixed';
@@ -252,19 +247,10 @@ export function setupElementResize(
 
             startX = event.clientX;
             startY = event.clientY;
-
-            // Capture visual position (correct even with CSS transform)
-            const rect = element.getBoundingClientRect();
-            initialWidth = rect.width;
-            initialHeight = rect.height;
-            initialLeft = rect.left;
-            initialTop = rect.top;
-
-            // Anchor with explicit px values and clear any transform
-            element.style.transform = '';
-            element.style.position = 'fixed';
-            element.style.left = initialLeft + 'px';
-            element.style.top = initialTop + 'px';
+            initialWidth = element.offsetWidth;
+            initialHeight = element.offsetHeight;
+            initialLeft = parseInt(element.style.left) || 0;
+            initialTop = parseInt(element.style.top) || 0;
         });
     });
 

@@ -8,7 +8,6 @@
 
 import { postMessage } from './vscode-bridge';
 import { getPreviewActionFilePath, clearPreviewActionFilePath } from './preview-action-state';
-import { setupPanelDrag, setupElementResize } from '../../shared/webview/base-panel-manager';
 
 /** Current dialog state */
 interface DialogState {
@@ -32,18 +31,6 @@ export function initRefreshPlanDialog(): void {
     if (!dialog || !closeBtn || !cancelBtn || !submitBtn || !contextInput) {
         console.warn('[RefreshPlanDialog] Dialog elements not found');
         return;
-    }
-
-    // Wire up drag and resize on the inner modal-dialog element
-    const modalDialog = dialog.querySelector<HTMLElement>('.modal-dialog');
-    if (modalDialog) {
-        setupPanelDrag(modalDialog, '.modal-header', '.modal-close-btn');
-        setupElementResize(modalDialog, '.resize-handle', {
-            minWidth: 320,
-            minHeight: 150,
-            maxWidth: window.innerWidth - 40,
-            maxHeight: window.innerHeight - 40
-        });
     }
 
     // Close button handler
