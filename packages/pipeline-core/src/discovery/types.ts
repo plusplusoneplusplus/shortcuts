@@ -16,6 +16,21 @@ export interface PromptFileInfo {
 }
 
 /**
+ * Discovered instruction file paths for a repository.
+ * All paths are optional — missing file means no instructions for that scope.
+ */
+export interface InstructionFileSet {
+    /** Path to .github/coc/instructions.md (base — all modes) */
+    base?: string;
+    /** Path to .github/coc/instructions-ask.md */
+    ask?: string;
+    /** Path to .github/coc/instructions-plan.md */
+    plan?: string;
+    /** Path to .github/coc/instructions-autopilot.md */
+    autopilot?: string;
+}
+
+/**
  * Discovered skill metadata.
  *
  * Extends the extension's Skill type (src/shortcuts/shared/skill-files-utils.ts:8-17)
