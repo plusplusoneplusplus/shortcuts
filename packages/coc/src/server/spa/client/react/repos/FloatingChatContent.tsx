@@ -15,6 +15,7 @@ export interface FloatingChatContentProps {
 export function FloatingChatContent({ taskId, workspaceId }: FloatingChatContentProps) {
     return (
         <ActivityChatDetail
+            key={taskId}
             taskId={taskId}
             workspaceId={workspaceId}
             variant="floating"
