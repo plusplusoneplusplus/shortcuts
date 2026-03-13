@@ -156,7 +156,6 @@ export function SkillsBundledPanel() {
                                     type="checkbox"
                                     checked={selectedBundled.has(skill.name)}
                                     onChange={() => toggleBundled(skill.name)}
-                                    disabled={false}
                                     className="accent-[#0078d4]"
                                 />
                                 <div className="flex-1 min-w-0">
