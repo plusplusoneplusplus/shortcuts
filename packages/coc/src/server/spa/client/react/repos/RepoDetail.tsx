@@ -40,7 +40,7 @@ export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
     { key: 'git', label: 'Git' },
     { key: 'explorer', label: 'Explorer' },
     { key: 'tasks', label: 'Plans' },
-    { key: 'pull-requests', label: 'Pull Requests' },
+    { key: 'pull-requests', label: 'PRs' },
     { key: 'activity', label: 'Activity' },
     { key: 'workflows', label: 'Workflows' },
     { key: 'schedules', label: 'Schedules' },
