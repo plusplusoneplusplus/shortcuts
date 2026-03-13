@@ -601,3 +601,57 @@ describe('RepoDetail MobileTabBar Activity badge wiring', () => {
         expect(mobileBarSection).not.toContain('queueRunningCount={');
     });
 });
+
+describe('RepoDetail Git tab ahead/behind badge', () => {
+    it('imports useGitInfo from hooks', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { useGitInfo } from '../hooks/useGitInfo'");
+    });
+
+    it('calls useGitInfo with workspace id', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('useGitInfo(ws.id)');
+    });
+
+    it('destructures ahead and behind from useGitInfo', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('gitAhead');
+        expect(REPO_DETAIL_SOURCE).toContain('gitBehind');
+    });
+
+    it('renders ahead/behind badge only for git tab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("t.key === 'git' && (gitAhead > 0 || gitBehind > 0)");
+    });
+
+    it('renders ahead indicator with ↑ symbol', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('↑{gitAhead}');
+    });
+
+    it('renders behind indicator with ↓ symbol', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('↓{gitBehind}');
+    });
+
+    it('badge has data-testid for testing', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="git-ahead-behind-badge"');
+    });
+
+    it('ahead count span has data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="git-ahead-count"');
+    });
+
+    it('behind count span has data-testid', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="git-behind-count"');
+    });
+
+    it('badge uses muted/small styling (opacity-70 and text-[10px])', () => {
+        const badgeIdx = REPO_DETAIL_SOURCE.indexOf('git-ahead-behind-badge');
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, badgeIdx - 200), badgeIdx + 50);
+        expect(block).toContain('opacity-70');
+        expect(block).toContain('text-[10px]');
+    });
+
+    it('behind count is only rendered when gitBehind > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('gitBehind > 0');
+    });
+
+    it('ahead count is only rendered when gitAhead > 0', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('gitAhead > 0');
+    });
+});

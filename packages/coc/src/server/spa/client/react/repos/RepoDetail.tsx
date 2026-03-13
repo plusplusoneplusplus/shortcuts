@@ -25,6 +25,7 @@ import { GenerateTaskDialog } from '../tasks/GenerateTaskDialog';
 import { getApiBase } from '../utils/config';
 import { fetchApi } from '../hooks/useApi';
 import { useRepoQueueStats } from '../hooks/useRepoQueueStats';
+import { useGitInfo } from '../hooks/useGitInfo';
 import { MobileTabBar } from '../layout/MobileTabBar';
 import type { RepoData } from './repoGrouping';
 import type { RepoSubTab } from '../types/dashboard';
@@ -63,6 +64,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
     const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
+    const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -370,6 +372,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         onClick={() => switchSubTab(t.key)}
                     >
                         {t.label}
+                        {t.key === 'git' && (gitAhead > 0 || gitBehind > 0) && (
+                            <span className="ml-1 font-mono text-[10px] opacity-70" data-testid="git-ahead-behind-badge">
+                                {gitAhead > 0 && <span data-testid="git-ahead-count">↑{gitAhead}</span>}
+                                {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
+                            </span>
+                        )}
                         {t.key === 'tasks' && taskCount > 0 && (
                             <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
                         )}
