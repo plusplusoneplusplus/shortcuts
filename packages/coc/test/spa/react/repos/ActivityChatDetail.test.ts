@@ -451,6 +451,16 @@ describe('ActivityChatDetail', () => {
             expect(source).toContain("type: 'CACHE_CONVERSATION'");
         });
 
+        it('skips caching when any turn has streaming:true (prevents partial cache)', () => {
+            // The guard `!resolved.some(t => t.streaming)` must be present so that
+            // mid-stream SSE turns never pollute the 1-hour conversation cache.
+            const setTurnsBlock = source.substring(
+                source.indexOf('setTurnsAndRef'),
+                source.indexOf('setTurnsAndRef') + 600,
+            );
+            expect(setTurnsBlock).toContain('resolved.some(t => t.streaming)');
+        });
+
         it('checks conversationCache before fetching', () => {
             expect(source).toContain('appState.conversationCache[taskId]');
             expect(source).toContain('cached.cachedAt < CACHE_TTL_MS');

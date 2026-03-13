@@ -168,7 +168,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
         turnsRef.current = resolved;
         setTurns(resolved);
-        if (taskId) {
+        if (taskId && !resolved.some(t => t.streaming)) {
             appDispatch({ type: 'CACHE_CONVERSATION', processId: taskId, turns: resolved });
         }
     }, [taskId, appDispatch]);
