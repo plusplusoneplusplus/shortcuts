@@ -16,7 +16,6 @@ import type {
 import {
     getDiffCommentCategory,
     ALL_DIFF_CATEGORIES,
-    DIFF_CATEGORY_INFO,
 } from '../../../../src/server/spa/client/diff-comment-types';
 
 // ============================================================================
@@ -273,18 +272,8 @@ describe('getDiffCommentCategory', () => {
 });
 
 // ============================================================================
-// DIFF_CATEGORY_INFO & ALL_DIFF_CATEGORIES
+// ALL_DIFF_CATEGORIES
 // ============================================================================
-
-describe('DIFF_CATEGORY_INFO', () => {
-    it('has an entry for every category', () => {
-        for (const cat of ALL_DIFF_CATEGORIES) {
-            expect(DIFF_CATEGORY_INFO[cat]).toBeDefined();
-            expect(DIFF_CATEGORY_INFO[cat].label).toBeTruthy();
-            expect(DIFF_CATEGORY_INFO[cat].icon).toBeTruthy();
-        }
-    });
-});
 
 describe('ALL_DIFF_CATEGORIES', () => {
     it('contains exactly 6 categories', () => {

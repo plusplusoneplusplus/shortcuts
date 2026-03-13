@@ -21,24 +21,6 @@ export type DiffCommentStatus = 'open' | 'resolved' | 'orphaned';
 /** Comment categories. */
 export type DiffCommentCategory = 'bug' | 'question' | 'suggestion' | 'praise' | 'nitpick' | 'general';
 
-// ============================================================================
-// Category Constants
-// ============================================================================
-
-export interface DiffCategoryInfo {
-    label: string;
-    icon: string;
-}
-
-export const DIFF_CATEGORY_INFO: Record<DiffCommentCategory, DiffCategoryInfo> = {
-    bug:        { label: 'Bug',        icon: '🐛' },
-    question:   { label: 'Question',   icon: '❓' },
-    suggestion: { label: 'Suggestion', icon: '💡' },
-    praise:     { label: 'Praise',     icon: '🌟' },
-    nitpick:    { label: 'Nitpick',    icon: '🔍' },
-    general:    { label: 'General',    icon: '💬' },
-};
-
 export const ALL_DIFF_CATEGORIES: DiffCommentCategory[] = ['bug', 'question', 'suggestion', 'praise', 'nitpick', 'general'];
 
 /** Get category from a DiffComment (field first, then text prefix fallback). */
