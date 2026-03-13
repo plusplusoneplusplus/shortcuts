@@ -22,6 +22,7 @@ import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
 import { AdminDialog } from './admin/AdminDialog';
+import { LogsDialog } from './views/logs/LogsDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 
 interface MarkdownReviewDialogState {
@@ -91,7 +92,9 @@ function AppInner() {
     const prevWsStatusRef = useRef(appState.wsStatus);
     const hasConnectedRef = useRef(false);
     const [adminOpen, setAdminOpen] = useState(false);
+    const [logsOpen, setLogsOpen] = useState(false);
     const prevHashRef = useRef('');
+    const prevHashLogsRef = useRef('');
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
         minimized: false,
@@ -258,6 +261,30 @@ function AppInner() {
         }
     }, []);
 
+    // Handle #logs hash: open dialog without changing active tab; restore previous hash on close
+    useEffect(() => {
+        const handleHashForLogs = () => {
+            if (location.hash === '#logs') {
+                setLogsOpen(true);
+            }
+        };
+        handleHashForLogs();
+        window.addEventListener('hashchange', handleHashForLogs);
+        return () => window.removeEventListener('hashchange', handleHashForLogs);
+    }, []);
+
+    const handleLogsOpen = useCallback(() => {
+        prevHashLogsRef.current = location.hash || '#repos';
+        location.hash = '#logs';
+    }, []);
+
+    const handleLogsClose = useCallback(() => {
+        setLogsOpen(false);
+        if (location.hash === '#logs') {
+            location.hash = prevHashLogsRef.current || '#repos';
+        }
+    }, []);
+
     useEffect(() => {
         const handleOpenMarkdownReview = (event: Event) => {
             const detail = (event as CustomEvent<{ filePath?: string; sourceFilePath?: string; wsId?: string }>).detail;
@@ -362,13 +389,14 @@ function AppInner() {
 
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
-            <TopBar onAdminOpen={handleAdminOpen} />
+            <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
             <Router />
             <FloatingChatManager />
             <BottomNav />
             <ToastContainer toasts={toasts} removeToast={removeToast} />
             <EnqueueDialog />
             <AdminDialog open={adminOpen} onClose={handleAdminClose} />
+            <LogsDialog open={logsOpen} onClose={handleLogsClose} />
             <MarkdownReviewDialog
                 open={reviewDialog.open}
                 onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}

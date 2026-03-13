@@ -37,9 +37,10 @@ const wsStatusConfig: Record<WsStatus, { color: string; label: string; pulse: bo
 
 export interface TopBarProps {
     onAdminOpen?: () => void;
+    onLogsOpen?: () => void;
 }
 
-export function TopBar({ onAdminOpen }: TopBarProps = {}) {
+export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { theme, toggleTheme } = useTheme();
 
@@ -102,15 +103,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 </span>
                 <button
                     id="logs-toggle"
-                    className={
-                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
-                        (state.activeTab === 'logs'
-                            ? 'bg-[#0078d4] text-white'
-                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                    }
+                    className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
                     aria-label="Logs"
                     title="Logs"
-                    onClick={() => switchTab('logs')}
+                    onClick={onLogsOpen}
                 >
                     &#128203;
                 </button>

@@ -370,25 +370,29 @@ describe('TopBar — logs icon button', () => {
         expect(btn.className).toContain('touch-target');
     });
 
-    it('clicking logs-toggle sets hash to #logs', () => {
-        renderTopBar();
+    it('clicking logs-toggle calls onLogsOpen prop', () => {
+        const onLogsOpen = vi.fn();
+        render(
+            <AppProvider>
+                <ThemeProvider>
+                    <TopBar onLogsOpen={onLogsOpen} />
+                </ThemeProvider>
+            </AppProvider>
+        );
         act(() => {
             fireEvent.click(document.getElementById('logs-toggle')!);
         });
-        expect(location.hash).toBe('#logs');
+        expect(onLogsOpen).toHaveBeenCalledOnce();
     });
 
-    it('logs-toggle shows active style when activeTab is logs', () => {
+    it('logs-toggle never shows active style (logs is now a dialog, not a tab)', () => {
         renderTopBar();
-        act(() => {
-            fireEvent.click(document.getElementById('logs-toggle')!);
-        });
         const btn = document.getElementById('logs-toggle')!;
-        expect(btn.className).toContain('bg-[#0078d4]');
-        expect(btn.className).toContain('text-white');
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+        expect(btn.className).not.toContain('text-white');
     });
 
-    it('logs-toggle does not show active style when another tab is active', () => {
+    it('logs-toggle does not show active style regardless of active tab', () => {
         renderTopBar();
         const btn = document.getElementById('logs-toggle')!;
         expect(btn.className).not.toContain('bg-[#0078d4]');
