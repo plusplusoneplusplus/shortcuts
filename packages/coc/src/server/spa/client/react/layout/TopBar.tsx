@@ -17,7 +17,6 @@ export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Wiki', tab: 'wiki' },
     { label: 'Skills', tab: 'skills' },
     { label: 'Memory', tab: 'memory' },
-    { label: 'Logs', tab: 'logs' },
 ];
 
 export const TABS: { label: string; tab: DashboardTab }[] = SHOW_WIKI_TAB
@@ -101,6 +100,20 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         className={`inline-block w-2 h-2 rounded-full ${wsStatusConfig[state.wsStatus ?? 'closed']?.color}${wsStatusConfig[state.wsStatus ?? 'closed']?.pulse ? ' animate-pulse' : ''}`}
                     />
                 </span>
+                <button
+                    id="logs-toggle"
+                    className={
+                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        (state.activeTab === 'logs'
+                            ? 'bg-[#0078d4] text-white'
+                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                    }
+                    aria-label="Logs"
+                    title="Logs"
+                    onClick={() => switchTab('logs')}
+                >
+                    &#128203;
+                </button>
                 <button
                     id="admin-toggle"
                     className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"

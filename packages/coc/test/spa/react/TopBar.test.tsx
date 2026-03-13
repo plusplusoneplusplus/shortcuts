@@ -54,8 +54,8 @@ describe('TABS constant', () => {
         expect(tabs).toContain('memory');
     });
 
-    it('has exactly 5 entries (wiki hidden)', () => {
-        expect(TABS).toHaveLength(5);
+    it('has exactly 4 entries (wiki hidden)', () => {
+        expect(TABS).toHaveLength(4);
     });
 
     it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
@@ -66,7 +66,7 @@ describe('TABS constant', () => {
         const tabs = ALL_TABS.map(t => t.tab);
         expect(tabs).toContain('wiki');
         expect(tabs).toContain('skills');
-        expect(ALL_TABS).toHaveLength(6);
+        expect(ALL_TABS).toHaveLength(5);
     });
 
     it('TABS excludes wiki when SHOW_WIKI_TAB is false', () => {
@@ -346,5 +346,57 @@ describe('TopBar tab → hash → tabFromHash round-trip', () => {
             const hash = '#' + tab;
             expect(tabFromHash(hash)).toBe(tab);
         }
+    });
+});
+
+// ─── TopBar logs icon button ─────────────────────────────────────
+
+describe('TopBar — logs icon button', () => {
+    it('renders a logs-toggle button', () => {
+        renderTopBar();
+        expect(document.getElementById('logs-toggle')).toBeTruthy();
+    });
+
+    it('logs-toggle has aria-label and title "Logs"', () => {
+        renderTopBar();
+        const btn = document.getElementById('logs-toggle')!;
+        expect(btn.getAttribute('aria-label')).toBe('Logs');
+        expect(btn.getAttribute('title')).toBe('Logs');
+    });
+
+    it('logs-toggle has touch-target class', () => {
+        renderTopBar();
+        const btn = document.getElementById('logs-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
+
+    it('clicking logs-toggle sets hash to #logs', () => {
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('logs-toggle')!);
+        });
+        expect(location.hash).toBe('#logs');
+    });
+
+    it('logs-toggle shows active style when activeTab is logs', () => {
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('logs-toggle')!);
+        });
+        const btn = document.getElementById('logs-toggle')!;
+        expect(btn.className).toContain('bg-[#0078d4]');
+        expect(btn.className).toContain('text-white');
+    });
+
+    it('logs-toggle does not show active style when another tab is active', () => {
+        renderTopBar();
+        const btn = document.getElementById('logs-toggle')!;
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+    });
+
+    it('"Logs" text tab is not rendered in the main nav', () => {
+        renderTopBar();
+        const tabs = TABS.map(t => t.label);
+        expect(tabs).not.toContain('Logs');
     });
 });
