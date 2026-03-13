@@ -193,6 +193,12 @@ export function ActivityListPane({
         return { filteredPinned: pinned, filteredUnpinned: unpinned };
     }, [activeHistory, pinnedChatIds]);
 
+    // Count pinned tasks that are still running (not yet in history)
+    const pinnedRunningCount = useMemo(() => {
+        if (!pinnedChatIds) return 0;
+        return filteredRunning.filter(t => pinnedChatIds.has(t.id)).length;
+    }, [filteredRunning, pinnedChatIds]);
+
     const [showPinned, setShowPinned] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
@@ -282,7 +288,13 @@ export function ActivityListPane({
         if (!contextMenu) return [];
         const { taskId, taskStatus } = contextMenu;
         if (taskStatus === 'running') {
-            return [{ label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) }];
+            const isPinned = pinnedChatIds?.has(taskId) ?? false;
+            return [
+                ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
+                ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
+                { label: '', icon: '', separator: true, onClick: () => {} },
+                { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
+            ];
         }
         if (taskStatus === 'completed') {
             const isUnseen = unseenTaskIds?.has(taskId) ?? false;
@@ -411,6 +423,7 @@ export function ActivityListPane({
                                     status="running"
                                     now={now}
                                     selected={selectedTaskId === task.id}
+                                    isPinned={pinnedChatIds?.has(task.id) ?? false}
                                     onClick={() => onSelectTask(task.id, task)}
                                     onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
                                 />
@@ -489,14 +502,14 @@ export function ActivityListPane({
                     </div>
                 )}
 
-                {filteredPinned.length > 0 && (
+                {(filteredPinned.length > 0 || pinnedRunningCount > 0) && (
                     <div>
                         <button
                             className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
                             onClick={() => setShowPinned(!showPinned)}
                             data-testid="pinned-chats-section-toggle"
                         >
-                            {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length})
+                            {showPinned ? '▼' : '▶'} 📌 Pinned ({filteredPinned.length + pinnedRunningCount})
                         </button>
                         {showPinned && (
                             <div className="flex flex-col gap-1">
@@ -673,14 +686,15 @@ export function ActivityListPane({
     );
 }
 
-export function QueueTaskItem({ task, status, now, selected, onClick, onContextMenu }: {
+export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, onContextMenu }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
     selected?: boolean;
+    isPinned?: boolean;
     onClick?: () => void;
     onContextMenu?: (e: React.MouseEvent) => void;
-}) {
+}){
     const name = task.displayName || task.type || 'Task';
     const icon = getTaskTypeIcon(task);
     const promptPreview = getTaskPromptPreview(task);
@@ -695,11 +709,12 @@ export function QueueTaskItem({ task, status, now, selected, onClick, onContextM
     }
 
     return (
-        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
+        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
                     <span className="shrink-0">{task.frozen ? '❄️' : icon}</span>
                     <span className="truncate" title={name}>{name}</span>
+                    {isPinned && <span className="shrink-0 text-[10px]" data-testid="running-pin-badge">📌</span>}
                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                 </div>
                 {elapsed && (

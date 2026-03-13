@@ -255,4 +255,67 @@ describe('ActivityListPane pinned chats', () => {
             expect(source).toContain("icon: '🗑'");
         });
     });
+
+    describe('pin running tasks', () => {
+        it('running context menu includes Pin to top option', () => {
+            // The running taskStatus branch must also check pinnedChatIds and offer Pin/Unpin
+            const runningBlock = source.substring(
+                source.indexOf("taskStatus === 'running'"),
+                source.indexOf("taskStatus === 'completed'"),
+            );
+            expect(runningBlock).toContain("'Pin to top'");
+        });
+
+        it('running context menu includes Unpin option', () => {
+            const runningBlock = source.substring(
+                source.indexOf("taskStatus === 'running'"),
+                source.indexOf("taskStatus === 'completed'"),
+            );
+            expect(runningBlock).toContain("'Unpin'");
+        });
+
+        it('running context menu calls onPinChat for running task', () => {
+            const runningBlock = source.substring(
+                source.indexOf("taskStatus === 'running'"),
+                source.indexOf("taskStatus === 'completed'"),
+            );
+            expect(runningBlock).toContain('onPinChat(taskId)');
+        });
+
+        it('running context menu calls onUnpinChat for running task', () => {
+            const runningBlock = source.substring(
+                source.indexOf("taskStatus === 'running'"),
+                source.indexOf("taskStatus === 'completed'"),
+            );
+            expect(runningBlock).toContain('onUnpinChat(taskId)');
+        });
+
+        it('passes isPinned to QueueTaskItem for running tasks', () => {
+            expect(source).toContain('isPinned={pinnedChatIds?.has(task.id) ?? false}');
+        });
+
+        it('QueueTaskItem accepts isPinned prop', () => {
+            expect(source).toContain('isPinned?: boolean');
+        });
+
+        it('QueueTaskItem applies amber left-border when isPinned', () => {
+            expect(source).toContain("isPinned && \"border-l-2 border-l-amber-400 dark:border-l-amber-500\"");
+        });
+
+        it('QueueTaskItem renders a pin badge when isPinned', () => {
+            expect(source).toContain('data-testid="running-pin-badge"');
+        });
+
+        it('computes pinnedRunningCount from filteredRunning', () => {
+            expect(source).toContain('pinnedRunningCount');
+        });
+
+        it('pinned section visible when only running tasks are pinned', () => {
+            expect(source).toContain('filteredPinned.length > 0 || pinnedRunningCount > 0');
+        });
+
+        it('pinned section count includes pinnedRunningCount', () => {
+            expect(source).toContain('filteredPinned.length + pinnedRunningCount');
+        });
+    });
 });
