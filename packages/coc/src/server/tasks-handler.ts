@@ -410,7 +410,6 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
 
             if (type === 'folder') {
                 // Create folder
-                const parentDir = parent ? path.resolve(tasksFolder, parent) : tasksFolder;
                 const resolvedParent = resolveAndValidatePath(tasksFolder, parent || '');
                 if (!resolvedParent) {
                     return sendError(res, 403, 'Access denied: path is outside tasks folder');
@@ -429,9 +428,6 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 }
             } else {
                 // Create task file
-                const targetDir = folder
-                    ? path.resolve(tasksFolder, folder)
-                    : tasksFolder;
                 const resolvedDir = resolveAndValidatePath(tasksFolder, folder || '');
                 if (!resolvedDir) {
                     return sendError(res, 403, 'Access denied: path is outside tasks folder');
