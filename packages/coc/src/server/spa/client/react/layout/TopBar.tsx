@@ -35,7 +35,11 @@ const wsStatusConfig: Record<WsStatus, { color: string; label: string; pulse: bo
     closed: { color: 'bg-[#f14c4c] dark:bg-[#f48771]', label: 'Disconnected', pulse: false },
 };
 
-export function TopBar() {
+export interface TopBarProps {
+    onAdminOpen?: () => void;
+}
+
+export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { theme, toggleTheme } = useTheme();
 
@@ -96,15 +100,15 @@ export function TopBar() {
                         className={`inline-block w-2 h-2 rounded-full ${wsStatusConfig[state.wsStatus ?? 'closed']?.color}${wsStatusConfig[state.wsStatus ?? 'closed']?.pulse ? ' animate-pulse' : ''}`}
                     />
                 </span>
-                <a
+                <button
                     id="admin-toggle"
                     className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
-                    href="#admin"
                     aria-label="Admin"
                     title="Admin"
+                    onClick={onAdminOpen}
                 >
                     &#9881;
-                </a>
+                </button>
                 <button
                     id="theme-toggle"
                     className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"

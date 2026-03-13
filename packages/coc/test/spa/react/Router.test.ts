@@ -55,8 +55,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#wiki')).toBe('wiki');
     });
 
-    it('returns "admin" for #admin', () => {
-        expect(tabFromHash('#admin')).toBe('admin');
+    it('returns null for #admin (admin is now a dialog, not a routed tab)', () => {
+        expect(tabFromHash('#admin')).toBeNull();
     });
 
     it('returns "reports" for #reports', () => {

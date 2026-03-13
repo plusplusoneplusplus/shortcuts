@@ -9,7 +9,6 @@ import { useQueue } from '../context/QueueContext';
 import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
-import { AdminPanel } from '../admin/AdminPanel';
 import { lazy, Suspense } from 'react';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
@@ -25,7 +24,6 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'processes' || h === 'process' || h === 'session') return 'processes';
     if (h === 'repos' || h === 'tasks') return 'repos';
     if (h === 'wiki') return 'wiki';
-    if (h === 'admin') return 'admin';
     if (h === 'reports') return 'reports';
     if (h === 'memory') return 'memory';
     if (h === 'skills') return 'skills';
@@ -362,8 +360,6 @@ export function Router() {
             return <ReposView />;
         case 'wiki':
             return <WikiView />;
-        case 'admin':
-            return <AdminPanel />;
         case 'memory':
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
