@@ -420,7 +420,14 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex-1 min-h-0 min-w-0 overflow-hidden", isMobile && activeSubTab !== 'tasks' && "pb-14")}>
                 {activeSubTab === 'tasks' ? (
-                    <TasksPanel key={ws.id} wsId={ws.id} repos={repos} onOpenGenerateDialog={handleOpenGenerateDialog} />
+                    <TasksPanel
+                        key={ws.id}
+                        wsId={ws.id}
+                        repos={repos}
+                        onOpenGenerateDialog={handleOpenGenerateDialog}
+                        initialNavState={state.repoSubTabNavState[`${ws.id}::tasks`]}
+                        onNavStateChange={(navState) => dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState })}
+                    />
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'info' && <RepoInfoTab key={ws.id} repo={repo} />}

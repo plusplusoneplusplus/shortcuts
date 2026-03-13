@@ -32,11 +32,14 @@ import { BulkFollowPromptDialog } from '../shared/BulkFollowPromptDialog';
 import { Spinner } from '../shared';
 import { normalizeRemoteUrl } from '../repos/repoGrouping';
 import type { RepoData } from '../repos/repoGrouping';
+import type { TasksPanelNavState } from '../types/dashboard';
 
 interface TasksPanelProps {
     wsId: string;
     repos?: import('../repos/repoGrouping').RepoData[];
     onOpenGenerateDialog?: (targetFolder?: string) => void;
+    initialNavState?: TasksPanelNavState;
+    onNavStateChange?: (navState: TasksPanelNavState) => void;
 }
 
 export function parseTaskHashParams(hash: string, wsId: string) {
@@ -1082,9 +1085,9 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     );
 }
 
-export function TasksPanel({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps) {
+export function TasksPanel({ wsId, repos, onOpenGenerateDialog, initialNavState, onNavStateChange }: TasksPanelProps) {
     return (
-        <TaskProvider>
+        <TaskProvider initialNavState={initialNavState} onNavStateChange={onNavStateChange}>
             <TasksPanelInner wsId={wsId} repos={repos} onOpenGenerateDialog={onOpenGenerateDialog} />
         </TaskProvider>
     );

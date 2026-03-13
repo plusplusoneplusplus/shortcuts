@@ -92,3 +92,9 @@ export interface ChatSessionItem {
 
 export type WikiViewMode = 'list' | 'detail';
 
+/** Navigation state for the Tasks (Plans) sub-tab, persisted in AppContext. */
+export interface TasksPanelNavState {
+    openFilePath: string | null;
+    selectedFilePaths: string[];
+}
+

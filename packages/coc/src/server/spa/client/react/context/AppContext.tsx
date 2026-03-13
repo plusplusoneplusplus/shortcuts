@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -61,6 +61,8 @@ export interface AppContextState {
     repoTabState: Record<string, RepoSubTab>;
     /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
     wikiTabState: Record<string, string>;
+    /** Per-repo per-sub-tab navigation state, keyed by `${repoId}::${subTab}` (in-memory only). */
+    repoSubTabNavState: Record<string, TasksPanelNavState>;
 }
 
 const initialState: AppContextState = {
@@ -100,6 +102,7 @@ const initialState: AppContextState = {
     activeSkillsSubTab: 'installed',
     repoTabState: {},
     wikiTabState: {},
+    repoSubTabNavState: {},
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -157,7 +160,8 @@ export type AppAction =
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
     | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
     | { type: 'SET_SELECTED_PR'; prId: number | string }
-    | { type: 'CLEAR_SELECTED_PR' };
+    | { type: 'CLEAR_SELECTED_PR' }
+    | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -361,6 +365,14 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedPrId: action.prId };
         case 'CLEAR_SELECTED_PR':
             return { ...state, selectedPrId: null };
+        case 'SET_TASKS_NAV_STATE':
+            return {
+                ...state,
+                repoSubTabNavState: {
+                    ...state.repoSubTabNavState,
+                    [`${action.repoId}::tasks`]: action.navState,
+                },
+            };
         default:
             return state;
     }

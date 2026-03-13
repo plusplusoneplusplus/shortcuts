@@ -397,7 +397,7 @@ describe('RepoDetail Git tab wiring', () => {
     });
 
     it('mounts a fresh TasksPanel on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<TasksPanel key={ws.id}');
+        expect(REPO_DETAIL_SOURCE).toMatch(/<TasksPanel[\s\S]*?key=\{ws\.id\}/);
     });
 
     it('mounts a fresh RepoInfoTab on every repo switch via key={ws.id}', () => {

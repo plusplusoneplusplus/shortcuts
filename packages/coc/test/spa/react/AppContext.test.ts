@@ -38,6 +38,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoWikiInitialAdminTab: null,
         repoWikiInitialComponentId: null,
         repoTabState: {},
+        repoSubTabNavState: {},
         ...overrides,
     };
 }
@@ -877,6 +878,33 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedGitCommitHash: 'abc', selectedPrId: 1 });
             const result = appReducer(state, { type: 'CLEAR_SELECTED_PR' });
             expect(result.selectedGitCommitHash).toBe('abc');
+        });
+    });
+
+    // ── SET_TASKS_NAV_STATE ────────────────────────────────────────────
+    describe('SET_TASKS_NAV_STATE', () => {
+        it('stores nav state keyed by repoId::tasks', () => {
+            const state = makeState();
+            const navState = { openFilePath: 'feature1/task.md', selectedFilePaths: [] };
+            const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState });
+            expect(result.repoSubTabNavState['repo1::tasks']).toEqual(navState);
+        });
+
+        it('preserves other repo nav states', () => {
+            const existing = { openFilePath: 'other.md', selectedFilePaths: [] };
+            const state = makeState({ repoSubTabNavState: { 'repo2::tasks': existing } });
+            const navState = { openFilePath: 'new.md', selectedFilePaths: ['a.md'] };
+            const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState });
+            expect(result.repoSubTabNavState['repo1::tasks']).toEqual(navState);
+            expect(result.repoSubTabNavState['repo2::tasks']).toEqual(existing);
+        });
+
+        it('updates existing nav state for a repo', () => {
+            const old = { openFilePath: 'old.md', selectedFilePaths: [] };
+            const state = makeState({ repoSubTabNavState: { 'repo1::tasks': old } });
+            const updated = { openFilePath: 'new.md', selectedFilePaths: [] };
+            const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState: updated });
+            expect(result.repoSubTabNavState['repo1::tasks']).toEqual(updated);
         });
     });
 });

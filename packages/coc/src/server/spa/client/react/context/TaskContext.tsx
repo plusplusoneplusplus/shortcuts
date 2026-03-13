@@ -3,7 +3,8 @@
  * Manages open file path, selected files, context file visibility, and task-change signals.
  */
 
-import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
+import { createContext, useContext, useEffect, useReducer, useRef, type ReactNode, type Dispatch } from 'react';
+import type { TasksPanelNavState } from '../types/dashboard';
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -67,8 +68,29 @@ export function taskReducer(state: TaskContextState, action: TaskAction): TaskCo
 
 const TaskContext = createContext<{ state: TaskContextState; dispatch: Dispatch<TaskAction> } | null>(null);
 
-export function TaskProvider({ children }: { children: ReactNode }) {
-    const [state, dispatch] = useReducer(taskReducer, initialState);
+export function TaskProvider({ children, initialNavState, onNavStateChange }: {
+    children: ReactNode;
+    initialNavState?: TasksPanelNavState;
+    onNavStateChange?: (navState: TasksPanelNavState) => void;
+}) {
+    const [state, dispatch] = useReducer(taskReducer, {
+        ...initialState,
+        openFilePath: initialNavState?.openFilePath ?? null,
+        selectedFilePaths: new Set(initialNavState?.selectedFilePaths ?? []),
+    });
+
+    // Sync navigation state back to caller, skipping the initial mount.
+    const onNavStateChangeRef = useRef(onNavStateChange);
+    onNavStateChangeRef.current = onNavStateChange;
+    const isFirstMount = useRef(true);
+    useEffect(() => {
+        if (isFirstMount.current) { isFirstMount.current = false; return; }
+        onNavStateChangeRef.current?.({
+            openFilePath: state.openFilePath,
+            selectedFilePaths: Array.from(state.selectedFilePaths),
+        });
+    }, [state.openFilePath, state.selectedFilePaths]);
+
     return <TaskContext.Provider value={{ state, dispatch }}>{children}</TaskContext.Provider>;
 }
 
