@@ -157,8 +157,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             req.on('close', () => { clientDisconnected = true; });
 
             try {
-                const service = aiService;
-                const available = await service.isAvailable();
+                const available = await aiService.isAvailable();
                 if (!available.available) {
                     sendEvent(res, 'error', { message: 'AI service unavailable' });
                     sendEvent(res, 'done', { success: false });
@@ -168,7 +167,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
 
                 sendEvent(res, 'progress', { phase: 'generating', message: 'AI is generating task...' });
 
-                const result = await service.sendMessage({
+                const result = await aiService.sendMessage({
                     prompt: aiPrompt,
                     model: model || undefined,
                     workingDirectory: ws.rootPath,
@@ -241,8 +240,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             }
 
             try {
-                const service = aiService;
-                const available = await service.isAvailable();
+                const available = await aiService.isAvailable();
                 if (!available.available) {
                     return sendError(res, 503, 'AI service unavailable');
                 }
@@ -254,7 +252,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                     workspaceRoot: ws.rootPath,
                 });
 
-                const result = await service.sendMessage({
+                const result = await aiService.sendMessage({
                     prompt: discoveryPrompt,
                     workingDirectory: ws.rootPath,
                     timeoutMs: DEFAULT_AI_TIMEOUT_MS,
