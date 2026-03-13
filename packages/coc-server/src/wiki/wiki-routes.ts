@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import type { Route } from '../types';
-import { sendJson, send404, send500, readJsonBody } from '../router';
+import { sendJson as sendJsonImpl, send404 as send404Impl, send500 as send500Impl, readJsonBody as readJsonBodyImpl } from '../router';
 import { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
 import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
@@ -28,6 +28,14 @@ import {
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Injectable HTTP helper functions for wiki route handlers. */
+export interface WikiRouteHelpers {
+    sendJson: typeof sendJsonImpl;
+    send404: typeof send404Impl;
+    send500: typeof send500Impl;
+    readJsonBody: typeof readJsonBodyImpl;
+}
 
 export interface WikiRouteOptions {
     /** Initial wiki registrations (wikiId → { wikiDir, repoPath? }). */
@@ -50,6 +58,8 @@ export interface WikiRouteOptions {
     onWikiReloaded?: (wikiId: string, affectedComponentIds: string[]) => void;
     /** Callback fired when a wiki-level error occurs. */
     onWikiError?: (wikiId: string, error: Error) => void;
+    /** Injectable HTTP helper functions (defaults to built-in router helpers). */
+    helpers?: WikiRouteHelpers;
 }
 
 // ============================================================================
@@ -64,6 +74,13 @@ export function registerWikiRoutes(
     routes: Route[],
     options: WikiRouteOptions,
 ): WikiManager {
+    const { sendJson, send404, send500, readJsonBody } = options.helpers ?? {
+        sendJson: sendJsonImpl,
+        send404: send404Impl,
+        send500: send500Impl,
+        readJsonBody: readJsonBodyImpl,
+    };
+
     const wikiManager = new WikiManager({
         aiSendMessage: options.aiSendMessage,
         onWikiRebuilding: options.onWikiRebuilding,

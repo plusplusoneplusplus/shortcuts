@@ -10,8 +10,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { WikiData } from '../../../src/server/wiki/wiki-data';
-import type { ComponentGraph, ComponentAnalysis } from '../../../src/server/wiki/types';
+import { WikiData } from '@plusplusoneplusplus/coc-server';
+import type { ComponentGraph, ComponentAnalysis } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Test Helpers

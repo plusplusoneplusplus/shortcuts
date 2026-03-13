@@ -183,3 +183,49 @@ export { readMemoryConfig, writeMemoryConfig, validateMemoryConfig, DEFAULT_MEMO
 export type { MemoryConfig, MemoryBackend } from './memory/memory-config-handler';
 export { FileMemoryStore } from './memory/memory-store';
 export type { MemoryEntry, MemoryIndexRecord, MemoryListQuery, MemoryListResult } from './memory/memory-store';
+
+// Wiki module
+export type {
+    ProjectInfo,
+    ComponentInfo,
+    CategoryInfo,
+    DomainInfo,
+    ComponentGraph,
+    ComponentAnalysis,
+    ThemeMeta,
+    KeyConcept,
+    PublicAPIEntry,
+    CodeExample,
+    InternalDependency,
+    ExternalDependency,
+    AskAIFunction,
+    WikiServeCommandOptions,
+} from './wiki/types';
+export { WikiData } from './wiki/wiki-data';
+export type {
+    ComponentSummary,
+    ComponentDetail,
+    SpecialPage,
+    ThemeArticleContent,
+    ThemeArticleDetail,
+} from './wiki/wiki-data';
+export { ContextBuilder, tokenize } from './wiki/context-builder';
+export type {
+    RetrievedContext,
+    ThemeContextEntry,
+} from './wiki/context-builder';
+export { ConversationSessionManager } from './wiki/conversation-session-manager';
+export type {
+    ConversationSession,
+    ConversationSessionManagerOptions,
+    SessionSendResult,
+} from './wiki/conversation-session-manager';
+export { FileWatcher } from './wiki/file-watcher';
+export type { FileWatcherOptions } from './wiki/file-watcher';
+export { WikiManager } from './wiki/wiki-manager';
+export type {
+    WikiRegistration,
+    WikiRuntime,
+    WikiManagerOptions,
+} from './wiki/wiki-manager';
+export type { WikiRouteHelpers } from './wiki/wiki-routes';

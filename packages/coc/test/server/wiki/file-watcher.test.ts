@@ -11,8 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { FileWatcher } from '../../../src/server/wiki/file-watcher';
-import type { ComponentGraph } from '../../../src/server/wiki/types';
+import { FileWatcher } from '@plusplusoneplusplus/coc-server';
+import type { ComponentGraph } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Helpers

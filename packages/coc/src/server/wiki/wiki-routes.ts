@@ -11,9 +11,10 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import type { Route, WikiServerOptions } from '@plusplusoneplusplus/coc-server';
-import { sendJson, send404, send500, readJsonBody } from '@plusplusoneplusplus/coc-server';
-import { WikiManager } from './wiki-manager';
-import type { AskAIFunction } from './types';
+import { sendJson as sendJsonImpl, send404 as send404Impl, send500 as send500Impl, readJsonBody as readJsonBodyImpl } from '@plusplusoneplusplus/coc-server';
+import { WikiManager } from '@plusplusoneplusplus/coc-server';
+import type { WikiRouteHelpers } from '@plusplusoneplusplus/coc-server';
+import type { AskAIFunction } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
 import { handleWikiAskRequest } from './ask-handler';
 import { handleWikiExploreRequest } from './explore-handler';
@@ -50,6 +51,8 @@ export interface WikiRouteOptions {
     onWikiReloaded?: (wikiId: string, affectedComponentIds: string[]) => void;
     /** Callback fired when a wiki-level error occurs. */
     onWikiError?: (wikiId: string, error: Error) => void;
+    /** Injectable HTTP helper functions (defaults to coc-server router helpers). */
+    helpers?: WikiRouteHelpers;
 }
 
 // ============================================================================
@@ -64,6 +67,13 @@ export function registerWikiRoutes(
     routes: Route[],
     options: WikiRouteOptions,
 ): WikiManager {
+    const { sendJson, send404, send500, readJsonBody } = options.helpers ?? {
+        sendJson: sendJsonImpl,
+        send404: send404Impl,
+        send500: send500Impl,
+        readJsonBody: readJsonBodyImpl,
+    };
+
     const wikiManager = new WikiManager({
         aiSendMessage: options.aiSendMessage,
         onWikiRebuilding: options.onWikiRebuilding,

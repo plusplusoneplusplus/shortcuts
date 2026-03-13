@@ -5,7 +5,7 @@
  * and wiki HTTP route handlers.
  */
 
-// Types
+// Types (re-exported from coc-server — single source of truth)
 export type {
     // Domain types
     ProjectInfo,
@@ -22,46 +22,46 @@ export type {
     ExternalDependency,
     AskAIFunction,
     WikiServeCommandOptions,
-} from './types';
+} from '@plusplusoneplusplus/coc-server';
 
-// WikiData
-export { WikiData } from './wiki-data';
+// WikiData (re-exported from coc-server)
+export { WikiData } from '@plusplusoneplusplus/coc-server';
 export type {
     ComponentSummary,
     ComponentDetail,
     SpecialPage,
     ThemeArticleContent,
     ThemeArticleDetail,
-} from './wiki-data';
+} from '@plusplusoneplusplus/coc-server';
 
-// ContextBuilder
-export { ContextBuilder, tokenize } from './context-builder';
+// ContextBuilder (re-exported from coc-server — same instance as used by WikiManager)
+export { ContextBuilder, tokenize } from '@plusplusoneplusplus/coc-server';
 export type {
     RetrievedContext,
     ThemeContextEntry,
-} from './context-builder';
+} from '@plusplusoneplusplus/coc-server';
 
-// ConversationSessionManager
-export { ConversationSessionManager } from './conversation-session-manager';
+// ConversationSessionManager (re-exported from coc-server — same instance as used by WikiManager)
+export { ConversationSessionManager } from '@plusplusoneplusplus/coc-server';
 export type {
     ConversationSession,
     ConversationSessionManagerOptions,
     SessionSendResult,
-} from './conversation-session-manager';
+} from '@plusplusoneplusplus/coc-server';
 
-// FileWatcher
-export { FileWatcher } from './file-watcher';
+// FileWatcher (re-exported from coc-server)
+export { FileWatcher } from '@plusplusoneplusplus/coc-server';
 export type {
     FileWatcherOptions,
-} from './file-watcher';
+} from '@plusplusoneplusplus/coc-server';
 
-// WikiManager
-export { WikiManager } from './wiki-manager';
+// WikiManager (re-exported from coc-server)
+export { WikiManager } from '@plusplusoneplusplus/coc-server';
 export type {
     WikiRegistration,
     WikiRuntime,
     WikiManagerOptions,
-} from './wiki-manager';
+} from '@plusplusoneplusplus/coc-server';
 
 // Wiki Routes
 export { registerWikiRoutes } from './wiki-routes';

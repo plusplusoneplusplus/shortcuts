@@ -13,7 +13,7 @@
  *   - Per-session mutex to prevent concurrent sends
  */
 
-import type { AskAIFunction } from './types';
+import type { AskAIFunction } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Types
