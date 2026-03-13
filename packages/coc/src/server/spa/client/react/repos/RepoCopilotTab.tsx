@@ -37,6 +37,17 @@ interface BundledSkill {
 
 type InstallSource = 'bundled' | 'github';
 
+type InstructionMode = 'base' | 'ask' | 'plan' | 'autopilot';
+
+const INSTRUCTION_MODES: InstructionMode[] = ['base', 'ask', 'plan', 'autopilot'];
+const INSTRUCTION_MODE_LABELS: Record<InstructionMode, string> = {
+    base: 'Base (all modes)',
+    ask: 'Ask',
+    plan: 'Plan',
+    autopilot: 'Autopilot',
+};
+const MAX_INSTRUCTION_BYTES = 50 * 1024;
+
 export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const { addToast } = useGlobalToast();
 
@@ -184,6 +195,76 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
         }
     };
 
+    // ── Instructions state ───────────────────────────────────────────────────
+    const [instrContents, setInstrContents] = useState<Record<InstructionMode, string | null>>({
+        base: null, ask: null, plan: null, autopilot: null,
+    });
+    const [instrLoading, setInstrLoading] = useState(true);
+    const [instrActiveTab, setInstrActiveTab] = useState<InstructionMode>('base');
+    const [instrDraft, setInstrDraft] = useState<Record<InstructionMode, string>>({
+        base: '', ask: '', plan: '', autopilot: '',
+    });
+    const [instrSaving, setInstrSaving] = useState(false);
+
+    const fetchInstructions = useCallback(async () => {
+        setInstrLoading(true);
+        try {
+            const res = await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions');
+            if (res.ok) {
+                const data: Record<InstructionMode, string | null> = await res.json();
+                setInstrContents(data);
+                setInstrDraft({
+                    base: data.base ?? '',
+                    ask: data.ask ?? '',
+                    plan: data.plan ?? '',
+                    autopilot: data.autopilot ?? '',
+                });
+            }
+        } catch {
+            // ignore
+        } finally {
+            setInstrLoading(false);
+        }
+    }, [workspaceId]);
+
+    useEffect(() => { fetchInstructions(); }, [fetchInstructions]);
+
+    const handleInstrSave = async (mode: InstructionMode) => {
+        setInstrSaving(true);
+        try {
+            const content = instrDraft[mode];
+            const res = await fetch(
+                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions/' + mode,
+                { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) }
+            );
+            if (!res.ok) throw new Error((await res.json()).message ?? 'Save failed');
+            setInstrContents(prev => ({ ...prev, [mode]: content || null }));
+            addToast('Instructions saved', 'success');
+        } catch (e: any) {
+            addToast(e?.message ?? 'Failed to save instructions', 'error');
+        } finally {
+            setInstrSaving(false);
+        }
+    };
+
+    const handleInstrDelete = async (mode: InstructionMode) => {
+        setInstrSaving(true);
+        try {
+            const res = await fetch(
+                getApiBase() + '/workspaces/' + encodeURIComponent(workspaceId) + '/instructions/' + mode,
+                { method: 'DELETE' }
+            );
+            if (!res.ok && res.status !== 404) throw new Error((await res.json()).message ?? 'Delete failed');
+            setInstrContents(prev => ({ ...prev, [mode]: null }));
+            setInstrDraft(prev => ({ ...prev, [mode]: '' }));
+            addToast('Instructions deleted', 'success');
+        } catch (e: any) {
+            addToast(e?.message ?? 'Failed to delete instructions', 'error');
+        } finally {
+            setInstrSaving(false);
+        }
+    };
+
     return (
         <div className="p-4 flex flex-col gap-6 h-full overflow-y-auto">
             {/* ── MCP Servers ── */}
@@ -324,6 +405,99 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                         onClose={() => setShowInstallDialog(false)}
                         onInstalled={() => { setShowInstallDialog(false); fetchSkills(); }}
                     />
+                )}
+            </div>
+
+            {/* ── Separator ── */}
+            <hr className="border-[#e0e0e0] dark:border-[#3c3c3c]" />
+
+            {/* ── Custom Instructions ── */}
+            <div className="flex flex-col gap-3">
+                <div>
+                    <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Custom Instructions</h2>
+                    <p className="text-xs text-[#848484] mt-0.5">
+                        Stored in <code className="font-mono bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">.github/coc/</code> — committed to version control, shared across clones.
+                    </p>
+                </div>
+
+                {instrLoading ? (
+                    <div className="text-xs text-[#848484]">Loading...</div>
+                ) : (
+                    <>
+                        {/* Tab bar */}
+                        <div className="flex gap-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                            {INSTRUCTION_MODES.map(mode => (
+                                <button
+                                    key={mode}
+                                    onClick={() => setInstrActiveTab(mode)}
+                                    className={`relative px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        instrActiveTab === mode
+                                            ? 'text-[#0078d4] border-b-2 border-[#0078d4] -mb-px'
+                                            : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                                    }`}
+                                    data-testid={`instr-tab-${mode}`}
+                                >
+                                    {INSTRUCTION_MODE_LABELS[mode]}
+                                    {instrContents[mode] !== null && instrContents[mode] !== '' && (
+                                        <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] align-middle" />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Editor area */}
+                        {(() => {
+                            const mode = instrActiveTab;
+                            const draft = instrDraft[mode];
+                            const bytes = new TextEncoder().encode(draft).length;
+                            const nearLimit = bytes > MAX_INSTRUCTION_BYTES * 0.8;
+                            const overLimit = bytes > MAX_INSTRUCTION_BYTES;
+                            return (
+                                <div className="flex flex-col gap-2">
+                                    {instrContents[mode] === null && draft === '' && (
+                                        <p className="text-xs text-[#848484] italic">
+                                            No instructions for this mode. Instructions added here apply to all CoC sessions in this repository.
+                                        </p>
+                                    )}
+                                    <textarea
+                                        className="w-full min-h-[160px] text-xs font-mono p-2 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-[#fafafa] dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:border-[#0078d4]"
+                                        value={draft}
+                                        onChange={e => setInstrDraft(prev => ({ ...prev, [mode]: e.target.value }))}
+                                        placeholder={`Add ${mode === 'base' ? 'global' : mode + ' mode'} instructions here…`}
+                                        data-testid={`instr-textarea-${mode}`}
+                                    />
+                                    {nearLimit && (
+                                        <p className={`text-xs ${overLimit ? 'text-red-500' : 'text-amber-500'}`}>
+                                            {bytes.toLocaleString()} / {MAX_INSTRUCTION_BYTES.toLocaleString()} bytes
+                                            {overLimit ? ' — exceeds limit, content will be truncated' : ''}
+                                        </p>
+                                    )}
+                                    <div className="flex gap-2 items-center">
+                                        <Button
+                                            variant="primary"
+                                            size="sm"
+                                            onClick={() => handleInstrSave(mode)}
+                                            disabled={instrSaving}
+                                            data-testid={`instr-save-${mode}`}
+                                        >
+                                            Save
+                                        </Button>
+                                        {instrContents[mode] !== null && (
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={() => handleInstrDelete(mode)}
+                                                disabled={instrSaving}
+                                                data-testid={`instr-delete-${mode}`}
+                                            >
+                                                Delete
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </>
                 )}
             </div>
         </div>
