@@ -48,7 +48,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             skipRef.current = 0;
         }
 
-        const url = `${getApiBase()}/api/repos/${encodeURIComponent(repoId)}/pull-requests?status=${statusFilter}&top=${PAGE_SIZE}&skip=${offset}`;
+        const url = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/pull-requests?status=${statusFilter}&top=${PAGE_SIZE}&skip=${offset}`;
         fetch(url)
             .then(async res => {
                 const body = await res.json().catch(() => ({}));

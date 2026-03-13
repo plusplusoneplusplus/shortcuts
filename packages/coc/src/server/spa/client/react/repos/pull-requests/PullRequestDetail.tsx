@@ -34,8 +34,8 @@ export function PullRequestDetail({ repoId, prId, onBack }: PullRequestDetailPro
         const base = getApiBase();
         const repoEnc = encodeURIComponent(String(repoId));
         const prEnc = encodeURIComponent(String(prId));
-        const prUrl = `${base}/api/repos/${repoEnc}/pull-requests/${prEnc}`;
-        const threadsUrl = `${base}/api/repos/${repoEnc}/pull-requests/${prEnc}/threads`;
+        const prUrl = `${base}/repos/${repoEnc}/pull-requests/${prEnc}`;
+        const threadsUrl = `${base}/repos/${repoEnc}/pull-requests/${prEnc}/threads`;
 
         Promise.all([
             fetch(prUrl).then(async r => {
