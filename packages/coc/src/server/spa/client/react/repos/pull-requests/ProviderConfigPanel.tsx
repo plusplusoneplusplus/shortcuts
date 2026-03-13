@@ -29,7 +29,7 @@ export function ProviderConfigPanel({ detected, remoteUrl, onConfigured }: Provi
             ? { ado: { token, orgUrl } }
             : { github: { token } };
         try {
-            await fetchApi('/api/providers/config', {
+            await fetchApi('/providers/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),

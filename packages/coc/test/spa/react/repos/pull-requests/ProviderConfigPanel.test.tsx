@@ -101,7 +101,7 @@ describe('successful save', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('save-button')); });
 
         await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
-            '/api/providers/config',
+            '/providers/config',
             expect.objectContaining({
                 method: 'PUT',
                 body: JSON.stringify({ github: { token: 'ghp_tok' } }),
@@ -118,7 +118,7 @@ describe('successful save', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('save-button')); });
 
         await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
-            '/api/providers/config',
+            '/providers/config',
             expect.objectContaining({
                 method: 'PUT',
                 body: JSON.stringify({ ado: { token: 'my-pat', orgUrl: 'https://dev.azure.com/myorg' } }),
