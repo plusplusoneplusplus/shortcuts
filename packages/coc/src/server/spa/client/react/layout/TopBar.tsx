@@ -17,6 +17,7 @@ export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Wiki', tab: 'wiki' },
     { label: 'Skills', tab: 'skills' },
     { label: 'Memory', tab: 'memory' },
+    { label: 'Logs', tab: 'logs' },
 ];
 
 export const TABS: { label: string; tab: DashboardTab }[] = SHOW_WIKI_TAB

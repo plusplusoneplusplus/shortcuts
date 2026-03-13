@@ -13,6 +13,7 @@ import { lazy, Suspense } from 'react';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
+const LogsView = lazy(() => import('../views/logs/LogsView').then(m => ({ default: m.LogsView })));
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
@@ -27,6 +28,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'reports') return 'reports';
     if (h === 'memory') return 'memory';
     if (h === 'skills') return 'skills';
+    if (h === 'logs') return 'logs';
     return null;
 }
 
@@ -370,6 +372,12 @@ export function Router() {
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <SkillsView />
+                </Suspense>
+            );
+        case 'logs':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <LogsView />
                 </Suspense>
             );
         case 'reports':

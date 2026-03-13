@@ -180,6 +180,19 @@ export type { WatchOptions } from './shared/debounced-watcher-registry';
 // Shared handler utilities
 export { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
 
+// Logs (server log capture + streaming routes)
+export { registerLogsRoutes } from './logs-routes';
+export {
+    captureEntry,
+    getLogEmitter,
+    getLogHistory,
+    clearLogBuffer,
+    buildLogEntry,
+    levelToNum,
+    numToLevel,
+} from './server-log-capture';
+export type { LogEntry, LogLevel, LogHistoryOptions } from './server-log-capture';
+
 // Memory management
 export { registerMemoryRoutes } from './memory/memory-routes';
 export { readMemoryConfig, writeMemoryConfig, validateMemoryConfig, DEFAULT_MEMORY_CONFIG, MEMORY_CONFIG_FILE_NAME } from './memory/memory-config-handler';
