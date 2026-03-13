@@ -12,6 +12,7 @@ import { Spinner } from '../shared';
 import { FloatingChatContent } from '../repos/FloatingChatContent';
 import { useFloatingChats, type FloatingChatEntry } from '../context/FloatingChatsContext';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
+import { useApp } from '../context/AppContext';
 
 // ── Per-chat item ─────────────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ interface FloatingChatItemProps {
 
 function FloatingChatItem({ entry }: FloatingChatItemProps) {
     const { unfloatChat } = useFloatingChats();
+    const { state: { workspaces } } = useApp();
     const [minimized, setMinimized] = useState(false);
 
     const handleClose = useCallback(() => {
@@ -34,15 +36,20 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
 
     const minimizedEntry = useMemo(() => {
         if (!minimized) return null;
+        const repoName = entry.workspaceId
+            ? workspaces.find((w: any) => w.id === entry.workspaceId)?.name
+            : undefined;
+        const shortTitle = entry.title || 'Chat';
+        const label = repoName ? `[${repoName}] ${shortTitle}` : shortTitle;
         return {
             id: `floating-chat-${entry.taskId}`,
             icon: '💬',
-            label: entry.title || 'Chat',
+            label,
             onRestore: handleRestore,
             onClose: handleClose,
             extra: isRunning ? <Spinner size="sm" /> : undefined,
         };
-    }, [minimized, entry.taskId, entry.title, handleRestore, handleClose, isRunning]);
+    }, [minimized, entry.taskId, entry.title, entry.workspaceId, workspaces, handleRestore, handleClose, isRunning]);
 
     useMinimizedDialog(minimizedEntry);
 

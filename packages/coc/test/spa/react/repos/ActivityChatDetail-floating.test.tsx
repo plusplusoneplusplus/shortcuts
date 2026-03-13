@@ -204,7 +204,26 @@ describe('FloatingChatManager: structure', () => {
     });
 });
 
-// ── FloatingChatContent: structure ───────────────────────────────────────────
+// ── FloatingChatManager: workspace name prefix in pill label ──────────────────
+
+describe('FloatingChatManager: workspace name prefix in pill label', () => {
+    it('uses useApp to access workspaces', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain('useApp');
+    });
+
+    it('looks up workspace name by workspaceId', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain('entry.workspaceId');
+        expect(FLOATING_MANAGER_SOURCE).toContain('workspaces.find');
+    });
+
+    it('prefixes label with repo name when workspace found', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain('`[${repoName}] ${shortTitle}`');
+    });
+
+    it('falls back to plain title when no workspace match', () => {
+        expect(FLOATING_MANAGER_SOURCE).toContain('repoName ? `[${repoName}] ${shortTitle}` : shortTitle');
+    });
+});
 
 describe('FloatingChatContent: structure', () => {
     it('exports FloatingChatContent component', () => {
