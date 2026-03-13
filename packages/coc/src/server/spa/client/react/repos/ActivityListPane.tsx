@@ -202,6 +202,14 @@ export function ActivityListPane({
         fetchQueue();
     };
 
+    const handleDeleteChat = async (taskId: string) => {
+        if (!confirm('Delete this chat? This cannot be undone.')) return;
+        const res = await fetch(getApiBase() + '/queue/history/' + encodeURIComponent(taskId), { method: 'DELETE' });
+        if (res.ok) {
+            fetchQueue();
+        }
+    };
+
     const handleMoveUp = async (taskId: string) => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/move-up', { method: 'POST' });
         fetchQueue();
@@ -287,6 +295,8 @@ export function ActivityListPane({
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
                 ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
                 ...(!isArchived && onArchiveChat ? [{ label: 'Archive', icon: '📦', onClick: () => onArchiveChat(taskId) }] : []),
+                { label: '', icon: '', separator: true, onClick: () => {} },
+                { label: 'Delete chat', icon: '🗑', onClick: () => handleDeleteChat(taskId) },
             ];
         }
         const queuedIndex = queued.findIndex(t => t.id === taskId);

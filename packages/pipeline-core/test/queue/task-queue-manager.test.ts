@@ -967,6 +967,84 @@ describe('TaskQueueManager', () => {
     });
 
     // ========================================================================
+    // removeHistoryEntry
+    // ========================================================================
+
+    describe('removeHistoryEntry', () => {
+        it('removes a completed task from history and returns true', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            manager.markCompleted(id);
+
+            expect(manager.getHistory()).toHaveLength(1);
+            const removed = manager.removeHistoryEntry(id);
+            expect(removed).toBe(true);
+            expect(manager.getHistory()).toHaveLength(0);
+        });
+
+        it('removes a failed task from history and returns true', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            manager.markFailed(id, 'error');
+
+            const removed = manager.removeHistoryEntry(id);
+            expect(removed).toBe(true);
+            expect(manager.getHistory()).toHaveLength(0);
+        });
+
+        it('removes a cancelled task from history and returns true', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.cancelTask(id);
+
+            const removed = manager.removeHistoryEntry(id);
+            expect(removed).toBe(true);
+            expect(manager.getHistory()).toHaveLength(0);
+        });
+
+        it('returns false for a non-existent task ID', () => {
+            const removed = manager.removeHistoryEntry('nonexistent-id');
+            expect(removed).toBe(false);
+        });
+
+        it('only removes the targeted entry, leaving others intact', () => {
+            const id1 = manager.enqueue(createTestTask({ displayName: 'task-1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'task-2' }));
+            manager.markStarted(id1);
+            manager.markCompleted(id1);
+            manager.markStarted(id2);
+            manager.markCompleted(id2);
+
+            expect(manager.getHistory()).toHaveLength(2);
+            manager.removeHistoryEntry(id1);
+
+            const remaining = manager.getHistory();
+            expect(remaining).toHaveLength(1);
+            expect(remaining[0].id).toBe(id2);
+        });
+
+        it('emits a change event when removing', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            manager.markCompleted(id);
+            listener.mockClear();
+
+            manager.removeHistoryEntry(id);
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not emit a change event when task is not found', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+
+            manager.removeHistoryEntry('nonexistent');
+            expect(listener).not.toHaveBeenCalled();
+        });
+    });
+
+    // ========================================================================
     // Access Methods
     // ========================================================================
 

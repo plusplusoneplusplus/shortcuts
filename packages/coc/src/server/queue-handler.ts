@@ -1012,6 +1012,56 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
     });
 
     // ------------------------------------------------------------------
+    // DELETE /api/queue/history/:taskId — Delete a single history entry
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/queue\/history\/([^/]+)$/,
+        handler: async (_req, res, match) => {
+            const taskId = decodeURIComponent(match![1]);
+
+            const mgr = findTaskManager(bridge, taskId);
+            if (!mgr) {
+                return sendError(res, 404, 'History entry not found');
+            }
+
+            const task = mgr.getTask(taskId);
+            if (!task) {
+                return sendError(res, 404, 'History entry not found');
+            }
+
+            const historyStatuses = new Set(['completed', 'failed', 'cancelled']);
+            if (!historyStatuses.has(task.status)) {
+                return sendError(res, 409, 'Task is still running or queued; cannot delete');
+            }
+
+            const processId = task.processId as string | undefined;
+
+            // Remove child processes first, then the root process
+            if (store && processId) {
+                try {
+                    const children = await store.getAllProcesses({ parentProcessId: processId });
+                    for (const child of children) {
+                        await store.removeProcess(child.id);
+                    }
+                    await store.removeProcess(processId);
+                } catch (err) {
+                    process.stderr.write(`[Queue] Failed to remove process for task ${taskId}: ${err}\n`);
+                    // Continue to remove from queue history even if process deletion fails
+                }
+            }
+
+            const removed = mgr.removeHistoryEntry(taskId);
+            if (!removed) {
+                return sendError(res, 404, 'History entry not found');
+            }
+
+            process.stderr.write(`[Queue] history entry deleted taskId=${taskId}\n`);
+            sendJSON(res, 200, { deleted: true, taskId });
+        },
+    });
+
+    // ------------------------------------------------------------------
     // POST /api/queue/force-fail-running — Force-fail all stale running tasks
     // ------------------------------------------------------------------
     routes.push({

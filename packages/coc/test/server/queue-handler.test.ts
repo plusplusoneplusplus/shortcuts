@@ -1276,6 +1276,68 @@ describe('Queue Handler', () => {
             expect(body.history).toHaveLength(0);
         });
 
+        describe('DELETE /api/queue/history/:taskId — Delete single history entry', () => {
+            it('should delete a cancelled task from history', async () => {
+                const srv = await startServer();
+
+                const createRes = await postJSON(`${srv.url}/api/queue`, makeTask());
+                const taskId = JSON.parse(createRes.body).task.id;
+                await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
+
+                // Verify it's in history
+                const historyBefore = JSON.parse((await request(`${srv.url}/api/queue/history`)).body);
+                expect(historyBefore.history).toHaveLength(1);
+
+                // Delete the history entry
+                const deleteRes = await request(`${srv.url}/api/queue/history/${taskId}`, { method: 'DELETE' });
+                expect(deleteRes.status).toBe(200);
+                const deleteBody = JSON.parse(deleteRes.body);
+                expect(deleteBody.deleted).toBe(true);
+                expect(deleteBody.taskId).toBe(taskId);
+
+                // Verify history is now empty
+                const historyAfter = JSON.parse((await request(`${srv.url}/api/queue/history`)).body);
+                expect(historyAfter.history).toHaveLength(0);
+            });
+
+            it('should only remove the targeted entry and leave others intact', async () => {
+                const srv = await startServer();
+
+                const res1 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task A' }));
+                const res2 = await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task B' }));
+                const idA = JSON.parse(res1.body).task.id;
+                const idB = JSON.parse(res2.body).task.id;
+                await request(`${srv.url}/api/queue/${idA}`, { method: 'DELETE' });
+                await request(`${srv.url}/api/queue/${idB}`, { method: 'DELETE' });
+
+                await request(`${srv.url}/api/queue/history/${idA}`, { method: 'DELETE' });
+
+                const historyAfter = JSON.parse((await request(`${srv.url}/api/queue/history`)).body);
+                expect(historyAfter.history).toHaveLength(1);
+                expect(historyAfter.history[0].id).toBe(idB);
+            });
+
+            it('should return 404 for a non-existent task ID', async () => {
+                const srv = await startServer();
+
+                const deleteRes = await request(`${srv.url}/api/queue/history/no-such-task`, { method: 'DELETE' });
+                expect(deleteRes.status).toBe(404);
+                expect(JSON.parse(deleteRes.body).error).toContain('not found');
+            });
+
+            it('should return 409 when attempting to delete a running task', async () => {
+                const srv = await startServer();
+
+                // Enqueue but do not cancel (leaves it in 'queued' state, similar check)
+                const createRes = await postJSON(`${srv.url}/api/queue`, makeTask());
+                const taskId = JSON.parse(createRes.body).task.id;
+
+                // Attempt to delete a queued (non-history) task via history endpoint
+                const deleteRes = await request(`${srv.url}/api/queue/history/${taskId}`, { method: 'DELETE' });
+                expect(deleteRes.status).toBe(409);
+            });
+        });
+
         describe('GET /api/queue/history?repoId — Filter history by repo', () => {
             it('should return all history when no repoId param is provided', async () => {
                 const srv = await startServer();

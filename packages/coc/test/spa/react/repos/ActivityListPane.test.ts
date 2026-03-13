@@ -224,4 +224,35 @@ describe('ActivityListPane pinned chats', () => {
             });
         });
     });
+
+    describe('delete chat', () => {
+        it('includes Delete chat menu item in completed context menu', () => {
+            expect(source).toContain("'Delete chat'");
+        });
+
+        it('defines handleDeleteChat handler', () => {
+            expect(source).toContain('handleDeleteChat');
+        });
+
+        it('calls DELETE /queue/history/:taskId endpoint', () => {
+            expect(source).toContain("'/queue/history/' + encodeURIComponent(taskId)");
+            expect(source).toContain("method: 'DELETE'");
+        });
+
+        it('shows a confirmation before deleting', () => {
+            expect(source).toContain("confirm(");
+        });
+
+        it('calls fetchQueue after successful deletion', () => {
+            const handler = source.substring(
+                source.indexOf('handleDeleteChat'),
+                source.indexOf('handleDeleteChat') + 400,
+            );
+            expect(handler).toContain('fetchQueue');
+        });
+
+        it('uses trash icon for delete menu item', () => {
+            expect(source).toContain("icon: '🗑'");
+        });
+    });
 });

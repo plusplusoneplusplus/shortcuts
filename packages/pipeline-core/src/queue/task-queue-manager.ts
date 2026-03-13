@@ -911,6 +911,18 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
+     * Remove a single entry from history by task ID.
+     * @returns true if the entry was found and removed, false otherwise.
+     */
+    removeHistoryEntry(taskId: string): boolean {
+        const index = this.history.findIndex(t => t.id === taskId);
+        if (index === -1) { return false; }
+        const [task] = this.history.splice(index, 1);
+        this.emitChange('removed', task);
+        return true;
+    }
+
+    /**
      * Force-fail all running tasks (e.g., stale processes killed externally).
      * Moves all running tasks to history with a failed status.
      * @param error Error message to set on the failed tasks
