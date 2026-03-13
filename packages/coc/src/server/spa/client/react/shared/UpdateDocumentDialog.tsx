@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, Button, Spinner } from './index';
+import { FloatingDialog, Button } from './index';
 import { usePreferences } from '../hooks/usePreferences';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
@@ -139,11 +139,14 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
 
     return (
         <>
-            <Dialog
+            <FloatingDialog
                 open
                 id="update-doc-overlay"
                 onClose={onClose}
                 title="Update Document"
+                resizable
+                minWidth={360}
+                minHeight={200}
                 footer={
                     <>
                         <Button id="update-doc-cancel" variant="secondary" onClick={onClose}>Cancel</Button>
@@ -154,16 +157,6 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 }
             >
                 <div className="flex flex-col gap-4">
-                    {/* Close button */}
-                    <button
-                        id="update-doc-close"
-                        className="absolute top-3 right-3 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none"
-                        onClick={onClose}
-                        aria-label="Close"
-                    >
-                        ×
-                    </button>
-
                     {/* Prompt textarea */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-[#616161] dark:text-[#999]">Prompt</label>
@@ -212,7 +205,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                         </select>
                     </div>
                 </div>
-            </Dialog>
+            </FloatingDialog>
         </>
     );
 }

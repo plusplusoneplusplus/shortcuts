@@ -122,7 +122,7 @@ describe('TaskPreview', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('task-preview-follow-prompt')); });
         await waitFor(() => { expect(document.querySelector('#follow-prompt-submenu')).toBeTruthy(); });
 
-        await act(async () => { fireEvent.click(document.querySelector('#fp-close')!); });
+        await act(async () => { fireEvent.click(document.querySelector('[data-testid="dialog-close-btn"]')!); });
         await waitFor(() => { expect(document.querySelector('#follow-prompt-submenu')).toBeFalsy(); });
     });
 

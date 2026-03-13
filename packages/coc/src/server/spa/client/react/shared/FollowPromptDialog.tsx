@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, Button, Spinner } from './index';
+import { FloatingDialog, Button, Spinner } from './index';
 import { usePreferences } from '../hooks/usePreferences';
 import { useRecentSkills } from '../hooks/useRecentSkills';
 import { useApp } from '../context/AppContext';
@@ -158,18 +158,8 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
 
     return (
         <>
-            <Dialog open onClose={onClose} title="Run Skill" id="follow-prompt-submenu">
+            <FloatingDialog open onClose={onClose} title="Run Skill" id="follow-prompt-submenu" resizable minWidth={360} minHeight={200}>
                 <div className="flex flex-col gap-4">
-                    {/* Close button */}
-                    <button
-                        id="fp-close"
-                        className="absolute top-3 right-3 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none"
-                        onClick={onClose}
-                        aria-label="Close"
-                    >
-                        ×
-                    </button>
-
                     {/* Model select */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-[#616161] dark:text-[#999]">
@@ -288,7 +278,7 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
                         </div>
                     )}
                 </div>
-            </Dialog>
+            </FloatingDialog>
         </>
     );
 }
