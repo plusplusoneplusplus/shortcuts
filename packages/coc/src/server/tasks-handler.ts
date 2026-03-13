@@ -378,6 +378,22 @@ async function copyRecursive(src: string, dest: string): Promise<void> {
     }
 }
 
+/**
+ * If `destPath` already exists on disk, returns a non-colliding variant by
+ * appending `-<timestamp>` before the extension. Otherwise returns `destPath`
+ * unchanged.
+ */
+async function resolveCollision(destPath: string): Promise<string> {
+    try {
+        await fs.promises.access(destPath);
+        const ext = path.extname(destPath);
+        const base = destPath.slice(0, destPath.length - ext.length);
+        return `${base}-${Date.now()}${ext}`;
+    } catch {
+        return destPath;
+    }
+}
+
 // ============================================================================
 // Write Route Registration
 // ============================================================================
@@ -821,14 +837,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 return sendError(res, 403, 'Access denied: target path is outside tasks folder');
             }
 
-            // Handle name collision
-            let finalTarget = targetPath;
-            try {
-                await fs.promises.access(finalTarget);
-                const ext = path.extname(finalTarget);
-                const base = finalTarget.slice(0, finalTarget.length - ext.length);
-                finalTarget = `${base}-${Date.now()}${ext}`;
-            } catch { /* no collision */ }
+            let finalTarget = await resolveCollision(targetPath);
 
             try {
                 await fs.promises.rename(resolvedSource, finalTarget);
@@ -893,16 +902,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                 if (action === 'archive') {
                     // Move from tasks folder to archive/, preserving relative structure
                     const relFromTasks = path.relative(tasksFolder, resolvedPath);
-                    let destPath = path.join(archiveFolder, relFromTasks);
-
-                    // Handle name collision
-                    try {
-                        await fs.promises.access(destPath);
-                        // Collision: append timestamp
-                        const ext = path.extname(destPath);
-                        const base = destPath.slice(0, destPath.length - ext.length);
-                        destPath = `${base}-${Date.now()}${ext}`;
-                    } catch { /* no collision */ }
+                    let destPath = await resolveCollision(path.join(archiveFolder, relFromTasks));
 
                     await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
                     await fs.promises.rename(resolvedPath, destPath);
@@ -914,15 +914,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     if (relFromArchive.startsWith('..')) {
                         return sendError(res, 400, 'Path is not inside the archive folder');
                     }
-                    let destPath = path.join(tasksFolder, relFromArchive);
-
-                    // Handle name collision
-                    try {
-                        await fs.promises.access(destPath);
-                        const ext = path.extname(destPath);
-                        const base = destPath.slice(0, destPath.length - ext.length);
-                        destPath = `${base}-${Date.now()}${ext}`;
-                    } catch { /* no collision */ }
+                    let destPath = await resolveCollision(path.join(tasksFolder, relFromArchive));
 
                     await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
                     await fs.promises.rename(resolvedPath, destPath);
