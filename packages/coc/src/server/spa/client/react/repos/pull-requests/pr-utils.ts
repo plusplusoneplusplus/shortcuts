@@ -4,6 +4,29 @@
 
 export type PrStatus = 'open' | 'closed' | 'merged' | 'draft';
 
+export type ReviewVote = 'approved' | 'approvedWithSuggestions' | 'waitingForAuthor' | 'rejected' | 'noVote';
+
+export interface Reviewer {
+    identity: { displayName?: string; email?: string; avatarUrl?: string };
+    vote?: string;
+    isRequired?: boolean;
+}
+
+export interface PrComment {
+    id: string | number;
+    author?: { displayName?: string; email?: string };
+    content: string;
+    publishedDate?: string;
+    createdDate?: string;
+}
+
+export interface CommentThread {
+    id: string | number;
+    comments: PrComment[];
+    status?: string;
+    threadContext?: { filePath?: string };
+}
+
 /** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */
 export interface PullRequest {
     id: number | string;
@@ -20,7 +43,8 @@ export interface PullRequest {
     mergedAt?: string;
     closedAt?: string;
     url?: string;
-    reviewers?: Array<{ identity: { displayName?: string }; vote?: string; isRequired?: boolean }>;
+    labels?: string[];
+    reviewers?: Reviewer[];
     commentCount?: number;
 }
 
@@ -42,6 +66,17 @@ export function prStatusBadge(status: PrStatus | string): StatusBadge {
 
 export function prStatusColor(status: PrStatus | string): string {
     return prStatusBadge(status).className;
+}
+
+/** Maps a reviewer vote string to a display icon + label. */
+export function reviewVoteIcon(vote?: string | null): { icon: string; label: string } {
+    switch (vote) {
+        case 'approved': return { icon: '✅', label: 'Approved' };
+        case 'approvedWithSuggestions': return { icon: '✅', label: 'Approved with suggestions' };
+        case 'waitingForAuthor': return { icon: '⏳', label: 'Waiting for author' };
+        case 'rejected': return { icon: '❌', label: 'Rejected' };
+        default: return { icon: '⬜', label: 'No vote' };
+    }
 }
 
 /**

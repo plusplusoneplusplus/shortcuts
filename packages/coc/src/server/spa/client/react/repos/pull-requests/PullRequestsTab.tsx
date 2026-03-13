@@ -10,6 +10,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { getApiBase } from '../../utils/config';
 import { useApp } from '../../context/AppContext';
 import { PullRequestRow } from './PullRequestRow';
+import { PullRequestDetail } from './PullRequestDetail';
 import type { PullRequest, PrStatus } from './pr-utils';
 
 export interface PullRequestsTabProps {
@@ -23,7 +24,7 @@ type StatusFilter = PrStatus | 'all';
 const PAGE_SIZE = 25;
 
 export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
-    const { dispatch } = useApp();
+    const { state, dispatch } = useApp();
     const [prs, setPrs] = useState<PullRequest[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -95,7 +96,15 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     }
 
     return (
-        <div className="flex flex-col h-full" data-testid="pull-requests-tab">
+        <>
+            {state.selectedPrId != null && (
+                <PullRequestDetail
+                    repoId={repoId}
+                    prId={state.selectedPrId}
+                    onBack={() => {}}
+                />
+            )}
+            <div className={state.selectedPrId != null ? 'hidden' : 'flex flex-col h-full'} data-testid="pull-requests-tab">
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0 flex-wrap">
                 <input
@@ -192,5 +201,6 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                 </div>
             )}
         </div>
+        </>
     );
 }
