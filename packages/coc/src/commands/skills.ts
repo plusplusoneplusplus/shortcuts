@@ -4,8 +4,11 @@
  * Provides skill management subcommands:
  *   coc skills list [--workspace <path>] [--global] [--all]
  *   coc skills install-bundled [<name>...] [--workspace <path>] [--global] [--replace]
- *   coc skills install <github-url> [--workspace <path>] [--global] [--replace] [--select <name,...>]
+ *   coc skills install <source> [--workspace <path>] [--global] [--replace] [--select <name,...>]
  *   coc skills delete <name> [--workspace <path>] [--global]
+ *
+ * <source> can be a GitHub URL (https://github.com/user/repo) or a local path
+ * (absolute, relative, or home-directory path) containing skills.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -178,7 +181,7 @@ export interface SkillInstallOptions {
 }
 
 export async function executeSkillInstall(
-    githubUrl: string,
+    source: string,
     options: SkillInstallOptions
 ): Promise<number> {
     const workspaceRoot = path.resolve(options.workspace || process.cwd());
@@ -191,13 +194,14 @@ export async function executeSkillInstall(
         fs.mkdirSync(installPath, { recursive: true });
     }
 
-    const sourceResult = detectSource(githubUrl, workspaceRoot);
+    const sourceResult = detectSource(source, workspaceRoot);
     if (!sourceResult.success) {
         console.error('Error:', sourceResult.error);
         return 1;
     }
 
-    console.log(`Scanning ${githubUrl}…`);
+    const isLocal = sourceResult.source.type === 'local';
+    console.log(isLocal ? `Scanning local path: ${source}…` : `Scanning ${source}…`);
     const scanResult = await scanForSkills(sourceResult.source, installPath);
     if (!scanResult.success || scanResult.skills.length === 0) {
         console.error(scanResult.error || 'No skills found at this path.');

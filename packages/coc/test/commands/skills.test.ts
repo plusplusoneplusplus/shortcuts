@@ -170,6 +170,66 @@ describe('executeSkillInstall', () => {
             fs.rmSync(sourceDir, { recursive: true, force: true });
         }
     });
+
+    it('installs single skill from local path (SKILL.md at root)', async () => {
+        const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-single-'));
+        try {
+            // Single skill: SKILL.md directly at root of sourceDir
+            fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), '# Single Skill\nA single skill');
+
+            const code = await executeSkillInstall(sourceDir, { workspace: workspaceDir });
+            expect(code).toBe(0);
+
+            // Installed as skill named after the directory basename
+            const dirName = path.basename(sourceDir);
+            const installedPath = path.join(workspaceDir, '.github', 'skills', dirName, 'SKILL.md');
+            expect(fs.existsSync(installedPath)).toBe(true);
+        } finally {
+            fs.rmSync(sourceDir, { recursive: true, force: true });
+        }
+    });
+
+    it('installs collection of skills from local path (--global)', async () => {
+        const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-col-'));
+        const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-global-'));
+        const origDataDir = process.env.COC_DATA_DIR;
+        process.env.COC_DATA_DIR = globalDir;
+        try {
+            // Collection: two subdirectories each with SKILL.md
+            for (const name of ['skill-a', 'skill-b']) {
+                const d = path.join(sourceDir, name);
+                fs.mkdirSync(d);
+                fs.writeFileSync(path.join(d, 'SKILL.md'), `# ${name}`);
+            }
+
+            const code = await executeSkillInstall(sourceDir, { global: true });
+            expect(code).toBe(0);
+
+            const globalSkillsDir = path.join(globalDir, 'skills');
+            expect(fs.existsSync(path.join(globalSkillsDir, 'skill-a', 'SKILL.md'))).toBe(true);
+            expect(fs.existsSync(path.join(globalSkillsDir, 'skill-b', 'SKILL.md'))).toBe(true);
+        } finally {
+            fs.rmSync(sourceDir, { recursive: true, force: true });
+            fs.rmSync(globalDir, { recursive: true, force: true });
+            if (origDataDir !== undefined) process.env.COC_DATA_DIR = origDataDir;
+            else delete process.env.COC_DATA_DIR;
+        }
+    });
+
+    it('logs "Scanning local path" message for local paths', async () => {
+        const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-log-'));
+        try {
+            const skillDir = path.join(sourceDir, 'log-skill');
+            fs.mkdirSync(skillDir);
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Log Skill');
+
+            await executeSkillInstall(sourceDir, { workspace: workspaceDir });
+            const loggedText = consoleSpy.mock.calls.flat().join('\n');
+            expect(loggedText).toContain('Scanning local path');
+        } finally {
+            fs.rmSync(sourceDir, { recursive: true, force: true });
+        }
+    });
 });
 
 // ============================================================================

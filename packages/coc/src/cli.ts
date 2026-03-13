@@ -209,16 +209,16 @@ export function createProgram(): Command {
         });
 
     skills
-        .command('install <github-url>')
-        .description('Install skills from a GitHub URL')
+        .command('install <source>')
+        .description('Install skills from a GitHub URL or local path')
         .option('-w, --workspace <path>', 'Workspace root directory (defaults to cwd)')
         .option('-g, --global', 'Install to global ~/.coc/skills/ directory')
         .option('--replace', 'Replace existing skills', false)
         .option('--select <names>', 'Comma-separated list of skill names to install')
         .option('--no-color', 'Disable colored output')
-        .action(async (githubUrl: string, opts: Record<string, unknown>) => {
+        .action(async (source: string, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
-            const exitCode = await executeSkillInstall(githubUrl, {
+            const exitCode = await executeSkillInstall(source, {
                 workspace: opts.workspace as string | undefined,
                 replace: opts.replace as boolean | undefined,
                 select: opts.select as string | undefined,

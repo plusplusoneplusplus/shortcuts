@@ -17,8 +17,8 @@ export function SkillsBundledPanel() {
     const [loading, setLoading] = useState(true);
     const [installing, setInstalling] = useState(false);
     const [selectedBundled, setSelectedBundled] = useState<Set<string>>(new Set());
-    const [installSource, setInstallSource] = useState<'bundled' | 'github'>('bundled');
-    const [githubUrl, setGithubUrl] = useState('');
+    const [installSource, setInstallSource] = useState<'bundled' | 'github' | 'local'>('bundled');
+    const [sourceInput, setSourceInput] = useState('');
     const [scanResult, setScanResult] = useState<any>(null);
     const [scanning, setScanning] = useState(false);
 
@@ -79,14 +79,14 @@ export function SkillsBundledPanel() {
     }, [loadBundled]);
 
     const handleScanUrl = useCallback(async () => {
-        if (!githubUrl.trim()) return;
+        if (!sourceInput.trim()) return;
         setScanning(true);
         setScanResult(null);
         try {
             const result = await fetchApi('/skills/scan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: githubUrl }),
+                body: JSON.stringify({ url: sourceInput }),
             });
             setScanResult(result);
         } catch {
@@ -94,7 +94,7 @@ export function SkillsBundledPanel() {
         } finally {
             setScanning(false);
         }
-    }, [githubUrl]);
+    }, [sourceInput]);
 
     const handleInstallFromUrl = useCallback(async () => {
         if (!scanResult?.skills?.length) return;
@@ -103,17 +103,17 @@ export function SkillsBundledPanel() {
             await fetchApi('/skills/install', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: githubUrl, skillsToInstall: scanResult.skills, replace: true }),
+                body: JSON.stringify({ url: sourceInput, skillsToInstall: scanResult.skills, replace: true }),
             });
             setScanResult(null);
-            setGithubUrl('');
+            setSourceInput('');
             loadBundled();
         } catch {
             // ignore
         } finally {
             setInstalling(false);
         }
-    }, [scanResult, githubUrl, loadBundled]);
+    }, [scanResult, sourceInput, loadBundled]);
 
     if (loading) {
         return <div className="p-4 text-sm text-[#848484]">Loading bundled skills…</div>;
@@ -131,9 +131,15 @@ export function SkillsBundledPanel() {
                 </button>
                 <button
                     className={`text-xs px-3 py-1.5 rounded ${installSource === 'github' ? 'bg-[#0078d4] text-white' : 'bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]'}`}
-                    onClick={() => setInstallSource('github')}
+                    onClick={() => { setInstallSource('github'); setScanResult(null); setSourceInput(''); }}
                 >
                     GitHub URL
+                </button>
+                <button
+                    className={`text-xs px-3 py-1.5 rounded ${installSource === 'local' ? 'bg-[#0078d4] text-white' : 'bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]'}`}
+                    onClick={() => { setInstallSource('local'); setScanResult(null); setSourceInput(''); }}
+                >
+                    Local Path
                 </button>
             </div>
 
@@ -186,19 +192,19 @@ export function SkillsBundledPanel() {
                 </div>
             )}
 
-            {installSource === 'github' && (
+            {(installSource === 'github' || installSource === 'local') && (
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                         <input
                             type="text"
-                            value={githubUrl}
-                            onChange={(e) => setGithubUrl(e.target.value)}
-                            placeholder="https://github.com/user/repo or local path"
+                            value={sourceInput}
+                            onChange={(e) => setSourceInput(e.target.value)}
+                            placeholder={installSource === 'local' ? '/path/to/skills or ./my-skill' : 'https://github.com/user/repo'}
                             className="flex-1 text-sm px-2 py-1.5 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]"
                         />
                         <button
                             className="text-xs px-3 py-1.5 bg-[#0078d4] text-white rounded disabled:opacity-50"
-                            disabled={scanning || !githubUrl.trim()}
+                            disabled={scanning || !sourceInput.trim()}
                             onClick={handleScanUrl}
                         >
                             {scanning ? 'Scanning…' : 'Scan'}

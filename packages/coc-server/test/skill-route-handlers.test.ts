@@ -100,6 +100,23 @@ describe('createSkillRouteHandlers', () => {
             expect(getBody().success).toBe(false);
         });
 
+        it('scans a local path and returns found skills', async () => {
+            // Create a local skill collection under sourceRoot
+            const skillDir = path.join(sourceRoot, 'local-skill');
+            fs.mkdirSync(skillDir, { recursive: true });
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Local Skill\nA local skill');
+
+            const { handleScan } = createSkillRouteHandlers({ installPath: installDir, sourceRoot });
+            const { res, getStatusCode, getBody } = createMockResponse();
+            const req = makeRequest('POST', '/scan', { url: sourceRoot });
+            await handleScan(req, res);
+            expect(getStatusCode()).toBe(200);
+            expect(getBody().success).toBe(true);
+            expect(getBody().skills.length).toBeGreaterThan(0);
+            const names = getBody().skills.map((s: any) => s.name);
+            expect(names).toContain('local-skill');
+        });
+
         it('returns 400 when request body is invalid JSON', async () => {
             const { handleScan } = createSkillRouteHandlers({ installPath: installDir, sourceRoot });
             const { res, getStatusCode } = createMockResponse();
@@ -158,6 +175,29 @@ describe('createSkillRouteHandlers', () => {
             const req = makeRequest('POST', '/install', { source: 'bundled', skills: [] });
             await handleInstall(req, res);
             expect(fs.existsSync(newDir)).toBe(false);
+        });
+
+        it('installs skills from a local path via url field', async () => {
+            // Create a local skill collection under sourceRoot
+            const skillDir = path.join(sourceRoot, 'install-skill');
+            fs.mkdirSync(skillDir, { recursive: true });
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Install Skill\nA skill to install');
+
+            const { handleInstall } = createSkillRouteHandlers({
+                installPath: installDir,
+                sourceRoot,
+                ensureInstallDir: true,
+            });
+            const { res, getStatusCode, getBody } = createMockResponse();
+            // Pass local path as url; omit skillsToInstall to trigger auto-scan
+            const req = makeRequest('POST', '/install', {
+                url: sourceRoot,
+                replace: true,
+            });
+            await handleInstall(req, res);
+            expect(getStatusCode()).toBe(200);
+            expect(getBody().installed).toBeGreaterThan(0);
+            expect(fs.existsSync(path.join(installDir, 'install-skill', 'SKILL.md'))).toBe(true);
         });
     });
 
