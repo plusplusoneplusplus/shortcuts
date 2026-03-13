@@ -17,15 +17,12 @@ interface SkillInfo {
     scripts?: string[];
 }
 
-interface SkillDetail extends SkillInfo {
-    // same shape, loaded on expand
-}
 
 export function SkillsInstalledPanel() {
     const [skills, setSkills] = useState<SkillInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
-    const [skillDetail, setSkillDetail] = useState<SkillDetail | null>(null);
+    const [skillDetail, setSkillDetail] = useState<SkillInfo | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
 
@@ -167,7 +164,7 @@ export function SkillsInstalledPanel() {
     );
 }
 
-function SkillDetailPanel({ detail, loading }: { detail: SkillDetail | null; loading: boolean }) {
+function SkillDetailPanel({ detail, loading }: { detail: SkillInfo | null; loading: boolean }) {
     if (loading) {
         return <div className="px-3 pb-3 text-xs text-[#848484]">Loading detail…</div>;
     }
