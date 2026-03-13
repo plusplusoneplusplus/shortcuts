@@ -4,11 +4,17 @@
  *
  * Status filter triggers a server re-fetch; author and search filters are
  * applied client-side without additional requests.
+ *
+ * Desktop: resizable split-panel (list left, detail right).
+ * Mobile: single-pane toggle (list ↔ detail).
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getApiBase } from '../../utils/config';
 import { useApp } from '../../context/AppContext';
+import { cn } from '../../shared';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { PullRequestRow } from './PullRequestRow';
 import { PullRequestDetail } from './PullRequestDetail';
 import type { PullRequest, PrStatus } from './pr-utils';
@@ -34,6 +40,14 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const [authorFilter, setAuthorFilter] = useState('');
     const [searchText, setSearchText] = useState('');
     const [hasMore, setHasMore] = useState(false);
+    const { isMobile } = useBreakpoint();
+    const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
+        initialWidth: 288,
+        minWidth: 160,
+        maxWidth: 600,
+        storageKey: 'pr-left-panel-width',
+    });
+    const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
     // Track current offset without causing the callback to change on every fetch.
     const skipRef = useRef(0);
@@ -94,18 +108,11 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     function handleRowClick(pr: PullRequest) {
         dispatch({ type: 'SET_SELECTED_PR', prId: pr.id });
         window.location.hash = `#repos/${encodeURIComponent(repoId)}/pull-requests/${pr.id}`;
+        if (isMobile) setMobileShowDetail(true);
     }
 
-    return (
+    const listPanel = (
         <>
-            {state.selectedPrId != null && (
-                <PullRequestDetail
-                    repoId={repoId}
-                    prId={state.selectedPrId}
-                    onBack={() => {}}
-                />
-            )}
-            <div className={state.selectedPrId != null ? 'hidden' : 'flex flex-col h-full'} data-testid="pull-requests-tab">
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0 flex-wrap">
                 <input
@@ -170,7 +177,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     </div>
                 )}
                 {!loading && !error && !unconfigured && prs.length === 0 && (
-                    <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="empty-state">
+                    <div className="pr-empty-state px-4 py-6 text-center text-sm text-gray-500" data-testid="empty-state">
                         No pull requests found.
                     </div>
                 )}
@@ -195,7 +202,68 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     Loading…
                 </div>
             )}
-        </div>
         </>
+    );
+
+    const detailContent = state.selectedPrId != null ? (
+        <PullRequestDetail
+            repoId={repoId}
+            prId={state.selectedPrId}
+            onBack={() => { if (isMobile) setMobileShowDetail(false); }}
+            isMobile={isMobile}
+        />
+    ) : (
+        <div
+            className="flex items-center justify-center h-full text-sm text-gray-500"
+            data-testid="pr-empty-state"
+        >
+            Select a pull request
+        </div>
+    );
+
+    if (isMobile) {
+        return (
+            <div className="flex flex-col h-full overflow-hidden" data-testid="pr-split-panel">
+                {mobileShowDetail ? (
+                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="pr-detail-panel">
+                        {detailContent}
+                    </div>
+                ) : (
+                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="pr-list-panel">
+                        {listPanel}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="pr-split-panel">
+            {/* Left panel */}
+            <div
+                className="flex-shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden"
+                style={{ width: leftPanelWidth }}
+                data-testid="pr-list-panel"
+            >
+                {listPanel}
+            </div>
+
+            {/* Resize handle */}
+            <div
+                className="flex items-center justify-center w-1 cursor-col-resize hover:bg-blue-400/30 active:bg-blue-400/50 transition-colors flex-shrink-0"
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                data-testid="pr-resize-handle"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize pull requests panel"
+                tabIndex={0}
+            />
+
+            {/* Right panel */}
+            <div className="flex-1 min-w-0 overflow-y-auto" data-testid="pr-detail-panel">
+                {detailContent}
+            </div>
+        </div>
     );
 }

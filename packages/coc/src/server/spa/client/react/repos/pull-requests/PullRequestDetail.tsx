@@ -18,9 +18,11 @@ export interface PullRequestDetailProps {
     repoId: string;
     prId: number | string;
     onBack: () => void;
+    /** When true (mobile), renders the back button. Hidden on desktop (list always visible). */
+    isMobile?: boolean;
 }
 
-export function PullRequestDetail({ repoId, prId, onBack }: PullRequestDetailProps) {
+export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
@@ -74,13 +76,15 @@ export function PullRequestDetail({ repoId, prId, onBack }: PullRequestDetailPro
     if (error || !pr) {
         return (
             <div className="px-4 py-4" data-testid="error-container">
-                <button
-                    onClick={handleBack}
-                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline mb-3"
-                    data-testid="back-button"
-                >
-                    ← Back to list
-                </button>
+                {isMobile && (
+                    <button
+                        onClick={handleBack}
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:underline mb-3"
+                        data-testid="back-button"
+                    >
+                        ← Back to list
+                    </button>
+                )}
                 <p className="text-sm text-red-500" data-testid="error-message">
                     {error ?? 'Pull request not found.'}
                 </p>
@@ -97,13 +101,15 @@ export function PullRequestDetail({ repoId, prId, onBack }: PullRequestDetailPro
         <div className="flex flex-col h-full overflow-hidden" data-testid="pr-detail">
             {/* Header */}
             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-                <button
-                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline mb-2"
-                    onClick={handleBack}
-                    data-testid="back-button"
-                >
-                    ← Back to list
-                </button>
+                {isMobile && (
+                    <button
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:underline mb-2"
+                        onClick={handleBack}
+                        data-testid="back-button"
+                    >
+                        ← Back to list
+                    </button>
+                )}
 
                 <div className="flex items-start gap-2 flex-wrap">
                     {pr.number != null && (

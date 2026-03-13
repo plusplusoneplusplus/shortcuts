@@ -126,16 +126,15 @@ test.describe('Pull Requests tab — list', () => {
         });
 
         await openPrTab(page, serverUrl, repoId);
-        await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
+        await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(3, { timeout: 10000 });
 
         // Select "merged" from the status filter
-        await page.locator('[data-testid="pr-status-filter"]').selectOption('merged');
+        await page.locator('[data-testid="status-filter"]').selectOption('merged');
 
-        await expect(page.locator('.pr-row')).toHaveCount(1, { timeout: 10000 });
-        await expect(page.locator('.pr-row').first().locator('.pr-status-badge')).toContainText(
-            'Merged',
-            { timeout: 10000 },
-        );
+        await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(1, { timeout: 10000 });
+        await expect(
+            page.locator('[data-testid="pr-row"]').first().locator('.pr-status-badge'),
+        ).toContainText('Merged', { timeout: 10000 });
 
         await cleanup();
     });
@@ -153,15 +152,14 @@ test.describe('Pull Requests tab — list', () => {
         });
 
         await openPrTab(page, serverUrl, repoId);
-        await expect(page.locator('.pr-row')).toHaveCount(4, { timeout: 10000 });
+        await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(4, { timeout: 10000 });
 
-        await page.locator('[data-testid="pr-search-input"]').fill(uniqueTitle);
+        await page.locator('[data-testid="search-input"]').fill(uniqueTitle);
 
-        await expect(page.locator('.pr-row')).toHaveCount(1, { timeout: 10000 });
-        await expect(page.locator('.pr-row').first().locator('.pr-title')).toHaveText(
-            uniqueTitle,
-            { timeout: 10000 },
-        );
+        await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(1, { timeout: 10000 });
+        await expect(
+            page.locator('[data-testid="pr-row"]').first().locator('.pr-title'),
+        ).toHaveText(uniqueTitle, { timeout: 10000 });
 
         await cleanup();
     });
@@ -180,7 +178,7 @@ test.describe('Pull Requests tab — list', () => {
         await cleanup();
     });
 
-    test('clicking a PR row navigates to detail view', async ({ page, serverUrl }) => {
+    test('clicking a PR row shows detail in right panel while list remains visible', async ({ page, serverUrl }) => {
         const { id: repoId } = await seedWorkspace(serverUrl, 'ws-8', 'My Repo', '/tmp/repo');
         const cleanup = await setupPrRoutes(page, serverUrl, repoId, {
             pullRequests: MOCK_PR_LIST,
@@ -192,9 +190,14 @@ test.describe('Pull Requests tab — list', () => {
 
         await page.locator('.pr-row').first().click();
 
+        // Detail panel appears in the right panel
         await expect(
             page.locator('[data-testid="pr-detail"], .pr-detail'),
         ).toBeVisible({ timeout: 10000 });
+
+        // List panel stays visible (split-panel layout)
+        await expect(page.locator('[data-testid="pr-list-panel"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('.pr-row').first()).toBeVisible({ timeout: 10000 });
 
         await cleanup();
     });

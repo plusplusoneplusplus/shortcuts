@@ -16,6 +16,21 @@ vi.mock('../../../../../src/server/spa/client/react/context/AppContext', () => (
     useApp: () => ({ state: { selectedPrId: null }, dispatch: mockDispatch }),
 }));
 
+// Default to desktop layout.
+vi.mock('../../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/hooks/useResizablePanel', () => ({
+    useResizablePanel: () => ({
+        width: 288,
+        isDragging: false,
+        handleMouseDown: vi.fn(),
+        handleTouchStart: vi.fn(),
+        resetWidth: vi.fn(),
+    }),
+}));
+
 const makePr = (overrides: Partial<any> = {}) => ({
     id: 1,
     number: 1,
@@ -237,5 +252,47 @@ describe('row click', () => {
         fireEvent.click(screen.getByTestId('pr-row'));
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 42 });
         expect(window.location.hash).toContain('pull-requests/42');
+    });
+});
+
+// ── Split-panel layout ─────────────────────────────────────────────────────────
+
+describe('split-panel layout', () => {
+    it('renders pr-split-panel container', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('pr-split-panel')).toBeInTheDocument();
+    });
+
+    it('renders pr-list-panel and pr-detail-panel on desktop', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('pr-list-panel')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-detail-panel')).toBeInTheDocument();
+    });
+
+    it('renders pr-resize-handle on desktop', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('pr-resize-handle')).toBeInTheDocument();
+    });
+
+    it('shows pr-empty-state in right panel when no PR is selected', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-empty-state')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-empty-state').textContent).toContain('Select a pull request');
+    });
+
+    it('list panel remains in DOM after PR row click (no hidden toggle)', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Test PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByTestId('pr-row'));
+
+        // List panel must still be in the DOM
+        expect(screen.getByTestId('pr-list-panel')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-list')).toBeInTheDocument();
     });
 });

@@ -146,16 +146,23 @@ describe('successful render', () => {
 // ── Back button ────────────────────────────────────────────────────────────────
 
 describe('back button', () => {
-    it('dispatches CLEAR_SELECTED_PR and calls onBack when back is clicked', async () => {
+    it('dispatches CLEAR_SELECTED_PR and calls onBack when back is clicked (mobile)', async () => {
         mockFetchBoth(makePr());
         const onBack = vi.fn();
-        await act(async () => { await renderDetail({ onBack }); });
+        await act(async () => { await renderDetail({ onBack, isMobile: true }); });
         await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
 
         fireEvent.click(screen.getByTestId('back-button'));
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'CLEAR_SELECTED_PR' });
         expect(window.location.hash).toContain('pull-requests');
         expect(onBack).toHaveBeenCalled();
+    });
+
+    it('does not render back button on desktop (isMobile=false)', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail({ isMobile: false }); });
+        await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
+        expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
     });
 });
 
