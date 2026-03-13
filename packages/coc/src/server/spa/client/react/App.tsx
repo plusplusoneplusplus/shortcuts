@@ -152,9 +152,6 @@ function AppInner() {
             case 'drain-timeout':
                 queueDispatch({ type: 'DRAIN_COMPLETE' });
                 break;
-            case 'workspace-registered':
-                if (msg.data) appDispatch({ type: 'WORKSPACE_REGISTERED', workspace: msg.data });
-                break;
             case 'tasks-changed':
                 if (msg.workspaceId) {
                     window.dispatchEvent(new CustomEvent('tasks-changed', { detail: { wsId: msg.workspaceId } }));
