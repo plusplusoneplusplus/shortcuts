@@ -1267,5 +1267,6 @@ export type {
 
 export { AdoPullRequestsAdapter } from './ado/ado-pull-requests-adapter';
 export { AdoWorkItemsAdapter } from './ado/ado-work-items-adapter';
+export { createAdoPullRequestsAdapter } from './ado/create-ado-adapter';
 
-export { GitHubPullRequestsAdapter, GitHubIssuesAdapter } from './github';
+export { GitHubPullRequestsAdapter, GitHubIssuesAdapter, createGitHubPullRequestsAdapter } from './github';

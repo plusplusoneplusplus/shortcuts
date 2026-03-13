@@ -170,6 +170,9 @@ export { registerGlobalSkillRoutes } from './global-skill-handler';
 // Repos (file explorer)
 export * from './repos';
 
+// Providers (GitHub / ADO credential config and factory)
+export * from './providers';
+
 // Debounced watcher registry (shared utility for file watching with debounce)
 export { DebouncedWatcherRegistry } from './shared/debounced-watcher-registry';
 export type { WatchOptions } from './shared/debounced-watcher-registry';
