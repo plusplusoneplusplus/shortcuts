@@ -31,6 +31,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wsStatus: 'closed',
         selectedGitCommitHash: null,
         selectedGitFilePath: null,
+        selectedPrId: null,
         selectedRepoWikiId: null,
         selectedWorkflowProcessId: null,
         repoWikiInitialTab: null,
@@ -831,6 +832,51 @@ describe('AppContext reducer', () => {
             const state = makeState({ selectedWorkflowRunProcessId: 'proc-1' });
             const result = appReducer(state, { type: 'SET_WORKFLOW_RUN_PROCESS', processId: 'proc-2' });
             expect(result.selectedWorkflowRunProcessId).toBe('proc-2');
+        });
+    });
+
+    // ── SET_SELECTED_PR / CLEAR_SELECTED_PR ───────────────────────
+    describe('SET_SELECTED_PR', () => {
+        it('sets selectedPrId to a numeric ID', () => {
+            const result = appReducer(makeState(), { type: 'SET_SELECTED_PR', prId: 42 });
+            expect(result.selectedPrId).toBe(42);
+        });
+
+        it('sets selectedPrId to a string ID (ADO GUID)', () => {
+            const result = appReducer(makeState(), { type: 'SET_SELECTED_PR', prId: 'abc-guid-123' });
+            expect(result.selectedPrId).toBe('abc-guid-123');
+        });
+
+        it('overwrites existing selectedPrId', () => {
+            const state = makeState({ selectedPrId: 1 });
+            const result = appReducer(state, { type: 'SET_SELECTED_PR', prId: 2 });
+            expect(result.selectedPrId).toBe(2);
+        });
+
+        it('does not affect other state fields', () => {
+            const state = makeState({ selectedRepoId: 'r1' });
+            const result = appReducer(state, { type: 'SET_SELECTED_PR', prId: 42 });
+            expect(result.selectedRepoId).toBe('r1');
+        });
+    });
+
+    describe('CLEAR_SELECTED_PR', () => {
+        it('resets selectedPrId to null', () => {
+            const state = makeState({ selectedPrId: 42 });
+            const result = appReducer(state, { type: 'CLEAR_SELECTED_PR' });
+            expect(result.selectedPrId).toBeNull();
+        });
+
+        it('is a no-op when selectedPrId is already null', () => {
+            const state = makeState({ selectedPrId: null });
+            const result = appReducer(state, { type: 'CLEAR_SELECTED_PR' });
+            expect(result.selectedPrId).toBeNull();
+        });
+
+        it('does not affect selectedGitCommitHash', () => {
+            const state = makeState({ selectedGitCommitHash: 'abc', selectedPrId: 1 });
+            const result = appReducer(state, { type: 'CLEAR_SELECTED_PR' });
+            expect(result.selectedGitCommitHash).toBe('abc');
         });
     });
 });

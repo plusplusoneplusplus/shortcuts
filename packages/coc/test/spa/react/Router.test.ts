@@ -127,12 +127,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('activity')).toBe(true);
     });
 
+    it('includes "pull-requests"', () => {
+        expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
+    });
+
     it('does not include unknown tab', () => {
         expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
     });
 
-    it('has exactly 10 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(10);
+    it('has exactly 11 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(11);
     });
 });
 
@@ -1602,5 +1606,75 @@ describe('Router source-level: A keyboard shortcut for Activity', () => {
 
     it('activity route is in VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('activity')).toBe(true);
+    });
+});
+
+// ─── pull-requests deep-link dispatch simulation ──────────────────
+
+describe('handleHash pull-requests dispatch simulation', () => {
+    function simulatePrHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+                // Pull-requests deep-link handling (mirrors Router.tsx)
+                if (parts[2] === 'pull-requests' && parts[3]) {
+                    dispatches.push({ type: 'SET_SELECTED_PR', prId: decodeURIComponent(parts[3]) });
+                } else if (parts[2] === 'pull-requests') {
+                    dispatches.push({ type: 'CLEAR_SELECTED_PR' });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SET_REPO_SUB_TAB pull-requests for #repos/r1/pull-requests', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pull-requests' });
+    });
+
+    it('dispatches CLEAR_SELECTED_PR for #repos/r1/pull-requests (list route)', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests');
+        expect(dispatches).toContainEqual({ type: 'CLEAR_SELECTED_PR' });
+    });
+
+    it('dispatches SET_SELECTED_PR for #repos/r1/pull-requests/42', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pull-requests' });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PR', prId: '42' });
+    });
+
+    it('does not dispatch CLEAR_SELECTED_PR for #repos/r1/pull-requests/42', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42');
+        expect(dispatches.find(d => d.type === 'CLEAR_SELECTED_PR')).toBeUndefined();
+    });
+
+    it('URL-decodes the prId', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/abc%2F123');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PR', prId: 'abc/123' });
+    });
+
+    it('dispatches SET_SELECTED_REPO alongside PR actions', () => {
+        const dispatches = simulatePrHash('#repos/my-repo/pull-requests/7');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'my-repo' });
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PR', prId: '7' });
+    });
+
+    it('tabFromHash returns "repos" for #repos/r1/pull-requests', () => {
+        expect(tabFromHash('#repos/r1/pull-requests')).toBe('repos');
+    });
+
+    it('tabFromHash returns "repos" for #repos/r1/pull-requests/42', () => {
+        expect(tabFromHash('#repos/r1/pull-requests/42')).toBe('repos');
+    });
+
+    it('pull-requests is in VALID_REPO_SUB_TABS', () => {
+        expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
     });
 });

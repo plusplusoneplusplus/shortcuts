@@ -143,7 +143,7 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'copilot', 'workflow', 'explorer', 'activity']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'copilot', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -278,6 +278,12 @@ export function Router() {
                         dispatch({ type: 'SET_EXPLORER_PATH', path: decodeURIComponent(parts.slice(3).join('/')) });
                     } else if (parts[2] === 'explorer') {
                         dispatch({ type: 'SET_EXPLORER_PATH', path: null });
+                    }
+                    // Pull-requests deep-link: #repos/{id}/pull-requests and #repos/{id}/pull-requests/{prNumber}
+                    if (parts[2] === 'pull-requests' && parts[3]) {
+                        dispatch({ type: 'SET_SELECTED_PR', prId: decodeURIComponent(parts[3]) });
+                    } else if (parts[2] === 'pull-requests') {
+                        dispatch({ type: 'CLEAR_SELECTED_PR' });
                     }
                 }
             }

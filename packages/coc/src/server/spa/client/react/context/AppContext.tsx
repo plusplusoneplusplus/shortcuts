@@ -50,6 +50,7 @@ export interface AppContextState {
     selectedScheduleId: string | null;
     selectedGitCommitHash: string | null;
     selectedGitFilePath: string | null;
+    selectedPrId: number | string | null;
     selectedWorkflowProcessId: string | null;
     selectedExplorerPath: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
@@ -90,6 +91,7 @@ const initialState: AppContextState = {
     selectedScheduleId: null,
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
+    selectedPrId: null,
     selectedWorkflowProcessId: null,
     selectedExplorerPath: null,
     conversationCache: {},
@@ -153,7 +155,9 @@ export type AppAction =
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
-    | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string };
+    | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
+    | { type: 'SET_SELECTED_PR'; prId: number | string }
+    | { type: 'CLEAR_SELECTED_PR' };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -353,6 +357,10 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, activeSkillsSubTab: action.tab };
         case 'SET_WIKI_TAB':
             return { ...state, wikiTabState: { ...state.wikiTabState, [action.wikiId]: action.tab } };
+        case 'SET_SELECTED_PR':
+            return { ...state, selectedPrId: action.prId };
+        case 'CLEAR_SELECTED_PR':
+            return { ...state, selectedPrId: null };
         default:
             return state;
     }
