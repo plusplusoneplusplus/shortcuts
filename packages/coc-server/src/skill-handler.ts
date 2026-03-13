@@ -128,6 +128,14 @@ export function listDirectoryFiles(dirPath: string): string[] {
     } catch { return []; }
 }
 
+function applyParsedSkill(skill: SkillInfo, parsed: ReturnType<typeof parseSkillMd>): void {
+    skill.description = parsed.description;
+    skill.version = parsed.version;
+    skill.variables = parsed.variables;
+    skill.output = parsed.output;
+    skill.promptBody = parsed.promptBody;
+}
+
 export function listInstalledSkills(installPath: string): SkillInfo[] {
     if (!fs.existsSync(installPath)) {
         return [];
@@ -147,11 +155,7 @@ export function listInstalledSkills(installPath: string): SkillInfo[] {
             try {
                 const content = fs.readFileSync(skillMdPath, 'utf-8');
                 const parsed = parseSkillMd(content);
-                skill.description = parsed.description;
-                skill.version = parsed.version;
-                skill.variables = parsed.variables;
-                skill.output = parsed.output;
-                skill.promptBody = parsed.promptBody;
+                applyParsedSkill(skill, parsed);
             } catch {
                 // ignore
             }
@@ -177,11 +181,7 @@ export function getSkillDetail(installPath: string, skillName: string): SkillInf
     try {
         const content = fs.readFileSync(skillMdPath, 'utf-8');
         const parsed = parseSkillMd(content);
-        skill.description = parsed.description;
-        skill.version = parsed.version;
-        skill.variables = parsed.variables;
-        skill.output = parsed.output;
-        skill.promptBody = parsed.promptBody;
+        applyParsedSkill(skill, parsed);
     } catch {
         // ignore
     }
