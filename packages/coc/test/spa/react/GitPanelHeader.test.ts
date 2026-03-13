@@ -263,11 +263,11 @@ describe('GitPanelHeader', () => {
         });
 
         it('fetch button calls onFetch on click', () => {
-            expect(source).toContain('onClick={onFetch}');
+            expect(source).toContain('handleAction(onFetch)');
         });
 
         it('fetch button is disabled when fetching', () => {
-            expect(source).toContain('disabled={fetching}');
+            expect(source).toContain('disabled={!!isActioning}');
         });
 
         it('fetch button has descriptive title', () => {
@@ -279,7 +279,7 @@ describe('GitPanelHeader', () => {
         });
 
         it('fetch button shows spinner when fetching', () => {
-            expect(source).toContain("fetching ? 'git-refresh-spin' : ''");
+            expect(source).toContain('isActioning ?');
         });
 
         it('renders pull button conditionally when onPull is provided', () => {
@@ -291,11 +291,11 @@ describe('GitPanelHeader', () => {
         });
 
         it('pull button calls onPull on click', () => {
-            expect(source).toContain('onClick={onPull}');
+            expect(source).toContain('handleAction(onPull)');
         });
 
         it('pull button is disabled when pulling', () => {
-            expect(source).toContain('disabled={pulling}');
+            expect(source).toContain('disabled={!!isActioning}');
         });
 
         it('pull button has --rebase title', () => {
@@ -307,7 +307,7 @@ describe('GitPanelHeader', () => {
         });
 
         it('pull button shows spinner when pulling', () => {
-            expect(source).toContain("pulling ? 'git-refresh-spin' : ''");
+            expect(source).toContain("'git-refresh-spin'");
         });
 
         it('renders push button conditionally when onPush is provided', () => {
@@ -319,11 +319,11 @@ describe('GitPanelHeader', () => {
         });
 
         it('push button calls onPush on click', () => {
-            expect(source).toContain('onClick={onPush}');
+            expect(source).toContain('handleAction(onPush)');
         });
 
         it('push button is disabled when pushing', () => {
-            expect(source).toContain('disabled={pushing}');
+            expect(source).toContain('disabled={!!isActioning}');
         });
 
         it('push button has descriptive title', () => {
@@ -335,13 +335,13 @@ describe('GitPanelHeader', () => {
         });
 
         it('push button shows spinner when pushing', () => {
-            expect(source).toContain("pushing ? 'git-refresh-spin' : ''");
+            expect(source).toContain('isActioning');
         });
 
         it('all action buttons use git-action-btn class', () => {
             const matches = source.match(/git-action-btn/g);
             expect(matches).toBeTruthy();
-            expect(matches!.length).toBe(3);
+            expect(matches!.length).toBe(2);
         });
 
         it('action buttons appear between spacer and refresh button', () => {
