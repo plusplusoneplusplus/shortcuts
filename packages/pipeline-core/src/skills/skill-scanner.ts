@@ -6,6 +6,7 @@ import * as path from 'path';
 import { DiscoveredSkill, ParsedSource, ScanResult } from './types';
 import { safeExists, safeReadDir, safeReadFile, safeStats, execAsync, httpGetJson } from '../utils';
 import { getLogger, LogCategory } from '../logger';
+import { parseGitHubApiResponse } from './github-api-utils';
 
 /**
  * Skill file that identifies a valid skill directory
@@ -82,17 +83,6 @@ async function scanGitHubSource(
         return scanGitHubWithGhCli(github, installPath);
     } else {
         return scanGitHubWithHttp(github, installPath);
-    }
-}
-
-/**
- * Parse GitHub API response from gh CLI (cross-platform)
- */
-function parseGitHubApiResponse(stdout: string): any {
-    try {
-        return JSON.parse(stdout);
-    } catch {
-        return null;
     }
 }
 

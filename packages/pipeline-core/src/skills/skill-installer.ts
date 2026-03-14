@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import { DiscoveredSkill, InstallDetail, InstallResult, ParsedSource } from './types';
 import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile, safeWriteFile, execAsync, httpGetJson, httpDownload } from '../utils';
 import { getLogger, LogCategory } from '../logger';
+import { parseGitHubApiResponse } from './github-api-utils';
 
 /**
  * Cache for gh CLI availability check
@@ -124,17 +125,6 @@ async function installFromGitHub(
         await installFromGitHubWithGhCli(github, skillPath, targetPath);
     } else {
         await installFromGitHubWithHttp(github, skillPath, targetPath);
-    }
-}
-
-/**
- * Parse GitHub API response from gh CLI
- */
-function parseGitHubApiResponse(stdout: string): any {
-    try {
-        return JSON.parse(stdout);
-    } catch {
-        return null;
     }
 }
 
