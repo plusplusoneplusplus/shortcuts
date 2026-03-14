@@ -71,7 +71,7 @@ export function registerInstructionRoutes(routes: Route[], store: ProcessStore):
                 const fileSet = findInstructionFiles(workspace.rootPath);
                 const result: Record<string, string | null> = {};
 
-                for (const mode of Array.from(VALID_MODES) as InstructionMode[]) {
+                for (const mode of VALID_MODES) {
                     const filePath = fileSet[mode];
                     if (filePath) {
                         try {
