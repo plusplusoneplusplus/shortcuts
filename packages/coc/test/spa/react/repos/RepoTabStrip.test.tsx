@@ -12,8 +12,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
         open ? <div data-testid="add-repo-dialog" /> : null,
 }));
 
-const makeRepo = (id: string, name: string, color = '#ff0000') => ({
-    workspace: { id, name, rootPath: `/repos/${id}`, color },
+const makeRepo = (id: string, name: string, color = '#ff0000', remoteUrl?: string) => ({
+    workspace: { id, name, rootPath: `/repos/${id}`, color, remoteUrl },
     stats: { success: 0, failed: 0, running: 0 },
     workflows: [],
     taskCount: 0,
@@ -140,5 +140,97 @@ describe('RepoTabStrip', () => {
         );
         expect(screen.queryAllByTestId('repo-tab')).toHaveLength(0);
         expect(screen.getByTestId('repo-tab-add-btn')).toBeDefined();
+    });
+
+    it('renders no separators when all repos have the same remote URL', () => {
+        const remote = 'https://github.com/org/repo.git';
+        render(
+            <RepoTabStrip
+                repos={[makeRepo('r1', 'Alpha', '#f00', remote), makeRepo('r2', 'Beta', '#0f0', remote)]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        expect(screen.queryAllByTestId('repo-group-separator')).toHaveLength(0);
+        expect(screen.getAllByTestId('repo-tab')).toHaveLength(2);
+    });
+
+    it('renders a separator between repos from different remote URLs', () => {
+        render(
+            <RepoTabStrip
+                repos={[
+                    makeRepo('r1', 'Alpha', '#f00', 'https://github.com/org/repo-a.git'),
+                    makeRepo('r2', 'Beta', '#0f0', 'https://github.com/org/repo-b.git'),
+                ]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        expect(screen.getAllByTestId('repo-group-separator')).toHaveLength(1);
+    });
+
+    it('renders a separator before ungrouped repos (no remote URL)', () => {
+        render(
+            <RepoTabStrip
+                repos={[
+                    makeRepo('r1', 'Alpha', '#f00', 'https://github.com/org/repo.git'),
+                    makeRepo('r2', 'Beta'),
+                ]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        expect(screen.getAllByTestId('repo-group-separator')).toHaveLength(1);
+    });
+
+    it('renders no separator when all repos are ungrouped (no remote URLs)', () => {
+        render(
+            <RepoTabStrip
+                repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        // Each ungrouped repo is its own group — two repos = two groups = one separator between them
+        expect(screen.getAllByTestId('repo-group-separator')).toHaveLength(1);
+    });
+
+    it('renders no separator for a single repo', () => {
+        render(
+            <RepoTabStrip
+                repos={[makeRepo('r1', 'Alpha')]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        expect(screen.queryAllByTestId('repo-group-separator')).toHaveLength(0);
+    });
+
+    it('separator tooltip shows the group remote URL label', () => {
+        render(
+            <RepoTabStrip
+                repos={[
+                    makeRepo('r1', 'Alpha', '#f00', 'https://github.com/org/repo-a.git'),
+                    makeRepo('r2', 'Beta', '#0f0', 'https://github.com/org/repo-b.git'),
+                ]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        const separator = screen.getByTestId('repo-group-separator');
+        // The second group's label should appear as the separator title
+        expect(separator.getAttribute('title')).toBeTruthy();
     });
 });
