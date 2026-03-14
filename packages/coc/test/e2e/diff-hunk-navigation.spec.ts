@@ -187,7 +187,8 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
 
         await page.setViewportSize({ width: 1280, height: 400 });
 
-        const scrollContainer = page.getByTestId('commit-detail');
+        // diff-section is the actual scrollable container (overflow-auto); commit-detail is overflow-hidden
+        const scrollContainer = page.getByTestId('diff-section');
 
         // Scroll to the very bottom so at least one hunk is above the fold
         await scrollContainer.evaluate((el: HTMLElement) => {

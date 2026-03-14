@@ -41,7 +41,7 @@ export async function setupPrRoutes(
     const threadsPattern  = `${base}/*/threads`;
     const reviewersPattern = `${base}/*/reviewers`;
     const detailPattern   = `${base}/*`;
-    const listPattern     = base;
+    const listPattern     = `${base}?*`;
 
     const unconfiguredBody = {
         error: 'unconfigured',

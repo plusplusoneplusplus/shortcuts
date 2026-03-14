@@ -355,10 +355,10 @@ test.describe('Preferences (007)', () => {
                 data: { lastSkills: { task: 'impl' } },
             });
 
-            // Verify persistence via GET
+            // Verify persistence via GET (server coerces single string to array for multi-skill support)
             const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
             const prefs = await res.json();
-            expect(prefs.lastSkills?.task).toBe('impl');
+            expect(prefs.lastSkills?.task).toEqual(['impl']);
         } finally {
             safeRmSync(tmpDir);
         }
