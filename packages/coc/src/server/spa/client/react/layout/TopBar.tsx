@@ -55,7 +55,10 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     }, [dispatch]);
 
     const toggleRepoManagement = useCallback(() => {
-        if (state.activeTab !== 'repos') return;
+        if (state.activeTab !== 'repos') {
+            location.hash = '#repos';
+            return;
+        }
         setPopoverOpen(prev => !prev);
     }, [state.activeTab]);
 
@@ -76,9 +79,9 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 <button
                     className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
                     id="hamburger-btn"
-                    aria-label={isOnReposTab ? 'Manage repositories' : 'Toggle sidebar'}
+                    aria-label={isOnReposTab ? 'Manage repositories' : 'Go to repositories'}
                     aria-pressed={isOnReposTab ? popoverOpen : false}
-                    title={isOnReposTab ? 'Manage repositories' : 'Toggle sidebar'}
+                    title={isOnReposTab ? 'Manage repositories' : 'Go to repositories'}
                     onClick={toggleRepoManagement}
                 >
                     &#9776;
