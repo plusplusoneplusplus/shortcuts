@@ -4,7 +4,7 @@
  * On mobile, shows either the file tree OR the preview pane (not both).
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { Spinner } from '../../shared';
 import { fetchApi } from '../../hooks/useApi';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -32,6 +32,56 @@ export function seedFromEntries(entries: TreeEntry[], map: Map<string, TreeEntry
     }
 }
 
+/**
+ * Returns every ancestor directory prefix of a repo-relative file path.
+ * E.g. "src/components/Button/index.ts" → ["src", "src/components", "src/components/Button"]
+ */
+export function getAncestorPaths(filePath: string): string[] {
+    const parts = filePath.split('/').filter(Boolean);
+    const ancestors: string[] = [];
+    for (let i = 1; i < parts.length; i++) {
+        ancestors.push(parts.slice(0, i).join('/'));
+    }
+    return ancestors;
+}
+
+/**
+ * For each path in `paths`, resolves ancestor directories not already in `childrenMap`,
+ * fetches their tree data in parallel, then merges into `childrenMap` in a single update.
+ * Returns the full set of ancestor directory paths across all input paths.
+ */
+export async function mergeServerResultsIntoChildrenMap(
+    paths: string[],
+    childrenMap: Map<string, TreeEntry[]>,
+    setChildrenMap: Dispatch<SetStateAction<Map<string, TreeEntry[]>>>,
+    workspaceId: string,
+): Promise<string[]> {
+    const allAncestors = new Set<string>();
+    for (const p of paths) {
+        for (const a of getAncestorPaths(p)) {
+            allAncestors.add(a);
+        }
+    }
+    const missing = [...allAncestors].filter(dir => !childrenMap.has(dir));
+    if (missing.length > 0) {
+        const results = await Promise.all(
+            missing.map(dir =>
+                fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(dir)}`)
+                    .then((data: { entries: TreeEntry[] }) => ({ dir, entries: data.entries }))
+                    .catch(() => null),
+            ),
+        );
+        const updates: [string, TreeEntry[]][] = [];
+        for (const r of results) {
+            if (r) updates.push([r.dir, r.entries]);
+        }
+        if (updates.length > 0) {
+            setChildrenMap(prev => new Map([...prev, ...updates]));
+        }
+    }
+    return [...allAncestors];
+}
+
 export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -55,6 +105,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const debounceRef = useRef<ReturnType<typeof setTimeout>>();
     const searchInputRef = useRef<HTMLInputElement>(null);
     const preFilterExpandedRef = useRef<Set<string> | null>(null);
+
+    // Server search state
+    const [serverSearchLoading, setServerSearchLoading] = useState(false);
+    const serverSearchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{
@@ -261,6 +315,37 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         }
     }, [searchQuery, childrenMap, rootEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Server search: debounce 300 ms, seed childrenMap with results from unexplored directories
+    useEffect(() => {
+        if (serverSearchTimerRef.current) clearTimeout(serverSearchTimerRef.current);
+        if (!searchQuery) {
+            setServerSearchLoading(false);
+            return;
+        }
+        serverSearchTimerRef.current = setTimeout(() => {
+            setServerSearchLoading(true);
+            fetchApi(`/repos/${encodeURIComponent(workspaceId)}/search?q=${encodeURIComponent(searchQuery)}&limit=100`)
+                .then(async (data: { results: { path: string; score: number }[] }) => {
+                    const paths = data.results.map(r => r.path);
+                    const ancestors = await mergeServerResultsIntoChildrenMap(
+                        paths, childrenMap, setChildrenMap, workspaceId,
+                    );
+                    if (ancestors.length > 0) {
+                        setExpandedPaths(prev => {
+                            const next = new Set(prev);
+                            for (const a of ancestors) next.add(a);
+                            return next;
+                        });
+                    }
+                })
+                .catch(() => { /* silently ignore search errors */ })
+                .finally(() => setServerSearchLoading(false));
+        }, 300);
+        return () => {
+            if (serverSearchTimerRef.current) clearTimeout(serverSearchTimerRef.current);
+        };
+    }, [searchQuery, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Keyboard shortcut: '/' to focus search, Escape to clear, Ctrl+P for Quick Open, Ctrl+O for Exact Open
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -360,6 +445,11 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     inputRef={searchInputRef}
                     placeholder="Filter files…"
                 />
+                {serverSearchLoading && (
+                    <div className="px-3 py-0.5 text-xs text-[#848484]" data-testid="explorer-server-search-loading">
+                        Searching…
+                    </div>
+                )}
                 <FileTree
                     workspaceId={workspaceId}
                     entries={rootEntries}
