@@ -22,6 +22,16 @@ export interface ExplorerPanelProps {
     workspaceId: string;
 }
 
+/** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
+export function seedFromEntries(entries: TreeEntry[], map: Map<string, TreeEntry[]>): void {
+    for (const e of entries) {
+        if (e.type === 'dir' && e.children) {
+            map.set(e.path, e.children);
+            seedFromEntries(e.children, map);
+        }
+    }
+}
+
 export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -63,9 +73,16 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=/`)
+        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/tree?path=/&depth=2`)
             .then((data: { entries: TreeEntry[] }) => {
-                if (!cancelled) setRootEntries(data.entries);
+                if (!cancelled) {
+                    setRootEntries(data.entries);
+                    const seedMap = new Map<string, TreeEntry[]>();
+                    seedFromEntries(data.entries, seedMap);
+                    if (seedMap.size > 0) {
+                        setChildrenMap(prev => new Map([...prev, ...seedMap]));
+                    }
+                }
             })
             .catch((err: Error) => {
                 if (!cancelled) setError(err.message || 'Failed to load directory');

@@ -4,4 +4,5 @@ export interface TreeEntry {
     type: 'file' | 'dir';
     size?: number;
     path: string;
+    children?: TreeEntry[];
 }
