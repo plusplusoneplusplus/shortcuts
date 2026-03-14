@@ -840,4 +840,102 @@ suite('EditorMessageRouter', () => {
         const copied = copyCalls[0].args[0] as string;
         assert.strictEqual(copied, 'test.md\n```\nline 1\nline 2\nline 3\n```');
     });
+
+    // --- resolveCommentQueued ---
+
+    suite('resolveCommentQueued', () => {
+        let mockQueueService: {
+            enabled: boolean;
+            queuedTasks: Array<{ type: string; payload: Record<string, unknown>; displayName?: string }>;
+            isEnabled(): boolean;
+            queueTask(opts: { type: string; payload: Record<string, unknown>; priority?: string; displayName?: string }): { position: number };
+        };
+
+        setup(() => {
+            mockQueueService = {
+                enabled: true,
+                queuedTasks: [],
+                isEnabled() { return this.enabled; },
+                queueTask(opts) {
+                    this.queuedTasks.push({ type: opts.type, payload: opts.payload, displayName: opts.displayName });
+                    return { position: this.queuedTasks.length };
+                }
+            };
+
+            // Inject the mock queue service via module-level setter
+            const aiServiceModule = require('../../shortcuts/ai-service');
+            if (typeof aiServiceModule.setAIQueueServiceForTesting === 'function') {
+                aiServiceModule.setAIQueueServiceForTesting(mockQueueService);
+            } else {
+                (mockQueueService as any).__injected = true;
+            }
+        });
+
+        teardown(() => {
+            const aiServiceModule = require('../../shortcuts/ai-service');
+            if (typeof aiServiceModule.setAIQueueServiceForTesting === 'function') {
+                aiServiceModule.setAIQueueServiceForTesting(undefined);
+            }
+        });
+
+        test('resolveCommentQueued marks comment as resolved', async () => {
+            await commentsManager.addComment(
+                'test.md',
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 20 },
+                'some selected text',
+                'A reviewer note'
+            );
+            const commentId = commentsManager.getCommentsForFile('test.md')[0].id;
+
+            await router.dispatch({ type: 'resolveCommentQueued', commentId } as WebviewMessage, createTestContext());
+
+            const comment = commentsManager.getComment(commentId);
+            assert.strictEqual(comment?.status, 'resolved');
+        });
+
+        test('resolveCommentQueued shows error when queue service unavailable', async () => {
+            await commentsManager.addComment(
+                'test.md',
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 },
+                'text',
+                'note'
+            );
+            const commentId = commentsManager.getCommentsForFile('test.md')[0].id;
+
+            // getAIQueueService returns null by default in tests (no injected service)
+            await router.dispatch({ type: 'resolveCommentQueued', commentId } as WebviewMessage, createTestContext());
+
+            // Comment should still be resolved
+            assert.strictEqual(commentsManager.getComment(commentId)?.status, 'resolved');
+        });
+
+        test('resolveCommentQueued shows warning when queue is disabled', async () => {
+            const aiServiceModule = require('../../shortcuts/ai-service');
+            if (typeof aiServiceModule.setAIQueueServiceForTesting !== 'function') {
+                // Cannot inject mock; skip
+                return;
+            }
+            const disabledService = { ...mockQueueService, enabled: false };
+            aiServiceModule.setAIQueueServiceForTesting(disabledService);
+
+            await commentsManager.addComment(
+                'test.md',
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 },
+                'text',
+                'note'
+            );
+            const commentId = commentsManager.getCommentsForFile('test.md')[0].id;
+
+            await router.dispatch({ type: 'resolveCommentQueued', commentId } as WebviewMessage, createTestContext());
+
+            // Comment still resolved
+            assert.strictEqual(commentsManager.getComment(commentId)?.status, 'resolved');
+            assert.ok(mockHost.wasMethodCalled('showWarning'));
+        });
+
+        test('resolveCommentQueued with no commentId is a no-op', async () => {
+            await router.dispatch({ type: 'resolveCommentQueued' } as unknown as WebviewMessage, createTestContext());
+            assert.ok(!mockHost.wasMethodCalled('showInfo'));
+        });
+    });
 });

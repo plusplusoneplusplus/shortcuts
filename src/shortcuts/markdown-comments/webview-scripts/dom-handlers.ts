@@ -22,7 +22,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentItem, RecentPrompt, SkillInfo } from './types';
-import { copyWithContext, deleteCommentMessage, openFile, reopenComment, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestChatInCLI, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendCommentToChat, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, resolveComment, updateContent } from './vscode-bridge';
+import { copyWithContext, deleteCommentMessage, openFile, reopenComment, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestChatInCLI, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendCommentToChat, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, resolveCommentQueued, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -792,7 +792,7 @@ function createCommentCard(comment: import('../types').MarkdownComment): HTMLEle
             const action = (btn as HTMLElement).dataset.action;
             switch (action) {
                 case 'resolve':
-                    resolveComment(comment.id);
+                    resolveCommentQueued(comment.id);
                     break;
                 case 'reopen':
                     reopenComment(comment.id);

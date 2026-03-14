@@ -16,7 +16,7 @@ import {
 } from '../../shared/webview/base-panel-manager';
 import { renderCommentMarkdown } from '../../shared/webview/markdown-renderer';
 import { state } from './state';
-import { addComment, deleteCommentMessage, editComment, reopenComment, requestSendCommentToChat, resolveComment } from './vscode-bridge';
+import { addComment, deleteCommentMessage, editComment, reopenComment, requestSendCommentToChat, resolveCommentQueued } from './vscode-bridge';
 
 // DOM element references
 let floatingPanel: HTMLElement;
@@ -432,7 +432,7 @@ function setupBubbleActions(bubble: HTMLElement, comment: MarkdownComment): void
 
             switch (action) {
                 case 'resolve':
-                    resolveComment(comment.id);
+                    resolveCommentQueued(comment.id);
                     closeActiveCommentBubble();
                     break;
                 case 'reopen':

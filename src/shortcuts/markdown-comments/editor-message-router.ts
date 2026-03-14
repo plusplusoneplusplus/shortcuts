@@ -53,7 +53,7 @@ export interface AskAIContext {
 }
 
 export interface WebviewMessage {
-    type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
+    type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' | 'resolveCommentQueued' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
     'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan' | 'chatInCLI' | 'copyWithContext' | 'readFilePreview';
     commentId?: string;
@@ -127,6 +127,8 @@ export class EditorMessageRouter {
                 return this.handleDeleteComment(message);
             case 'resolveComment':
                 return this.handleResolveComment(message);
+            case 'resolveCommentQueued':
+                return this.handleResolveCommentQueued(message, ctx);
             case 'reopenComment':
                 return this.handleReopenComment(message);
             case 'resolveAll':
@@ -262,6 +264,61 @@ export class EditorMessageRouter {
         if (message.commentId) {
             await this.commentsManager.resolveComment(message.commentId);
         }
+        return {};
+    }
+
+    private async handleResolveCommentQueued(message: WebviewMessage, ctx: MessageContext): Promise<DispatchResult> {
+        if (!message.commentId) {
+            return {};
+        }
+
+        // Always resolve the comment first
+        await this.commentsManager.resolveComment(message.commentId);
+
+        const queueService = getAIQueueService();
+        if (!queueService) {
+            this.host.showError('Queue service not available');
+            return {};
+        }
+
+        if (!queueService.isEnabled()) {
+            await this.host.showWarning(
+                'Queue feature is disabled. Enable it in settings: workspaceShortcuts.queue.enabled'
+            );
+            return {};
+        }
+
+        const comment = this.commentsManager.getComment(message.commentId);
+        if (!comment) {
+            return {};
+        }
+
+        const prompt = [
+            'You are reviewing a resolved comment in a document.',
+            `File: ${ctx.relativePath}`,
+            `Selected text (line ${comment.selection.startLine}–${comment.selection.endLine}):`,
+            comment.selectedText,
+            '',
+            `Reviewer comment: ${comment.comment}`,
+            '',
+            'In ask/read-only mode, summarise whether the comment appears to be addressed in the document and note any remaining concerns.',
+        ].join('\n');
+
+        const workingDirectory = getWorkingDirectory(ctx.workspaceRoot);
+        const snippet = message.commentId.slice(0, 8);
+        const result = queueService.queueTask({
+            type: 'ai-clarification',
+            payload: {
+                filePath: ctx.relativePath,
+                prompt,
+                workingDirectory,
+                mode: 'ask',
+            },
+            priority: 'normal',
+            displayName: `Resolve: ${snippet}`,
+        });
+
+        await this.host.showInfo(`Added to queue (#${result.position}): Resolve comment`);
         return {};
     }
 

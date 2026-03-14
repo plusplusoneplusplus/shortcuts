@@ -133,6 +133,13 @@ export function resolveComment(commentId: string): void {
 }
 
 /**
+ * Resolve a comment and enqueue an AI ask-mode job to analyse it
+ */
+export function resolveCommentQueued(commentId: string): void {
+    postMessage({ type: 'resolveCommentQueued', commentId });
+}
+
+/**
  * Reopen a resolved comment
  */
 export function reopenComment(commentId: string): void {

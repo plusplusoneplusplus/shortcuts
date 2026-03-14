@@ -192,6 +192,7 @@ export {
     getAIQueueService,
     initializeAIQueueService,
     resetAIQueueService,
+    setAIQueueServiceForTesting,
     QueueTaskOptions,
     QueueTaskResult,
     BatchQueueResult

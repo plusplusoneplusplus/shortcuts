@@ -26,6 +26,7 @@ import {
     QueueChangeEvent,
     getCopilotSDKService,
     approveAllPermissions,
+    AgentMode,
 } from '@plusplusoneplusplus/pipeline-core';
 import {
     FollowPromptPayload,
@@ -287,12 +288,15 @@ class AITaskExecutor implements TaskExecutor {
         }
 
         // Execute via SDK
+        const sdkMode: AgentMode | undefined =
+            payload.mode && payload.mode !== 'ask' ? payload.mode as AgentMode : undefined;
         const result = await sdkService.sendMessage({
             prompt,
             model: payload.model || task.config.model,
             workingDirectory: payload.workingDirectory,
             timeoutMs: task.config.timeoutMs,
             onPermissionRequest: approveAllPermissions,
+            mode: sdkMode,
         });
 
         if (!result.success) {
@@ -765,4 +769,12 @@ export function resetAIQueueService(): void {
         queueServiceInstance.dispose();
         queueServiceInstance = undefined;
     }
+}
+
+/**
+ * Inject a mock queue service for testing purposes.
+ * Pass undefined to clear the injection.
+ */
+export function setAIQueueServiceForTesting(mock: AIQueueService | undefined): void {
+    queueServiceInstance = mock;
 }

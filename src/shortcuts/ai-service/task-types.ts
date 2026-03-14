@@ -45,6 +45,8 @@ export interface AIClarificationPayload {
     promptFileContent?: string;
     /** Skill name (metadata only) */
     skillName?: string;
+    /** Agent mode for execution ('ask' = read-only, 'plan', 'autopilot') */
+    mode?: 'ask' | 'plan' | 'autopilot';
 }
 
 /**

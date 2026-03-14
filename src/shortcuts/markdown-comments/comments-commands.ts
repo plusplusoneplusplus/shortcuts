@@ -8,6 +8,7 @@ import { CommentsManager } from './comments-manager';
 import { CommentItem, MarkdownCommentsTreeDataProvider } from './comments-tree-provider';
 import { PromptGenerator } from './prompt-generator';
 import { ReviewEditorViewProvider } from './review-editor-view-provider';
+import { getAIQueueService, getWorkingDirectory } from '../ai-service';
 
 /**
  * Command handler for markdown comments
@@ -125,15 +126,55 @@ export class MarkdownCommentsCommands {
     }
 
     /**
-     * Resolve a comment
+     * Resolve a comment and enqueue an AI ask-mode job to analyse it
      */
     private async resolveComment(commentId: string): Promise<void> {
+        const comment = this.commentsManager.getComment(commentId);
         try {
             await this.commentsManager.resolveComment(commentId);
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to resolve comment: ${err.message}`);
+            return;
         }
+
+        if (!comment) {
+            return;
+        }
+
+        const queueService = getAIQueueService();
+        if (!queueService || !queueService.isEnabled()) {
+            return;
+        }
+
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        const workingDirectory = getWorkingDirectory(workspaceRoot);
+        const relativePath = comment.filePath;
+        const prompt = [
+            'You are reviewing a resolved comment in a document.',
+            `File: ${relativePath}`,
+            `Selected text (line ${comment.selection.startLine}–${comment.selection.endLine}):`,
+            comment.selectedText,
+            '',
+            `Reviewer comment: ${comment.comment}`,
+            '',
+            'In ask/read-only mode, summarise whether the comment appears to be addressed in the document and note any remaining concerns.',
+        ].join('\n');
+
+        const snippet = commentId.slice(0, 8);
+        const result = queueService.queueTask({
+            type: 'ai-clarification',
+            payload: {
+                filePath: relativePath,
+                prompt,
+                workingDirectory,
+                mode: 'ask',
+            },
+            priority: 'normal',
+            displayName: `Resolve: ${snippet}`,
+        });
+
+        vscode.window.showInformationMessage(`Added to queue (#${result.position}): Resolve comment`);
     }
 
     /**

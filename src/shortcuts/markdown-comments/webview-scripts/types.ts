@@ -161,6 +161,7 @@ export type WebviewMessage =
     | { type: 'addComment'; selection: PendingSelection; comment: string; mermaidContext?: MermaidContext }
     | { type: 'editComment'; commentId: string; comment: string }
     | { type: 'resolveComment'; commentId: string }
+    | { type: 'resolveCommentQueued'; commentId: string }
     | { type: 'reopenComment'; commentId: string }
     | { type: 'deleteComment'; commentId: string }
     | { type: 'updateContent'; content: string }
