@@ -280,4 +280,53 @@ describe('CLITaskExecutor — Title Generation', () => {
             expect.objectContaining({ title: 'Some Title' }),
         );
     });
+
+    it('should re-sync persisted AI title to displayName on follow-up turns', async () => {
+        // Simulate the scenario where requeueForFollowUp overwrites displayName
+        // with the follow-up message text. generateTitleIfNeeded must restore the
+        // AI-generated title each turn.
+        mockTransform.mockResolvedValue('AI Generated Title');
+
+        const mockQueueManager = {
+            updateTask: vi.fn(),
+        } as unknown as TaskQueueManager;
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+        executor.setQueueManager(mockQueueManager);
+
+        // First turn: AI title gets generated and synced
+        const task = makeChatTask('title-resync-1', 'Original first message');
+        await executor.execute(task);
+        await delay(50);
+
+        // Confirm title was set on the process
+        const processId = 'queue_title-resync-1';
+        expect(store.processes.get(processId)?.title).toBe('AI Generated Title');
+
+        // Simulate requeueForFollowUp overwriting displayName with follow-up text
+        (mockQueueManager.updateTask as ReturnType<typeof vi.fn>).mockClear();
+        const followUpText = 'A follow-up question that should NOT become the title';
+        store.processes.set(processId, {
+            ...store.processes.get(processId)!,
+            // title stays set from first turn
+        });
+
+        // Simulate a second turn: generateTitleIfNeeded is called again after follow-up
+        // It should detect existing title and re-sync it to displayName
+        (executor as any).generateTitleIfNeeded(processId, [
+            { role: 'user', content: 'Original first message', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant', content: 'Some reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            { role: 'user', content: followUpText, timestamp: new Date(), turnIndex: 2, timeline: [] },
+        ]);
+        await delay(50);
+
+        // transform must NOT be called again (title already exists)
+        expect(mockTransform).toHaveBeenCalledTimes(1);
+
+        // displayName must be restored to the AI-generated title, not the follow-up text
+        expect(mockQueueManager.updateTask).toHaveBeenCalledWith(
+            'title-resync-1',
+            expect.objectContaining({ displayName: 'AI Generated Title' }),
+        );
+    });
 });

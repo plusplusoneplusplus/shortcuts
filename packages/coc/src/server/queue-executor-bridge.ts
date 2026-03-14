@@ -584,7 +584,17 @@ export class CLITaskExecutor implements TaskExecutor {
         void (async () => {
             try {
                 const existing = await this.store.getProcess(processId);
-                if (existing?.title) return;
+                if (existing?.title) {
+                    // Re-sync the persisted AI title back to the task's displayName.
+                    // requeueForFollowUp (and the api-handler fallback path) both overwrite
+                    // displayName with the follow-up message text, so we restore it here
+                    // on every turn to keep the two in sync.
+                    if (processId.startsWith('queue_') && this.queueManager) {
+                        const taskId = processId.replace('queue_', '');
+                        this.queueManager.updateTask(taskId, { displayName: existing.title });
+                    }
+                    return;
+                }
 
                 const truncated = firstUserContent.substring(0, 400);
                 const title: string = await (this.aiService as any).transform(
