@@ -87,9 +87,13 @@ describe('TopBar', () => {
         }
     });
 
-    it('renders the dashboard title', () => {
+    it('renders the dashboard title as a link to the GitHub repo', () => {
         renderTopBar();
-        expect(screen.getByText('CoC (Copilot Of Copilot)')).toBeDefined();
+        const title = screen.getByText('CoC (Copilot Of Copilot)');
+        expect(title).toBeDefined();
+        expect(title.tagName).toBe('A');
+        expect((title as HTMLAnchorElement).href).toContain('github.com/plusplusoneplusplus/shortcuts');
+        expect((title as HTMLAnchorElement).target).toBe('_blank');
     });
 
     it('renders hamburger button', () => {

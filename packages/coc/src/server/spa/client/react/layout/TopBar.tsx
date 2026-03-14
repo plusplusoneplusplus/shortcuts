@@ -67,8 +67,18 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 >
                     &#9776;
                 </button>
-                <span className="text-sm font-semibold whitespace-nowrap md:hidden">CoC</span>
-                <span className="text-sm font-semibold whitespace-nowrap hidden md:inline">CoC (Copilot Of Copilot)</span>
+                <a
+                    href="https://github.com/plusplusoneplusplus/shortcuts"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-semibold whitespace-nowrap md:hidden hover:underline"
+                >CoC</a>
+                <a
+                    href="https://github.com/plusplusoneplusplus/shortcuts"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-semibold whitespace-nowrap hidden md:inline hover:underline"
+                >CoC (Copilot Of Copilot)</a>
                 {TABS.length > 0 && (
                 <nav className="hidden md:flex items-center gap-1 min-w-0" id="tab-bar">
                     {TABS.map(({ label, tab }) => (
