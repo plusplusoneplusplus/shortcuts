@@ -9,6 +9,7 @@ import { useMemo, useEffect, useRef, useState, useCallback, forwardRef, useImper
 import { highlightLine } from './useSyntaxHighlight';
 import {
     computeDiffLines,
+    computeEditStarts,
     computeSideBySideLines,
     getLanguagesForLines,
     buildLineCommentMap,
@@ -76,6 +77,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
         const lines     = useMemo(() => diff.split('\n'), [diff]);
         const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
         const sxsLines  = useMemo(() => computeSideBySideLines(diffLines), [diffLines]);
+        const editStarts = useMemo(() => computeEditStarts(diffLines), [diffLines]);
         const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
         const lineCommentMap = useMemo(
             () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
@@ -96,10 +98,16 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
         // Stores the last validated selection so handleContextMenu can use it without stale closures.
         const pendingSelectionRef = useRef<{ selection: DiffCommentSelection; selectedText: string } | null>(null);
 
+        // Latest-ref pattern: keep onLinesReady always current without adding it
+        // to the diffLines effect's dependency array, preventing stale callback
+        // from resetting navigation position on every parent re-render.
+        const onLinesReadyRef = useRef(onLinesReady);
+        useEffect(() => { onLinesReadyRef.current = onLinesReady; });
+
         useEffect(() => {
             currentHunkIndexRef.current = -1;
-            onLinesReady?.(diffLines);
-        }, [diffLines, onLinesReady]);
+            onLinesReadyRef.current?.(diffLines);
+        }, [diffLines]);
 
         useImperativeHandle(ref, () => ({
             scrollToNextHunk: () => {
@@ -122,7 +130,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                 if (!container) return;
                 const edits      = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
                 if (edits.length === 0) return;
-                const startIndex = currentHunkIndexRef.current === -1 ? edits.length - 1 : currentHunkIndexRef.current;
+                const startIndex = currentHunkIndexRef.current === -1 ? edits.length : currentHunkIndexRef.current;
                 const prev       = (startIndex - 1 + edits.length) % edits.length;
                 currentHunkIndexRef.current = prev;
                 const scrollParent = getScrollableAncestor(container);
@@ -220,7 +228,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     <div
                         key={rowIdx}
                         className="flex w-full bg-[#dbedff] dark:bg-[#1d3251] text-[#0550ae] dark:text-[#79c0ff] whitespace-pre-wrap break-words"
-                        data-edit-start=""
+                        data-hunk-header=""
                     >
                         {showLineNumbers && (
                             <span className="select-none text-right w-8 shrink-0 text-[#6e7681] pr-1 whitespace-nowrap" />
@@ -233,6 +241,10 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             const leftLine  = row.left.type  !== 'empty' ? row.left  : null;
             const rightLine = row.right.type !== 'empty' ? row.right : null;
 
+            const isEditStart =
+                (row.left.originalIndex !== null && editStarts.has(row.left.originalIndex)) ||
+                (row.right.originalIndex !== null && editStarts.has(row.right.originalIndex));
+
             const leftBg  = getSideBg(row.left,  'left');
             const rightBg = getSideBg(row.right, 'right');
 
@@ -242,7 +254,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                 ? getLineHighlightClass(lineCommentMap.get(rightLine.originalIndex)) : '';
 
             return (
-                <div key={rowIdx} className="flex w-full">
+                <div key={rowIdx} className="flex w-full" data-edit-start={isEditStart ? '' : undefined}>
                     {/* LEFT column — removed or context */}
                     <div
                         className={`flex w-1/2 min-w-0 ${leftBg} ${leftHighlight}`}

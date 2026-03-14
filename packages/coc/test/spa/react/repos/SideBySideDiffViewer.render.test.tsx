@@ -55,16 +55,26 @@ describe('SideBySideDiffViewer — basic rendering', () => {
         expect(colDivs.length % 2).toBe(0);
     });
 
-    it('hunk-header rows have data-edit-start attribute', () => {
+    it('edit-group start rows have data-edit-start attribute', () => {
         const { container } = render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} />);
-        const hunkHeaders = container.querySelectorAll('[data-edit-start]');
-        // TWO_HUNK_DIFF has two @@ lines
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        // TWO_HUNK_DIFF has two edit groups (one per hunk) — each marked on the content row
+        expect(editStarts.length).toBe(2);
+        // Content rows (not hunk-header rows) carry data-edit-start
+        for (const el of Array.from(editStarts)) {
+            expect((el as HTMLElement).querySelector('.w-1\\/2')).toBeTruthy();
+        }
+    });
+
+    it('hunk-header rows have data-hunk-header attribute', () => {
+        const { container } = render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} />);
+        const hunkHeaders = container.querySelectorAll('[data-hunk-header]');
         expect(hunkHeaders.length).toBe(2);
     });
 
     it('hunk-header rows span full width (no w-1/2 children)', () => {
         const { container } = render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} />);
-        const hunkHeaders = container.querySelectorAll<HTMLElement>('[data-edit-start]');
+        const hunkHeaders = container.querySelectorAll<HTMLElement>('[data-hunk-header]');
         for (const hdr of Array.from(hunkHeaders)) {
             expect(hdr.querySelector('.w-1\\/2')).toBeNull();
         }
@@ -72,7 +82,7 @@ describe('SideBySideDiffViewer — basic rendering', () => {
 
     it('hunk-header rows carry the correct CSS classes', () => {
         const { container } = render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} />);
-        const hdr = container.querySelector<HTMLElement>('[data-edit-start]')!;
+        const hdr = container.querySelector<HTMLElement>('[data-hunk-header]')!;
         expect(hdr.className).toContain('bg-[#dbedff]');
         expect(hdr.className).toContain('text-[#0550ae]');
     });
@@ -201,10 +211,10 @@ describe('SideBySideDiffViewer — line numbers', () => {
 describe('SideBySideDiffViewer — hunk navigation ref', () => {
     afterEach(() => { vi.restoreAllMocks(); });
 
-    it('getHunkCount matches number of @@ lines', () => {
+    it('getHunkCount matches number of edit groups', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         render(<SideBySideDiffViewer diff={TWO_HUNK_DIFF} ref={ref} />);
-        // TWO_HUNK_DIFF has 2 @@ lines → 2 hunk-header rows
+        // TWO_HUNK_DIFF has 2 edit groups (one per @@ hunk)
         expect(ref.current?.getHunkCount()).toBe(2);
     });
 
@@ -212,6 +222,60 @@ describe('SideBySideDiffViewer — hunk navigation ref', () => {
         const ref = createRef<UnifiedDiffViewerHandle>();
         render(<SideBySideDiffViewer diff="" ref={ref} />);
         expect(ref.current?.getHunkCount()).toBe(0);
+    });
+
+    it('getHunkCount counts edit groups (not @@ headers) for single hunk with two edit groups', () => {
+        // One @@ hunk containing two separate edit groups separated by a context line.
+        const MULTI_EDIT_SINGLE_HUNK_DIFF = `@@ -1,7 +1,7 @@
+-removed1
++added1
+ context
+-removed2
++added2
+ more context`;
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        render(<SideBySideDiffViewer diff={MULTI_EDIT_SINGLE_HUNK_DIFF} ref={ref} />);
+        expect(ref.current?.getHunkCount()).toBe(2);
+    });
+
+    it('scrollToNextHunk scrolls the parent to an edit-start element', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const { container } = render(
+            <SideBySideDiffViewer ref={ref} diff={TWO_HUNK_DIFF} data-testid="sxs-diff" />
+        );
+        const viewer = container.querySelector('[data-testid="sxs-diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
+        scrollParent.scrollTo = vi.fn();
+        ref.current?.scrollToNextHunk();
+        expect(scrollParent.scrollTo).toHaveBeenCalled();
+    });
+
+    it('scrollToPrevHunk wraps to last edit group when called first (index = -1)', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const { container } = render(
+            <SideBySideDiffViewer ref={ref} diff={TWO_HUNK_DIFF} data-testid="sxs-diff" />
+        );
+        const viewer = container.querySelector('[data-testid="sxs-diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
+        Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
+        Object.defineProperty(scrollParent, 'scrollTop', { value: 0, configurable: true });
+        vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 600, left: 0, right: 800, width: 800, height: 600, x: 0, y: 0, toJSON() {},
+        });
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        expect(editStarts.length).toBe(2); // TWO_HUNK_DIFF has 2 edit groups
+        const lastEdit = editStarts[editStarts.length - 1] as HTMLElement;
+        vi.spyOn(lastEdit, 'getBoundingClientRect').mockReturnValue({
+            top: 500, bottom: 520, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+        });
+        scrollParent.scrollTo = vi.fn();
+        // First call with no prior forward nav must scroll to the LAST edit group
+        ref.current?.scrollToPrevHunk();
+        expect(scrollParent.scrollTo).toHaveBeenCalledWith(
+            expect.objectContaining({ top: 500 - 0 - 200 })
+        );
     });
 });
 

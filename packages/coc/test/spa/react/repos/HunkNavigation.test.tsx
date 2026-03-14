@@ -1,6 +1,7 @@
 /**
  * Tests for hunk navigation: HunkNavButtons, data-edit-start attribute,
  * and UnifiedDiffViewerHandle (scrollToNextHunk/scrollToPrevHunk/getHunkCount).
+ * Also covers SideBySideDiffViewer navigation and the onLinesReady stale-closure regression.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -13,6 +14,7 @@ import {
     computeDiffLines,
 } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle } from '../../../../src/server/spa/client/react/repos/UnifiedDiffViewer';
+import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/repos/SideBySideDiffViewer';
 
 const MULTI_HUNK_DIFF = `diff --git a/foo.ts b/foo.ts
 index 0000000..1111111 100644
@@ -454,5 +456,166 @@ describe('CommitFileContent — hunk navigation buttons', () => {
 
         expect(screen.getByTestId('prev-hunk-btn')).toBeTruthy();
         expect(screen.getByTestId('next-hunk-btn')).toBeTruthy();
+    });
+});
+
+// ============================================================================
+// SideBySideDiffViewer — navigation handle (regression for Bug 1 & 3)
+// ============================================================================
+
+describe('SideBySideDiffViewer — navigation handle', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('scrollToNextHunk scrolls to first edit group', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const { container } = render(
+            <SideBySideDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="sxs" />
+        );
+        const viewer = container.querySelector('[data-testid="sxs"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
+        scrollParent.scrollTo = vi.fn();
+        ref.current?.scrollToNextHunk();
+        expect(scrollParent.scrollTo).toHaveBeenCalled();
+    });
+
+    it('scrollToPrevHunk wraps to last edit group when called first (regression: off-by-one)', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const { container } = render(
+            <SideBySideDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="sxs" />
+        );
+        const viewer = container.querySelector('[data-testid="sxs"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
+        Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
+        Object.defineProperty(scrollParent, 'scrollTop', { value: 0, configurable: true });
+        vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 600, left: 0, right: 800, width: 800, height: 600, x: 0, y: 0, toJSON() {},
+        });
+        const editStarts = container.querySelectorAll('[data-edit-start]');
+        expect(editStarts.length).toBe(3); // MULTI_HUNK_DIFF has 3 edit groups
+        const lastEdit = editStarts[editStarts.length - 1] as HTMLElement;
+        vi.spyOn(lastEdit, 'getBoundingClientRect').mockReturnValue({
+            top: 500, bottom: 520, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+        });
+        scrollParent.scrollTo = vi.fn();
+        // First call (index = -1) must land on the LAST edit group
+        ref.current?.scrollToPrevHunk();
+        expect(scrollParent.scrollTo).toHaveBeenCalledWith(
+            expect.objectContaining({ top: 500 - 0 - 200 })
+        );
+    });
+
+    it('getHunkCount returns edit-group count, not @@ header count', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        // MULTI_EDIT_SINGLE_HUNK_DIFF has 1 @@ header but 2 edit groups
+        render(<SideBySideDiffViewer ref={ref} diff={MULTI_EDIT_SINGLE_HUNK_DIFF} />);
+        expect(ref.current?.getHunkCount()).toBe(2);
+    });
+});
+
+// ============================================================================
+// onLinesReady stale-closure regression (Bug 2)
+// ============================================================================
+
+describe('UnifiedDiffViewer — onLinesReady stale-closure regression', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('navigation position is not reset when onLinesReady reference changes for the same diff', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const handler1 = vi.fn();
+        const handler2 = vi.fn();
+
+        const { container, rerender } = render(
+            <UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} onLinesReady={handler1} data-testid="diff" />
+        );
+        const viewer = container.querySelector('[data-testid="diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
+        Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
+        Object.defineProperty(scrollParent, 'scrollTop', { value: 0, configurable: true });
+        vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 600, left: 0, right: 800, width: 800, height: 600, x: 0, y: 0, toJSON() {},
+        });
+        let editStarts = container.querySelectorAll('[data-edit-start]');
+        const tops = [100, 300, 500];
+        for (let i = 0; i < Math.min(editStarts.length, tops.length); i++) {
+            const top = tops[i];
+            vi.spyOn(editStarts[i] as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+                top, bottom: top + 20, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+            });
+        }
+        scrollParent.scrollTo = vi.fn();
+
+        // Navigate to index 0
+        ref.current?.scrollToNextHunk();
+        const firstCall = (scrollParent.scrollTo as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(firstCall).toEqual(expect.objectContaining({ top: 100 - 0 - 200 }));
+
+        // Re-render with a NEW onLinesReady reference but the SAME diff — must NOT reset index
+        rerender(
+            <UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} onLinesReady={handler2} data-testid="diff" />
+        );
+
+        editStarts = container.querySelectorAll('[data-edit-start]');
+        for (let i = 0; i < Math.min(editStarts.length, tops.length); i++) {
+            const top = tops[i];
+            vi.spyOn(editStarts[i] as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+                top, bottom: top + 20, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+            });
+        }
+        (scrollParent.scrollTo as ReturnType<typeof vi.fn>).mockClear();
+
+        // Should advance to index 1 (not wrap back to 0)
+        ref.current?.scrollToNextHunk();
+        const secondCall = (scrollParent.scrollTo as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(secondCall).toEqual(expect.objectContaining({ top: 300 - 0 - 200 }));
+    });
+
+    it('navigation position IS reset when the diff content changes', () => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const { container, rerender } = render(
+            <UnifiedDiffViewer ref={ref} diff={MULTI_HUNK_DIFF} data-testid="diff" />
+        );
+        const viewer = container.querySelector('[data-testid="diff"]')!;
+        const scrollParent = viewer.parentElement!;
+        scrollParent.style.overflowY = 'auto';
+        Object.defineProperty(scrollParent, 'clientHeight', { value: 600, configurable: true });
+        Object.defineProperty(scrollParent, 'scrollTop', { value: 0, configurable: true });
+        vi.spyOn(scrollParent, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 600, left: 0, right: 800, width: 800, height: 600, x: 0, y: 0, toJSON() {},
+        });
+        let editStarts = container.querySelectorAll('[data-edit-start]');
+        for (let i = 0; i < editStarts.length; i++) {
+            const top = (i + 1) * 100;
+            vi.spyOn(editStarts[i] as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+                top, bottom: top + 20, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+            });
+        }
+        scrollParent.scrollTo = vi.fn();
+
+        ref.current?.scrollToNextHunk(); // index → 0
+        ref.current?.scrollToNextHunk(); // index → 1
+
+        // Change diff — must reset index to -1
+        rerender(<UnifiedDiffViewer ref={ref} diff={SINGLE_HUNK_DIFF} data-testid="diff" />);
+
+        editStarts = container.querySelectorAll('[data-edit-start]');
+        if (editStarts.length > 0) {
+            vi.spyOn(editStarts[0] as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+                top: 50, bottom: 70, left: 0, right: 800, width: 800, height: 20, x: 0, y: 0, toJSON() {},
+            });
+        }
+        (scrollParent.scrollTo as ReturnType<typeof vi.fn>).mockClear();
+
+        // Index was reset to -1, so next must go to 0
+        ref.current?.scrollToNextHunk();
+        expect(scrollParent.scrollTo).toHaveBeenCalledWith(
+            expect.objectContaining({ top: 50 - 0 - 200 })
+        );
     });
 });

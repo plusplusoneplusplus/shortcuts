@@ -310,13 +310,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         [comments]
     );
 
-    useEffect(() => {
-        currentHunkIndexRef.current = -1;
-        onLinesReady?.(diffLines);
-    }, [diffLines, onLinesReady]);
-
     const containerRef = useRef<HTMLDivElement>(null);
     const currentHunkIndexRef = useRef<number>(-1);
+    // Latest-ref pattern: keep onLinesReady always current without adding it
+    // to the diffLines effect's dependency array, preventing stale callback
+    // from resetting navigation position on every parent re-render.
+    const onLinesReadyRef = useRef(onLinesReady);
+    useEffect(() => { onLinesReadyRef.current = onLinesReady; });
+
+    useEffect(() => {
+        currentHunkIndexRef.current = -1;
+        onLinesReadyRef.current?.(diffLines);
+    }, [diffLines]);
 
     useImperativeHandle(ref, () => ({
         scrollToNextHunk: () => {
