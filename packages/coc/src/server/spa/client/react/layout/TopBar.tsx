@@ -5,6 +5,7 @@
 import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from './ThemeProvider';
+import { NotificationBell } from '../shared/NotificationBell';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
@@ -101,6 +102,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                         className={`inline-block w-2 h-2 rounded-full ${wsStatusConfig[state.wsStatus ?? 'closed']?.color}${wsStatusConfig[state.wsStatus ?? 'closed']?.pulse ? ' animate-pulse' : ''}`}
                     />
                 </span>
+                <NotificationBell />
                 <button
                     id="logs-toggle"
                     data-tab="logs"

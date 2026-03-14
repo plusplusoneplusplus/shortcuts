@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AppProvider, appReducer } from '../../../src/server/spa/client/react/context/AppContext';
+import { NotificationProvider } from '../../../src/server/spa/client/react/context/NotificationContext';
 import { ThemeProvider } from '../../../src/server/spa/client/react/layout/ThemeProvider';
 import { TopBar, TABS, ALL_TABS, SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { DashboardTab } from '../../../src/server/spa/client/react/types/dashboard';
@@ -30,9 +31,11 @@ afterEach(() => {
 function renderTopBar() {
     return render(
         <AppProvider>
-            <ThemeProvider>
-                <TopBar />
-            </ThemeProvider>
+            <NotificationProvider>
+                <ThemeProvider>
+                    <TopBar />
+                </ThemeProvider>
+            </NotificationProvider>
         </AppProvider>
     );
 }
@@ -374,9 +377,11 @@ describe('TopBar — logs icon button', () => {
         const onLogsOpen = vi.fn();
         render(
             <AppProvider>
-                <ThemeProvider>
-                    <TopBar onLogsOpen={onLogsOpen} />
-                </ThemeProvider>
+                <NotificationProvider>
+                    <ThemeProvider>
+                        <TopBar onLogsOpen={onLogsOpen} />
+                    </ThemeProvider>
+                </NotificationProvider>
             </AppProvider>
         );
         act(() => {

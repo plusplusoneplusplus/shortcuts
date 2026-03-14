@@ -13,6 +13,7 @@ import { AppProvider, type AppContextState, type AppAction } from '../../../src/
 import { QueueProvider, type QueueContextState, type QueueAction, type QueueStats } from '../../../src/server/spa/client/react/context/QueueContext';
 import { TaskProvider, type TaskContextState, type TaskAction } from '../../../src/server/spa/client/react/context/TaskContext';
 import { ToastProvider, type ToastContextValue } from '../../../src/server/spa/client/react/context/ToastContext';
+import { NotificationProvider } from '../../../src/server/spa/client/react/context/NotificationContext';
 
 // ── Default state factories ────────────────────────────────────────────
 
@@ -162,11 +163,13 @@ export function renderWithProviders(
         return (
             <AppProvider>
                 <QueueProvider>
-                    <TaskProvider>
-                        <ToastProvider value={toastCtx}>
-                            {children}
-                        </ToastProvider>
-                    </TaskProvider>
+                    <NotificationProvider>
+                        <TaskProvider>
+                            <ToastProvider value={toastCtx}>
+                                {children}
+                            </ToastProvider>
+                        </TaskProvider>
+                    </NotificationProvider>
                 </QueueProvider>
             </AppProvider>
         );

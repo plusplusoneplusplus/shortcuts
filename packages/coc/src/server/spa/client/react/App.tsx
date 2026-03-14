@@ -6,6 +6,7 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
+import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
 import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
 import { PopOutProvider } from './context/PopOutContext';
@@ -86,6 +87,7 @@ function toTaskRelativePath(fullPath: string, workspaceRoot: string): string | n
 function AppInner() {
     const { state: appState, dispatch: appDispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
+    const { addNotification } = useNotifications();
     const { toasts, addToast, removeToast } = useToast();
     const prevWsStatusRef = useRef(appState.wsStatus);
     const hasConnectedRef = useRef(false);
@@ -119,6 +121,19 @@ function AppInner() {
                     const terminalStatuses = ['completed', 'failed', 'cancelled'];
                     if (terminalStatuses.includes(msg.process.status)) {
                         appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
+                        const p = msg.process;
+                        const durationSec = p.endTime && p.startTime
+                            ? Math.round((+new Date(p.endTime) - +new Date(p.startTime)) / 1000)
+                            : null;
+                        const typeMap: Record<string, 'success' | 'error' | 'warning'> = {
+                            completed: 'success', failed: 'error', cancelled: 'warning',
+                        };
+                        addNotification({
+                            type: typeMap[p.status] ?? 'info',
+                            title: `${p.promptPreview ?? 'Run'} ${p.status}`,
+                            detail: [durationSec ? `${durationSec}s` : null, p.metadata?.workspaceId].filter(Boolean).join(' · '),
+                            processId: p.id,
+                        });
                     }
                 }
                 break;
@@ -180,9 +195,14 @@ function AppInner() {
             case 'wiki-error':
                 if (msg.wikiId) appDispatch({ type: 'WIKI_ERROR', wikiId: msg.wikiId, error: msg.error || '' });
                 else if (msg.data?.wikiId) appDispatch({ type: 'WIKI_ERROR', wikiId: msg.data.wikiId, error: msg.data.error || '' });
+                addNotification({
+                    type: 'warning',
+                    title: 'Wiki error',
+                    detail: msg.error || msg.data?.error || '',
+                });
                 break;
         }
-    }, [appDispatch, queueDispatch, appState.workspaces]);
+    }, [appDispatch, queueDispatch, appState.workspaces, addNotification]);
 
     const { connect, status: wsStatus } = useWebSocket({ onMessage, onConnect: handleConnect });
 
@@ -369,15 +389,17 @@ export function App() {
     return (
         <AppProvider>
             <QueueProvider>
-                <PopOutProvider>
-                    <FloatingChatsProvider>
-                        <MinimizedDialogsProvider>
-                            <ThemeProvider>
-                                <AppInner />
-                            </ThemeProvider>
-                        </MinimizedDialogsProvider>
-                    </FloatingChatsProvider>
-                </PopOutProvider>
+                <NotificationProvider>
+                    <PopOutProvider>
+                        <FloatingChatsProvider>
+                            <MinimizedDialogsProvider>
+                                <ThemeProvider>
+                                    <AppInner />
+                                </ThemeProvider>
+                            </MinimizedDialogsProvider>
+                        </FloatingChatsProvider>
+                    </PopOutProvider>
+                </NotificationProvider>
             </QueueProvider>
         </AppProvider>
     );
