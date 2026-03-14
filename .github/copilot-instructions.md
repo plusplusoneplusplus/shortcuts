@@ -3,6 +3,7 @@
 - Assume no backward compatibility unless explicitly asked.
 - Use `claude-haiku-4.5` for simple exploration tasks. Use `claude-sonnet-4.6` for complex exploration tasks.
 - By default, focus on the CoC (Copilot of Copilot) project (`packages/coc/`, `packages/coc-server/`, `packages/pipeline-core/`). Ignore the VS Code extension (`src/`) unless the user explicitly asks about it.
+- When the plan involves UI/UX, make sure to include the visual design in the plan.
 
 ## Project Principles
 - CoC (Copilot of Copilot) is independent of the VS Code extension.
