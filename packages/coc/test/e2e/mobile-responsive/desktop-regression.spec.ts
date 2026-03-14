@@ -58,8 +58,7 @@ test.describe('Desktop Regression', () => {
         await seedWorkspace(serverUrl, 'ws-desk-col', 'desk-col-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        // Ensure repos tab is active (hamburger only works on repos tab)
-        await page.click('[data-tab="repos"]');
+        // Ensure repos view is active (hamburger only works on repos tab)
         await expect(page.locator('#repos-sidebar')).toBeVisible({ timeout: 10000 });
 
         // Get expanded width before collapsing
@@ -91,10 +90,12 @@ test.describe('Desktop Regression', () => {
     test('desktop: TopBar shows text tab labels', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        for (const tab of ['repos', 'processes', 'memory']) {
+        for (const tab of ['processes', 'memory']) {
             const tabBtn = page.locator(`[data-tab="${tab}"]`);
             await expect(tabBtn).toBeVisible();
         }
+        // repos is the implicit default — it has no tab button
+        await expect(page.locator('[data-tab="repos"]')).toHaveCount(0);
 
         // No bottom navigation at desktop
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
@@ -113,8 +114,8 @@ test.describe('Desktop Regression', () => {
     });
 
     test('desktop: dialog renders as centered modal, not full-screen', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
+        await page.goto(`${serverUrl}/#repos`);
+        await expect(page.locator('#view-repos')).toBeVisible();
         await page.click('#add-repo-btn');
 
         const overlay = page.locator('#add-repo-overlay');
@@ -134,7 +135,7 @@ test.describe('Desktop Regression', () => {
     test('desktop: tab navigation works across all tabs', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        await page.click('[data-tab="repos"]');
+        await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible();
 
         await page.click('[data-tab="processes"]');

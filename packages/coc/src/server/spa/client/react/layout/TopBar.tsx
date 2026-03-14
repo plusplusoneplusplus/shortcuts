@@ -13,7 +13,6 @@ import type { WsStatus } from '../hooks/useWebSocket';
 export const SHOW_WIKI_TAB = false;
 
 export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
-    { label: 'Repos', tab: 'repos' },
     { label: 'Wiki', tab: 'wiki' },
 ];
 
@@ -70,6 +69,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </button>
                 <span className="text-sm font-semibold whitespace-nowrap md:hidden">CoC</span>
                 <span className="text-sm font-semibold whitespace-nowrap hidden md:inline">CoC (Copilot Of Copilot)</span>
+                {TABS.length > 0 && (
                 <nav className="hidden md:flex items-center gap-1 min-w-0" id="tab-bar">
                     {TABS.map(({ label, tab }) => (
                         <button
@@ -87,6 +87,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                         </button>
                     ))}
                 </nav>
+                )}
             </div>
             <div className="flex items-center gap-1">
                 <span

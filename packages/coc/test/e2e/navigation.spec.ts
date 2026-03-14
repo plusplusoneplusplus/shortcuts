@@ -10,10 +10,10 @@ test.describe('Navigation', () => {
     test('default view is Repos tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // Repos tab button should be active
-        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/bg-\[#0078d4\]/);
-        // Repos view should be visible
+        // Repos view should be visible (it is the implicit default — no tab button)
         await expect(page.locator('#view-repos')).toBeVisible();
+        // URL hash should stay empty (no redirect to #repos)
+        expect(new URL(page.url()).hash).toBe('');
         // Processes view is not rendered when on repos
         await expect(page.locator('#view-processes')).toHaveCount(0);
     });

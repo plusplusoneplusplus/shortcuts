@@ -88,7 +88,7 @@ export function ReposView() {
     const handleBack = useCallback(() => {
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
         if (location.hash.startsWith('#repo')) {
-            location.hash = '#repos';
+            location.hash = '';
         }
     }, [dispatch]);
 

@@ -117,7 +117,6 @@ interface NavItem {
 }
 
 const ALL_NAV_ITEMS: NavItem[] = [
-    { tab: 'repos', label: 'Repos', icon: (active) => active ? <FolderIconFilled /> : <FolderIconOutline /> },
     { tab: 'processes', label: 'Processes', icon: (active) => active ? <PlayCircleIconFilled /> : <PlayCircleIconOutline /> },
     { tab: 'wiki', label: 'Wiki', icon: (active) => active ? <BookOpenIconFilled /> : <BookOpenIconOutline /> },
     { tab: 'skills', label: 'Skills', icon: (active) => active ? <PuzzleIconFilled /> : <PuzzleIconOutline /> },

@@ -199,11 +199,11 @@ describe('RepoDetail mobile: back button in header', () => {
         expect(nearby).toContain("type: 'SET_SELECTED_REPO', id: null");
     });
 
-    it('back button sets hash to #repos', () => {
+    it('back button clears hash (repos is implicit default, not #repos)', () => {
         // location.hash assignment is before data-testid in the source
         const backBtnIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="repo-back-btn"');
         const nearby = REPO_DETAIL_SOURCE.substring(Math.max(0, backBtnIdx - 400), backBtnIdx + 100);
-        expect(nearby).toContain("'#repos'");
+        expect(nearby).toContain("''");
     });
 
     it('back button has aria-label "Back to repos"', () => {

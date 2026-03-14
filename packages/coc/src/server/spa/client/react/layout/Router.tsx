@@ -182,7 +182,7 @@ export function Router() {
             if (tab) {
                 dispatch({ type: 'SET_ACTIVE_TAB', tab });
             } else if (!hash) {
-                location.hash = '#repos';
+                dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
                 return;
             }
 

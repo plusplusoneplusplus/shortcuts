@@ -46,7 +46,7 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         expect(screen.getByTestId('bottom-nav')).toBeTruthy();
         const buttons = screen.getAllByRole('button');
-        expect(buttons).toHaveLength(5);
+        expect(buttons).toHaveLength(4); // repos removed; processes, skills, memory, logs remain
     });
 
     it('hidden on desktop viewport', () => {
@@ -61,22 +61,14 @@ describe('BottomNav', () => {
         expect(container.innerHTML).toBe('');
     });
 
-    it('highlights active repos tab', () => {
-        viewportCleanup = mockViewport(375);
-        mockActiveTab = 'repos';
-        render(<BottomNav />);
-        const reposBtn = screen.getByText('Repos').closest('button')!;
-        expect(reposBtn.className).toContain('text-[#0078d4]');
-    });
-
-    it('highlights active processes tab', () => {
+    it('highlights active processes tab on mobile (repos has no bottom nav button)', () => {
         viewportCleanup = mockViewport(375);
         mockActiveTab = 'processes';
         render(<BottomNav />);
         const processesBtn = screen.getByText('Processes').closest('button')!;
         expect(processesBtn.className).toContain('text-[#0078d4]');
-        const reposBtn = screen.getByText('Repos').closest('button')!;
-        expect(reposBtn.className).not.toContain('text-[#0078d4]');
+        // Repos has no button in BottomNav — it is the implicit default
+        expect(screen.queryByText('Repos')).toBeNull();
     });
 
     it('highlights active memory tab', () => {
@@ -103,14 +95,14 @@ describe('BottomNav', () => {
 
     it('sets aria-current="page" on active tab only', () => {
         viewportCleanup = mockViewport(375);
-        mockActiveTab = 'repos';
+        mockActiveTab = 'processes';
         render(<BottomNav />);
-        const reposBtn = screen.getByText('Repos').closest('button')!;
-        expect(reposBtn.getAttribute('aria-current')).toBe('page');
         const processesBtn = screen.getByText('Processes').closest('button')!;
-        expect(processesBtn.getAttribute('aria-current')).toBeNull();
+        expect(processesBtn.getAttribute('aria-current')).toBe('page');
         const memoryBtn = screen.getByText('Memory').closest('button')!;
         expect(memoryBtn.getAttribute('aria-current')).toBeNull();
+        // repos has no bottom nav button
+        expect(screen.queryByText('Repos')).toBeNull();
     });
 
     it('has safe area padding attribute for notched devices', () => {
@@ -135,7 +127,8 @@ describe('BottomNav', () => {
     it('each button has data-tab attribute', () => {
         viewportCleanup = mockViewport(375);
         render(<BottomNav />);
-        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="repos"]')).toBeTruthy();
+        // repos is no longer in BottomNav — it is the implicit default view
+        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="repos"]')).toBeNull();
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="processes"]')).toBeTruthy();
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="memory"]')).toBeTruthy();
     });

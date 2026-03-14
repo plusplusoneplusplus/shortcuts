@@ -46,13 +46,13 @@ describe('TopBar responsive behavior', () => {
         viewportCleanup = undefined;
     });
 
-    it('tab bar has hidden md:flex classes for responsive visibility', () => {
+    it('tab bar is not rendered when TABS is empty (repos is implicit default, wiki hidden)', () => {
         viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        const tabBar = document.getElementById('tab-bar')!;
-        expect(tabBar).toBeTruthy();
-        expect(tabBar.className).toContain('hidden');
-        expect(tabBar.className).toContain('md:flex');
+        // With repos removed from ALL_TABS and wiki hidden by SHOW_WIKI_TAB flag,
+        // TABS is empty and the <nav id="tab-bar"> is not rendered
+        const tabBar = document.getElementById('tab-bar');
+        expect(tabBar).toBeNull();
     });
 
     it('mobile title "CoC" is visible with md:hidden class', () => {

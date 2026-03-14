@@ -183,7 +183,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
         await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(ws.id), { method: 'DELETE' });
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
-        location.hash = '#repos';
+        location.hash = '';
         onRefresh();
     };
 
@@ -199,7 +199,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     {isMobile && (
                         <button
                             className="text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex-shrink-0 p-0.5 -ml-1"
-                            onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = '#repos'; }}
+                            onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
                             aria-label="Back to repos"
                             data-testid="repo-back-btn"
                         >

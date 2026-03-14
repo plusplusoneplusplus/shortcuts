@@ -43,22 +43,20 @@ function renderTopBar() {
 // ─── TABS constant ──────────────────────────────────────────────
 
 describe('TABS constant', () => {
-    it('contains Repos and Processes (Memory moved to icon button)', () => {
+    it('contains only non-repos entries (repos is now implicit default)', () => {
         const labels = TABS.map(t => t.label);
-        expect(labels).toContain('Repos');
-        expect(labels).toContain('Processes');
+        expect(labels).not.toContain('Repos');
         expect(labels).not.toContain('Memory');
     });
 
     it('has matching tab identifiers', () => {
         const tabs = TABS.map(t => t.tab);
-        expect(tabs).toContain('repos');
-        expect(tabs).toContain('processes');
+        expect(tabs).not.toContain('repos');
         expect(tabs).not.toContain('memory');
     });
 
-    it('has exactly 2 entries (wiki and skills hidden, memory moved to icon)', () => {
-        expect(TABS).toHaveLength(2);
+    it('has 0 entries (repos removed as implicit default, wiki hidden by flag)', () => {
+        expect(TABS).toHaveLength(0);
     });
 
     it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
@@ -69,7 +67,8 @@ describe('TABS constant', () => {
         const tabs = ALL_TABS.map(t => t.tab);
         expect(tabs).toContain('wiki');
         expect(tabs).not.toContain('skills');
-        expect(ALL_TABS).toHaveLength(3);
+        expect(tabs).not.toContain('repos');
+        expect(ALL_TABS).toHaveLength(1);
     });
 
     it('TABS excludes wiki when SHOW_WIKI_TAB is false', () => {
@@ -117,7 +116,7 @@ describe('TopBar', () => {
     it('hamburger does not toggle sidebar outside Repos tab', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Processes'));
+            fireEvent.click(document.getElementById('processes-toggle')!);
         });
 
         const btn = screen.getByLabelText('Toggle sidebar');
@@ -151,21 +150,17 @@ describe('TopBar', () => {
 // ─── TopBar tab click → hash update ─────────────────────────────
 
 describe('TopBar — tab click updates location.hash', () => {
-    it('sets hash to #processes when Processes tab is clicked', () => {
+    it('sets hash to #processes when Processes icon button is clicked', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Processes'));
+            fireEvent.click(document.getElementById('processes-toggle')!);
         });
         expect(location.hash).toBe('#processes');
     });
 
-    it('sets hash to #repos when Repos tab is clicked', () => {
-        location.hash = '#processes';
-        renderTopBar();
-        act(() => {
-            fireEvent.click(screen.getByText('Repos'));
-        });
-        expect(location.hash).toBe('#repos');
+    it('sets hash to #repos is no longer applicable (repos is implicit default)', () => {
+        // Repos has no tab button — navigating away from a detail page clears the hash
+        expect(ALL_TABS.map(t => t.tab)).not.toContain('repos');
     });
 
     it('sets hash to #memory when Memory icon button is clicked', () => {
@@ -176,41 +171,41 @@ describe('TopBar — tab click updates location.hash', () => {
         expect(location.hash).toBe('#memory');
     });
 
-    it('clicking the same tab still sets the hash', () => {
-        location.hash = '#repos';
+    it('clicking the same icon tab still sets the hash', () => {
+        location.hash = '#processes';
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Repos'));
+            fireEvent.click(document.getElementById('processes-toggle')!);
         });
-        expect(location.hash).toBe('#repos');
+        expect(location.hash).toBe('#processes');
     });
 
-    it('clicking tabs in sequence updates hash each time', () => {
+    it('clicking icon tabs in sequence updates hash each time', () => {
         renderTopBar();
         act(() => { fireEvent.click(document.getElementById('skills-toggle')!); });
         expect(location.hash).toBe('#skills');
 
-        act(() => { fireEvent.click(screen.getByText('Processes')); });
+        act(() => { fireEvent.click(document.getElementById('processes-toggle')!); });
         expect(location.hash).toBe('#processes');
 
-        act(() => { fireEvent.click(screen.getByText('Repos')); });
-        expect(location.hash).toBe('#repos');
+        act(() => { fireEvent.click(document.getElementById('memory-toggle')!); });
+        expect(location.hash).toBe('#memory');
     });
 });
 
 // ─── TopBar active tab styling ──────────────────────────────────
 
 describe('TopBar — active tab styling', () => {
-    it('default active tab (repos) has active class', () => {
+    it('default active tab (repos) does not show active class on any text tab (repos has no button)', () => {
         renderTopBar();
-        const reposBtn = screen.getByText('Repos');
-        expect(reposBtn.className).toContain('bg-[#0078d4]');
-        expect(reposBtn.className).toContain('text-white');
+        // Repos is the default tab but has no nav button; no text tab should be highlighted
+        const tabBar = document.getElementById('tab-bar');
+        expect(tabBar).toBeNull(); // nav is hidden when TABS is empty
     });
 
-    it('non-active tabs do not have active class', () => {
+    it('non-active icon tabs do not have active class', () => {
         renderTopBar();
-        const processesBtn = screen.getByText('Processes');
+        const processesBtn = document.getElementById('processes-toggle')!;
         expect(processesBtn.className).not.toContain('bg-[#0078d4]');
     });
 
@@ -224,13 +219,13 @@ describe('TopBar — active tab styling', () => {
         expect(memoryBtn.className).toContain('text-white');
     });
 
-    it('previously active tab loses active class after clicking another', () => {
+    it('active icon tab loses active class after clicking another icon', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Processes'));
+            fireEvent.click(document.getElementById('processes-toggle')!);
         });
-        const reposBtn = screen.getByText('Repos');
-        expect(reposBtn.className).not.toContain('bg-[#0078d4]');
+        const memoryBtn = document.getElementById('memory-toggle')!;
+        expect(memoryBtn.className).not.toContain('bg-[#0078d4]');
     });
 });
 
