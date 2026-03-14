@@ -181,72 +181,27 @@ export function requestFilePreview(path: string, requestId: string, full?: boole
     postMessage({ type: 'readFilePreview', path, requestId, full });
 }
 
-import { AICommandMode, AskAIContext } from './types';
+import { AskAIContext } from './types';
 
 /**
  * Request AI clarification for selected text (comment mode)
  */
-export function requestAskAI(context: {
-    selectedText: string;
-    startLine: number;
-    endLine: number;
-    surroundingLines: string;
-    nearestHeading: string | null;
-    allHeadings: string[];
-    /** Command ID from the AI command registry */
-    instructionType: string;
-    customInstruction?: string;
-    mode: AICommandMode;
-    /** Optional path to prompt file to include as context */
-    promptFilePath?: string;
-    /** Optional skill name to use for this request */
-    skillName?: string;
-}): void {
-    postMessage({ type: 'askAI', context: context as AskAIContext });
+export function requestAskAI(context: AskAIContext): void {
+    postMessage({ type: 'askAI', context });
 }
 
 /**
  * Request AI interactive session for selected text
  */
-export function requestAskAIInteractive(context: {
-    selectedText: string;
-    startLine: number;
-    endLine: number;
-    surroundingLines: string;
-    nearestHeading: string | null;
-    allHeadings: string[];
-    /** Command ID from the AI command registry */
-    instructionType: string;
-    customInstruction?: string;
-    mode: AICommandMode;
-    /** Optional path to prompt file to include as context */
-    promptFilePath?: string;
-    /** Optional skill name to use for this request */
-    skillName?: string;
-}): void {
-    postMessage({ type: 'askAIInteractive', context: context as AskAIContext });
+export function requestAskAIInteractive(context: AskAIContext): void {
+    postMessage({ type: 'askAIInteractive', context });
 }
 
 /**
  * Request AI queued task for selected text (add to queue)
  */
-export function requestAskAIQueued(context: {
-    selectedText: string;
-    startLine: number;
-    endLine: number;
-    surroundingLines: string;
-    nearestHeading: string | null;
-    allHeadings: string[];
-    /** Command ID from the AI command registry */
-    instructionType: string;
-    customInstruction?: string;
-    mode: AICommandMode;
-    /** Optional path to prompt file to include as context */
-    promptFilePath?: string;
-    /** Optional skill name to use for this request */
-    skillName?: string;
-}): void {
-    postMessage({ type: 'askAIQueued', context: context as AskAIContext });
+export function requestAskAIQueued(context: AskAIContext): void {
+    postMessage({ type: 'askAIQueued', context });
 }
 
 /**
