@@ -156,7 +156,7 @@ export function ConversationMiniMap({
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+            if (e.altKey && e.code === 'KeyM') {
                 e.preventDefault();
                 setCollapsed(prev => !prev);
             }

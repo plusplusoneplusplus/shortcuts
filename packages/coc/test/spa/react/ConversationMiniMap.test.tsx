@@ -339,18 +339,18 @@ describe('ConversationMiniMap', () => {
             expect(screen.getByTestId('minimap-panel')).toBeTruthy();
 
             // Collapse
-            fireEvent.keyDown(document, { key: 'm', altKey: true });
+            fireEvent.keyDown(document, { key: 'm', code: 'KeyM', altKey: true });
             expect(screen.queryByTestId('minimap-panel')).toBeNull();
             expect(screen.getByTestId('minimap-collapsed')).toBeTruthy();
 
-            // Expand
-            fireEvent.keyDown(document, { key: 'M', altKey: true });
+            // Expand via macOS Option+M (e.key is a Unicode char, e.code is reliable)
+            fireEvent.keyDown(document, { key: 'µ', code: 'KeyM', altKey: true });
             expect(screen.getByTestId('minimap-panel')).toBeTruthy();
         });
 
         it('does not toggle without Alt key', () => {
             renderMiniMap();
-            fireEvent.keyDown(document, { key: 'm', altKey: false });
+            fireEvent.keyDown(document, { key: 'm', code: 'KeyM', altKey: false });
             expect(screen.getByTestId('minimap-panel')).toBeTruthy();
         });
     });

@@ -348,7 +348,7 @@ export function Router() {
             if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
 
             if (e.altKey && !e.ctrlKey && !e.metaKey) {
-                const tab = REPO_TAB_SHORTCUTS[e.key.toLowerCase()];
+                const tab = REPO_TAB_SHORTCUTS[e.code.replace('Key', '').toLowerCase()];
                 if (tab) {
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
@@ -362,10 +362,6 @@ export function Router() {
                 if (e.key === 'w' || e.key === 'W') {
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
                     location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/wiki';
-                }
-                if (e.key === 'a' || e.key === 'A') {
-                    dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/activity';
                 }
             }
         };
