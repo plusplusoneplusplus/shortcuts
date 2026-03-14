@@ -387,7 +387,7 @@ describe('ReposGrid', () => {
 
     it('renders add button', () => {
         render(<Wrap><ReposGrid repos={[]} onRefresh={() => {}} /></Wrap>);
-        expect(screen.getByText('+ Add')).toBeDefined();
+        expect(screen.getByTestId('add-repo-btn')).toBeDefined();
     });
 
     it('renders repo cards', () => {
