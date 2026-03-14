@@ -56,6 +56,18 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     }
 
     /**
+     * Build the merged settings object to send to the webview.
+     */
+    private buildWebviewSettings(relativePath: string, baseSettings: CommentsSettings) {
+        const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
+        const aiCommands = getAICommandRegistry().getSerializedCommands();
+        const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
+        const predefinedComments = getPredefinedCommentRegistry().getSerializedMarkdownComments();
+        const collapsedSections = this.getCollapsedSections(relativePath);
+        return { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments, collapsedSections };
+    }
+
+    /**
      * Get webview content options based on current settings and theme
      */
     private getWebviewContentOptions(): WebviewContentOptions {
@@ -201,12 +213,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const baseSettings = this.commentsManager.getSettings();
 
             // Add Ask AI enabled setting and commands from VS Code configuration
-            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
-            const aiCommands = getAICommandRegistry().getSerializedCommands();
-            const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
-            const predefinedComments = getPredefinedCommentRegistry().getSerializedMarkdownComments();
-            const collapsedSections = this.getCollapsedSections(relativePath);
-            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments, collapsedSections };
+            const settings = this.buildWebviewSettings(relativePath, baseSettings);
 
             console.log('[Extension] updateWebview called - content length:', content.length);
             console.log('[Extension] updateWebview - content preview:', content.substring(0, 200));
@@ -257,12 +264,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const baseSettings = this.commentsManager.getSettings();
 
             // Add Ask AI enabled setting and commands from VS Code configuration
-            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
-            const aiCommands = getAICommandRegistry().getSerializedCommands();
-            const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
-            const predefinedComments = getPredefinedCommentRegistry().getSerializedMarkdownComments();
-            const collapsedSections = this.getCollapsedSections(relativePath);
-            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments, collapsedSections };
+            const settings = this.buildWebviewSettings(relativePath, baseSettings);
 
             webviewPanel.webview.postMessage({
                 type: 'update',
