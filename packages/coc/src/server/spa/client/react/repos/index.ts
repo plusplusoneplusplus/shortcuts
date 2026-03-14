@@ -25,3 +25,4 @@ export type { FileTreeProps } from './explorer/FileTree';
 export { TreeNode } from './explorer/TreeNode';
 export type { TreeNodeProps } from './explorer/TreeNode';
 export { RepoActivityTab } from './RepoActivityTab';
+export { DiffViewToggle } from './DiffViewToggle';
