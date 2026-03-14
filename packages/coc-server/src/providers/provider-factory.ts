@@ -12,10 +12,19 @@ import {
     ProviderType,
     createGitHubPullRequestsAdapter,
     createAdoPullRequestsAdapter,
+    execAsync,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProvidersFileConfig } from './providers-config';
 
 export { ProviderType };
+
+/** Azure DevOps resource ID for OAuth token requests via `az account get-access-token`. */
+const ADO_RESOURCE_ID = '499b84ac-1321-427f-aa17-267ca6975798';
+
+/** Sentinel returned when an ADO remote is detected but no credentials are available. */
+export interface AdoNoCredentialsSentinel {
+    error: 'no-ado-credentials';
+}
 
 export class ProviderFactory {
     /**
@@ -88,12 +97,19 @@ export class ProviderFactory {
 
     /**
      * Instantiate an IPullRequestsService for the given remote URL and config.
-     * Returns null (does not throw) when credentials are absent or the URL is unrecognized.
+     *
+     * For ADO remotes, resolution order is:
+     *   1. Stored PAT from `providers.json`
+     *   2. `az account get-access-token` bearer token (if `az login` was run)
+     *   3. Returns `{ error: 'no-ado-credentials' }` sentinel when both fail.
+     *
+     * For other providers: returns `null` when credentials are absent or the URL
+     * is unrecognized (does not throw).
      */
-    static createPullRequestsService(
+    static async createPullRequestsService(
         remoteUrl: string,
         config: ProvidersFileConfig,
-    ): IPullRequestsService | null {
+    ): Promise<IPullRequestsService | AdoNoCredentialsSentinel | null> {
         const providerType = ProviderFactory.detectProviderType(remoteUrl);
 
         if (providerType === ProviderType.GitHub) {
@@ -110,19 +126,40 @@ export class ProviderFactory {
 
         if (providerType === ProviderType.ADO) {
             const adoConfig = config.providers.ado;
-            if (!adoConfig?.token) {
-                return null;
-            }
             const parsed = ProviderFactory.parseAdoRemote(remoteUrl);
-            const orgUrl = adoConfig.orgUrl ?? parsed?.orgUrl;
+            const orgUrl = adoConfig?.orgUrl ?? parsed?.orgUrl;
             if (!orgUrl) {
-                return null;
+                return { error: 'no-ado-credentials' };
             }
-            return createAdoPullRequestsAdapter({
-                orgUrl,
-                token: adoConfig.token,
-                project: parsed?.project,
-            });
+
+            // Tier 1: stored PAT
+            if (adoConfig?.token) {
+                return createAdoPullRequestsAdapter({
+                    orgUrl,
+                    token: adoConfig.token,
+                    project: parsed?.project,
+                });
+            }
+
+            // Tier 2: Azure CLI bearer token
+            try {
+                const { stdout } = await execAsync(
+                    `az account get-access-token --resource ${ADO_RESOURCE_ID} --query accessToken -o tsv`,
+                );
+                const bearerToken = stdout.trim();
+                if (bearerToken) {
+                    return createAdoPullRequestsAdapter({
+                        orgUrl,
+                        token: bearerToken,
+                        project: parsed?.project,
+                        tokenType: 'bearer',
+                    });
+                }
+            } catch {
+                // az not available or not logged in — fall through to sentinel
+            }
+
+            return { error: 'no-ado-credentials' };
         }
 
         return null;

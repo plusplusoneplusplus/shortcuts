@@ -35,7 +35,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     const [prs, setPrs] = useState<PullRequest[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [unconfigured, setUnconfigured] = useState<{ detected: string | null; remoteUrl?: string } | null>(null);
+    const [unconfigured, setUnconfigured] = useState<{ detected: string | null; remoteUrl?: string; noCredentials?: boolean } | null>(null);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
     const [authorFilter, setAuthorFilter] = useState('');
     const [searchText, setSearchText] = useState('');
@@ -87,6 +87,8 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             .catch(err => {
                 if (err.status === 401 && err.body?.error === 'unconfigured') {
                     setUnconfigured({ detected: err.body.detected ?? null, remoteUrl: err.body.remoteUrl });
+                } else if (err.status === 401 && err.body?.error === 'no-ado-credentials') {
+                    setUnconfigured({ detected: 'ADO', noCredentials: true });
                 } else {
                     setError(err.message ?? 'Failed to load pull requests');
                 }
@@ -148,6 +150,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                 <ProviderConfigPanel
                     detected={unconfigured.detected}
                     remoteUrl={unconfigured.remoteUrl}
+                    noCredentials={unconfigured.noCredentials}
                     onConfigured={() => fetchPrs(true)}
                 />
             )}

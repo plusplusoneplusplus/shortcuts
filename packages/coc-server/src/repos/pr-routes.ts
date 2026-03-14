@@ -17,6 +17,7 @@ import type { Route } from '../types';
 import { sendJson, send404, send500 } from '../router';
 import { RepoTreeService } from './tree-service';
 import { ProviderFactory } from '../providers/provider-factory';
+import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 
 // ============================================================================
@@ -28,6 +29,11 @@ function isAuthError(err: unknown): boolean {
     if (!(err instanceof Error)) return false;
     const msg = err.message.toLowerCase();
     return msg.includes('401') || msg.includes('403') || msg.includes('unauthorized') || msg.includes('forbidden');
+}
+
+/** Detect the no-ado-credentials sentinel from the provider factory. */
+function isNoAdoCredentials(svc: unknown): svc is AdoNoCredentialsSentinel {
+    return typeof svc === 'object' && svc !== null && (svc as AdoNoCredentialsSentinel).error === 'no-ado-credentials';
 }
 
 // ============================================================================
@@ -55,8 +61,11 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc) {
+                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!svc || isNoAdoCredentials(svc)) {
+                    if (isNoAdoCredentials(svc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
@@ -107,8 +116,11 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc) {
+                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!svc || isNoAdoCredentials(svc)) {
+                    if (isNoAdoCredentials(svc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
@@ -141,8 +153,11 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc) {
+                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!svc || isNoAdoCredentials(svc)) {
+                    if (isNoAdoCredentials(svc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
@@ -175,8 +190,11 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc) {
+                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!svc || isNoAdoCredentials(svc)) {
+                    if (isNoAdoCredentials(svc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }

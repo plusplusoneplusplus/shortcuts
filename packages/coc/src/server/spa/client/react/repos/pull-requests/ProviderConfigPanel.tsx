@@ -11,10 +11,11 @@ import { fetchApi } from '../../hooks/useApi';
 export interface ProviderConfigPanelProps {
     detected: 'GitHub' | 'ADO' | string | null;
     remoteUrl?: string;
+    noCredentials?: boolean;
     onConfigured: () => void;
 }
 
-export function ProviderConfigPanel({ detected, remoteUrl, onConfigured }: ProviderConfigPanelProps) {
+export function ProviderConfigPanel({ detected, remoteUrl, noCredentials, onConfigured }: ProviderConfigPanelProps) {
     const [token, setToken] = useState('');
     const [orgUrl, setOrgUrl] = useState('');
     const [saving, setSaving] = useState(false);
@@ -88,6 +89,12 @@ export function ProviderConfigPanel({ detected, remoteUrl, onConfigured }: Provi
                     <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-2">
                         To view pull requests, configure a personal access token:
                     </p>
+
+                    {detected === 'ADO' && noCredentials && (
+                        <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-2" data-testid="az-login-hint">
+                            Alternatively, run <span className="font-mono">az login</span> in your terminal to use Azure CLI credentials automatically.
+                        </p>
+                    )}
 
                     <div className="flex flex-col gap-2">
                         {detected === 'ADO' && (

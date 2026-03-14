@@ -126,7 +126,7 @@ beforeEach(async () => {
     (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
         resolveRepo: vi.fn().mockResolvedValue(mockRepoInfo),
     }));
-    (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockReturnValue(mockSvc);
+    (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(mockSvc);
 
     server = makeServer(dataDir);
     await startServer();
@@ -166,7 +166,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
     });
 
     it('returns 401 with unconfigured body when no provider config', async () => {
-        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockReturnValue(null);
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
         (ProviderFactory.detectProviderType as ReturnType<typeof vi.fn>).mockReturnValue('github');
 
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
@@ -175,6 +175,15 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(body.error).toBe('unconfigured');
         expect(body.detected).toBe('github');
         expect(body.remoteUrl).toBe(REMOTE_URL);
+    });
+
+    it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('no-ado-credentials');
     });
 
     it('returns 404 when repo not found', async () => {
@@ -240,7 +249,7 @@ describe('GET /api/repos/:id/pull-requests/:prId', () => {
     });
 
     it('returns 401 when unconfigured', async () => {
-        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockReturnValue(null);
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
         expect(res.status).toBe(401);
         const body = await res.json() as { error: string };
