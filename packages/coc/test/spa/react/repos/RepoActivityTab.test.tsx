@@ -532,15 +532,15 @@ describe('RepoActivityTab: data fetching', () => {
 
 describe('ActivityListPane: reused follow-up chat tasks stay visible', () => {
     it('does not filter running tasks with isChatFollowUp', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('running.filter(t => taskMatchesFilter(t, filterType))');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('running.filter(t => taskMatchesFilter(t, filterType)');
     });
 
     it('does not filter queued tasks with isChatFollowUp', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("queued.filter(t => t.kind === 'pause-marker' || taskMatchesFilter(t, filterType))");
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain("queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, filterType)");
     });
 
     it('does not filter history tasks with isChatFollowUp', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('history.filter(t => taskMatchesFilter(t, filterType))');
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('history.filter(t => taskMatchesFilter(t, filterType)');
     });
 
     it('does not filter allTasks with isChatFollowUp', () => {
