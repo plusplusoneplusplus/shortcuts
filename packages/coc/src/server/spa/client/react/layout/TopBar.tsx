@@ -84,12 +84,14 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     &#9776;
                 </button>
                 <a
-                    href="/"
+                    href="#"
                     className="text-sm font-semibold whitespace-nowrap md:hidden hover:underline flex-shrink-0"
+                    onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC</a>
                 <a
-                    href="/"
+                    href="#"
                     className="text-sm font-semibold whitespace-nowrap hidden md:inline hover:underline flex-shrink-0"
+                    onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC (Copilot Of Copilot)</a>
                 {isOnReposTab && !isMobile && (
                     <RepoTabStrip

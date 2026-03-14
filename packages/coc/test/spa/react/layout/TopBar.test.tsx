@@ -70,7 +70,7 @@ describe('TopBar responsive behavior', () => {
         const mobileTitle = screen.getByText('CoC');
         expect(mobileTitle).toBeTruthy();
         expect(mobileTitle.tagName).toBe('A');
-        expect((mobileTitle as HTMLAnchorElement).href).toContain('/');
+        expect((mobileTitle as HTMLAnchorElement).href).toContain('#');
         expect(mobileTitle.className).toContain('md:hidden');
     });
 
@@ -80,7 +80,7 @@ describe('TopBar responsive behavior', () => {
         const desktopTitle = screen.getByText('CoC (Copilot Of Copilot)');
         expect(desktopTitle).toBeTruthy();
         expect(desktopTitle.tagName).toBe('A');
-        expect((desktopTitle as HTMLAnchorElement).href).toContain('/');
+        expect((desktopTitle as HTMLAnchorElement).href).toContain('#');
         expect(desktopTitle.className).toContain('hidden');
         expect(desktopTitle.className).toContain('md:inline');
     });
