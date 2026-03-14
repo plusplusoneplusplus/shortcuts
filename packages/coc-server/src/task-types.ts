@@ -11,7 +11,7 @@
  * expressed as `type: 'chat'` with the appropriate mode and context.
  */
 
-import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
+import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Target Type
@@ -102,7 +102,7 @@ export interface RunWorkflowPayload {
     params?: Record<string, string>;
     workspaceId?: string;
     /** Pre-filtered MCP server map to pass to the AI SDK for this pipeline run. */
-    mcpServers?: Record<string, import('@plusplusoneplusplus/pipeline-core').MCPServerConfig>;
+    mcpServers?: Record<string, MCPServerConfig>;
 }
 
 export interface RunScriptPayload {
