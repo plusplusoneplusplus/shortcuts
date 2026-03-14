@@ -84,15 +84,11 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     &#9776;
                 </button>
                 <a
-                    href="https://github.com/plusplusoneplusplus/shortcuts"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href="/"
                     className="text-sm font-semibold whitespace-nowrap md:hidden hover:underline flex-shrink-0"
                 >CoC</a>
                 <a
-                    href="https://github.com/plusplusoneplusplus/shortcuts"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href="/"
                     className="text-sm font-semibold whitespace-nowrap hidden md:inline hover:underline flex-shrink-0"
                 >CoC (Copilot Of Copilot)</a>
                 {isOnReposTab && !isMobile && (
