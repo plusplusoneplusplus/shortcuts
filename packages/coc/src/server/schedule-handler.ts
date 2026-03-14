@@ -12,7 +12,7 @@ import { sendJSON, sendError, parseBodyOrReject } from '@plusplusoneplusplus/coc
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { ScheduleManager, describeCron, nextCronTime, parseCron } from './schedule-manager';
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager';
-import type { TargetType } from '@plusplusoneplusplus/coc-server';
+import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Validation
@@ -21,6 +21,7 @@ import type { TargetType } from '@plusplusoneplusplus/coc-server';
 const VALID_STATUSES: Set<string> = new Set(['active', 'paused', 'stopped']);
 const VALID_ON_FAILURE: Set<string> = new Set(['notify', 'stop']);
 const VALID_TARGET_TYPES: Set<string> = new Set(['prompt', 'script']);
+const VALID_MODES: Set<string> = new Set(['ask', 'plan', 'autopilot']);
 
 function validateScheduleInput(body: any): { valid: boolean; error?: string } {
     if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
@@ -46,6 +47,9 @@ function validateScheduleInput(body: any): { valid: boolean; error?: string } {
     if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
         return { valid: false, error: `Invalid targetType: ${body.targetType}. Valid values: prompt, script` };
     }
+    if (body.mode !== undefined && !VALID_MODES.has(body.mode)) {
+        return { valid: false, error: `Invalid mode: ${body.mode}. Valid values: ask, plan, autopilot` };
+    }
     return { valid: true };
 }
 
@@ -66,6 +70,7 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
         createdAt: entry.createdAt,
         outputFolder: entry.outputFolder,
         model: entry.model,
+        mode: entry.mode ?? 'autopilot',
     };
 }
 
@@ -118,6 +123,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
                     targetType: (body.targetType as TargetType) || 'prompt',
                     outputFolder: body.outputFolder ? String(body.outputFolder).trim() : undefined,
                     model: body.model ? String(body.model).trim() : undefined,
+                    mode: (body.mode as ChatMode) || 'autopilot',
                 });
                 sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager) });
             } catch (err) {
@@ -156,6 +162,9 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
             if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
                 return sendError(res, 400, `Invalid targetType: ${body.targetType}. Valid values: prompt, script`);
             }
+            if (body.mode !== undefined && !VALID_MODES.has(body.mode)) {
+                return sendError(res, 400, `Invalid mode: ${body.mode}. Valid values: ask, plan, autopilot`);
+            }
 
             const updates: any = {};
             if (body.name) updates.name = body.name.trim();
@@ -167,6 +176,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
             if (body.targetType !== undefined) updates.targetType = body.targetType;
             if (body.outputFolder !== undefined) updates.outputFolder = body.outputFolder ? String(body.outputFolder).trim() : undefined;
             if (body.model !== undefined) updates.model = body.model ? String(body.model).trim() : undefined;
+            if (body.mode !== undefined) updates.mode = body.mode;
 
             const schedule = manager.updateSchedule(repoId, scheduleId, updates);
             if (!schedule) {

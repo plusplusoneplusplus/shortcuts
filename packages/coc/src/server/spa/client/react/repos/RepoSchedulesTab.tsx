@@ -112,6 +112,7 @@ interface Schedule {
     createdAt: string;
     outputFolder?: string;
     model?: string;
+    mode?: 'ask' | 'plan' | 'autopilot';
 }
 
 interface RunRecord {
@@ -310,6 +311,9 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                                             [Prompt]
                                         </span>
                                     )}
+                                    {(!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
+                                        <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium align-middle capitalize" data-testid="list-mode-badge">{schedule.mode}</span>
+                                    )}
                                 </span>
                                 <span className="text-[10px] text-[#848484] font-mono flex-shrink-0 hidden xl:block">
                                     {schedule.cronDescription}
@@ -344,6 +348,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             onFailure: duplicateValues.onFailure,
                             outputFolder: duplicateValues.outputFolder,
                             model: duplicateValues.model,
+                            chatMode: duplicateValues.mode ?? 'autopilot',
                         } : undefined}
                     />
                 </div>
@@ -578,6 +583,7 @@ export function ScheduleDetail({ schedule, workspaceId, history: initialHistory,
                         onFailure: schedule.onFailure,
                         outputFolder: schedule.outputFolder,
                         model: schedule.model,
+                        chatMode: schedule.mode ?? 'autopilot',
                     }}
                     onCreated={onSaved}
                     onCancel={onCancelEdit}
@@ -596,6 +602,9 @@ export function ScheduleDetail({ schedule, workspaceId, history: initialHistory,
                                         <span className="w-3 h-3 border-2 border-[#0078d4] border-t-transparent rounded-full animate-spin flex-shrink-0" aria-label="Running" data-testid="running-spinner" />
                                     )}
                                     <StatusBadge status={schedule.status} isRunning={schedule.isRunning} />
+                                    {(!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium capitalize" data-testid="mode-badge">{schedule.mode}</span>
+                                    )}
                                 </div>
                                 <div className="text-[10px] text-[#848484] mt-0.5" data-testid="schedule-next-run">
                                     {schedule.isRunning
@@ -957,6 +966,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
         onFailure?: string;
         outputFolder?: string;
         model?: string;
+        chatMode?: 'ask' | 'plan' | 'autopilot';
     };
 }) {
     const cronParsed = initialValues?.cron ? parseCronToInterval(initialValues.cron) : null;
@@ -970,6 +980,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
     const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? `~/.coc/repos/${workspaceId}/tasks`);
     const [model, setModel] = useState(initialValues?.model ?? '');
+    const [chatMode, setChatMode] = useState<'ask' | 'plan' | 'autopilot'>(initialValues?.chatMode ?? 'autopilot');
     const [models, setModels] = useState<string[]>([]);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -1018,6 +1029,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
             setIntervalUnit('hours');
             setParams({});
             setOutputFolder(`~/.coc/repos/${workspaceId}/tasks`);
+            setChatMode('autopilot');
             setManualPipeline(false);
             return;
         }
@@ -1070,6 +1082,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                 onFailure,
                 outputFolder: outputFolder.trim() || undefined,
                 model: model.trim() || undefined,
+                mode: targetType === 'prompt' ? chatMode : undefined,
             };
             const url = formMode === 'edit' && scheduleId
                 ? getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`
@@ -1250,6 +1263,22 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                             <option value="">Default</option>
                             {models.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
+                    </div>
+                )}
+
+                {/* Chat mode selector — only for prompt type */}
+                {(!targetType || targetType === 'prompt') && (
+                    <div className="flex items-center gap-2" data-testid="chat-mode-picker">
+                        <span className="text-[10px] text-[#616161] dark:text-[#999]">Mode:</span>
+                        {(['ask', 'plan', 'autopilot'] as const).map(m => (
+                            <button
+                                key={m}
+                                type="button"
+                                className={cn('text-[10px] px-2 py-1 rounded capitalize', chatMode === m ? 'bg-[#0078d4] text-white' : 'bg-[#e0e0e0] dark:bg-[#444] text-[#616161] dark:text-[#999]')}
+                                onClick={() => setChatMode(m)}
+                                data-testid={`chat-mode-${m}`}
+                            >{m.charAt(0).toUpperCase() + m.slice(1)}</button>
+                        ))}
                     </div>
                 )}
 

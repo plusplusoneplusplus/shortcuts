@@ -224,7 +224,7 @@ describe('SchedulePersistence', () => {
 
             const filePath = getRepoScheduleFilePath(dataDir, repoId);
             const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            expect(raw.version).toBe(2);
+            expect(raw.version).toBe(3);
             expect(raw.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
             expect(raw.repoId).toBe(repoId);
             expect(raw.schedules).toHaveLength(1);
@@ -298,27 +298,73 @@ describe('SchedulePersistence', () => {
             expect(schedules[1].targetType).toBe('prompt');
         });
 
-        it('loads v2 files without migration', () => {
+        it('loads v1 files and back-fills mode: autopilot on all entries', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const schedulesDir = path.join(dataDir, 'schedules');
+            const v1State = {
+                version: 1,
+                savedAt: '2026-01-01T00:00:00Z',
+                repoId: 'repo-v1-mode',
+                schedules: [
+                    createSchedule({ id: 'sch_a', name: 'Old A' }),
+                ],
+            };
+            fs.writeFileSync(
+                path.join(schedulesDir, 'repo-repo-v1-mode.json'),
+                JSON.stringify(v1State),
+                'utf-8'
+            );
+
+            const loaded = persistence.loadAll();
+            const schedules = loaded.get('repo-v1-mode')!;
+            expect(schedules[0].mode).toBe('autopilot');
+        });
+
+        it('loads v2 files and back-fills mode: autopilot on all entries', () => {
             const persistence = new SchedulePersistence(dataDir);
             const schedulesDir = path.join(dataDir, 'schedules');
             const v2State = {
                 version: 2,
                 savedAt: '2026-01-01T00:00:00Z',
-                repoId: 'repo-v2',
+                repoId: 'repo-v2-mode',
                 schedules: [
                     createSchedule({ id: 'sch_c', name: 'Script', targetType: 'script' as any }),
+                    createSchedule({ id: 'sch_d', name: 'Prompt' }),
                 ],
             };
             fs.writeFileSync(
-                path.join(schedulesDir, 'repo-repo-v2.json'),
+                path.join(schedulesDir, 'repo-repo-v2-mode.json'),
                 JSON.stringify(v2State),
                 'utf-8'
             );
 
             const loaded = persistence.loadAll();
-            expect(loaded.has('repo-v2')).toBe(true);
-            const schedules = loaded.get('repo-v2')!;
-            expect(schedules[0].targetType).toBe('script');
+            expect(loaded.has('repo-v2-mode')).toBe(true);
+            const schedules = loaded.get('repo-v2-mode')!;
+            expect(schedules[0].mode).toBe('autopilot');
+            expect(schedules[1].mode).toBe('autopilot');
+        });
+
+        it('does not overwrite existing mode field during v2 migration', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const schedulesDir = path.join(dataDir, 'schedules');
+            const v2State = {
+                version: 2,
+                savedAt: '2026-01-01T00:00:00Z',
+                repoId: 'repo-v2-existing-mode',
+                schedules: [
+                    { ...createSchedule({ id: 'sch_e', name: 'Already Has Mode' }), mode: 'ask' },
+                ],
+            };
+            fs.writeFileSync(
+                path.join(schedulesDir, 'repo-repo-v2-existing-mode.json'),
+                JSON.stringify(v2State),
+                'utf-8'
+            );
+
+            const loaded = persistence.loadAll();
+            const schedules = loaded.get('repo-v2-existing-mode')!;
+            expect(schedules[0].mode).toBe('ask');
         });
 
         it('skips files with unknown future version (e.g. 99)', () => {
@@ -332,6 +378,42 @@ describe('SchedulePersistence', () => {
 
             const loaded = persistence.loadAll();
             expect(loaded.has('repo-future')).toBe(false);
+        });
+    });
+
+    // ========================================================================
+    // 11. mode field round-trip
+    // ========================================================================
+
+    describe('mode field round-trip', () => {
+        it('saves and loads mode: ask correctly', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const repoId = 'repo-mode-roundtrip';
+            const schedule = createSchedule({ mode: 'ask' as any });
+            persistence.saveRepo(repoId, [schedule]);
+
+            const loaded = persistence.loadAll();
+            expect(loaded.get(repoId)![0].mode).toBe('ask');
+        });
+
+        it('saves and loads mode: plan correctly', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const repoId = 'repo-mode-plan';
+            const schedule = createSchedule({ mode: 'plan' as any });
+            persistence.saveRepo(repoId, [schedule]);
+
+            const loaded = persistence.loadAll();
+            expect(loaded.get(repoId)![0].mode).toBe('plan');
+        });
+
+        it('saves with version 3', () => {
+            const persistence = new SchedulePersistence(dataDir);
+            const repoId = 'repo-v3-format';
+            persistence.saveRepo(repoId, [createSchedule()]);
+
+            const filePath = getRepoScheduleFilePath(dataDir, repoId);
+            const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            expect(raw.version).toBe(3);
         });
     });
 });

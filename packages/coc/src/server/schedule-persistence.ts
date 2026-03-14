@@ -25,7 +25,7 @@ export interface PersistedScheduleState {
     schedules: ScheduleEntry[];
 }
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 // ============================================================================
 // Helpers
@@ -77,7 +77,16 @@ export class SchedulePersistence {
                             (s as ScheduleEntry).targetType = 'prompt';
                         }
                     }
-                    // fall through — treat as current
+                    // fall through to v2→v3 migration
+                }
+                if (state.version === 1 || state.version === 2) {
+                    // v2→v3: back-fill mode: 'autopilot' on all entries
+                    for (const s of state.schedules) {
+                        if (!s.mode) {
+                            (s as ScheduleEntry).mode = 'autopilot';
+                        }
+                    }
+                    // treat as current
                 } else if (state.version !== CURRENT_VERSION) {
                     process.stderr.write(
                         `[SchedulePersistence] Unknown version ${state.version} in ${file} — skipping\n`

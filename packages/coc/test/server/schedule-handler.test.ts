@@ -610,4 +610,94 @@ describe('Schedule Handler', () => {
             expect(body.schedules[0].model).toBe('claude-opus-4.6');
         });
     });
+
+    // ========================================================================
+    // mode field
+    // ========================================================================
+
+    describe('mode field', () => {
+        it('should default mode to autopilot when not provided', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule());
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.mode).toBe('autopilot');
+        });
+
+        it('should store and return mode: ask when provided on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ mode: 'ask' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.mode).toBe('ask');
+        });
+
+        it('should store and return mode: plan when provided on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ mode: 'plan' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.mode).toBe('plan');
+        });
+
+        it('should reject invalid mode on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ mode: 'invalid' }));
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('mode');
+        });
+
+        it('should update mode via PATCH', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule());
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { mode: 'plan' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.mode).toBe('plan');
+        });
+
+        it('should reject invalid mode on PATCH', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule());
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { mode: 'bad' });
+            expect(res.status).toBe(400);
+        });
+
+        it('should include mode in list response', async () => {
+            await startServer();
+
+            await postJSON(schedulesUrl(), makeSchedule({ mode: 'ask' }));
+
+            const res = await request(schedulesUrl());
+            const body = JSON.parse(res.body);
+            expect(body.schedules[0].mode).toBe('ask');
+        });
+
+        it('should persist mode across server restarts', async () => {
+            const store = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            await postJSON(schedulesUrl(), makeSchedule({ name: 'Mode Schedule', mode: 'plan' }));
+
+            await server.close();
+
+            const store2 = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+
+            const listRes = await request(schedulesUrl());
+            const body = JSON.parse(listRes.body);
+            expect(body.schedules[0].mode).toBe('plan');
+        });
+    });
 });

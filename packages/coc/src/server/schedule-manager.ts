@@ -11,7 +11,7 @@
 import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
 import type { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
-import type { TargetType } from '@plusplusoneplusplus/coc-server';
+import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
 import { SchedulePersistence } from './schedule-persistence';
 
 // ============================================================================
@@ -33,6 +33,7 @@ export interface ScheduleEntry {
     targetType?: TargetType;   // defaults to 'prompt' when absent
     outputFolder?: string;     // output folder path prepended to prompt for prompt-type schedules
     model?: string;            // optional model override for prompt-type schedules
+    mode?: ChatMode;           // chat mode for prompt-type schedules; defaults to 'autopilot'
 }
 
 export interface ScheduleRunRecord {
@@ -485,7 +486,7 @@ export class ScheduleManager extends EventEmitter {
                         priority: 'normal',
                         payload: {
                             kind: 'chat',
-                            mode: 'autopilot',
+                            mode: schedule.mode ?? 'autopilot',
                             prompt: `${outputPrefix}Follow the instruction ${schedule.target}.`,
                             context: {
                                 files: [schedule.target],

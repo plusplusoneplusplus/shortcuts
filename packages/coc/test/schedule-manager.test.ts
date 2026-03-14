@@ -908,4 +908,159 @@ describe('ScheduleManager', () => {
             mgr.dispose();
         });
     });
+
+    describe('mode field', () => {
+        it('is undefined when not provided', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'No Mode',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            expect(schedule.mode).toBeUndefined();
+        });
+
+        it('stores and returns mode when provided', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'With Mode',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                mode: 'ask',
+            });
+
+            expect(schedule.mode).toBe('ask');
+        });
+
+        it('can be updated via updateSchedule', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Update Mode',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            const updated = manager.updateSchedule(REPO_ID, schedule.id, { mode: 'plan' });
+            expect(updated!.mode).toBe('plan');
+        });
+
+        it('persists and restores mode', () => {
+            manager.addSchedule(REPO_ID, {
+                name: 'Persisted Mode',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                mode: 'ask',
+            });
+
+            manager.dispose();
+
+            const newManager = new ScheduleManager(persistence);
+            newManager.restore();
+
+            const schedules = newManager.getSchedules(REPO_ID);
+            expect(schedules[0].mode).toBe('ask');
+
+            newManager.dispose();
+        });
+
+        it('forwards mode to payload.mode when enqueuing chat task', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_mode_ask'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Ask Mode Schedule',
+                target: 'my-task.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                mode: 'ask',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].payload.mode).toBe('ask');
+
+            mgr.dispose();
+        });
+
+        it('forwards plan mode to payload.mode', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_mode_plan'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Plan Mode Schedule',
+                target: 'my-task.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                mode: 'plan',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].payload.mode).toBe('plan');
+
+            mgr.dispose();
+        });
+
+        it('defaults payload.mode to autopilot when mode is absent', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_mode_default'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Default Mode',
+                target: 'my-task.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].payload.mode).toBe('autopilot');
+
+            mgr.dispose();
+        });
+
+        it('does not affect script-type schedules (no mode in script payload)', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_script_mode'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Script With Mode Field',
+                target: 'echo hello',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'script',
+                mode: 'ask',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].type).toBe('run-script');
+            expect(enqueued[0].payload.mode).toBeUndefined();
+
+            mgr.dispose();
+        });
+    });
 });
