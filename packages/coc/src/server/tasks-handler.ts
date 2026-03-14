@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { TaskManager, ARCHIVE_UNDO_FILE, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
+import { TaskManager, ARCHIVE_UNDO_FILE, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory, VALID_TASK_STATUSES } from '@plusplusoneplusplus/pipeline-core';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -338,12 +338,6 @@ function buildArchiveFolderNode(archiveDir: string): TaskFolder {
 
     return archiveNode;
 }
-
-// ============================================================================
-// Valid task statuses
-// ============================================================================
-
-const VALID_TASK_STATUSES = ['pending', 'in-progress', 'done', 'future'];
 
 // ============================================================================
 // Path Security Helper
