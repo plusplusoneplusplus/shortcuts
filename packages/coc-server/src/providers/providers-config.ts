@@ -17,7 +17,7 @@ import * as path from 'path';
 export interface ProvidersFileConfig {
     providers: {
         github?: { token: string };
-        ado?: { token: string; orgUrl: string };
+        ado?: { orgUrl: string };
     };
 }
 

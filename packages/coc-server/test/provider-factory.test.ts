@@ -124,7 +124,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(result).toBeNull();
     });
 
-    it('returns no-ado-credentials sentinel when ADO token is missing and az CLI fails', async () => {
+    it('returns no-ado-credentials sentinel when az CLI fails', async () => {
         const config: ProvidersFileConfig = { providers: {} };
         const result = await ProviderFactory.createPullRequestsService(
             'https://dev.azure.com/org/proj/_git/repo',
@@ -166,10 +166,11 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(result).not.toBeNull();
     });
 
-    it('returns a service instance when ADO token and orgUrl are present', async () => {
+    it('returns a service instance when ADO orgUrl is configured and az CLI succeeds', async () => {
+        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token-xyz\n', stderr: '' });
         const config: ProvidersFileConfig = {
             providers: {
-                ado: { token: 'ado-pat-token', orgUrl: 'https://dev.azure.com/myorg' },
+                ado: { orgUrl: 'https://dev.azure.com/myorg' },
             },
         };
         const result = await ProviderFactory.createPullRequestsService(
@@ -177,8 +178,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
             config,
         );
         expect(result).not.toBeNull();
-        // az CLI should NOT be called when PAT is present
-        expect(execAsync).not.toHaveBeenCalled();
+        expect(result).not.toEqual({ error: 'no-ado-credentials' });
     });
 
     it('returns null when GitHub remote URL cannot be parsed', async () => {
@@ -193,7 +193,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(result).toBeNull();
     });
 
-    it('returns no-ado-credentials sentinel when ADO remote cannot be parsed and no PAT', async () => {
+    it('returns no-ado-credentials sentinel when ADO remote cannot be parsed', async () => {
         const config: ProvidersFileConfig = { providers: {} };
         // No orgUrl derivable from malformed ADO URL (empty string)
         const result = await ProviderFactory.createPullRequestsService(

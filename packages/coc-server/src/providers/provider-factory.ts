@@ -98,10 +98,8 @@ export class ProviderFactory {
     /**
      * Instantiate an IPullRequestsService for the given remote URL and config.
      *
-     * For ADO remotes, resolution order is:
-     *   1. Stored PAT from `providers.json`
-     *   2. `az account get-access-token` bearer token (if `az login` was run)
-     *   3. Returns `{ error: 'no-ado-credentials' }` sentinel when both fail.
+     * For ADO remotes, uses `az account get-access-token` bearer token (requires `az login`).
+     * Returns `{ error: 'no-ado-credentials' }` sentinel when the Azure CLI call fails.
      *
      * For other providers: returns `null` when credentials are absent or the URL
      * is unrecognized (does not throw).
@@ -132,16 +130,7 @@ export class ProviderFactory {
                 return { error: 'no-ado-credentials' };
             }
 
-            // Tier 1: stored PAT
-            if (adoConfig?.token) {
-                return createAdoPullRequestsAdapter({
-                    orgUrl,
-                    token: adoConfig.token,
-                    project: parsed?.project,
-                });
-            }
-
-            // Tier 2: Azure CLI bearer token
+            // Azure CLI bearer token
             try {
                 const { stdout } = await execAsync(
                     `az account get-access-token --resource ${ADO_RESOURCE_ID} --query accessToken -o tsv`,
@@ -152,7 +141,6 @@ export class ProviderFactory {
                         orgUrl,
                         token: bearerToken,
                         project: parsed?.project,
-                        tokenType: 'bearer',
                     });
                 }
             } catch {

@@ -21,7 +21,7 @@ function sanitizeConfig(config: ProvidersFileConfig): unknown {
     const sanitized: {
         providers: {
             github?: { token: string };
-            ado?: { token: string; orgUrl: string };
+            ado?: { orgUrl: string };
         };
     } = { providers: {} };
 
@@ -29,7 +29,7 @@ function sanitizeConfig(config: ProvidersFileConfig): unknown {
         sanitized.providers.github = { token: '****' };
     }
     if (config.providers.ado) {
-        sanitized.providers.ado = { token: '****', orgUrl: config.providers.ado.orgUrl };
+        sanitized.providers.ado = { orgUrl: config.providers.ado.orgUrl };
     }
 
     return sanitized;
@@ -72,7 +72,7 @@ export function registerProviderRoutes(routes: Route[], dataDir: string): void {
             try {
                 const body = await readJsonBody<{
                     github?: { token?: unknown };
-                    ado?: { token?: unknown; orgUrl?: unknown };
+                    ado?: { orgUrl?: unknown };
                 }>(req);
 
                 if (body.github !== undefined) {
@@ -83,10 +83,6 @@ export function registerProviderRoutes(routes: Route[], dataDir: string): void {
                 }
 
                 if (body.ado !== undefined) {
-                    if (typeof body.ado.token !== 'string' || !body.ado.token) {
-                        send400(res, 'ado.token must be a non-empty string');
-                        return;
-                    }
                     if (typeof body.ado.orgUrl !== 'string' || !body.ado.orgUrl) {
                         send400(res, 'ado.orgUrl must be a non-empty string');
                         return;
@@ -99,7 +95,6 @@ export function registerProviderRoutes(routes: Route[], dataDir: string): void {
                 }
                 if (body.ado) {
                     config.providers.ado = {
-                        token: body.ado.token as string,
                         orgUrl: body.ado.orgUrl as string,
                     };
                 }

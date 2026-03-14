@@ -3,7 +3,6 @@ import { getLogger, LogCategory } from '../logger';
 import { execAsync } from '../utils/exec-utils';
 import type { AdoClientOptions, AdoConnectionResult } from './types';
 
-const ENV_TOKEN = 'AZURE_DEVOPS_TOKEN';
 const ENV_ORG_URL = 'AZURE_DEVOPS_ORG_URL';
 /** Azure DevOps resource ID for OAuth token requests. */
 const ADO_RESOURCE_ID = '499b84ac-1321-427f-aa17-267ca6975798';
@@ -34,21 +33,13 @@ export class AdoConnectionFactory {
             return { connected: false, error: msg };
         }
 
-        // Token resolution: explicit option > env var (PAT) > Azure CLI (bearer)
-        const patToken = options?.token ?? process.env[ENV_TOKEN];
-        let authHandler;
-
-        if (patToken) {
-            authHandler = azdev.getPersonalAccessTokenHandler(patToken);
-        } else {
-            const azResult = await this.getTokenFromAzCli();
-            if (!azResult.success) {
-                logger.warn(LogCategory.ADO, azResult.error);
-                return { connected: false, error: azResult.error };
-            }
-            authHandler = azdev.getBearerHandler(azResult.token);
-            logger.debug(LogCategory.ADO, 'Using Azure CLI bearer token for authentication');
+        const azResult = await this.getTokenFromAzCli();
+        if (!azResult.success) {
+            logger.warn(LogCategory.ADO, azResult.error);
+            return { connected: false, error: azResult.error };
         }
+        const authHandler = azdev.getBearerHandler(azResult.token);
+        logger.debug(LogCategory.ADO, 'Using Azure CLI bearer token for authentication');
 
         try {
             const connection = new azdev.WebApi(orgUrl, authHandler);
@@ -78,8 +69,7 @@ export class AdoConnectionFactory {
             const msg = err instanceof Error ? err.message : String(err);
             return {
                 success: false,
-                error: `Failed to get token from Azure CLI: ${msg}. ` +
-                    `Set ${ENV_TOKEN} environment variable or run 'az login'.`,
+                error: `Failed to get token from Azure CLI: ${msg}. Run 'az login' to authenticate.`,
             };
         }
     }

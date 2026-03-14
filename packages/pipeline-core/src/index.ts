@@ -1114,7 +1114,6 @@ export { SourceDetectionErrors } from './skills';
 // ============================================================================
 
 export {
-    AdoConnectionConfig,
     AdoConnectionResult,
     AdoClientOptions,
     AdoConnectionFactory,
