@@ -1,8 +1,31 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { replicateCommit } from '../../src/templates/replicate-service';
 import { ReplicateOptions, CommitTemplate } from '../../src/templates/types';
 import { AIInvoker } from '../../src/ai/types';
-import { execGit } from '../../src/git';
+import { GitLogService } from '../../src/git/git-log-service';
+import type { GitCommit, GitCommitFile } from '../../src/git/types';
+
+vi.mock('../../src/git/git-log-service');
+
+const FAKE_REPO_ROOT = '/fake/repo';
+const FAKE_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const FAKE_COMMIT: GitCommit = {
+    hash: FAKE_HASH,
+    shortHash: 'aaaaaaa',
+    subject: 'feat: add alpha and beta',
+    authorName: 'Test Author',
+    authorEmail: 'test@example.com',
+    date: '2025-01-01T00:00:00Z',
+    relativeDate: '1 day ago',
+    parentHashes: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    refs: ['HEAD', 'main'],
+    repositoryRoot: FAKE_REPO_ROOT,
+    repositoryName: 'fake-repo',
+};
+const FAKE_DIFF = 'diff --git a/src/alpha.ts b/src/alpha.ts\n+export const alpha = true;';
+const FAKE_FILES: GitCommitFile[] = [
+    { path: 'src/alpha.ts', status: 'added', commitHash: FAKE_HASH, parentHash: 'bbbbbbbb', repositoryRoot: FAKE_REPO_ROOT },
+];
 
 const CANNED_RESPONSE = [
     '=== FILE: src/alpha.ts (new) ===',
@@ -15,27 +38,23 @@ const CANNED_RESPONSE = [
     'Created alpha and modified beta.',
 ].join('\n');
 
-function getRepoRoot(): string {
-    return execGit(['rev-parse', '--show-toplevel'], process.cwd()).trim();
-}
-
-function getHeadHash(): string {
-    return execGit(['rev-parse', 'HEAD'], process.cwd()).trim();
-}
-
 describe('replicateCommit', () => {
-    it('returns expected FileChange array', async () => {
-        const repoRoot = getRepoRoot();
-        const hash = getHeadHash();
+    beforeEach(() => {
+        vi.mocked(GitLogService.prototype.getCommit).mockReturnValue(FAKE_COMMIT);
+        vi.mocked(GitLogService.prototype.getCommitDiff).mockReturnValue(FAKE_DIFF);
+        vi.mocked(GitLogService.prototype.getCommitFiles).mockReturnValue(FAKE_FILES);
+        vi.mocked(GitLogService.prototype.dispose).mockReturnValue(undefined);
+    });
 
+    it('returns expected FileChange array', async () => {
         const template: CommitTemplate = {
             name: 'test',
             kind: 'commit',
-            commitHash: hash,
+            commitHash: FAKE_HASH,
         };
         const options: ReplicateOptions = {
             template,
-            repoRoot,
+            repoRoot: FAKE_REPO_ROOT,
             instruction: 'Do the same thing for alpha and beta',
         };
         const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
@@ -54,7 +73,7 @@ describe('replicateCommit', () => {
     });
 
     it('throws on unknown commit hash', async () => {
-        const repoRoot = getRepoRoot();
+        vi.mocked(GitLogService.prototype.getCommit).mockReturnValue(undefined);
         const fakeHash = '0000000000000000000000000000000000000000';
 
         const template: CommitTemplate = {
@@ -64,7 +83,7 @@ describe('replicateCommit', () => {
         };
         const options: ReplicateOptions = {
             template,
-            repoRoot,
+            repoRoot: FAKE_REPO_ROOT,
             instruction: 'Do something',
         };
         const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
@@ -76,17 +95,14 @@ describe('replicateCommit', () => {
     });
 
     it('throws when AI invocation fails', async () => {
-        const repoRoot = getRepoRoot();
-        const hash = getHeadHash();
-
         const template: CommitTemplate = {
             name: 'test',
             kind: 'commit',
-            commitHash: hash,
+            commitHash: FAKE_HASH,
         };
         const options: ReplicateOptions = {
             template,
-            repoRoot,
+            repoRoot: FAKE_REPO_ROOT,
             instruction: 'Do something',
         };
         const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
@@ -98,17 +114,14 @@ describe('replicateCommit', () => {
     });
 
     it('calls onProgress with expected stages', async () => {
-        const repoRoot = getRepoRoot();
-        const hash = getHeadHash();
-
         const template: CommitTemplate = {
             name: 'test',
             kind: 'commit',
-            commitHash: hash,
+            commitHash: FAKE_HASH,
         };
         const options: ReplicateOptions = {
             template,
-            repoRoot,
+            repoRoot: FAKE_REPO_ROOT,
             instruction: 'Do something',
         };
         const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
@@ -136,18 +149,15 @@ describe('replicateCommit', () => {
     });
 
     it('passes template hints through to the prompt', async () => {
-        const repoRoot = getRepoRoot();
-        const hash = getHeadHash();
-
         const template: CommitTemplate = {
             name: 'test',
             kind: 'commit',
-            commitHash: hash,
+            commitHash: FAKE_HASH,
             hints: ['Focus on error handling', 'Use TypeScript'],
         };
         const options: ReplicateOptions = {
             template,
-            repoRoot,
+            repoRoot: FAKE_REPO_ROOT,
             instruction: 'Do something',
         };
         const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
@@ -163,17 +173,14 @@ describe('replicateCommit', () => {
     });
 
     it('returns empty files array when AI returns no file blocks', async () => {
-        const repoRoot = getRepoRoot();
-        const hash = getHeadHash();
-
         const template: CommitTemplate = {
             name: 'test',
             kind: 'commit',
-            commitHash: hash,
+            commitHash: FAKE_HASH,
         };
         const options: ReplicateOptions = {
             template,
-            repoRoot,
+            repoRoot: FAKE_REPO_ROOT,
             instruction: 'Do something',
         };
         const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
