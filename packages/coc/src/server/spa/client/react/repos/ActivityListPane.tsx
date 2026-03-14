@@ -6,7 +6,7 @@
  * Shared queue task list used by the Activity tab.
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Badge, Card, Button, cn } from '../shared';
 import { getApiBase } from '../utils/config';
 import { formatDuration, formatRelativeTime } from '../utils/format';
@@ -37,6 +37,14 @@ export function taskMatchesFilter(task: any, filter: string): boolean {
         return task.type === 'chat' && task.payload?.mode === filter;
     }
     return task.type === filter;
+}
+
+export function taskMatchesSearch(task: any, query: string): boolean {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    const title = (task.displayName || task.title || '').toLowerCase();
+    const prompt = (task.prompt || task.payload?.promptContent || task.payload?.prompt || '').toLowerCase();
+    return title.includes(q) || prompt.includes(q);
 }
 
 /** Return a type-specific icon for a task, matching the chat mode selector icons. */
@@ -127,12 +135,33 @@ export function ActivityListPane({
     fetchQueue,
 }: ActivityListPaneProps) {
     const [filterType, setFilterType] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchVisible, setSearchVisible] = useState(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed' } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
 
     useEffect(() => {
         setFilterType('all');
+        setSearchQuery('');
+        setSearchVisible(false);
     }, [workspaceId]);
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                setSearchVisible(true);
+                setTimeout(() => searchInputRef.current?.focus(), 0);
+            }
+            if (e.key === 'Escape' && searchVisible) {
+                setSearchQuery('');
+                setSearchVisible(false);
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [searchVisible]);
 
     const allTasks = useMemo(
         () => [...running, ...queued.filter((t: any) => t.kind !== 'pause-marker'), ...history],
@@ -153,12 +182,12 @@ export function ActivityListPane({
         return opts;
     }, [allTasks]);
 
-    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, filterType)), [running, filterType]);
+    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, filterType) && taskMatchesSearch(t, searchQuery)), [running, filterType, searchQuery]);
     const filteredQueued = useMemo(
-        () => queued.filter(t => t.kind === 'pause-marker' || taskMatchesFilter(t, filterType)),
-        [queued, filterType],
+        () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, filterType) && taskMatchesSearch(t, searchQuery))),
+        [queued, filterType, searchQuery],
     );
-    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType)), [history, filterType]);
+    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType) && taskMatchesSearch(t, searchQuery)), [history, filterType, searchQuery]);
 
     // Separate archived from non-archived history
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -409,6 +438,31 @@ export function ActivityListPane({
                         </Button>
                     )}
                 </div>
+
+                {searchVisible && (
+                    <div className="flex items-center gap-1.5 px-1 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] text-xs">
+                        <span className="text-[#848484]">🔍</span>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Search title, prompt…"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="flex-1 bg-transparent outline-none text-xs placeholder:text-[#848484]"
+                            data-testid="queue-search-input"
+                        />
+                        {searchQuery && (
+                            <span className="text-[#848484] tabular-nums">
+                                {filteredRunning.length + filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length + filteredHistory.length}
+                            </span>
+                        )}
+                        <button
+                            className="text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] leading-none"
+                            onClick={() => { setSearchQuery(''); setSearchVisible(false); }}
+                            data-testid="queue-search-close"
+                        >✕</button>
+                    </div>
+                )}
 
                 {filteredRunning.length > 0 && (
                     <div>

@@ -336,4 +336,128 @@ describe('ActivityListPane pinned chats', () => {
             expect(source).toContain('data-testid="mark-all-read-btn"');
         });
     });
+
+    describe('keyword search (Ctrl+F)', () => {
+        it('exports taskMatchesSearch helper', () => {
+            expect(source).toContain('export function taskMatchesSearch(');
+        });
+
+        it('taskMatchesSearch returns true when query is empty', () => {
+            // Verified by the `if (!query) return true` guard
+            expect(source).toContain('if (!query) return true');
+        });
+
+        it('taskMatchesSearch matches on title field', () => {
+            expect(source).toContain('title.includes(q)');
+        });
+
+        it('taskMatchesSearch matches on prompt/payload fields', () => {
+            expect(source).toContain('prompt.includes(q)');
+        });
+
+        it('declares searchQuery state', () => {
+            expect(source).toContain("const [searchQuery, setSearchQuery] = useState('')");
+        });
+
+        it('declares searchVisible state', () => {
+            expect(source).toContain("const [searchVisible, setSearchVisible] = useState(false)");
+        });
+
+        it('declares searchInputRef', () => {
+            expect(source).toContain('searchInputRef = useRef<HTMLInputElement>(null)');
+        });
+
+        it('resets searchQuery and searchVisible on workspaceId change', () => {
+            const workspaceEffect = source.substring(
+                source.indexOf("}, [workspaceId])") - 200,
+                source.indexOf("}, [workspaceId])") + 1,
+            );
+            expect(workspaceEffect).toContain("setSearchQuery('')");
+            expect(workspaceEffect).toContain('setSearchVisible(false)');
+        });
+
+        it('adds Ctrl+F / Cmd+F keydown listener on document', () => {
+            expect(source).toContain("(e.ctrlKey || e.metaKey) && e.key === 'f'");
+        });
+
+        it('prevents default browser find on Ctrl+F', () => {
+            const handler = source.substring(
+                source.indexOf("e.key === 'f'"),
+                source.indexOf("e.key === 'f'") + 100,
+            );
+            expect(handler).toContain('e.preventDefault()');
+        });
+
+        it('sets searchVisible to true on Ctrl+F', () => {
+            const handler = source.substring(
+                source.indexOf("e.key === 'f'"),
+                source.indexOf("e.key === 'f'") + 200,
+            );
+            expect(handler).toContain('setSearchVisible(true)');
+        });
+
+        it('Escape key closes search when visible', () => {
+            expect(source).toContain("e.key === 'Escape' && searchVisible");
+        });
+
+        it('Escape key clears searchQuery', () => {
+            const escBlock = source.substring(
+                source.indexOf("e.key === 'Escape'"),
+                source.indexOf("e.key === 'Escape'") + 200,
+            );
+            expect(escBlock).toContain("setSearchQuery('')");
+        });
+
+        it('renders search input with data-testid', () => {
+            expect(source).toContain('data-testid="queue-search-input"');
+        });
+
+        it('renders close button with data-testid', () => {
+            expect(source).toContain('data-testid="queue-search-close"');
+        });
+
+        it('closes search on ✕ button click', () => {
+            // onClick handler precedes data-testid in JSX, so look back from the testid
+            const closeBtnIdx = source.indexOf('queue-search-close');
+            const closeBtn = source.substring(closeBtnIdx - 200, closeBtnIdx + 50);
+            expect(closeBtn).toContain("setSearchQuery('')");
+            expect(closeBtn).toContain('setSearchVisible(false)');
+        });
+
+        it('shows match count when searchQuery is non-empty', () => {
+            expect(source).toContain('{searchQuery && (');
+        });
+
+        it('includes searchQuery in filteredRunning dependencies', () => {
+            const memo = source.substring(
+                source.indexOf('filteredRunning = useMemo'),
+                source.indexOf('filteredRunning = useMemo') + 150,
+            );
+            expect(memo).toContain('searchQuery');
+        });
+
+        it('includes searchQuery in filteredQueued dependencies', () => {
+            const memo = source.substring(
+                source.indexOf('filteredQueued = useMemo'),
+                source.indexOf('filteredQueued = useMemo') + 200,
+            );
+            expect(memo).toContain('searchQuery');
+        });
+
+        it('includes searchQuery in filteredHistory dependencies', () => {
+            const memo = source.substring(
+                source.indexOf('filteredHistory = useMemo'),
+                source.indexOf('filteredHistory = useMemo') + 150,
+            );
+            expect(memo).toContain('searchQuery');
+        });
+
+        it('calls taskMatchesSearch in filteredRunning filter', () => {
+            const memo = source.substring(
+                source.indexOf('filteredRunning = useMemo'),
+                source.indexOf('filteredRunning = useMemo') + 200,
+            );
+            expect(memo).toContain('taskMatchesSearch(t, searchQuery)');
+        });
+    });
 });
