@@ -498,8 +498,8 @@ describe('validatePreferences', () => {
         expect(validatePreferences({ lastSkills: { task: '' } })).toEqual({});
     });
 
-    it('drops empty arrays from lastSkills', () => {
-        expect(validatePreferences({ lastSkills: { task: [] } })).toEqual({});
+    it('preserves empty arrays from lastSkills as explicit cleared signal', () => {
+        expect(validatePreferences({ lastSkills: { task: [] } })).toEqual({ lastSkills: { task: [] } });
     });
 
     it('drops unknown mode keys from lastSkills', () => {
@@ -1284,6 +1284,41 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), { lastSkills: { ask: ['go-deep'] } });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({ lastSkills: { task: ['impl'], ask: ['go-deep'] } });
+    });
+
+    it('PATCH with empty array clears a single lastSkills mode', async () => {
+        await patchJSON(repoUrl(repoId), { lastSkills: { task: ['impl'] } });
+        const res = await patchJSON(repoUrl(repoId), { lastSkills: { task: [] } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).lastSkills).toBeUndefined();
+    });
+
+    it('PATCH clearing one lastSkills mode preserves other modes', async () => {
+        await patchJSON(repoUrl(repoId), { lastSkills: { task: ['impl'], ask: ['go-deep'] } });
+        const res = await patchJSON(repoUrl(repoId), { lastSkills: { task: [] } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).lastSkills).toEqual({ ask: ['go-deep'] });
+    });
+
+    it('PATCH clearing all lastSkills modes removes lastSkills entirely', async () => {
+        await patchJSON(repoUrl(repoId), { lastSkills: { task: ['impl'], ask: ['go-deep'] } });
+        const res = await patchJSON(repoUrl(repoId), { lastSkills: { task: [], ask: [] } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).lastSkills).toBeUndefined();
+    });
+
+    it('PATCH clearing lastSkills persists on subsequent GET', async () => {
+        await patchJSON(repoUrl(repoId), { lastSkills: { task: ['impl'] } });
+        await patchJSON(repoUrl(repoId), { lastSkills: { task: [] } });
+        const getRes = await getJSON(repoUrl(repoId));
+        expect(getRes.status).toBe(200);
+        expect(JSON.parse(getRes.body).lastSkills).toBeUndefined();
+    });
+
+    it('PATCH clearing lastSkills when no prior skills is a no-op', async () => {
+        const res = await patchJSON(repoUrl(repoId), { lastSkills: { task: [] } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).lastSkills).toBeUndefined();
     });
 
     it('PATCH persists lastModels with single mode', async () => {

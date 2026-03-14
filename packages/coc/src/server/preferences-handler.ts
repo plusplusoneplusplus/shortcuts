@@ -167,9 +167,7 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                 validated[mode] = [val];
             } else if (Array.isArray(val)) {
                 const arr = val.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0);
-                if (arr.length > 0) {
-                    validated[mode] = arr;
-                }
+                validated[mode] = arr; // keep empty arrays as explicit "cleared" signal
             }
         }
         if (Object.keys(validated).length > 0) {
@@ -434,6 +432,19 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             // preserves existing task/plan values.
             if (patch.lastSkills && existingRepo.lastSkills) {
                 merged.lastSkills = { ...existingRepo.lastSkills, ...patch.lastSkills };
+            }
+
+            // Remove modes explicitly cleared by the client (empty array = "user cleared").
+            // This works whether the deep-merge above ran or the shallow spread applied.
+            if (merged.lastSkills) {
+                for (const mode of ['task', 'ask', 'plan'] as const) {
+                    if (Array.isArray(merged.lastSkills[mode]) && merged.lastSkills[mode]!.length === 0) {
+                        delete merged.lastSkills[mode];
+                    }
+                }
+                if (Object.keys(merged.lastSkills).length === 0) {
+                    delete merged.lastSkills;
+                }
             }
 
             // Deep-merge lastModels so that patching { lastModels: { ask: 'x' } }
