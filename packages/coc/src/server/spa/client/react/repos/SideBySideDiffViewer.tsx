@@ -18,7 +18,7 @@ import {
     type DiffLine,
     type SideBySideLine,
 } from './UnifiedDiffViewer';
-import { SelectionToolbar } from '../tasks/comments/SelectionToolbar';
+import { DiffContextMenu } from '../tasks/comments/DiffContextMenu';
 import type { DiffComment, DiffCommentSelection } from '../../diff-comment-types';
 
 /** Walk up the DOM tree to find the nearest ancestor that scrolls vertically. */
@@ -87,11 +87,14 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
 
         const [toolbar, setToolbar] = useState<{
             visible: boolean;
-            position: { top: number; left: number };
+            position: { x: number; y: number };
             selection: DiffCommentSelection | null;
             selectedText: string;
             activeSide: 'left' | 'right';
-        }>({ visible: false, position: { top: 0, left: 0 }, selection: null, selectedText: '', activeSide: 'left' });
+        }>({ visible: false, position: { x: 0, y: 0 }, selection: null, selectedText: '', activeSide: 'left' });
+
+        // Stores the last validated selection so handleContextMenu can use it without stale closures.
+        const pendingSelectionRef = useRef<{ selection: DiffCommentSelection; selectedText: string } | null>(null);
 
         useEffect(() => {
             currentHunkIndexRef.current = -1;
@@ -135,30 +138,31 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
 
         const handleMouseUp = useCallback((_e: React.MouseEvent) => {
             if (!enableComments) return;
+            const clear = () => {
+                pendingSelectionRef.current = null;
+                setToolbar(t => ({ ...t, visible: false, selection: null, selectedText: '' }));
+            };
             const sel = window.getSelection();
-            if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-                setToolbar(t => ({ ...t, visible: false }));
-                return;
-            }
+            if (!sel || sel.isCollapsed || sel.rangeCount === 0) { clear(); return; }
             const range = sel.getRangeAt(0);
             const boundary = containerRef.current;
 
             const startEl = findLineElement(range.startContainer, boundary);
             const endEl   = findLineElement(range.endContainer,   boundary);
-            if (!startEl || !endEl) { setToolbar(t => ({ ...t, visible: false })); return; }
+            if (!startEl || !endEl) { clear(); return; }
 
             // reject cross-column selections
             const startSide = startEl.closest('[data-split-side]')?.getAttribute('data-split-side');
             const endSide   = endEl.closest('[data-split-side]')?.getAttribute('data-split-side');
-            if (!startSide || startSide !== endSide) { setToolbar(t => ({ ...t, visible: false })); return; }
+            if (!startSide || startSide !== endSide) { clear(); return; }
 
             const startIdx = parseInt(startEl.getAttribute('data-diff-line-index') ?? '-1', 10);
             const endIdx   = parseInt(endEl.getAttribute('data-diff-line-index')   ?? '-1', 10);
-            if (startIdx < 0 || endIdx < 0) { setToolbar(t => ({ ...t, visible: false })); return; }
+            if (startIdx < 0 || endIdx < 0) { clear(); return; }
 
             if (startEl.getAttribute('data-line-type') === 'hunk-header' ||
                 endEl.getAttribute('data-line-type')   === 'hunk-header') {
-                setToolbar(t => ({ ...t, visible: false })); return;
+                clear(); return;
             }
 
             const minIdx = Math.min(startIdx, endIdx);
@@ -180,17 +184,34 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                 startColumn: range.startOffset,
                 endColumn:   range.endOffset,
             };
-
-            const rect = range.getBoundingClientRect();
-            const position = { top: rect.top - 40, left: rect.left + rect.width / 2 };
-            setToolbar({ visible: true, position, selection, selectedText: sel.toString(), activeSide: startSide as 'left' | 'right' });
+            const selectedText = sel.toString();
+            pendingSelectionRef.current = { selection, selectedText };
+            setToolbar(t => ({ ...t, visible: false, selection, selectedText, activeSide: startSide as 'left' | 'right' }));
         }, [enableComments]);
 
-        const handleMouseDown = useCallback((e: React.MouseEvent) => {
-            if (!(e.target as Element).closest('[data-testid="selection-toolbar"]')) {
-                setToolbar(t => ({ ...t, visible: false }));
-            }
+        const handleContextMenu = useCallback((e: React.MouseEvent) => {
+            if (!enableComments) return;
+            const pending = pendingSelectionRef.current;
+            if (!pending) return;
+            const browserSel = window.getSelection();
+            if (!browserSel || browserSel.isCollapsed) { pendingSelectionRef.current = null; return; }
+            e.preventDefault();
+            setToolbar(t => ({ ...t, visible: true, position: { x: e.clientX, y: e.clientY } }));
+        }, [enableComments]);
+
+        const handleMouseDown = useCallback(() => {
+            pendingSelectionRef.current = null;
+            setToolbar(t => ({ ...t, visible: false }));
         }, []);
+
+        // Dismiss context menu on scroll.
+        useEffect(() => {
+            if (!toolbar.visible) return;
+            const handler = () => setToolbar(t => ({ ...t, visible: false }));
+            const scrollParent = containerRef.current ? getScrollableAncestor(containerRef.current) : null;
+            scrollParent?.addEventListener('scroll', handler, { passive: true });
+            return () => scrollParent?.removeEventListener('scroll', handler);
+        }, [toolbar.visible]);
 
         function renderRow(row: SideBySideLine, rowIdx: number) {
             // Hunk-header row: spans full width, acts as nav anchor
@@ -313,20 +334,21 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     data-testid={testId}
                     onMouseUp={enableComments ? handleMouseUp : undefined}
                     onMouseDown={enableComments ? handleMouseDown : undefined}
+                    onContextMenu={enableComments ? handleContextMenu : undefined}
                     className="font-mono text-xs leading-tight overflow-x-auto bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
                 >
                     {sxsLines.map((row, rowIdx) => renderRow(row, rowIdx))}
                 </div>
                 {enableComments && (
-                    <SelectionToolbar
+                    <DiffContextMenu
                         visible={toolbar.visible}
                         position={toolbar.position}
                         onAddComment={() => {
                             if (toolbar.selection) {
-                                onAddComment?.(toolbar.selection, toolbar.selectedText, toolbar.position);
+                                onAddComment?.(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
                             }
-                            setToolbar(t => ({ ...t, visible: false }));
                         }}
+                        onClose={() => setToolbar(t => ({ ...t, visible: false }))}
                     />
                 )}
             </>

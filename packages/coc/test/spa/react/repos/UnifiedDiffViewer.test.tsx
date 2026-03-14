@@ -81,16 +81,16 @@ describe('UnifiedDiffViewer — selection detection', () => {
     });
 
     // 1. No toolbar when enableComments is false
-    it('does not show toolbar when enableComments is false', () => {
+    it('does not show context menu when enableComments is false', () => {
         render(<UnifiedDiffViewer diff={SIMPLE_DIFF} />);
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
-        // fire mouseup on body — no handlers should attach
-        fireEvent.mouseUp(document.body);
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+        // fire contextmenu on body — no handlers should attach
+        fireEvent.contextMenu(document.body);
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
     // 2. No toolbar when selection is collapsed
-    it('does not show toolbar when selection is collapsed', () => {
+    it('does not show context menu when selection is collapsed', () => {
         const { container } = render(<UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments />);
         vi.spyOn(window, 'getSelection').mockReturnValue({
             isCollapsed: true,
@@ -100,11 +100,11 @@ describe('UnifiedDiffViewer — selection detection', () => {
         } as unknown as Selection);
         const wrapper = container.querySelector('[data-testid]') ?? container.firstElementChild!;
         fireEvent.mouseUp(wrapper);
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    // 3. No toolbar when selection anchors outside data-diff-line-index elements
-    it('does not show toolbar when anchor has no data-diff-line-index ancestor', () => {
+    // 3. No context menu when selection anchors outside data-diff-line-index elements
+    it('does not show context menu when anchor has no data-diff-line-index ancestor', () => {
         const { container } = render(<UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments />);
         const outsideEl = document.createElement('div');
         document.body.appendChild(outsideEl);
@@ -113,13 +113,13 @@ describe('UnifiedDiffViewer — selection detection', () => {
 
         const wrapper = container.firstElementChild!;
         fireEvent.mouseUp(wrapper);
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
 
         document.body.removeChild(outsideEl);
     });
 
-    // 4. No toolbar when either endpoint is a hunk-header line
-    it('does not show toolbar when endpoint is a hunk-header line', () => {
+    // 4. No context menu when either endpoint is a hunk-header line
+    it('does not show context menu when endpoint is a hunk-header line', () => {
         const { container } = render(
             <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
         );
@@ -129,11 +129,11 @@ describe('UnifiedDiffViewer — selection detection', () => {
         const addedEl = container.querySelector<HTMLElement>('[data-line-type="added"]')!;
         mockSelection({ startEl: hunkEl, endEl: addedEl });
         fireEvent.mouseUp(container.firstElementChild!);
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    // 5. No toolbar when selection crosses a diff --git meta line
-    it('does not show toolbar when selection crosses a diff --git meta boundary', () => {
+    // 5. No context menu when selection crosses a diff --git meta line
+    it('does not show context menu when selection crosses a diff --git meta boundary', () => {
         const { container } = render(
             <UnifiedDiffViewer diff={MULTI_FILE_DIFF} enableComments data-testid="diff" />
         );
@@ -146,31 +146,69 @@ describe('UnifiedDiffViewer — selection detection', () => {
         if (!firstAdded || !secondAdded) return;
         mockSelection({ startEl: firstAdded, endEl: secondAdded });
         fireEvent.mouseUp(container.firstElementChild!);
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    // 6. Toolbar appears with correct position on valid selection
-    it('shows toolbar with correct position on valid selection', async () => {
+    // 6. Context menu appears on right-click after valid selection
+    it('shows context menu on right-click after valid selection', async () => {
         const { container } = render(
             <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
         );
         const addedEl = container.querySelector<HTMLElement>('[data-line-type="added"]')!;
         const contextEl = container.querySelector<HTMLElement>('[data-line-type="context"]')!;
-        const rect = { top: 120, left: 300, width: 60, height: 16 };
-        mockSelection({ startEl: addedEl, endEl: contextEl, rectOverride: rect });
+        mockSelection({ startEl: addedEl, endEl: contextEl });
+
+        await act(async () => {
+            fireEvent.mouseUp(container.firstElementChild!);
+        });
+        // mouseUp alone does NOT show the menu
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+
+        await act(async () => {
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 });
+        });
+
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
+    // 6b. mouseUp with valid selection does NOT show context menu
+    it('does NOT show context menu after mouseUp with valid selection', async () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
+        );
+        const addedEl = container.querySelector<HTMLElement>('[data-line-type="added"]')!;
+        const contextEl = container.querySelector<HTMLElement>('[data-line-type="context"]')!;
+        mockSelection({ startEl: addedEl, endEl: contextEl });
 
         await act(async () => {
             fireEvent.mouseUp(container.firstElementChild!);
         });
 
-        const toolbar = screen.getByTestId('selection-toolbar');
-        expect(toolbar).toBeTruthy();
-        expect(toolbar.style.top).toBe(`${rect.top - 40}px`);
-        expect(toolbar.style.left).toBe(`${rect.left + rect.width / 2}px`);
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    // 7. onAddComment fires with correct DiffCommentSelection
-    it('calls onAddComment with correct selection and text when toolbar button clicked', async () => {
+    // 6c. Right-click with no prior selection does NOT show context menu
+    it('does NOT show context menu on right-click without a selection', async () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
+        );
+        // No mouseUp / no selection captured
+        vi.spyOn(window, 'getSelection').mockReturnValue({
+            isCollapsed: true,
+            rangeCount: 0,
+            getRangeAt: () => { throw new Error('no range'); },
+            toString: () => '',
+        } as unknown as Selection);
+
+        await act(async () => {
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 100, clientY: 100 });
+        });
+
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    // 7. onAddComment fires with correct DiffCommentSelection when context menu item clicked
+    it('calls onAddComment with correct selection and text when context menu item clicked', async () => {
         const onAddComment = vi.fn();
         const { container } = render(
             <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments onAddComment={onAddComment} data-testid="diff" />
@@ -188,10 +226,13 @@ describe('UnifiedDiffViewer — selection detection', () => {
         await act(async () => {
             fireEvent.mouseUp(container.firstElementChild!);
         });
-
-        const toolbar = screen.getByTestId('selection-toolbar');
         await act(async () => {
-            fireEvent.click(toolbar);
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 });
+        });
+
+        const menuItem = screen.getByTestId('context-menu-item-0');
+        await act(async () => {
+            fireEvent.click(menuItem);
         });
 
         expect(onAddComment).toHaveBeenCalledOnce();
@@ -203,8 +244,8 @@ describe('UnifiedDiffViewer — selection detection', () => {
         expect(typeof pos.left).toBe('number');
     });
 
-    // 8. Toolbar dismisses on mousedown outside
-    it('hides toolbar on mousedown outside', async () => {
+    // 8. Context menu dismisses on mousedown
+    it('hides context menu on mousedown', async () => {
         const { container } = render(
             <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
         );
@@ -215,17 +256,19 @@ describe('UnifiedDiffViewer — selection detection', () => {
         await act(async () => {
             fireEvent.mouseUp(container.firstElementChild!);
         });
-        expect(screen.getByTestId('selection-toolbar')).toBeTruthy();
+        await act(async () => {
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 });
+        });
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
 
-        // mousedown on the container (not toolbar)
         await act(async () => {
             fireEvent.mouseDown(container.firstElementChild!);
         });
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    // 9. Toolbar stays visible on mousedown inside toolbar portal
-    it('keeps toolbar visible on mousedown inside toolbar', async () => {
+    // 9. Context menu click on item dismisses menu
+    it('context menu item click dismisses the menu', async () => {
         const { container } = render(
             <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
         );
@@ -236,24 +279,16 @@ describe('UnifiedDiffViewer — selection detection', () => {
         await act(async () => {
             fireEvent.mouseUp(container.firstElementChild!);
         });
-        const toolbar = screen.getByTestId('selection-toolbar');
-        expect(toolbar).toBeTruthy();
-
-        // Simulate mousedown: the toolbar element's closest('[data-testid="selection-toolbar"]') resolves to itself
-        // We need to fire the mouseDown event on the container div but with target being the toolbar element.
-        // Since the toolbar is portal-rendered to document.body, we fire mouseDown directly on the wrapper
-        // simulating a click on the toolbar (e.target.closest returns truthy) - we test by clicking toolbar el itself.
-        // The handleMouseDown checks e.target.closest on the React synthetic event target; the toolbar is in document.body,
-        // so mouseDown on the container won't reach it. We test the inverse: nothing hides the toolbar when 
-        // the toolbar element itself is the target of an event on the container — this is enforced by the
-        // stopPropagation in SelectionToolbar's onClick. We verify toolbar remains visible after clicking it.
         await act(async () => {
-            fireEvent.click(toolbar);
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 });
         });
-        // After clicking toolbar button, onAddComment is undefined so nothing errors, toolbar hides (as designed).
-        // The key behavior is: mousedown on the container outside toolbar hides it (tested in test 8).
-        // Here we verify clicking the toolbar element itself (which has stopPropagation) doesn't crash.
-        expect(true).toBe(true); // toolbar click handled gracefully
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+
+        const menuItem = screen.getByTestId('context-menu-item-0');
+        await act(async () => {
+            fireEvent.click(menuItem);
+        });
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 });
 

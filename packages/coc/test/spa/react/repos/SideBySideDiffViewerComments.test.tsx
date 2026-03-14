@@ -256,16 +256,16 @@ describe('SideBySideDiffViewer — row highlight', () => {
 });
 
 // ============================================================================
-// SelectionToolbar — visibility
+// DiffContextMenu — visibility
 // ============================================================================
 
-describe('SideBySideDiffViewer — SelectionToolbar', () => {
-    it('toolbar does not render when enableComments=false', () => {
+describe('SideBySideDiffViewer — DiffContextMenu', () => {
+    it('context menu does not render when enableComments=false', () => {
         render(<SideBySideDiffViewer diff={SIMPLE_DIFF} />);
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('toolbar appears when selecting text within the left column', async () => {
+    it('context menu appears on right-click after selecting text within the left column', async () => {
         const { container } = render(
             <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
         );
@@ -274,11 +274,15 @@ describe('SideBySideDiffViewer — SelectionToolbar', () => {
         mockSelection({ startEl: leftCol, endEl: leftCol });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
+        // mouseUp alone does NOT show the menu
+        expect(screen.queryByTestId('context-menu')).toBeNull();
 
-        expect(screen.getByTestId('selection-toolbar')).toBeTruthy();
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
+
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
     });
 
-    it('toolbar appears when selecting text within the right column', async () => {
+    it('context menu appears on right-click after selecting text within the right column', async () => {
         const { container } = render(
             <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
         );
@@ -287,11 +291,12 @@ describe('SideBySideDiffViewer — SelectionToolbar', () => {
         mockSelection({ startEl: rightCol, endEl: rightCol });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
 
-        expect(screen.getByTestId('selection-toolbar')).toBeTruthy();
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
     });
 
-    it('toolbar does NOT appear when selection spans left and right columns', async () => {
+    it('context menu does NOT appear when selection spans left and right columns', async () => {
         const { container } = render(
             <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
         );
@@ -300,11 +305,12 @@ describe('SideBySideDiffViewer — SelectionToolbar', () => {
         mockSelection({ startEl: leftCol, endEl: rightCol });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
 
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('toolbar hides on mousedown outside toolbar', async () => {
+    it('context menu hides on mousedown', async () => {
         const { container } = render(
             <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
         );
@@ -312,13 +318,14 @@ describe('SideBySideDiffViewer — SelectionToolbar', () => {
         mockSelection({ startEl: leftCol, endEl: leftCol });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
-        expect(screen.getByTestId('selection-toolbar')).toBeTruthy();
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
 
         await act(async () => { fireEvent.mouseDown(container.firstElementChild!); });
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
-    it('collapsed selection does not show toolbar', async () => {
+    it('collapsed selection does not show context menu', async () => {
         const { container } = render(
             <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
         );
@@ -326,13 +333,14 @@ describe('SideBySideDiffViewer — SelectionToolbar', () => {
         mockSelection({ startEl: leftCol, endEl: leftCol, collapsed: true });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
 
-        expect(screen.queryByTestId('selection-toolbar')).toBeNull();
+        expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 });
 
 // ============================================================================
-// SelectionToolbar — side derivation
+// DiffContextMenu — side derivation
 // ============================================================================
 
 describe('SideBySideDiffViewer — onAddComment side derivation', () => {
@@ -347,8 +355,9 @@ describe('SideBySideDiffViewer — onAddComment side derivation', () => {
         mockSelection({ startEl: leftCol, endEl: leftCol, text: 'old line' });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
-        const toolbar = screen.getByTestId('selection-toolbar');
-        await act(async () => { fireEvent.click(toolbar); });
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
+        const menuItem = screen.getByTestId('context-menu-item-0');
+        await act(async () => { fireEvent.click(menuItem); });
 
         expect(onAddComment).toHaveBeenCalledOnce();
         const [sel] = onAddComment.mock.calls[0] as [DiffCommentSelection];
@@ -366,8 +375,9 @@ describe('SideBySideDiffViewer — onAddComment side derivation', () => {
         mockSelection({ startEl: rightCol, endEl: rightCol, text: 'new line' });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
-        const toolbar = screen.getByTestId('selection-toolbar');
-        await act(async () => { fireEvent.click(toolbar); });
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
+        const menuItem = screen.getByTestId('context-menu-item-0');
+        await act(async () => { fireEvent.click(menuItem); });
 
         expect(onAddComment).toHaveBeenCalledOnce();
         const [sel] = onAddComment.mock.calls[0] as [DiffCommentSelection];
@@ -384,8 +394,9 @@ describe('SideBySideDiffViewer — onAddComment side derivation', () => {
         mockSelection({ startEl: leftCtx, endEl: leftCtx });
 
         await act(async () => { fireEvent.mouseUp(container.firstElementChild!); });
-        const toolbar = screen.getByTestId('selection-toolbar');
-        await act(async () => { fireEvent.click(toolbar); });
+        await act(async () => { fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 }); });
+        const menuItem = screen.getByTestId('context-menu-item-0');
+        await act(async () => { fireEvent.click(menuItem); });
 
         expect(onAddComment).toHaveBeenCalledOnce();
         const [sel] = onAddComment.mock.calls[0] as [DiffCommentSelection];
