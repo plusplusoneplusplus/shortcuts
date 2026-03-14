@@ -15,8 +15,6 @@ import {
     renderCodeBlock,
     renderTable,
     renderMermaidContainer,
-    // Utilities
-    getLanguageDisplayName,
     // Types
     type CodeBlock,
     type ParsedTable,
