@@ -73,14 +73,21 @@ export async function setupPrRoutes(
         return route.fulfill({ status: 200, json: prDetail });
     });
 
-    // list
+    // list (filter by status query param to simulate server-side filtering;
+    //       'open' returns all provided PRs to match initial-load test expectations)
     await page.route(listPattern, (route) => {
         if (unconfigured) {
             return route.fulfill({ status: 401, json: unconfiguredBody });
         }
+        const url = new URL(route.request().url());
+        const statusParam = url.searchParams.get('status');
+        const filtered =
+            !statusParam || statusParam === 'open' || statusParam === 'all'
+                ? pullRequests
+                : pullRequests.filter(pr => pr.status === statusParam);
         return route.fulfill({
             status: 200,
-            json: { pullRequests, total: pullRequests.length },
+            json: { pullRequests: filtered, total: filtered.length },
         });
     });
 

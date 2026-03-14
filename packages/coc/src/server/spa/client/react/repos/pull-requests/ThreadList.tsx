@@ -44,6 +44,13 @@ export function ThreadList({ threads }: ThreadListProps) {
                         className="border border-gray-200 dark:border-gray-700 rounded overflow-hidden"
                         data-testid="comment-thread"
                     >
+                        {thread.threadContext?.filePath && (
+                            <div className="px-3 pt-2 pb-0">
+                                <span className="text-xs font-mono text-blue-600 dark:text-blue-400">
+                                    {thread.threadContext.filePath}
+                                </span>
+                            </div>
+                        )}
                         <button
                             className="w-full text-left flex items-start gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800"
                             onClick={() => isMulti && toggle(thread.id)}
