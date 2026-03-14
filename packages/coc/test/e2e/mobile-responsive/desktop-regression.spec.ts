@@ -43,47 +43,36 @@ test.describe('Desktop Regression', () => {
         await expect(detail).toBeVisible({ timeout: 8000 });
     });
 
-    test('desktop: ReposView shows sidebar', async ({ page, serverUrl }) => {
+    test('desktop: ReposView shows RepoTabStrip and repo tabs', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-desk-1', 'desk-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        const sidebar = page.locator('#repos-sidebar');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        const box = await sidebar.boundingBox();
-        // Expanded sidebar should be wider than collapsed 48px
-        expect(box!.width).toBeGreaterThan(100);
+        // RepoTabStrip should be visible in TopBar with repo tabs
+        await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
     });
 
-    test('desktop: ReposView sidebar collapses to mini sidebar', async ({ page, serverUrl }) => {
+    test('desktop: hamburger opens RepoManagementPopover', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-desk-col', 'desk-col-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        // Ensure repos view is active (hamburger only works on repos tab)
-        await expect(page.locator('#repos-sidebar')).toBeVisible({ timeout: 10000 });
-
-        // Get expanded width before collapsing
-        const expandedBox = await page.locator('#repos-sidebar').boundingBox();
-
+        // Hamburger opens the repo management popup
         await page.click('#hamburger-btn');
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible({ timeout: 10000 });
 
-        // Wait for CSS transition (150ms)
-        await page.waitForTimeout(300);
-
-        const sidebar = page.locator('#repos-sidebar');
-        await expect(sidebar).toBeVisible();
-        // Collapsed sidebar should be narrower than expanded (width is now inline-styled, not class-based)
-        const collapsedBox = await sidebar.boundingBox();
-        expect(collapsedBox!.width).toBeLessThan(expandedBox!.width);
+        // Close popup with Escape
+        await page.keyboard.press('Escape');
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeHidden();
     });
 
     test('desktop: ReposView two-pane layout with repo selected', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-desk-2p', 'desk-2p-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        // Select repo via RepoTabStrip
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
 
-        await expect(page.locator('#repos-sidebar')).toBeVisible();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
     });
 
@@ -94,8 +83,8 @@ test.describe('Desktop Regression', () => {
             const tabBtn = page.locator(`[data-tab="${tab}"]`);
             await expect(tabBtn).toBeVisible();
         }
-        // repos is the implicit default — it has no tab button
-        await expect(page.locator('[data-tab="repos"]')).toHaveCount(0);
+        // repos tab link is visible as the brand name
+        await expect(page.locator('[data-tab="repos"]')).toBeVisible();
 
         // No bottom navigation at desktop
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
@@ -116,6 +105,9 @@ test.describe('Desktop Regression', () => {
     test('desktop: dialog renders as centered modal, not full-screen', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible();
+        // Open hamburger to access ReposGrid
+        await page.click('#hamburger-btn');
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible();
         await page.click('#add-repo-btn');
 
         const overlay = page.locator('#add-repo-overlay');

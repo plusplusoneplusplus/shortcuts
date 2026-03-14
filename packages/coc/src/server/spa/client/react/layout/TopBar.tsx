@@ -88,12 +88,14 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </button>
                 <a
                     href="#"
-                    className="text-sm font-semibold whitespace-nowrap md:hidden hover:underline flex-shrink-0"
+                    data-tab="repos"
+                    className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 rounded transition-colors inline-flex items-center ${isOnReposTab ? 'active bg-[#0078d4] text-white' : 'hover:underline'}`}
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC</a>
                 <a
                     href="#"
-                    className="text-sm font-semibold whitespace-nowrap hidden md:inline hover:underline flex-shrink-0"
+                    data-tab="repos"
+                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 rounded transition-colors items-center ${isOnReposTab ? 'active bg-[#0078d4] text-white' : 'hover:underline'}`}
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC (Copilot Of Copilot)</a>
                 {isOnReposTab && !isMobile && (
