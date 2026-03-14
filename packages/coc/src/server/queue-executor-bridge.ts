@@ -656,8 +656,8 @@ export class CLITaskExecutor implements TaskExecutor {
 
         // Inject read-only system message for ask/plan modes
         let autoFolderContextForFollowUp: AutoFolderContext | undefined;
+        const wsId = (process.metadata?.workspaceId as string) ?? (workingDirectory ? await this.resolveWorkspaceIdForPath(workingDirectory) : undefined);
         if (workingDirectory) {
-            const wsId = (process.metadata?.workspaceId as string) ?? await this.resolveWorkspaceIdForPath(workingDirectory);
             const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
             const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
             const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
@@ -668,6 +668,9 @@ export class CLITaskExecutor implements TaskExecutor {
             workingDirectory,
             currentMode
         );
+
+        // Resolve per-workspace skill configuration for follow-up
+        const { skillDirectories, disabledSkills } = await this.resolveSkillConfig(wsId, workingDirectory);
 
         // When an SDK session ID exists, resume it natively instead of
         // replaying conversation history as a system message.
@@ -706,6 +709,8 @@ export class CLITaskExecutor implements TaskExecutor {
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
                 tools: suggestTools.length > 0 ? suggestTools : undefined,
+                skillDirectories,
+                disabledSkills,
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {});
                 },
@@ -1296,7 +1301,8 @@ export class CLITaskExecutor implements TaskExecutor {
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
 
             // Resolve per-workspace skill configuration
-            const { skillDirectories, disabledSkills } = await this.resolveSkillConfig(task, workingDirectory);
+            const taskWorkspaceId = (task.payload as any)?.workspaceId as string | undefined;
+            const { skillDirectories, disabledSkills } = await this.resolveSkillConfig(taskWorkspaceId, workingDirectory);
 
             // Capture read-only tool calls for the memory cache.
             // Create capture handler defensively — errors must not break task execution.
@@ -1681,11 +1687,10 @@ export class CLITaskExecutor implements TaskExecutor {
      * and `disabledSkills` from the workspace config + global preferences.
      */
     private async resolveSkillConfig(
-        task: QueuedTask,
+        workspaceId: string | undefined,
         workingDirectory?: string,
     ): Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }> {
-        const payload = task.payload as any;
-        const wsId: string | undefined = payload?.workspaceId;
+        const wsId: string | undefined = workspaceId;
         let disabledSkills: string[] | undefined;
 
         // Resolve disabled skills from workspace config
