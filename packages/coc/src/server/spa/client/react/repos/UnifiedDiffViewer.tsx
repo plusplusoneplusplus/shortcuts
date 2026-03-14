@@ -37,6 +37,22 @@ export interface DiffLine {
     content: string;
 }
 
+export interface SideBySideLine {
+    left: {
+        type: 'removed' | 'context' | 'empty';
+        content: string;
+        lineNumber: number | null;
+        originalIndex: number | null;
+    };
+    right: {
+        type: 'added' | 'context' | 'empty';
+        content: string;
+        lineNumber: number | null;
+        originalIndex: number | null;
+    };
+    hunkHeader?: string;
+}
+
 const LINE_CLASSES: Record<LineType, string> = {
     added: 'bg-[#d1f7c4] dark:bg-[#1a4731]',
     removed: 'bg-[#fecaca] dark:bg-[#4c1d1d]',
@@ -109,6 +125,69 @@ export function computeDiffLines(lines: string[]): DiffLine[] {
         // meta
         return { index, type, content: raw };
     });
+}
+
+export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
+    const result: SideBySideLine[] = [];
+    let i = 0;
+
+    while (i < lines.length) {
+        const line = lines[i];
+
+        if (line.type === 'meta') {
+            i++;
+            continue;
+        }
+
+        if (line.type === 'hunk-header') {
+            result.push({
+                left: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
+                right: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
+                hunkHeader: line.content,
+            });
+            i++;
+            continue;
+        }
+
+        if (line.type === 'context') {
+            result.push({
+                left: { type: 'context', content: line.content, lineNumber: line.oldLine ?? null, originalIndex: line.index },
+                right: { type: 'context', content: line.content, lineNumber: line.newLine ?? null, originalIndex: line.index },
+            });
+            i++;
+            continue;
+        }
+
+        if (line.type === 'removed' || line.type === 'added') {
+            const removedGroup: DiffLine[] = [];
+            const addedGroup: DiffLine[] = [];
+
+            while (i < lines.length && (lines[i].type === 'removed' || lines[i].type === 'added')) {
+                if (lines[i].type === 'removed') removedGroup.push(lines[i]);
+                else addedGroup.push(lines[i]);
+                i++;
+            }
+
+            const pairCount = Math.max(removedGroup.length, addedGroup.length);
+            for (let k = 0; k < pairCount; k++) {
+                const rem = removedGroup[k];
+                const add = addedGroup[k];
+                result.push({
+                    left: rem
+                        ? { type: 'removed', content: rem.content, lineNumber: rem.oldLine ?? null, originalIndex: rem.index }
+                        : { type: 'empty', content: '', lineNumber: null, originalIndex: null },
+                    right: add
+                        ? { type: 'added', content: add.content, lineNumber: add.newLine ?? null, originalIndex: add.index }
+                        : { type: 'empty', content: '', lineNumber: null, originalIndex: null },
+                });
+            }
+            continue;
+        }
+
+        i++;
+    }
+
+    return result;
 }
 
 /**
