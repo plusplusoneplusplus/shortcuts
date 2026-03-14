@@ -27,6 +27,10 @@ vi.mock('../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({
     }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () => ({
+    NotificationBell: () => null,
+}));
+
 describe('TopBar touch targets', () => {
     let viewportCleanup: (() => void) | undefined;
 

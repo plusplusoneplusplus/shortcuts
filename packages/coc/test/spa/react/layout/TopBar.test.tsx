@@ -30,6 +30,10 @@ vi.mock('../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({
     }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () => ({
+    NotificationBell: () => null,
+}));
+
 describe('TopBar responsive behavior', () => {
     let viewportCleanup: (() => void) | undefined;
 
