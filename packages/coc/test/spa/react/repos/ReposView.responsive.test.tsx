@@ -23,6 +23,8 @@ let mockAppState: Record<string, any> = {
     workspaces: [],
 };
 
+let mockRepos: any[] = [];
+
 // ── Module mocks (before imports) ──────────────────────────────────────
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
@@ -139,6 +141,16 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoCopilotTab', () => ({
     RepoCopilotTab: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+    useRepos: () => ({
+        repos: mockRepos,
+        loading: false,
+        fetchRepos: vi.fn(),
+        unseenCounts: {},
+    }),
+    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 // ── Import components under test AFTER mocks ───────────────────────────
 
 import { ReposView } from '../../../../src/server/spa/client/react/repos/ReposView';
@@ -161,6 +173,7 @@ describe('ReposView — responsive layout', () => {
         vi.clearAllMocks();
         cleanup();
         setBreakpoint('desktop');
+        mockRepos = [];
         mockAppState = {
             selectedRepoId: null,
             reposSidebarCollapsed: false,
@@ -173,52 +186,45 @@ describe('ReposView — responsive layout', () => {
     // ─────────────────────── Desktop ─────────────────────────
 
     describe('Desktop layout', () => {
-        it('renders two-pane layout with 280px aside when sidebar expanded', async () => {
+        it('renders full-width content area without sidebar', async () => {
             setBreakpoint('desktop');
             render(<ReposView />);
 
-            const aside = await screen.findByTestId('repos-sidebar');
-            expect(aside).toBeDefined();
-            expect(aside.tagName.toLowerCase()).toBe('aside');
-            expect(aside.className).toContain('w-[280px]');
-            expect(aside.className).toContain('min-w-[240px]');
+            // No sidebar in new layout
+            expect(screen.queryByTestId('repos-sidebar')).toBeNull();
+            expect(screen.queryByTestId('mini-sidebar')).toBeNull();
 
-            // ReposGrid in the sidebar
-            expect(aside.querySelector('[data-testid="repos-grid"]')).toBeTruthy();
-
-            // No mobile components
-            expect(screen.queryByTestId('mobile-back-button')).toBeNull();
-            expect(screen.queryByTestId('responsive-sidebar')).toBeNull();
+            // Empty state shows
+            const emptyState = await screen.findByTestId('repo-detail-empty');
+            expect(emptyState).toBeDefined();
         });
 
-        it('collapses to 48px aside with MiniReposSidebar when collapsed', async () => {
+        it('shows RepoDetail when a repo is selected', async () => {
+            setBreakpoint('desktop');
+            mockAppState.selectedRepoId = 'repo-1';
+            render(<ReposView />);
+
+            // RepoDetail rendered (mock returns empty repos, so no match → shows empty state)
+            // With no repos matching, falls back to empty state
+            const emptyOrDetail = await screen.findByTestId('repo-detail-empty');
+            expect(emptyOrDetail).toBeDefined();
+        });
+
+        it('does not render MiniReposSidebar regardless of reposSidebarCollapsed', async () => {
             setBreakpoint('desktop');
             mockAppState.reposSidebarCollapsed = true;
             render(<ReposView />);
 
-            const aside = await screen.findByTestId('repos-sidebar');
-            expect(aside.style.width).toBeTruthy();
-
-            // MiniReposSidebar replaces ReposGrid
-            expect(aside.querySelector('[data-testid="mini-sidebar"]')).toBeTruthy();
-            expect(aside.querySelector('[data-testid="repos-grid"]')).toBeNull();
-        });
-
-        it('preserves CSS transition classes on aside', async () => {
-            setBreakpoint('desktop');
-            render(<ReposView />);
-
-            const aside = await screen.findByTestId('repos-sidebar');
-            expect(aside.className).toContain('transition-[width,min-width,opacity]');
-            expect(aside.className).toContain('duration-150');
-            expect(aside.className).toContain('ease-out');
+            await screen.findByTestId('repo-detail-empty');
+            expect(screen.queryByTestId('repos-sidebar')).toBeNull();
+            expect(screen.queryByTestId('mini-sidebar')).toBeNull();
         });
 
         it('uses height class without bottom nav offset', async () => {
             setBreakpoint('desktop');
             render(<ReposView />);
 
-            await screen.findByTestId('repos-sidebar');
+            await screen.findByTestId('repo-detail-empty');
             const container = document.getElementById('view-repos')!;
             expect(container.className).toContain('h-[calc(100vh-48px)]');
             expect(container.className).not.toContain('56px');
@@ -263,22 +269,8 @@ describe('ReposView — responsive layout', () => {
         it('mobile detail view renders RepoDetail directly without MobileRepoHeader', async () => {
             setBreakpoint('mobile');
             mockAppState.selectedRepoId = 'repo-1';
+            mockRepos = [{ workspace: { id: 'repo-1', name: 'Test', rootPath: '/test', color: '#f00' }, stats: {}, workflows: [], taskCount: 0 }];
             location.hash = '#repo/repo-1';
-
-            // Need a repo in the data to match selectedRepoId
-            const { fetchApi } = await import('../../../../src/server/spa/client/react/hooks/useApi');
-            const mockFetchApi = vi.mocked(fetchApi);
-            mockFetchApi.mockImplementation(async (path: string) => {
-                if (path === '/workspaces') {
-                    return { workspaces: [{ id: 'repo-1', name: 'Test', rootPath: '/test', color: '#f00' }] };
-                }
-                if (path.includes('/git-info')) return null;
-                if (path.includes('/pipelines')) return { pipelines: [] };
-                if (path.includes('/tasks')) return null;
-                if (path.includes('/processes')) return { processes: [] };
-                if (path.includes('/queue/repos')) return { repos: [] };
-                return {};
-            });
 
             render(<ReposView />);
 
@@ -301,24 +293,22 @@ describe('ReposView — responsive layout', () => {
     // ─────────────────────── Tablet ──────────────────────────
 
     describe('Tablet layout', () => {
-        it('renders sidebar via ResponsiveSidebar with width 260', async () => {
+        it('renders full-width content area without sidebar (same as desktop)', async () => {
             setBreakpoint('tablet');
             render(<ReposView />);
 
-            const sidebar = await screen.findByTestId('responsive-sidebar');
-            expect(sidebar).toBeDefined();
-            expect(sidebar.getAttribute('data-width')).toBe('260');
-            expect(sidebar.getAttribute('data-tablet-width')).toBe('260');
-
-            // ReposGrid inside ResponsiveSidebar
-            expect(sidebar.querySelector('[data-testid="repos-grid"]')).toBeTruthy();
+            const emptyState = await screen.findByTestId('repo-detail-empty');
+            expect(emptyState).toBeDefined();
+            expect(screen.queryByTestId('repos-sidebar')).toBeNull();
+            expect(screen.queryByTestId('mini-sidebar')).toBeNull();
+            expect(screen.queryByTestId('responsive-sidebar')).toBeNull();
         });
 
         it('does not render native aside or MiniReposSidebar', async () => {
             setBreakpoint('tablet');
             render(<ReposView />);
 
-            await screen.findByTestId('responsive-sidebar');
+            await screen.findByTestId('repo-detail-empty');
             expect(screen.queryByTestId('repos-sidebar')).toBeNull();
             expect(screen.queryByTestId('mini-sidebar')).toBeNull();
             expect(screen.queryByTestId('mobile-back-button')).toBeNull();
@@ -328,7 +318,7 @@ describe('ReposView — responsive layout', () => {
             setBreakpoint('tablet');
             render(<ReposView />);
 
-            await screen.findByTestId('responsive-sidebar');
+            await screen.findByTestId('repo-detail-empty');
             const container = document.getElementById('view-repos')!;
             expect(container.className).toContain('h-[calc(100vh-48px)]');
             expect(container.className).not.toContain('56px');

@@ -20,6 +20,11 @@ vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     AppProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/ReposContext', () => ({
+    useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
+    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({
     useTheme: () => ({
         theme: 'auto',
@@ -29,6 +34,10 @@ vi.mock('../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () => ({
     NotificationBell: () => null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
 
 describe('TopBar touch targets', () => {

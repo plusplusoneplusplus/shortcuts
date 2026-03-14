@@ -473,36 +473,37 @@ describe('WorkflowInfo type', () => {
 });
 
 // ===========================================================================
-// ReposView WS integration (source-level checks)
+// ReposContext WS integration (source-level checks)
 // ===========================================================================
-describe('ReposView WebSocket integration', () => {
-    const reposViewSource = fs.readFileSync(
-        path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ReposView.tsx'),
+describe('ReposContext WebSocket integration', () => {
+    const reposContextSource = fs.readFileSync(
+        path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'ReposContext.tsx'),
         'utf-8'
     );
 
     it('imports useWebSocket hook', () => {
-        expect(reposViewSource).toContain("import { useWebSocket }");
+        expect(reposContextSource).toContain("import { useWebSocket }");
     });
 
-    it('imports fetchWorkflows from pipeline-api', () => {
-        expect(reposViewSource).toContain("import { fetchWorkflows } from './workflow-api'");
+    it('imports fetchWorkflows from workflow-api', () => {
+        expect(reposContextSource).toContain("import { fetchWorkflows } from");
+        expect(reposContextSource).toContain("workflow-api");
     });
 
     it('handles workflows-changed message type', () => {
-        expect(reposViewSource).toContain("msg.type === 'workflows-changed'");
+        expect(reposContextSource).toContain("msg.type === 'workflows-changed'");
     });
 
     it('calls connect on mount and disconnect on unmount', () => {
-        expect(reposViewSource).toContain('connect()');
-        expect(reposViewSource).toContain('disconnect()');
+        expect(reposContextSource).toContain('connect()');
+        expect(reposContextSource).toContain('disconnect()');
     });
 
     it('performs selective refresh by updating only the matching workspace', () => {
-        expect(reposViewSource).toContain('r.workspace.id === wsId');
+        expect(reposContextSource).toContain('r.workspace.id === wsId');
     });
 
     it('checks for workspaceId before refreshing (no-op for unknown)', () => {
-        expect(reposViewSource).toContain('msg.workspaceId');
+        expect(reposContextSource).toContain('msg.workspaceId');
     });
 });

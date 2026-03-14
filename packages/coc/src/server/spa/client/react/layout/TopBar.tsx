@@ -2,10 +2,14 @@
  * TopBar — top navigation bar with tab switching and theme toggle.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useRepos } from '../context/ReposContext';
 import { useTheme } from './ThemeProvider';
 import { NotificationBell } from '../shared/NotificationBell';
+import { RepoTabStrip } from '../repos/RepoTabStrip';
+import { RepoManagementPopover } from '../repos/RepoManagementPopover';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
@@ -39,31 +43,43 @@ export interface TopBarProps {
 
 export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
+    const { repos, unseenCounts, fetchRepos } = useRepos();
     const { theme, toggleTheme } = useTheme();
+    const { breakpoint } = useBreakpoint();
+    const isMobile = breakpoint === 'mobile';
+    const [popoverOpen, setPopoverOpen] = useState(false);
 
     const switchTab = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
         location.hash = '#' + tab;
     }, [dispatch]);
 
-    const toggleReposSidebar = useCallback(() => {
+    const toggleRepoManagement = useCallback(() => {
         if (state.activeTab !== 'repos') return;
-        dispatch({ type: 'TOGGLE_REPOS_SIDEBAR' });
-    }, [dispatch, state.activeTab]);
+        setPopoverOpen(prev => !prev);
+    }, [state.activeTab]);
+
+    const selectRepo = useCallback((id: string) => {
+        dispatch({ type: 'SET_SELECTED_REPO', id });
+        location.hash = '#repos/' + encodeURIComponent(id);
+    }, [dispatch]);
+
+    const isOnReposTab = state.activeTab === 'repos';
 
     return (
+        <>
         <header
             className="h-10 md:h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
             data-react
         >
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                 <button
-                    className="h-7 w-7 md:h-8 md:w-8 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
+                    className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
                     id="hamburger-btn"
-                    aria-label="Toggle sidebar"
-                    aria-pressed={state.reposSidebarCollapsed}
-                    title={state.reposSidebarCollapsed ? 'Expand repository sidebar' : 'Collapse repository sidebar'}
-                    onClick={toggleReposSidebar}
+                    aria-label={isOnReposTab ? 'Manage repositories' : 'Toggle sidebar'}
+                    aria-pressed={isOnReposTab ? popoverOpen : false}
+                    title={isOnReposTab ? 'Manage repositories' : 'Toggle sidebar'}
+                    onClick={toggleRepoManagement}
                 >
                     &#9776;
                 </button>
@@ -71,16 +87,25 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     href="https://github.com/plusplusoneplusplus/shortcuts"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm font-semibold whitespace-nowrap md:hidden hover:underline"
+                    className="text-sm font-semibold whitespace-nowrap md:hidden hover:underline flex-shrink-0"
                 >CoC</a>
                 <a
                     href="https://github.com/plusplusoneplusplus/shortcuts"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm font-semibold whitespace-nowrap hidden md:inline hover:underline"
+                    className="text-sm font-semibold whitespace-nowrap hidden md:inline hover:underline flex-shrink-0"
                 >CoC (Copilot Of Copilot)</a>
+                {isOnReposTab && !isMobile && (
+                    <RepoTabStrip
+                        repos={repos}
+                        selectedRepoId={state.selectedRepoId}
+                        onSelect={selectRepo}
+                        unseenCounts={unseenCounts}
+                        onRefresh={fetchRepos}
+                    />
+                )}
                 {TABS.length > 0 && (
-                <nav className="hidden md:flex items-center gap-1 min-w-0" id="tab-bar">
+                <nav className="hidden md:flex items-center gap-1 min-w-0 flex-shrink-0" id="tab-bar">
                     {TABS.map(({ label, tab }) => (
                         <button
                             key={tab}
@@ -196,5 +221,14 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </button>
             </div>
         </header>
+        {isOnReposTab && (
+            <RepoManagementPopover
+                open={popoverOpen}
+                onClose={() => setPopoverOpen(false)}
+                repos={repos}
+                onRefresh={fetchRepos}
+            />
+        )}
+        </>
     );
 }

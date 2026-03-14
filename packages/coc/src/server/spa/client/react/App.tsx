@@ -6,6 +6,7 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { QueueProvider, useQueue } from './context/QueueContext';
+import { ReposProvider } from './context/ReposContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
 import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
@@ -358,23 +359,25 @@ function AppInner() {
 
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
-            <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
-            <Router />
-            <FloatingChatManager />
-            <BottomNav />
-            <ToastContainer toasts={toasts} removeToast={removeToast} />
-            <EnqueueDialog />
-            <MarkdownReviewDialog
-                open={reviewDialog.open}
-                onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}
-                onMinimize={handleMinimizeReview}
-                wsId={reviewDialog.wsId}
-                filePath={reviewDialog.filePath}
-                displayPath={reviewDialog.displayPath}
-                fetchMode={reviewDialog.fetchMode}
-                initialScrollTop={reviewDialog.scrollTop}
-            />
-            <MinimizedDialogsTray />
+            <ReposProvider>
+                <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
+                <Router />
+                <FloatingChatManager />
+                <BottomNav />
+                <ToastContainer toasts={toasts} removeToast={removeToast} />
+                <EnqueueDialog />
+                <MarkdownReviewDialog
+                    open={reviewDialog.open}
+                    onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}
+                    onMinimize={handleMinimizeReview}
+                    wsId={reviewDialog.wsId}
+                    filePath={reviewDialog.filePath}
+                    displayPath={reviewDialog.displayPath}
+                    fetchMode={reviewDialog.fetchMode}
+                    initialScrollTop={reviewDialog.scrollTop}
+                />
+                <MinimizedDialogsTray />
+            </ReposProvider>
         </ToastProvider>
     );
 }

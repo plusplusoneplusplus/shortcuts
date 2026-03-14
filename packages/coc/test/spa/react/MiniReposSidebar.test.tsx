@@ -12,6 +12,12 @@ import { MiniReposSidebar, disambiguateLabels } from '../../../src/server/spa/cl
 import { ReposView } from '../../../src/server/spa/client/react/repos/ReposView';
 import type { RepoData } from '../../../src/server/spa/client/react/repos/repoGrouping';
 
+// Mock ReposContext so ReposView renders without making real API calls
+vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
+    useRepos: () => ({ repos: [], loading: false, fetchRepos: vi.fn(), unseenCounts: {} }),
+    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
@@ -240,10 +246,10 @@ describe('MiniReposSidebar', () => {
 });
 
 // ============================================================================
-// ReposView integration — mini sidebar appears when collapsed
+// ReposView integration — layout after sidebar removal
 // ============================================================================
 
-describe('ReposView — mini sidebar integration', () => {
+describe('ReposView — full-width layout (sidebar removed)', () => {
     beforeEach(() => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
@@ -251,36 +257,21 @@ describe('ReposView — mini sidebar integration', () => {
         });
     });
 
-    it('shows mini sidebar when collapsed instead of hiding', async () => {
+    it('renders repo-detail-empty when no repo is selected on desktop', async () => {
         render(
             <Wrap>
-                <CollapseOnMount />
                 <ReposView />
             </Wrap>
         );
         await waitFor(() => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
-        const sidebar = screen.getByTestId('repos-sidebar');
-        // Should have dynamic width, not 0
-        expect(sidebar.style.width).toBeTruthy();
-        expect(sidebar.className).not.toContain('w-0');
-        // Mini sidebar should be rendered
-        expect(screen.getByTestId('mini-repos-sidebar')).toBeDefined();
-    });
-
-    it('shows full sidebar when expanded', async () => {
-        render(<Wrap><ReposView /></Wrap>);
-        await waitFor(() => {
-            expect(screen.getByText(/Select a repository/)).toBeDefined();
-        });
-        const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.className).toContain('w-[280px]');
-        // Mini sidebar should NOT be rendered
+        // No sidebar in desktop layout
+        expect(screen.queryByTestId('repos-sidebar')).toBeNull();
         expect(screen.queryByTestId('mini-repos-sidebar')).toBeNull();
     });
 
-    it('sidebar does not have aria-hidden when collapsed (mini is visible)', async () => {
+    it('does not render mini sidebar regardless of reposSidebarCollapsed', async () => {
         render(
             <Wrap>
                 <CollapseOnMount />
@@ -290,23 +281,16 @@ describe('ReposView — mini sidebar integration', () => {
         await waitFor(() => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
-        const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.getAttribute('aria-hidden')).toBeNull();
+        expect(screen.queryByTestId('repos-sidebar')).toBeNull();
+        expect(screen.queryByTestId('mini-repos-sidebar')).toBeNull();
     });
 });
 
 // ============================================================================
-// Long hover expand — temporary sidebar expansion
+// Long hover expand — MiniReposSidebar hover callbacks (component-level)
 // ============================================================================
 
-describe('Long hover expand', () => {
-    beforeEach(() => {
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ workspaces: [] }),
-        });
-    });
-
+describe('Long hover expand — MiniReposSidebar hover callbacks', () => {
     it('MiniReposSidebar calls onItemHoverStart/onItemHoverEnd on mouse enter/leave', () => {
         const onStart = vi.fn();
         const onEnd = vi.fn();
@@ -321,84 +305,6 @@ describe('Long hover expand', () => {
         expect(onStart).toHaveBeenCalledTimes(1);
         fireEvent.mouseLeave(item);
         expect(onEnd).toHaveBeenCalledTimes(1);
-    });
-
-    it('sidebar remains collapsed before 3s threshold', async () => {
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({
-                workspaces: [{ id: 'ws-1', name: 'TestRepo', rootPath: '/test', color: '#0078d4' }]
-            }),
-        });
-        render(
-            <Wrap>
-                <CollapseOnMount />
-                <ReposView />
-            </Wrap>
-        );
-        await waitFor(() => {
-            expect(screen.getByTestId('repos-sidebar')).toBeDefined();
-            expect(screen.queryAllByTestId('mini-repo-item').length).toBeGreaterThan(0);
-        });
-
-        const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.style.width).toBeTruthy();
-
-        const items = screen.getAllByTestId('mini-repo-item');
-        fireEvent.mouseEnter(items[0]);
-        // Only 2s — not enough
-        act(() => { vi.advanceTimersByTime(2000); });
-        expect(sidebar.style.width).toBeTruthy();
-
-        // Cancel by leaving
-        fireEvent.mouseLeave(items[0]);
-        act(() => { vi.advanceTimersByTime(2000); });
-        expect(sidebar.style.width).toBeTruthy();
-        vi.useRealTimers();
-    });
-
-    it('collapses back on mouseleave from aside', async () => {
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        global.fetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({
-                workspaces: [{ id: 'ws-1', name: 'TestRepo', rootPath: '/test', color: '#0078d4' }]
-            }),
-        });
-        render(
-            <Wrap>
-                <CollapseOnMount />
-                <ReposView />
-            </Wrap>
-        );
-        await waitFor(() => {
-            expect(screen.queryAllByTestId('mini-repo-item').length).toBeGreaterThan(0);
-        });
-
-        const sidebar = screen.getByTestId('repos-sidebar');
-        const items = screen.getAllByTestId('mini-repo-item');
-
-        // Trigger hover expand
-        fireEvent.mouseEnter(items[0]);
-        act(() => { vi.advanceTimersByTime(3100); });
-        expect(sidebar.className).toContain('w-[280px]');
-
-        // Leave the aside entirely
-        fireEvent.mouseLeave(sidebar);
-        expect(sidebar.style.width).toBeTruthy();
-        vi.useRealTimers();
-    });
-
-    it('does not affect permanently expanded sidebar', async () => {
-        render(<Wrap><ReposView /></Wrap>);
-        await waitFor(() => {
-            expect(screen.getByTestId('repos-sidebar')).toBeDefined();
-        });
-        const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.className).toContain('w-[280px]');
-        fireEvent.mouseLeave(sidebar);
-        expect(sidebar.className).toContain('w-[280px]');
     });
 
     it('MiniReposSidebar works without hover props (backward compat)', () => {

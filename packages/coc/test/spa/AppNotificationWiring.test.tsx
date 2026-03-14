@@ -59,6 +59,11 @@ vi.mock('../../src/server/spa/client/react/context/NotificationContext', () => (
     }),
 }));
 
+vi.mock('../../src/server/spa/client/react/context/ReposContext', () => ({
+    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+    useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
+}));
+
 vi.mock('../../src/server/spa/client/react/context/ToastContext', () => ({
     ToastProvider: ({ children, value }: any) => children,
 }));

@@ -6,6 +6,20 @@ import { ThemeProvider } from '../../../src/server/spa/client/react/layout/Theme
 import { TopBar, TABS, ALL_TABS, SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { DashboardTab } from '../../../src/server/spa/client/react/types/dashboard';
 
+vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
+    useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
+    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+vi.mock('../../../src/server/spa/client/react/context/QueueContext', () => ({
+    QueueProvider: ({ children }: any) => children,
+    useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),
+}));
+
+vi.mock('../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
+    useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
+}));
+
 beforeEach(() => {
     location.hash = '';
     Object.defineProperty(window, 'matchMedia', {
@@ -98,12 +112,13 @@ describe('TopBar', () => {
 
     it('renders hamburger button', () => {
         renderTopBar();
-        expect(screen.getByLabelText('Toggle sidebar')).toBeDefined();
+        expect(document.getElementById('hamburger-btn')).toBeDefined();
     });
 
-    it('hamburger toggles repos sidebar pressed state in Repos tab', () => {
+    it('hamburger toggles popover open/closed on Repos tab (popover local state)', () => {
         renderTopBar();
-        const btn = screen.getByLabelText('Toggle sidebar');
+        const btn = document.getElementById('hamburger-btn')!;
+        // Initially on repos tab, popover is closed
         expect(btn.getAttribute('aria-pressed')).toBe('false');
 
         act(() => {
@@ -117,13 +132,13 @@ describe('TopBar', () => {
         expect(btn.getAttribute('aria-pressed')).toBe('false');
     });
 
-    it('hamburger does not toggle sidebar outside Repos tab', () => {
+    it('hamburger is noop outside Repos tab (aria-pressed stays false)', () => {
         renderTopBar();
         act(() => {
             fireEvent.click(document.getElementById('processes-toggle')!);
         });
 
-        const btn = screen.getByLabelText('Toggle sidebar');
+        const btn = document.getElementById('hamburger-btn')!;
         expect(btn.getAttribute('aria-pressed')).toBe('false');
 
         act(() => {

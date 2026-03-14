@@ -26,6 +26,12 @@ import { AddRepoDialog } from '../../../src/server/spa/client/react/repos/AddRep
 import { ReposGrid } from '../../../src/server/spa/client/react/repos/ReposGrid';
 import { RepoDetail } from '../../../src/server/spa/client/react/repos/RepoDetail';
 
+// Mock ReposContext so ReposView renders without making real API calls
+vi.mock('../../../src/server/spa/client/react/context/ReposContext', () => ({
+    useRepos: () => ({ repos: [], loading: false, fetchRepos: vi.fn(), unseenCounts: {} }),
+    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     return (
         <AppProvider>
@@ -769,24 +775,23 @@ describe('ReposView', () => {
         });
     });
 
-    it('renders the two-pane layout', () => {
+    it('renders the view container', () => {
         render(<Wrap><ReposView /></Wrap>);
         const view = document.getElementById('view-repos');
         expect(view).not.toBeNull();
     });
 
-    it('keeps sidebar width classes when expanded', async () => {
+    it('shows empty detail pane prompt on desktop (no sidebar)', async () => {
         render(<Wrap><ReposView /></Wrap>);
         await vi.waitFor(() => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
-        const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.className).toContain('w-[280px]');
-        expect(sidebar.className).toContain('min-w-[240px]');
-        expect(sidebar.className).not.toContain('w-0');
+        // No sidebar in new layout
+        expect(screen.queryByTestId('repos-sidebar')).toBeNull();
+        expect(screen.queryByTestId('mini-repos-sidebar')).toBeNull();
     });
 
-    it('shows mini sidebar (48px) when collapsed instead of w-0', async () => {
+    it('shows empty detail pane prompt when collapsed state is set (sidebar is still gone)', async () => {
         render(
             <Wrap>
                 <CollapseReposSidebarOnMount />
@@ -796,32 +801,23 @@ describe('ReposView', () => {
         await vi.waitFor(() => {
             expect(screen.getByText(/Select a repository/)).toBeDefined();
         });
-        const sidebar = screen.getByTestId('repos-sidebar');
-        expect(sidebar.style.width).toBeTruthy();
-        expect(sidebar.className).not.toContain('w-0');
-    });
-
-    it('shows empty detail pane prompt', async () => {
-        render(<Wrap><ReposView /></Wrap>);
-        // Wait for loading to finish
-        await vi.waitFor(() => {
-            expect(screen.getByText(/Select a repository/)).toBeDefined();
-        });
+        // Still no sidebar after toggle
+        expect(screen.queryByTestId('repos-sidebar')).toBeNull();
     });
 });
 
 // ============================================================================
-// ReposView source-level tests: throttled process events & stable fetchRepos
+// ReposContext source-level tests: throttled process events & stable fetchRepos
 // ============================================================================
 
-describe('ReposView — process event throttling', () => {
+describe('ReposContext — process event throttling', () => {
     let source: string;
 
     beforeEach(() => {
         const fs = require('fs');
         const path = require('path');
         source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ReposView.tsx'),
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'ReposContext.tsx'),
             'utf-8',
         );
     });
@@ -849,7 +845,7 @@ describe('ReposView — process event throttling', () => {
 
     it('uses a ref for selectedRepoId to avoid recreating fetchRepos', () => {
         expect(source).toContain('selectedRepoIdRef');
-        expect(source).toContain('selectedRepoIdRef.current = state.selectedRepoId');
+        expect(source).toContain('selectedRepoIdRef.current = appState.selectedRepoId');
         // Inside fetchRepos body, selectedRepoIdRef.current should be used instead of state.selectedRepoId
         const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
         // Find the `, [dispatch]);` that closes fetchRepos (skip earlier occurrences like handleBack)
@@ -870,17 +866,17 @@ describe('ReposView — process event throttling', () => {
 });
 
 // ============================================================================
-// ReposView source-level tests: async git-info two-phase fetch
+// ReposContext source-level tests: async git-info two-phase fetch
 // ============================================================================
 
-describe('ReposView — async git-info', () => {
+describe('ReposContext — async git-info', () => {
     let source: string;
 
     beforeEach(() => {
         const fs = require('fs');
         const path = require('path');
         source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ReposView.tsx'),
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'context', 'ReposContext.tsx'),
             'utf-8',
         );
     });
