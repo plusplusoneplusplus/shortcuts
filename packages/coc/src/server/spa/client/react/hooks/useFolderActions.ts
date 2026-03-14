@@ -29,7 +29,12 @@ async function apiFetch(method: string, url: string, body: object): Promise<void
     }
 }
 
-export function useFolderActions(wsId: string): FolderActionsResult {
+export interface FolderActionsOptions {
+    /** Called after a successful archive (allows the parent to update undo state). */
+    onArchived?: () => void;
+}
+
+export function useFolderActions(wsId: string, options?: FolderActionsOptions): FolderActionsResult {
     const base = `/workspaces/${encodeURIComponent(wsId)}/tasks`;
 
     return {
@@ -47,8 +52,10 @@ export function useFolderActions(wsId: string): FolderActionsResult {
             return apiFetch('POST', base, body);
         },
 
-        archiveFolder: (folderPath) =>
-            apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'archive' }),
+        archiveFolder: async (folderPath) => {
+            await apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'archive' });
+            options?.onArchived?.();
+        },
 
         unarchiveFolder: (folderPath) =>
             apiFetch('POST', `${base}/archive`, { path: folderPath, action: 'unarchive' }),
@@ -63,3 +70,4 @@ export function useFolderActions(wsId: string): FolderActionsResult {
             apiFetch('DELETE', base, { path: folderPath }),
     };
 }
+

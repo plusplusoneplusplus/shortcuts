@@ -11,6 +11,9 @@ import { Task, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
 
 const archiveFolderName = 'archive';
 
+/** Name of the undo-stack file written alongside the tasks root. */
+export const ARCHIVE_UNDO_FILE = '.archive-undo.json';
+
 /**
  * Set of common context/documentation files to exclude from task scanning.
  * These are not actual task files and should not be counted or queued.
@@ -21,6 +24,9 @@ const CONTEXT_FILES = new Set([
     'index', 'index.md', 'context', 'context.md',
     '.gitignore', '.gitattributes'
 ]);
+
+/** Internal file names that should never surface as task documents. */
+const INTERNAL_FILES = new Set([ARCHIVE_UNDO_FILE]);
 
 /**
  * Check if a filename is a context/documentation file that should be excluded from task scanning.

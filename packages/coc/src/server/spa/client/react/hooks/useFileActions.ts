@@ -28,15 +28,22 @@ async function apiFetch(method: string, url: string, body: object): Promise<void
     }
 }
 
-export function useFileActions(wsId: string): FileActionsResult {
+export interface FileActionsOptions {
+    /** Called after a successful archive (allows the parent to update undo state). */
+    onArchived?: () => void;
+}
+
+export function useFileActions(wsId: string, options?: FileActionsOptions): FileActionsResult {
     const base = `/workspaces/${encodeURIComponent(wsId)}/tasks`;
 
     return {
         renameFile: (filePath, newName) =>
             apiFetch('PATCH', base, { path: filePath, newName }),
 
-        archiveFile: (filePath) =>
-            apiFetch('POST', `${base}/archive`, { path: filePath, action: 'archive' }),
+        archiveFile: async (filePath) => {
+            await apiFetch('POST', `${base}/archive`, { path: filePath, action: 'archive' });
+            options?.onArchived?.();
+        },
 
         unarchiveFile: (filePath) =>
             apiFetch('POST', `${base}/archive`, { path: filePath, action: 'unarchive' }),
@@ -54,3 +61,4 @@ export function useFileActions(wsId: string): FileActionsResult {
             apiFetch('PATCH', base, { path: filePath, status }),
     };
 }
+

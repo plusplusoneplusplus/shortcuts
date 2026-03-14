@@ -55,6 +55,7 @@ export {
 
 export {
     // Task scanning and grouping
+    ARCHIVE_UNDO_FILE,
     scanTasksRecursively,
     scanDocumentsRecursively,
     scanFoldersRecursively,

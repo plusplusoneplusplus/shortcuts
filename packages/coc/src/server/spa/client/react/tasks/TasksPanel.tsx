@@ -10,11 +10,12 @@ import { fetchApi } from '../hooks/useApi';
 import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useFileActions } from '../hooks/useFileActions';
+import { useArchiveUndo } from '../hooks/useArchiveUndo';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { DragItem } from '../hooks/useTaskDragDrop';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useGlobalToast } from '../context/ToastContext';
-import { useBreakpoint } from '../hooks/useBreakpoint';
 import { TaskTree } from './TaskTree';
 import { TaskPreview } from './TaskPreview';
 import { TaskSearchResults } from './TaskSearchResults';
@@ -156,8 +157,9 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const { state: appState } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { addToast } = useGlobalToast();
-    const folderActions = useFolderActions(wsId);
-    const fileActions = useFileActions(wsId);
+    const { undoAvailable, undoInFlight, setUndoAvailable, undoLastArchive } = useArchiveUndo(wsId, refresh);
+    const folderActions = useFolderActions(wsId, { onArchived: () => setUndoAvailable(true) });
+    const fileActions = useFileActions(wsId, { onArchived: () => setUndoAvailable(true) });
 
     // ── Sibling repos (same remote URL, different workspace) ──────────
     const siblingRepos = (repos ?? []).filter(r => {
@@ -765,6 +767,25 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                         onClick={() => setFolderDialog({ action: 'create-subfolder', folder: tree!, submitting: false })}
                     >
                         + New Folder
+                    </Button>
+                )}
+                {undoAvailable && (
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        data-testid="undo-archive-btn"
+                        title="Undo last archive"
+                        loading={undoInFlight}
+                        onClick={async () => {
+                            try {
+                                await undoLastArchive();
+                                addToast('Archive undone', 'success');
+                            } catch (err: any) {
+                                addToast(err.message || 'Undo failed', 'error');
+                            }
+                        }}
+                    >
+                        ↩ Undo Archive
                     </Button>
                 )}
                 <div className={`relative flex items-center ${isMobile ? 'flex-1' : 'max-w-[14rem]'}`}>

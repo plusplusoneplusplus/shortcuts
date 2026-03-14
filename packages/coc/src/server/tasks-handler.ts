@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { TaskManager, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
+import { TaskManager, ARCHIVE_UNDO_FILE, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
 import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -907,6 +907,26 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
                     await fs.promises.rename(resolvedPath, destPath);
                     const newRelPath = path.relative(tasksFolder, destPath);
+
+                    // Determine if this is a file or folder
+                    let itemType: 'file' | 'folder';
+                    try {
+                        const s = await fs.promises.stat(destPath);
+                        itemType = s.isDirectory() ? 'folder' : 'file';
+                    } catch {
+                        itemType = 'file';
+                    }
+
+                    // Write undo record (overwrite any existing)
+                    const undoRecord = {
+                        timestamp: new Date().toISOString(),
+                        type: itemType,
+                        originalPath: relFromTasks.replace(/\\/g, '/'),
+                        archivedPath: newRelPath.replace(/\\/g, '/'),
+                    };
+                    const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
+                    await fs.promises.writeFile(undoFile, JSON.stringify(undoRecord, null, 2), 'utf-8');
+
                     sendJSON(res, 200, { path: newRelPath });
                 } else {
                     // Unarchive: move from archive/ back to tasks root
@@ -919,10 +939,98 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
                     await fs.promises.rename(resolvedPath, destPath);
                     const newRelPath = path.relative(tasksFolder, destPath);
+
+                    // Clear undo record on manual unarchive
+                    const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
+                    try { await fs.promises.unlink(undoFile); } catch { /* ignore if absent */ }
+
                     sendJSON(res, 200, { path: newRelPath });
                 }
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to ' + action + ': ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/tasks/undo-archive — Undo status
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/undo-archive$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
+            try {
+                const raw = await fs.promises.readFile(undoFile, 'utf-8');
+                const record = JSON.parse(raw);
+                sendJSON(res, 200, { available: true, record: { type: record.type, originalPath: record.originalPath, timestamp: record.timestamp } });
+            } catch {
+                sendJSON(res, 200, { available: false });
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/tasks/undo-archive — Perform undo
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/undo-archive$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const tasksFolder = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+            const undoFile = path.join(tasksFolder, ARCHIVE_UNDO_FILE);
+
+            let record: { originalPath: string; archivedPath: string };
+            try {
+                const raw = await fs.promises.readFile(undoFile, 'utf-8');
+                record = JSON.parse(raw);
+            } catch {
+                return sendError(res, 404, 'Nothing to undo');
+            }
+
+            if (!record.originalPath || !record.archivedPath) {
+                return sendError(res, 400, 'Invalid undo record');
+            }
+
+            const archivedAbsPath = path.join(tasksFolder, record.archivedPath);
+            const originalAbsPath = path.join(tasksFolder, record.originalPath);
+
+            // Validate paths are inside tasksFolder
+            if (!resolveAndValidatePath(tasksFolder, record.archivedPath) || !resolveAndValidatePath(tasksFolder, record.originalPath)) {
+                return sendError(res, 403, 'Access denied: undo record contains paths outside tasks folder');
+            }
+
+            // Ensure source still exists
+            try {
+                await fs.promises.stat(archivedAbsPath);
+            } catch {
+                return sendError(res, 404, 'Archived path no longer exists');
+            }
+
+            // Check for collision at original path
+            try {
+                await fs.promises.stat(originalAbsPath);
+                return sendError(res, 409, 'Original path already exists — cannot undo');
+            } catch (err: any) {
+                if (err.code !== 'ENOENT') {
+                    return sendError(res, 500, 'Failed to check original path');
+                }
+            }
+
+            try {
+                await fs.promises.mkdir(path.dirname(originalAbsPath), { recursive: true });
+                await fs.promises.rename(archivedAbsPath, originalAbsPath);
+                await fs.promises.unlink(undoFile);
+                sendJSON(res, 200, { success: true, restoredPath: record.originalPath });
+            } catch (err: any) {
+                return sendError(res, 500, 'Failed to undo archive: ' + (err.message || 'Unknown error'));
             }
         },
     });

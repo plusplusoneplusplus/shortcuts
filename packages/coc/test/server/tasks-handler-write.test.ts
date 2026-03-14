@@ -689,8 +689,158 @@ describe('Tasks Handler Write', () => {
     });
 
     // ========================================================================
-    // POST /api/workspaces/:id/tasks/move — Move file or folder
+    // Undo Archive — GET + POST /api/workspaces/:id/tasks/undo-archive
     // ========================================================================
+
+    describe('Undo Archive', () => {
+        it('GET returns available: false when no undo record exists', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            fs.mkdirSync(tasksDir(), { recursive: true });
+
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.available).toBe(false);
+        });
+
+        it('archiving a file writes an undo record', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'my-task.md': '# Task' });
+
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md', action: 'archive',
+            });
+
+            const undoFile = path.join(tasksDir(), '.archive-undo.json');
+            expect(fs.existsSync(undoFile)).toBe(true);
+            const record = JSON.parse(fs.readFileSync(undoFile, 'utf-8'));
+            expect(record.type).toBe('file');
+            expect(record.originalPath).toBe('my-task.md');
+            expect(record.archivedPath).toMatch(/archive/);
+            expect(record.timestamp).toBeTruthy();
+        });
+
+        it('GET returns available: true and record info after archive', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'my-task.md': '# Task' });
+
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md', action: 'archive',
+            });
+
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.available).toBe(true);
+            expect(body.record.type).toBe('file');
+            expect(body.record.originalPath).toBe('my-task.md');
+            expect(body.record.timestamp).toBeTruthy();
+        });
+
+        it('POST undo-archive restores file to original path and removes record', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'my-task.md': '# Task' });
+
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md', action: 'archive',
+            });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`, 'POST', {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.success).toBe(true);
+            expect(body.restoredPath).toBe('my-task.md');
+
+            expect(fs.existsSync(path.join(tasksDir(), 'my-task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDir(), 'archive', 'my-task.md'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDir(), '.archive-undo.json'))).toBe(false);
+        });
+
+        it('POST undo-archive restores a folder', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'feature/task.md': '# Task' });
+
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'feature', action: 'archive',
+            });
+
+            expect(fs.existsSync(path.join(tasksDir(), 'feature'))).toBe(false);
+            expect(fs.existsSync(path.join(tasksDir(), 'archive', 'feature', 'task.md'))).toBe(true);
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`, 'POST', {});
+            expect(res.status).toBe(200);
+            expect(fs.existsSync(path.join(tasksDir(), 'feature', 'task.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tasksDir(), 'archive', 'feature'))).toBe(false);
+        });
+
+        it('POST undo-archive returns 404 when no record exists', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            fs.mkdirSync(tasksDir(), { recursive: true });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`, 'POST', {});
+            expect(res.status).toBe(404);
+        });
+
+        it('POST undo-archive returns 409 when original path already exists', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'my-task.md': '# Task' });
+
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md', action: 'archive',
+            });
+
+            // Re-create the original path to simulate collision
+            createTaskFiles({ 'my-task.md': '# New Task' });
+
+            const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`, 'POST', {});
+            expect(res.status).toBe(409);
+        });
+
+        it('archiving a second item replaces the undo record', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'task-a.md': '# A', 'task-b.md': '# B' });
+
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'task-a.md', action: 'archive',
+            });
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'task-b.md', action: 'archive',
+            });
+
+            const undoFile = path.join(tasksDir(), '.archive-undo.json');
+            const record = JSON.parse(fs.readFileSync(undoFile, 'utf-8'));
+            expect(record.originalPath).toBe('task-b.md');
+        });
+
+        it('unarchiving manually clears the undo record', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'my-task.md': '# Task' });
+
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'my-task.md', action: 'archive',
+            });
+
+            // Manually unarchive via existing endpoint
+            await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks/archive`, 'POST', {
+                path: 'archive/my-task.md', action: 'unarchive',
+            });
+
+            const undoFile = path.join(tasksDir(), '.archive-undo.json');
+            expect(fs.existsSync(undoFile)).toBe(false);
+
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/undo-archive`);
+            expect(JSON.parse(res.body).available).toBe(false);
+        });
+    });
 
     describe('Move (POST /tasks/move)', () => {
         it('should move a folder into another sibling folder', async () => {
