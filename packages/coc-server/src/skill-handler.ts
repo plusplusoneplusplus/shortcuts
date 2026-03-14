@@ -29,8 +29,8 @@ import type { Route } from './types';
 /** Skill names that collide with sub-routes and must be rejected. */
 const RESERVED_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'all']);
 
-function getSkillsInstallPath(workspaceRoot: string, installPath?: string): string {
-    return path.join(workspaceRoot, installPath || DEFAULT_SKILLS_SETTINGS.installPath);
+function getSkillsInstallPath(workspaceRoot: string): string {
+    return path.join(workspaceRoot, DEFAULT_SKILLS_SETTINGS.installPath);
 }
 
 /**
