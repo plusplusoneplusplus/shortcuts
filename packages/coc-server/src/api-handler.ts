@@ -1206,6 +1206,35 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // POST /api/workspaces/:id/git/cherry-pick — Cherry-pick a commit onto the current branch
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/cherry-pick$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!body.hash || typeof body.hash !== 'string') {
+                return handleAPIError(res, missingFields(['hash']));
+            }
+
+            const result = await branchService.cherryPick(ws.rootPath, body.hash);
+            if (result.success) {
+                gitCache.invalidateMutable(id);
+                getWsServer?.()?.broadcastGitChanged(id, 'cherry-pick');
+                return sendJSON(res, 200, { success: true });
+            }
+            if (result.conflicts) {
+                return sendJSON(res, 409, { error: result.message, conflicts: true });
+            }
+            return handleAPIError(res, badRequest('Cherry-pick failed: ' + result.message));
+        },
+    });
+
     // ------------------------------------------------------------------
     // Working-tree endpoints (via WorkingTreeService)
     // ------------------------------------------------------------------

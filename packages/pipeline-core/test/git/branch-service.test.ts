@@ -791,3 +791,65 @@ describe('BranchService.amendCommitMessage', () => {
         );
     });
 });
+
+// ── cherryPick ──────────────────────────────────────────────
+describe('BranchService.cherryPick', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns success when cherry-pick applies cleanly', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.cherryPick('/repo', 'abc1234');
+
+        expect(result).toEqual({ success: true, conflicts: false, message: 'Cherry-pick applied successfully' });
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            'git cherry-pick abc1234',
+            expect.objectContaining({ cwd: '/repo' })
+        );
+    });
+
+    it('returns conflicts: true when CONFLICT appears in the error message', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in src/foo.ts'));
+
+        const result = await service.cherryPick('/repo', 'deadbeef');
+
+        expect(result.success).toBe(false);
+        expect(result.conflicts).toBe(true);
+        expect(result.message).toContain('CONFLICT');
+    });
+
+    it('returns conflicts: true when "conflict" (lowercase) appears in error', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('cherry-pick conflict detected'));
+
+        const result = await service.cherryPick('/repo', 'deadbeef');
+
+        expect(result.success).toBe(false);
+        expect(result.conflicts).toBe(true);
+    });
+
+    it('returns conflicts: false for non-conflict errors (e.g. dirty working tree)', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('error: Your local changes would be overwritten by cherry-pick'));
+
+        const result = await service.cherryPick('/repo', 'deadbeef');
+
+        expect(result.success).toBe(false);
+        expect(result.conflicts).toBe(false);
+        expect(result.message).toContain('local changes');
+    });
+
+    it('handles unknown error objects gracefully', async () => {
+        mockedExecAsync.mockRejectedValueOnce('non-error string');
+
+        const result = await service.cherryPick('/repo', 'abc0000');
+
+        expect(result.success).toBe(false);
+        expect(result.conflicts).toBe(false);
+        expect(result.message).toBe('Unknown error');
+    });
+});

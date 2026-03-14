@@ -646,6 +646,25 @@ export class BranchService {
     }
 
     /**
+     * Cherry-pick a commit onto the current branch.
+     * @returns success: true on clean apply, conflicts: true when merge conflicts occur
+     */
+    async cherryPick(repoRoot: string, hash: string): Promise<{ success: boolean; conflicts: boolean; message: string }> {
+        try {
+            await this.execGitAsync(`git cherry-pick ${hash}`, { cwd: repoRoot });
+            return { success: true, conflicts: false, message: 'Cherry-pick applied successfully' };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const isConflict = /CONFLICT|conflict/i.test(errorMessage) || /cherry-pick.*conflict/i.test(errorMessage) || /Merge conflict/i.test(errorMessage);
+            if (isConflict) {
+                return { success: false, conflicts: true, message: errorMessage };
+            }
+            getLogger().error('Git', `Failed to cherry-pick ${hash}`, error instanceof Error ? error : undefined);
+            return { success: false, conflicts: false, message: errorMessage };
+        }
+    }
+
+    /**
      * Pop the most recent stash.
      */
     async popStash(repoRoot: string): Promise<GitOperationResult> {

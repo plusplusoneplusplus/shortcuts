@@ -383,6 +383,32 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [closeContextMenu, workspaceId, refreshAll]);
 
+    const handleCherryPick = useCallback(async (commit: GitCommitItem) => {
+        closeContextMenu();
+        const shortHash = commit.hash.slice(0, 7);
+        if (!window.confirm(`Cherry pick commit ${shortHash}?`)) return;
+        setActionError(null);
+        try {
+            const res = await fetch(getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/git/cherry-pick`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hash: commit.hash }),
+            });
+            const result = await res.json();
+            if (res.status === 409 || result.conflicts) {
+                setActionError(`Cherry-pick has conflicts — resolve them and run \`git cherry-pick --continue\``);
+            } else if (!res.ok || result.success === false) {
+                throw new Error(result.error || 'Cherry-pick failed');
+            } else {
+                refreshAll();
+                setEnqueueToast(`Cherry-picked ${shortHash}`);
+                setTimeout(() => setEnqueueToast(null), 3000);
+            }
+        } catch (err: any) {
+            setActionError(err.message || 'Cherry-pick failed');
+        }
+    }, [closeContextMenu, workspaceId, refreshAll]);
+
     const handleAmendConfirm = useCallback(async (title: string, body: string) => {
         if (!amendingCommit) return;
         setAmendingCommit(null);
@@ -503,6 +529,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '⏪',
                 onClick: () => handleHardReset(commit),
             });
+            items.push({
+                label: 'Cherry Pick',
+                icon: '🍒',
+                onClick: () => handleCherryPick(commit),
+            });
         }
 
         if (skills.length > 0) {
@@ -521,7 +552,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSelect, handleHardReset, commits, closeContextMenu]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
