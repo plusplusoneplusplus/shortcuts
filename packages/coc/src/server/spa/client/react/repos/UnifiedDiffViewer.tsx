@@ -260,7 +260,8 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             if (!container) return;
             const edits = Array.from(container.querySelectorAll<HTMLElement>('[data-edit-start]'));
             if (edits.length === 0) return;
-            const startIndex = currentHunkIndexRef.current === -1 ? 0 : currentHunkIndexRef.current;
+            const startIndex =
+                currentHunkIndexRef.current === -1 ? edits.length - 1 : currentHunkIndexRef.current;
             const prev = (startIndex - 1 + edits.length) % edits.length;
             currentHunkIndexRef.current = prev;
             const scrollParent = getScrollableAncestor(container);

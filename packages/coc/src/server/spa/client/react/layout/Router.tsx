@@ -13,6 +13,8 @@ import { lazy, Suspense } from 'react';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
+const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const LogsView = lazy(() => import('../views/logs/LogsView').then(m => ({ default: m.LogsView })));
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
@@ -27,6 +29,8 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'reports') return 'reports';
     if (h === 'memory') return 'memory';
     if (h === 'skills') return 'skills';
+    if (h === 'logs') return 'logs';
+    if (h === 'admin') return 'admin';
     return null;
 }
 
@@ -359,6 +363,10 @@ export function Router() {
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
                     location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/wiki';
                 }
+                if (e.key === 'a' || e.key === 'A') {
+                    dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
+                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/activity';
+                }
             }
         };
         document.addEventListener('keydown', handler);
@@ -382,6 +390,18 @@ export function Router() {
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <SkillsView />
+                </Suspense>
+            );
+        case 'admin':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <AdminPanel />
+                </Suspense>
+            );
+        case 'logs':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <LogsView />
                 </Suspense>
             );
         case 'reports':

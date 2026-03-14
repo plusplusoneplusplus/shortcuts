@@ -21,8 +21,6 @@ import { ToastContainer, useToast } from './shared';
 import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
-import { AdminDialog } from './admin/AdminDialog';
-import { LogsDialog } from './views/logs/LogsDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 
 interface MarkdownReviewDialogState {
@@ -91,10 +89,6 @@ function AppInner() {
     const { toasts, addToast, removeToast } = useToast();
     const prevWsStatusRef = useRef(appState.wsStatus);
     const hasConnectedRef = useRef(false);
-    const [adminOpen, setAdminOpen] = useState(false);
-    const [logsOpen, setLogsOpen] = useState(false);
-    const prevHashRef = useRef('');
-    const prevHashLogsRef = useRef('');
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
         minimized: false,
@@ -236,53 +230,14 @@ function AppInner() {
         bootstrap();
     }, [connect, appDispatch, queueDispatch]);
 
-    // Handle #admin hash: open dialog without changing active tab; restore previous hash on close
-    useEffect(() => {
-        const handleHashForAdmin = () => {
-            if (location.hash === '#admin') {
-                setAdminOpen(true);
-            }
-        };
-        handleHashForAdmin();
-        window.addEventListener('hashchange', handleHashForAdmin);
-        return () => window.removeEventListener('hashchange', handleHashForAdmin);
-    }, []);
-
+    // Admin and Logs are now full-page routes handled by Router.tsx via #admin and #logs hashes.
+    // handleAdminOpen and handleLogsOpen just navigate to the respective hash.
     const handleAdminOpen = useCallback(() => {
-        prevHashRef.current = location.hash || '#repos';
-        setAdminOpen(true);
-    }, []);
-
-    const handleAdminClose = useCallback(() => {
-        setAdminOpen(false);
-        // Restore the hash that was active before opening admin
-        if (location.hash === '#admin') {
-            location.hash = prevHashRef.current || '#repos';
-        }
-    }, []);
-
-    // Handle #logs hash: open dialog without changing active tab; restore previous hash on close
-    useEffect(() => {
-        const handleHashForLogs = () => {
-            if (location.hash === '#logs') {
-                setLogsOpen(true);
-            }
-        };
-        handleHashForLogs();
-        window.addEventListener('hashchange', handleHashForLogs);
-        return () => window.removeEventListener('hashchange', handleHashForLogs);
+        location.hash = '#admin';
     }, []);
 
     const handleLogsOpen = useCallback(() => {
-        prevHashLogsRef.current = location.hash || '#repos';
         location.hash = '#logs';
-    }, []);
-
-    const handleLogsClose = useCallback(() => {
-        setLogsOpen(false);
-        if (location.hash === '#logs') {
-            location.hash = prevHashLogsRef.current || '#repos';
-        }
     }, []);
 
     useEffect(() => {
@@ -395,8 +350,6 @@ function AppInner() {
             <BottomNav />
             <ToastContainer toasts={toasts} removeToast={removeToast} />
             <EnqueueDialog />
-            <AdminDialog open={adminOpen} onClose={handleAdminClose} />
-            <LogsDialog open={logsOpen} onClose={handleLogsClose} />
             <MarkdownReviewDialog
                 open={reviewDialog.open}
                 onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}

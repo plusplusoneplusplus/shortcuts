@@ -126,8 +126,8 @@ const ALL_NAV_ITEMS: NavItem[] = [
 ];
 
 const NAV_ITEMS: NavItem[] = SHOW_WIKI_TAB
-    ? ALL_NAV_ITEMS
-    : ALL_NAV_ITEMS.filter(item => item.tab !== 'wiki');
+    ? ALL_NAV_ITEMS.filter(item => item.tab !== 'logs')
+    : ALL_NAV_ITEMS.filter(item => item.tab !== 'wiki' && item.tab !== 'logs');
 
 // ── Contextual repo nav items (removed — handled by MobileTabBar in RepoDetail) ──
 

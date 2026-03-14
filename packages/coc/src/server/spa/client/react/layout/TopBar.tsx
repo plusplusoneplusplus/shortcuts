@@ -103,7 +103,13 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </span>
                 <button
                     id="logs-toggle"
-                    className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
+                    data-tab="logs"
+                    className={
+                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        (state.activeTab === 'logs'
+                            ? 'active bg-[#0078d4] text-white'
+                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                    }
                     aria-label="Logs"
                     title="Logs"
                     onClick={onLogsOpen}
@@ -112,7 +118,13 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 </button>
                 <button
                     id="admin-toggle"
-                    className="h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target"
+                    data-tab="admin"
+                    className={
+                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        (state.activeTab === 'admin'
+                            ? 'active bg-[#0078d4] text-white'
+                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                    }
                     aria-label="Admin"
                     title="Admin"
                     onClick={onAdminOpen}
