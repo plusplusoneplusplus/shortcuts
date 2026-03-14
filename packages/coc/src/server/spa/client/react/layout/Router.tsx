@@ -30,7 +30,6 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'memory') return 'memory';
     if (h === 'skills') return 'skills';
     if (h === 'logs') return 'logs';
-    if (h === 'admin') return 'admin';
     return null;
 }
 
