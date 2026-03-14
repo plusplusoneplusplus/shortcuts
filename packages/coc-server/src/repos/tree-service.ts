@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as childProcess from 'child_process';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
-import type { RepoInfo, TreeEntry, TreeListResult } from './types';
+import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
 
 export interface RepoTreeServiceOptions {
     /**
@@ -468,6 +468,70 @@ export class RepoTreeService {
         await fs.promises.mkdir(parentDir, { recursive: true });
 
         await fs.promises.writeFile(absPath, content, 'utf-8');
+    }
+
+    /**
+     * Fuzzy-score a single file path against a query.
+     * Mirrors the scoring logic in QuickOpen.tsx.
+     * Returns 0 if not all query characters are found in order.
+     */
+    static fuzzyScore(query: string, filePath: string): number {
+        const q = query.toLowerCase();
+        const t = filePath.toLowerCase();
+        if (!q) return 0;
+
+        let qi = 0;
+        let score = 0;
+        let prevMatchIdx = -1;
+
+        for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+            if (t[ti] === q[qi]) {
+                if (ti === prevMatchIdx + 1) score += 2;
+                if (ti === 0 || t[ti - 1] === '/' || t[ti - 1] === '-' || t[ti - 1] === '_' || t[ti - 1] === '.') {
+                    score += 3;
+                }
+                score += 1;
+                prevMatchIdx = ti;
+                qi++;
+            }
+        }
+
+        if (qi < q.length) return 0;
+        score += Math.max(0, 50 - filePath.length);
+        return score;
+    }
+
+    /**
+     * Fuzzy-search all files under the repo root.
+     * Returns results sorted by score descending, limited to `options.limit`.
+     *
+     * @param repoId   Stable workspace ID.
+     * @param query    Search query (min 1 character).
+     * @param options  Optional: limit (default 50, max 200), showIgnored (default false).
+     */
+    async searchFiles(
+        repoId: string,
+        query: string,
+        options?: { limit?: number; showIgnored?: boolean },
+    ): Promise<SearchFilesResult> {
+        const rawLimit = options?.limit ?? 50;
+        const limit = Math.min(Math.max(rawLimit, 1), 200);
+
+        const { files, truncated } = await this.listFilesRecursive(repoId, '.', {
+            showIgnored: options?.showIgnored ?? false,
+        });
+
+        const results: FileSearchResult[] = [];
+        for (const filePath of files) {
+            const score = RepoTreeService.fuzzyScore(query, filePath);
+            if (score > 0) {
+                results.push({ path: filePath, score });
+            }
+        }
+
+        results.sort((a, b) => b.score - a.score);
+
+        return { results: results.slice(0, limit), truncated };
     }
 
     /**

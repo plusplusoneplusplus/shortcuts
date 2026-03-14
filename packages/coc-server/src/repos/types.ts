@@ -35,3 +35,19 @@ export interface TreeListResult {
     /** True when the directory has more entries than the size guard allows. */
     truncated: boolean;
 }
+
+/** A single scored match from a fuzzy file-path search. */
+export interface FileSearchResult {
+    /** Repo-relative file path. */
+    path: string;
+    /** Higher = better match. */
+    score: number;
+}
+
+/** Result of a fuzzy file search across a repo. */
+export interface SearchFilesResult {
+    /** Matched file paths, sorted by score descending. */
+    results: FileSearchResult[];
+    /** True if the underlying file list was truncated at the cap. */
+    truncated: boolean;
+}

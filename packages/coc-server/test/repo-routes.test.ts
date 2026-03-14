@@ -356,3 +356,102 @@ describe('GET /api/repos/:repoId/files', () => {
         expect(body.files).not.toContain('root.txt');
     });
 });
+
+describe('GET /api/repos/:repoId/search', () => {
+    it('returns scored results sorted by score descending', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), '');
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), '');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search?q=index`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.results).toBeDefined();
+        expect(Array.isArray(body.results)).toBe(true);
+        expect(typeof body.truncated).toBe('boolean');
+        for (const item of body.results) {
+            expect(typeof item.path).toBe('string');
+            expect(typeof item.score).toBe('number');
+        }
+        // verify sorted descending
+        for (let i = 1; i < body.results.length; i++) {
+            expect(body.results[i - 1].score).toBeGreaterThanOrEqual(body.results[i].score);
+        }
+    });
+
+    it('returns 400 when q is missing', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search`);
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/q/i);
+    });
+
+    it('returns 400 when q is empty string', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search?q=`);
+        expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for unknown repo', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/nonexistent/search?q=index`);
+        expect(res.status).toBe(404);
+    });
+
+    it('respects limit param', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 10; i++) {
+            fs.writeFileSync(path.join(repoDir, `file${i}.ts`), '');
+        }
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search?q=file&limit=3`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.results.length).toBeLessThanOrEqual(3);
+    });
+
+    it('clamps limit below 1 to 1', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 5; i++) {
+            fs.writeFileSync(path.join(repoDir, `a${i}.ts`), '');
+        }
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search?q=a&limit=0`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.results.length).toBeLessThanOrEqual(1);
+    });
+
+    it('clamps limit above 200 to 200', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), '');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search?q=index&limit=9999`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.results.length).toBeLessThanOrEqual(200);
+    });
+
+    it('forwards showIgnored=true to listFilesRecursive', async () => {
+        seedDefaultRepo();
+        // Create a .gitignore that ignores dist/
+        initGitRepo(repoDir);
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), 'dist/\n');
+        fs.mkdirSync(path.join(repoDir, 'dist'));
+        fs.writeFileSync(path.join(repoDir, 'dist', 'bundle.js'), '');
+
+        const resIgnored = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search?q=bundle&showIgnored=false`);
+        expect(resIgnored.status).toBe(200);
+        const bodyIgnored = await resIgnored.json() as any;
+        const pathsIgnored = bodyIgnored.results.map((r: any) => r.path);
+        // Without showIgnored, gitignored files should not appear
+        expect(pathsIgnored).not.toContain('dist/bundle.js');
+
+        const resShown = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search?q=bundle&showIgnored=true`);
+        expect(resShown.status).toBe(200);
+        const bodyShown = await resShown.json() as any;
+        const pathsShown = bodyShown.results.map((r: any) => r.path);
+        expect(pathsShown).toContain('dist/bundle.js');
+    });
+});

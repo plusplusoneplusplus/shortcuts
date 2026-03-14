@@ -7,6 +7,7 @@
  * GET  /api/repos                      — list all repos
  * GET  /api/repos/:repoId/tree         — list directory entries
  * GET  /api/repos/:repoId/files        — list all files recursively
+ * GET  /api/repos/:repoId/search       — fuzzy file-path search
  * GET  /api/repos/:repoId/blob         — read file content
  * PUT  /api/repos/:repoId/blob         — write file content
  *
@@ -153,6 +154,41 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
+            }
+        },
+    });
+
+    // -- Search files (fuzzy) -------------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/search$/,
+        handler: async (req, res, match) => {
+            try {
+                const parsedUrl = url.parse(req.url ?? '', true);
+                const repoId = decodeURIComponent(match![1]);
+
+                const q = typeof parsedUrl.query.q === 'string' ? parsedUrl.query.q : '';
+                if (!q) {
+                    send400(res, 'Missing required query parameter: q');
+                    return;
+                }
+
+                const rawLimit = parseInt(String(parsedUrl.query.limit ?? '50'), 10);
+                const limit = isNaN(rawLimit) ? 50 : Math.min(Math.max(rawLimit, 1), 200);
+                const showIgnored = parsedUrl.query.showIgnored === 'true';
+
+                const service = new RepoTreeService(dataDir);
+                const repo = await service.resolveRepo(repoId);
+                if (!repo) {
+                    send404(res, `Unknown repo: ${repoId}`);
+                    return;
+                }
+
+                const result = await service.searchFiles(repoId, q, { limit, showIgnored });
+                sendJson(res, result);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
             }
         },
     });

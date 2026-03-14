@@ -544,3 +544,100 @@ describe('RepoTreeService.listFilesRecursive', () => {
         expect(result.files).toContain('src/index.ts');
     });
 });
+
+describe('RepoTreeService.fuzzyScore', () => {
+    it('exact match scores higher than a partial match', () => {
+        const exact = RepoTreeService.fuzzyScore('index', 'index.ts');
+        const partial = RepoTreeService.fuzzyScore('index', 'src/some-index-utils.ts');
+        expect(exact).toBeGreaterThan(partial);
+    });
+
+    it('returns 0 when not all query characters appear in order', () => {
+        const score = RepoTreeService.fuzzyScore('zzz', 'index.ts');
+        expect(score).toBe(0);
+    });
+
+    it('returns 0 for query longer than any realistic target', () => {
+        const score = RepoTreeService.fuzzyScore('abcdefghijklmnopqrstuvwxyz0123456789', 'a.ts');
+        expect(score).toBe(0);
+    });
+
+    it('does not throw for special characters in query', () => {
+        expect(() => RepoTreeService.fuzzyScore('*.ts?', 'src/index.ts')).not.toThrow();
+    });
+
+    it('awards bonus for separator-adjacent matches', () => {
+        // Same-length targets: 's' at start vs 's' in middle
+        const startBonus = RepoTreeService.fuzzyScore('s', 'super.ts');  // 's' at position 0 → separator bonus
+        const midMatch = RepoTreeService.fuzzyScore('s', 'masks.ts');    // 's' at position 2 → no bonus
+        expect(startBonus).toBeGreaterThan(midMatch);
+    });
+
+    it('returns 0 for empty query', () => {
+        expect(RepoTreeService.fuzzyScore('', 'index.ts')).toBe(0);
+    });
+});
+
+describe('RepoTreeService.searchFiles', () => {
+    it('returns results sorted by score descending', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), '');
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'some-index-utils.ts'), '');
+
+        const result = await service.searchFiles(REPO_ID, 'index');
+        expect(result.results.length).toBeGreaterThan(0);
+        for (let i = 1; i < result.results.length; i++) {
+            expect(result.results[i - 1].score).toBeGreaterThanOrEqual(result.results[i].score);
+        }
+    });
+
+    it('returns empty results when query matches nothing', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), '');
+
+        const result = await service.searchFiles(REPO_ID, 'zzzzzzzzzzzzz');
+        expect(result.results).toEqual([]);
+    });
+
+    it('respects limit option', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 10; i++) {
+            fs.writeFileSync(path.join(repoDir, `file${i}.ts`), '');
+        }
+
+        const result = await service.searchFiles(REPO_ID, 'file', { limit: 3 });
+        expect(result.results.length).toBeLessThanOrEqual(3);
+    });
+
+    it('clamps limit to [1, 200]', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 5; i++) {
+            fs.writeFileSync(path.join(repoDir, `a${i}.ts`), '');
+        }
+
+        // limit=0 should behave as 1
+        const resultMin = await service.searchFiles(REPO_ID, 'a', { limit: 0 });
+        expect(resultMin.results.length).toBeLessThanOrEqual(1);
+
+        // limit=9999 should be clamped to 200
+        const resultMax = await service.searchFiles(REPO_ID, 'a', { limit: 9999 });
+        expect(resultMax.results.length).toBeLessThanOrEqual(200);
+    });
+
+    it('does not throw for special characters in query', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), '');
+        await expect(service.searchFiles(REPO_ID, '*.?ts!')).resolves.toBeDefined();
+    });
+
+    it('propagates truncated flag from listFilesRecursive', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 10; i++) {
+            fs.writeFileSync(path.join(repoDir, `file${i}.ts`), '');
+        }
+        const smallService = new RepoTreeService(dataDir, { maxEntries: 3 });
+        const result = await smallService.searchFiles(REPO_ID, 'file');
+        expect(result.truncated).toBe(true);
+    });
+});
