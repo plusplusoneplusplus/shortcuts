@@ -104,17 +104,7 @@ function createTooltip(): HTMLDivElement {
     }, { passive: true });
 
     // Track scroll activity so mouseleave during scroll doesn't dismiss
-    el.addEventListener('scroll', () => {
-        isScrollingTooltip = true;
-        if (scrollEndTimer) clearTimeout(scrollEndTimer);
-        scrollEndTimer = setTimeout(() => {
-            isScrollingTooltip = false;
-            // If mouse already left while scrolling, hide now
-            if (tooltipEl && !tooltipEl.matches(':hover')) {
-                scheduleHide();
-            }
-        }, 150);
-    }, true);
+    el.addEventListener('scroll', scheduleScrollEnd, true);
 
     tooltipEl = el;
     return el;
@@ -286,6 +276,21 @@ function scheduleHide(): void {
     }, 200);
 }
 
+/** Reset the scroll-tracking flag and hide the tooltip if the pointer has left. */
+function onScrollEnd(): void {
+    isScrollingTooltip = false;
+    if (tooltipEl && !tooltipEl.matches(':hover')) {
+        scheduleHide();
+    }
+}
+
+/** Mark scrolling as active and (re-)schedule the scroll-end reset timer. */
+function scheduleScrollEnd(): void {
+    isScrollingTooltip = true;
+    if (scrollEndTimer) clearTimeout(scrollEndTimer);
+    scrollEndTimer = setTimeout(onScrollEnd, 150);
+}
+
 function hideTooltip(): void {
     if (hoverTimer) {
         clearTimeout(hoverTimer);
@@ -306,16 +311,7 @@ function attachBodyScrollGuard(): void {
     if (!tooltipEl) return;
     const body = tooltipEl.querySelector('.file-preview-tooltip-body');
     if (!body) return;
-    body.addEventListener('scroll', () => {
-        isScrollingTooltip = true;
-        if (scrollEndTimer) clearTimeout(scrollEndTimer);
-        scrollEndTimer = setTimeout(() => {
-            isScrollingTooltip = false;
-            if (tooltipEl && !tooltipEl.matches(':hover')) {
-                scheduleHide();
-            }
-        }, 150);
-    });
+    body.addEventListener('scroll', scheduleScrollEnd);
 }
 
 function renderLoading(path: string): void {
@@ -561,13 +557,7 @@ function initFilePathPreviewDelegation(): void {
     // If the pointer already left the tooltip, schedule a hide after a short delay.
     document.addEventListener('mouseup', () => {
         if (!isScrollingTooltip) return;
-        if (scrollEndTimer) clearTimeout(scrollEndTimer);
-        scrollEndTimer = setTimeout(() => {
-            isScrollingTooltip = false;
-            if (tooltipEl && !tooltipEl.matches(':hover')) {
-                scheduleHide();
-            }
-        }, 150);
+        scheduleScrollEnd();
     });
 
     // Click delegation for markdown link spans (.md-link) — open referenced files.
