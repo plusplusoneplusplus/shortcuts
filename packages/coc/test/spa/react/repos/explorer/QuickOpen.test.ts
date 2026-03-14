@@ -54,11 +54,6 @@ describe('QuickOpen component', () => {
     });
 
     describe('file fetching', () => {
-        it('fetches files from /repos/:id/files endpoint', () => {
-            expect(source).toContain('/repos/');
-            expect(source).toContain('/files');
-        });
-
         it('uses fetchApi for data loading', () => {
             expect(source).toContain("import { fetchApi } from '../../hooks/useApi'");
         });
@@ -67,6 +62,16 @@ describe('QuickOpen component', () => {
             expect(source).toContain('loading');
             expect(source).toContain('setLoading');
         });
+
+        it('calls server-side search endpoint with query and limit', () => {
+            expect(source).toContain('/search?q=');
+            expect(source).toContain('limit=50');
+        });
+
+        it('does not fetch /files endpoint on open', () => {
+            // The old bulk-fetch endpoint must no longer appear
+            expect(source).not.toMatch(/fetchApi\([^)]*\/files[^)]*\)/);
+        });
     });
 
     describe('search and filtering', () => {
@@ -74,17 +79,48 @@ describe('QuickOpen component', () => {
             expect(source).toContain("const [query, setQuery] = useState('')");
         });
 
-        it('uses fuzzyMatch for filtering', () => {
-            expect(source).toContain('fuzzyMatch(query, f)');
+        it('manages results state (server-populated)', () => {
+            expect(source).toContain("useState<string[]>([])");
         });
 
-        it('sorts results by score', () => {
-            expect(source).toContain('scored.sort(');
-            expect(source).toContain('b.score - a.score');
+        it('does not use client-side fuzzyMatch for filtering', () => {
+            // fuzzyMatch may still be exported but must not be called inside the component
+            expect(source).not.toContain('fuzzyMatch(query, f)');
         });
 
-        it('limits visible results', () => {
-            expect(source).toContain('MAX_VISIBLE');
+        it('maps server response paths from results array', () => {
+            expect(source).toContain('data.results.map(r => r.path)');
+        });
+
+        it('shows empty list when query is empty (no fetch)', () => {
+            expect(source).toContain('!query.trim()');
+            expect(source).toContain("setResults([])");
+        });
+    });
+
+    describe('debounce and cancellation', () => {
+        it('uses setTimeout for debounce', () => {
+            expect(source).toContain('setTimeout(');
+        });
+
+        it('uses clearTimeout to cancel pending debounce', () => {
+            expect(source).toContain('clearTimeout(');
+        });
+
+        it('uses debounceRef to hold the timeout handle', () => {
+            expect(source).toContain('debounceRef');
+        });
+
+        it('uses AbortController to cancel in-flight requests', () => {
+            expect(source).toContain('AbortController');
+        });
+
+        it('checks abort.signal.aborted before updating state', () => {
+            expect(source).toContain('abort.signal.aborted');
+        });
+
+        it('debounce delay is 200ms', () => {
+            expect(source).toContain(', 200)');
         });
     });
 
@@ -142,8 +178,8 @@ describe('QuickOpen component', () => {
             expect(source).toContain('Loading files');
         });
 
-        it('shows file count in footer', () => {
-            expect(source).toContain('allFiles.length');
+        it('shows result count in footer', () => {
+            expect(source).toContain('results.length');
         });
 
         it('shows keyboard hints in footer', () => {

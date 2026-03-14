@@ -1,10 +1,10 @@
 /**
  * QuickOpen — VS Code-style Ctrl+P file finder dialog.
- * Fetches all files from the repo recursively and provides fuzzy matching
- * with keyboard navigation. Portal-rendered to document.body.
+ * Debounces keystrokes and delegates search to the server-side /search endpoint.
+ * Portal-rendered to document.body.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { cn } from '../../shared/cn';
@@ -80,31 +80,68 @@ function dirName(p: string): string {
     return idx < 0 ? '' : p.slice(0, idx);
 }
 
-const MAX_VISIBLE = 50;
-
 export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpenProps) {
     const [query, setQuery] = useState('');
-    const [allFiles, setAllFiles] = useState<string[]>([]);
+    const [results, setResults] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
 
-    // Fetch all files when opened
+    // Reset state when dialog opens — no initial fetch
     useEffect(() => {
         if (!open) return;
         setQuery('');
+        setResults([]);
         setHighlightIndex(0);
-        setLoading(true);
-        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/files`)
-            .then((data: { files: string[]; truncated: boolean }) => {
-                setAllFiles(data.files);
-            })
-            .catch(() => {
-                setAllFiles([]);
-            })
-            .finally(() => setLoading(false));
-    }, [open, workspaceId]);
+        setLoading(false);
+    }, [open]);
+
+    // Debounced server-side search on query change
+    useEffect(() => {
+        if (!open) return;
+
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (abortRef.current) abortRef.current.abort();
+
+        if (!query.trim()) {
+            setResults([]);
+            setLoading(false);
+            return;
+        }
+
+        debounceRef.current = setTimeout(() => {
+            const abort = new AbortController();
+            abortRef.current = abort;
+            setLoading(true);
+            fetchApi(`/repos/${encodeURIComponent(workspaceId)}/search?q=${encodeURIComponent(query)}&limit=50`)
+                .then((data: { results: { path: string; score: number }[]; truncated: boolean }) => {
+                    if (abort.signal.aborted) return;
+                    setResults(data.results.map(r => r.path));
+                })
+                .catch(() => {
+                    if (abort.signal.aborted) return;
+                    setResults([]);
+                })
+                .finally(() => {
+                    if (!abort.signal.aborted) setLoading(false);
+                });
+        }, 200);
+
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [query, open, workspaceId]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            if (abortRef.current) abortRef.current.abort();
+        };
+    }, []);
 
     // Auto-focus input when opened
     useEffect(() => {
@@ -112,18 +149,6 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
             requestAnimationFrame(() => inputRef.current?.focus());
         }
     }, [open]);
-
-    // Filtered + scored results
-    const results = useMemo(() => {
-        if (!query.trim()) return allFiles.slice(0, MAX_VISIBLE);
-        const scored: { path: string; score: number }[] = [];
-        for (const f of allFiles) {
-            const m = fuzzyMatch(query, f);
-            if (m.match) scored.push({ path: f, score: m.score });
-        }
-        scored.sort((a, b) => b.score - a.score);
-        return scored.slice(0, MAX_VISIBLE).map(s => s.path);
-    }, [allFiles, query]);
 
     // Reset highlight when results change
     useEffect(() => {
@@ -249,7 +274,7 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
                 {/* Footer hint */}
                 <div className="flex items-center justify-between px-3 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484]">
                     <span>↑↓ navigate · ↵ open · esc close</span>
-                    {allFiles.length > 0 && <span>{allFiles.length} files</span>}
+                    {results.length > 0 && <span>{results.length} results</span>}
                 </div>
             </div>
         </div>
