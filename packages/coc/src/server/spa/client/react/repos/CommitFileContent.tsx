@@ -8,6 +8,9 @@ import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button, TruncatedPath } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+import { SideBySideDiffViewer } from './SideBySideDiffViewer';
+import { useDiffViewMode } from '../hooks/useDiffViewMode';
+import { DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 
 export interface CommitFileContentProps {
@@ -23,6 +26,7 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
+    const [viewMode, setViewMode] = useDiffViewMode();
 
     const fetchDiff = useCallback(() => {
         setLoading(true);
@@ -49,6 +53,7 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
                     <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">Commit diff</span>
                 </div>
             </div>
@@ -65,14 +70,25 @@ export function CommitFileContent({ workspaceId, hash, filePath }: CommitFileCon
                             <Button variant="secondary" size="sm" onClick={fetchDiff}>Retry</Button>
                         </div>
                     ) : diff ? (
-                        <UnifiedDiffViewer
-                            ref={viewerRef}
-                            diff={diff}
-                            fileName={filePath}
-                            showLineNumbers
-                            onLinesReady={(lines) => { setDiffLines(lines); }}
-                            data-testid="commit-file-diff-content"
-                        />
+                        viewMode === 'split' ? (
+                            <SideBySideDiffViewer
+                                ref={viewerRef}
+                                diff={diff}
+                                fileName={filePath}
+                                showLineNumbers
+                                onLinesReady={(lines) => { setDiffLines(lines); }}
+                                data-testid="commit-file-diff-content"
+                            />
+                        ) : (
+                            <UnifiedDiffViewer
+                                ref={viewerRef}
+                                diff={diff}
+                                fileName={filePath}
+                                showLineNumbers
+                                onLinesReady={(lines) => { setDiffLines(lines); }}
+                                data-testid="commit-file-diff-content"
+                            />
+                        )
                     ) : (
                         <div className="text-xs text-[#848484]" data-testid="commit-file-content-empty">(empty diff)</div>
                     )}

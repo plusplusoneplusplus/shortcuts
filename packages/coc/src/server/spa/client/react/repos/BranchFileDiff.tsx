@@ -11,6 +11,9 @@ import { fetchApi } from '../hooks/useApi';
 import { Spinner, Button, TruncatedPath } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+import { SideBySideDiffViewer } from './SideBySideDiffViewer';
+import { useDiffViewMode } from '../hooks/useDiffViewMode';
+import { DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
@@ -42,6 +45,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
+    const [viewMode, setViewMode] = useDiffViewMode();
 
     const diffContext = { repositoryId: workspaceId, filePath, oldRef: 'branch-base', newRef: 'branch-head' };
 
@@ -116,11 +120,12 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
                     <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">Branch diff</span>
                     <button
                         onClick={() => setSidebarOpen(o => !o)}
                         title="Toggle comments"
-                        className="ml-auto text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
                         data-testid="toggle-comments-btn"
                     >
                         💬 {comments.length > 0 ? comments.length : ''}
@@ -141,18 +146,33 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                             <Button variant="secondary" size="sm" onClick={handleRetry} data-testid="branch-file-diff-retry-btn">Retry</Button>
                         </div>
                     ) : diff ? (
-                        <UnifiedDiffViewer
-                            ref={viewerRef}
-                            diff={diff}
-                            fileName={filePath}
-                            enableComments
-                            showLineNumbers
-                            comments={comments}
-                            onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                            onAddComment={handleAddComment}
-                            onCommentClick={handleCommentClick}
-                            data-testid="branch-file-diff-content"
-                        />
+                        viewMode === 'split' ? (
+                            <SideBySideDiffViewer
+                                ref={viewerRef}
+                                diff={diff}
+                                fileName={filePath}
+                                enableComments
+                                showLineNumbers
+                                comments={comments}
+                                onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                                onAddComment={handleAddComment}
+                                onCommentClick={handleCommentClick}
+                                data-testid="branch-file-diff-content"
+                            />
+                        ) : (
+                            <UnifiedDiffViewer
+                                ref={viewerRef}
+                                diff={diff}
+                                fileName={filePath}
+                                enableComments
+                                showLineNumbers
+                                comments={comments}
+                                onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                                onAddComment={handleAddComment}
+                                onCommentClick={handleCommentClick}
+                                data-testid="branch-file-diff-content"
+                            />
+                        )
                     ) : (
                         <div className="text-xs text-[#848484]" data-testid="branch-file-diff-empty">(empty diff)</div>
                     )}

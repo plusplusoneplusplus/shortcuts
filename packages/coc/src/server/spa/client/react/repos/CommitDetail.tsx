@@ -10,6 +10,9 @@ import { copyToClipboard } from '../utils/format';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
+import { SideBySideDiffViewer } from './SideBySideDiffViewer';
+import { useDiffViewMode } from '../hooks/useDiffViewMode';
+import { DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
@@ -45,6 +48,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [hashCopied, setHashCopied] = useState(false);
+    const [viewMode, setViewMode] = useDiffViewMode();
     const [headerCollapsed, setHeaderCollapsed] = useState(false);
     const [manualOverride, setManualOverride] = useState(false);
 
@@ -233,6 +237,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                     <span className="text-xs font-mono text-[#616161] dark:text-[#999]">{filePath}</span>
                     <div className="flex items-center gap-2">
                         <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                        <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                         <button
                             onClick={() => setSidebarOpen(o => !o)}
                             title="Toggle comments"
@@ -242,6 +247,14 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                             💬 {comments.length > 0 ? comments.length : ''}
                         </button>
                     </div>
+                </div>
+            )}
+
+            {/* No-filePath companion toolbar for hunk nav + toggle */}
+            {!filePath && (
+                <div className="sticky top-0 z-10 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-end">
+                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                 </div>
             )}
 
@@ -258,18 +271,33 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                             <Button variant="secondary" size="sm" onClick={handleRetryDiff} data-testid="retry-diff-btn">Retry</Button>
                         </div>
                     ) : diff ? (
-                        <UnifiedDiffViewer
-                            ref={viewerRef}
-                            diff={diff}
-                            fileName={filePath}
-                            enableComments={!!filePath}
-                            showLineNumbers={!!filePath}
-                            comments={comments}
-                            onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
-                            onAddComment={filePath ? handleAddComment : undefined}
-                            onCommentClick={filePath ? handleCommentClick : undefined}
-                            data-testid="diff-content"
-                        />
+                        viewMode === 'split' ? (
+                            <SideBySideDiffViewer
+                                ref={viewerRef}
+                                diff={diff}
+                                fileName={filePath}
+                                enableComments={!!filePath}
+                                showLineNumbers={!!filePath}
+                                comments={comments}
+                                onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
+                                onAddComment={filePath ? handleAddComment : undefined}
+                                onCommentClick={filePath ? handleCommentClick : undefined}
+                                data-testid="diff-content"
+                            />
+                        ) : (
+                            <UnifiedDiffViewer
+                                ref={viewerRef}
+                                diff={diff}
+                                fileName={filePath}
+                                enableComments={!!filePath}
+                                showLineNumbers={!!filePath}
+                                comments={comments}
+                                onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
+                                onAddComment={filePath ? handleAddComment : undefined}
+                                onCommentClick={filePath ? handleCommentClick : undefined}
+                                data-testid="diff-content"
+                            />
+                        )
                     ) : (
                         <div className="text-xs text-[#848484]" data-testid="diff-empty">(empty diff)</div>
                     )}
