@@ -54,9 +54,8 @@ describe('ExactOpen component', () => {
     });
 
     describe('file fetching', () => {
-        it('fetches files from /repos/:id/files endpoint', () => {
-            expect(source).toContain('/repos/');
-            expect(source).toContain('/files');
+        it('does not fetch /files endpoint on open', () => {
+            expect(source).not.toMatch(/fetchApi\([^)]*\/files[^)]*\)/);
         });
 
         it('uses fetchApi for data loading', () => {
@@ -67,6 +66,11 @@ describe('ExactOpen component', () => {
             expect(source).toContain('loading');
             expect(source).toContain('setLoading');
         });
+
+        it('calls server-side search endpoint with query and limit', () => {
+            expect(source).toContain('/search?q=');
+            expect(source).toContain('limit=50');
+        });
     });
 
     describe('search and filtering', () => {
@@ -74,18 +78,47 @@ describe('ExactOpen component', () => {
             expect(source).toContain("const [query, setQuery] = useState('')");
         });
 
-        it('uses exactMatchScore for filtering', () => {
-            expect(source).toContain('exactMatchScore(query, f)');
+        it('manages results state (server-populated)', () => {
+            expect(source).toContain("useState<string[]>([])");
         });
 
-        it('places exact matches before prefix matches', () => {
-            expect(source).toContain('score === 2');
-            expect(source).toContain('score === 1');
-            expect(source).toContain('[...exact, ...prefix]');
+        it('does not use exactMatchScore for in-component filtering', () => {
+            expect(source).not.toContain('exactMatchScore(query, f)');
         });
 
-        it('limits visible results', () => {
-            expect(source).toContain('MAX_VISIBLE');
+        it('maps server response paths from results array', () => {
+            expect(source).toContain('data.results.map(r => r.path)');
+        });
+
+        it('shows empty list when query is empty (no fetch)', () => {
+            expect(source).toContain('!query.trim()');
+            expect(source).toContain("setResults([])");
+        });
+    });
+
+    describe('debounce and cancellation', () => {
+        it('uses setTimeout for debounce', () => {
+            expect(source).toContain('setTimeout(');
+        });
+
+        it('uses clearTimeout to cancel pending debounce', () => {
+            expect(source).toContain('clearTimeout(');
+        });
+
+        it('uses debounceRef to hold the timeout handle', () => {
+            expect(source).toContain('debounceRef');
+        });
+
+        it('uses AbortController to cancel in-flight requests', () => {
+            expect(source).toContain('AbortController');
+        });
+
+        it('checks abort.signal.aborted before updating state', () => {
+            expect(source).toContain('abort.signal.aborted');
+        });
+
+        it('debounce delay is 200ms', () => {
+            expect(source).toContain(', 200)');
         });
     });
 
@@ -139,8 +172,8 @@ describe('ExactOpen component', () => {
             expect(source).toContain('Loading files');
         });
 
-        it('shows file count in footer', () => {
-            expect(source).toContain('allFiles.length');
+        it('shows result count in footer', () => {
+            expect(source).toContain('results.length');
         });
 
         it('shows keyboard hints in footer', () => {

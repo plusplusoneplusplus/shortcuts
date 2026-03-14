@@ -1,10 +1,10 @@
 /**
  * ExactOpen — Ctrl+O file opener with exact/prefix filename matching.
- * Filters files by exact basename match (case-insensitive), falling back to
- * prefix match while the user types. Portal-rendered to document.body.
+ * Debounces keystrokes and delegates search to the server-side /search endpoint.
+ * Portal-rendered to document.body.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { fetchApi } from '../../hooks/useApi';
 import { cn } from '../../shared/cn';
@@ -41,31 +41,68 @@ export function exactMatchScore(query: string, filePath: string): 0 | 1 | 2 {
     return 0;
 }
 
-const MAX_VISIBLE = 50;
-
 export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpenProps) {
     const [query, setQuery] = useState('');
-    const [allFiles, setAllFiles] = useState<string[]>([]);
+    const [results, setResults] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
 
-    // Fetch all files when opened
+    // Reset state when dialog opens — no initial fetch
     useEffect(() => {
         if (!open) return;
         setQuery('');
+        setResults([]);
         setHighlightIndex(0);
-        setLoading(true);
-        fetchApi(`/repos/${encodeURIComponent(workspaceId)}/files`)
-            .then((data: { files: string[]; truncated: boolean }) => {
-                setAllFiles(data.files);
-            })
-            .catch(() => {
-                setAllFiles([]);
-            })
-            .finally(() => setLoading(false));
-    }, [open, workspaceId]);
+        setLoading(false);
+    }, [open]);
+
+    // Debounced server-side search on query change
+    useEffect(() => {
+        if (!open) return;
+
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (abortRef.current) abortRef.current.abort();
+
+        if (!query.trim()) {
+            setResults([]);
+            setLoading(false);
+            return;
+        }
+
+        debounceRef.current = setTimeout(() => {
+            const abort = new AbortController();
+            abortRef.current = abort;
+            setLoading(true);
+            fetchApi(`/repos/${encodeURIComponent(workspaceId)}/search?q=${encodeURIComponent(query)}&limit=50`)
+                .then((data: { results: { path: string; score: number }[]; truncated: boolean }) => {
+                    if (abort.signal.aborted) return;
+                    setResults(data.results.map(r => r.path));
+                })
+                .catch(() => {
+                    if (abort.signal.aborted) return;
+                    setResults([]);
+                })
+                .finally(() => {
+                    if (!abort.signal.aborted) setLoading(false);
+                });
+        }, 200);
+
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [query, open, workspaceId]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            if (abortRef.current) abortRef.current.abort();
+        };
+    }, []);
 
     // Auto-focus input when opened
     useEffect(() => {
@@ -73,19 +110,6 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
             requestAnimationFrame(() => inputRef.current?.focus());
         }
     }, [open]);
-
-    // Filtered results: exact matches first, then prefix matches
-    const results = useMemo(() => {
-        if (!query.trim()) return allFiles.slice(0, MAX_VISIBLE);
-        const exact: string[] = [];
-        const prefix: string[] = [];
-        for (const f of allFiles) {
-            const score = exactMatchScore(query, f);
-            if (score === 2) exact.push(f);
-            else if (score === 1) prefix.push(f);
-        }
-        return [...exact, ...prefix].slice(0, MAX_VISIBLE);
-    }, [allFiles, query]);
 
     // Reset highlight when results change
     useEffect(() => {
@@ -124,7 +148,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
     if (!open) return null;
 
     const hasExactMatch = query.trim()
-        ? allFiles.some(f => fileName(f).toLowerCase() === query.trim().toLowerCase())
+        ? results.some(f => fileName(f).toLowerCase() === query.trim().toLowerCase())
         : false;
 
     const overlay = (
@@ -235,7 +259,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
                 {/* Footer hint */}
                 <div className="flex items-center justify-between px-3 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484]">
                     <span>↑↓ navigate · ↵ open · esc close</span>
-                    {allFiles.length > 0 && <span>{allFiles.length} files</span>}
+                    {results.length > 0 && <span>{results.length} results</span>}
                 </div>
             </div>
         </div>
