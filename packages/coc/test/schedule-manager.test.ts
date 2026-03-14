@@ -799,4 +799,113 @@ describe('ScheduleManager', () => {
             mgr.dispose();
         });
     });
+
+    describe('model field', () => {
+        it('is undefined when not provided', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'No Model',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            expect(schedule.model).toBeUndefined();
+        });
+
+        it('stores and returns model when provided', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'With Model',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                model: 'claude-opus-4.6',
+            });
+
+            expect(schedule.model).toBe('claude-opus-4.6');
+        });
+
+        it('can be updated via updateSchedule', () => {
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'Update Model',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            const updated = manager.updateSchedule(REPO_ID, schedule.id, { model: 'gpt-5.2' });
+            expect(updated!.model).toBe('gpt-5.2');
+        });
+
+        it('persists and restores model', () => {
+            manager.addSchedule(REPO_ID, {
+                name: 'Persisted Model',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+                model: 'claude-sonnet-4.6',
+            });
+
+            manager.dispose();
+
+            const newManager = new ScheduleManager(persistence);
+            newManager.restore();
+
+            const schedules = newManager.getSchedules(REPO_ID);
+            expect(schedules[0].model).toBe('claude-sonnet-4.6');
+
+            newManager.dispose();
+        });
+
+        it('forwards model to config.model when enqueuing chat task', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_model'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Model Forwarded',
+                target: 'my-task.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                model: 'claude-opus-4.6',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].config.model).toBe('claude-opus-4.6');
+
+            mgr.dispose();
+        });
+
+        it('does not set config.model when model is absent', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_nomodel'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'No Model Forwarded',
+                target: 'my-task.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].config.model).toBeUndefined();
+
+            mgr.dispose();
+        });
+    });
 });

@@ -111,6 +111,7 @@ interface Schedule {
     nextRun: string | null;
     createdAt: string;
     outputFolder?: string;
+    model?: string;
 }
 
 interface RunRecord {
@@ -342,6 +343,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             params: duplicateValues.params ? { ...duplicateValues.params } : undefined,
                             onFailure: duplicateValues.onFailure,
                             outputFolder: duplicateValues.outputFolder,
+                            model: duplicateValues.model,
                         } : undefined}
                     />
                 </div>
@@ -575,6 +577,7 @@ export function ScheduleDetail({ schedule, workspaceId, history: initialHistory,
                         params: { ...schedule.params },
                         onFailure: schedule.onFailure,
                         outputFolder: schedule.outputFolder,
+                        model: schedule.model,
                     }}
                     onCreated={onSaved}
                     onCancel={onCancelEdit}
@@ -945,6 +948,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
         params?: Record<string, string>;
         onFailure?: string;
         outputFolder?: string;
+        model?: string;
     };
 }) {
     const cronParsed = initialValues?.cron ? parseCronToInterval(initialValues.cron) : null;
@@ -957,6 +961,8 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
     const [intervalUnit, setIntervalUnit] = useState(cronParsed?.mode === 'interval' ? cronParsed.unit : 'hours');
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
     const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? `~/.coc/repos/${workspaceId}/tasks`);
+    const [model, setModel] = useState(initialValues?.model ?? '');
+    const [models, setModels] = useState<string[]>([]);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -982,7 +988,17 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
         return () => { cancelled = true; };
     }, [selectedTemplate, workspaceId]);
 
-    const applyTemplate = (templateId: string) => {
+    // Fetch available models once on mount
+    useEffect(() => {
+        let cancelled = false;
+        fetch(getApiBase() + '/queue/models')
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (!cancelled) setModels(data?.models ?? (Array.isArray(data) ? data : [])); })
+            .catch(() => { /* ignore */ });
+        return () => { cancelled = true; };
+    }, []);
+
+    const applyTemplate= (templateId: string) => {
         if (selectedTemplate === templateId) {
             setSelectedTemplate(null);
             setName('');
@@ -1045,6 +1061,7 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                 params,
                 onFailure,
                 outputFolder: outputFolder.trim() || undefined,
+                model: model.trim() || undefined,
             };
             const url = formMode === 'edit' && scheduleId
                 ? getApiBase() + `/workspaces/${encodeURIComponent(workspaceId)}/schedules/${encodeURIComponent(scheduleId)}`
@@ -1209,6 +1226,22 @@ function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: formMode =
                             onChange={e => setOutputFolder(e.target.value)}
                             data-testid="output-folder-input"
                         />
+                    </div>
+                )}
+
+                {/* Model selector — only for prompt type */}
+                {(!targetType || targetType === 'prompt') && (
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="text-[#616161] dark:text-[#999]">Model:</span>
+                        <select
+                            className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                            value={model}
+                            onChange={e => setModel(e.target.value)}
+                            data-testid="model-select"
+                        >
+                            <option value="">Default</option>
+                            {models.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
                     </div>
                 )}
 

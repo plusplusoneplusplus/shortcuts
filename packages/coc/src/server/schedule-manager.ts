@@ -32,6 +32,7 @@ export interface ScheduleEntry {
     createdAt: string;
     targetType?: TargetType;   // defaults to 'prompt' when absent
     outputFolder?: string;     // output folder path prepended to prompt for prompt-type schedules
+    model?: string;            // optional model override for prompt-type schedules
 }
 
 export interface ScheduleRunRecord {
@@ -297,7 +298,7 @@ export class ScheduleManager extends EventEmitter {
     /**
      * Update an existing schedule.
      */
-    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder'>>): ScheduleEntry | undefined {
+    updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model'>>): ScheduleEntry | undefined {
         const schedule = this.schedules.get(repoId)?.get(scheduleId);
         if (!schedule) return undefined;
 
@@ -493,7 +494,7 @@ export class ScheduleManager extends EventEmitter {
                             },
                             workingDirectory: '',
                         },
-                        config: {},
+                        config: { model: schedule.model || undefined },
                         displayName: `[Schedule] ${schedule.name}`,
                         repoId,
                     });

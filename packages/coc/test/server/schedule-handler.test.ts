@@ -536,4 +536,78 @@ describe('Schedule Handler', () => {
             expect(body.schedules[0].outputFolder).toBe('~/.coc/repos/persist/tasks');
         });
     });
+
+    // ========================================================================
+    // model field
+    // ========================================================================
+
+    describe('model field', () => {
+        it('should store and return model when provided on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ model: 'claude-opus-4.6' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.model).toBe('claude-opus-4.6');
+        });
+
+        it('should return undefined model when not provided on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule());
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.model).toBeUndefined();
+        });
+
+        it('should update model via PATCH', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule());
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { model: 'gpt-5.2' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.model).toBe('gpt-5.2');
+        });
+
+        it('should clear model via PATCH with empty string', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule({ model: 'claude-opus-4.6' }));
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { model: '' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.model).toBeUndefined();
+        });
+
+        it('should include model in list response', async () => {
+            await startServer();
+
+            await postJSON(schedulesUrl(), makeSchedule({ model: 'claude-sonnet-4.6' }));
+
+            const res = await request(schedulesUrl());
+            const body = JSON.parse(res.body);
+            expect(body.schedules[0].model).toBe('claude-sonnet-4.6');
+        });
+
+        it('should persist model across server restarts', async () => {
+            const store = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            await postJSON(schedulesUrl(), makeSchedule({ name: 'Model Schedule', model: 'claude-opus-4.6' }));
+
+            await server.close();
+
+            const store2 = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+
+            const listRes = await request(schedulesUrl());
+            const body = JSON.parse(listRes.body);
+            expect(body.schedules[0].model).toBe('claude-opus-4.6');
+        });
+    });
 });
