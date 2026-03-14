@@ -91,7 +91,7 @@ export interface WebviewMessage {
 }
 
 /** Storage key prefix for collapsed sections (per file) */
-const COLLAPSED_SECTIONS_KEY_PREFIX = 'mdReview.collapsedSections.';
+export const COLLAPSED_SECTIONS_KEY_PREFIX = 'mdReview.collapsedSections.';
 
 /** Storage key for recent prompts */
 const RECENT_PROMPTS_KEY = 'workspaceShortcuts.recentPrompts';

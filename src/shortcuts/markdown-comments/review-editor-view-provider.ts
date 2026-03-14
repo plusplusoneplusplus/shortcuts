@@ -19,7 +19,7 @@ import { CommentsManager } from './comments-manager';
 import { computeLineChanges } from './line-change-tracker';
 import { getWebviewContent, WebviewContentOptions } from './webview-content';
 import { MessageContext } from './editor-host';
-import { EditorMessageRouter, WebviewMessage } from './editor-message-router';
+import { EditorMessageRouter, WebviewMessage, COLLAPSED_SECTIONS_KEY_PREFIX } from './editor-message-router';
 import { VscodeEditorHost } from './vscode-editor-host';
 import { StateStore } from './state-store';
 
@@ -38,8 +38,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     // Pending scroll requests (commentId to scroll to after file opens)
     private static pendingScrollRequests = new Map<string, string>();
 
-    /** Storage key prefix for collapsed sections (per file) */
-    private static readonly COLLAPSED_SECTIONS_KEY_PREFIX = 'mdReview.collapsedSections.';
+
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -52,7 +51,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      * Get collapsed sections for a file from storage
      */
     private getCollapsedSections(filePath: string): string[] {
-        const key = ReviewEditorViewProvider.COLLAPSED_SECTIONS_KEY_PREFIX + filePath;
+        const key = COLLAPSED_SECTIONS_KEY_PREFIX + filePath;
         return this.stateStore.get<string[]>(key, []);
     }
 
