@@ -92,6 +92,7 @@ function AppInner() {
     const { toasts, addToast, removeToast } = useToast();
     const prevWsStatusRef = useRef(appState.wsStatus);
     const hasConnectedRef = useRef(false);
+    const seenProcessIdsRef = useRef(new Set<string>());
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
         minimized: false,
@@ -122,7 +123,10 @@ function AppInner() {
                     const terminalStatuses = ['completed', 'failed', 'cancelled'];
                     if (terminalStatuses.includes(msg.process.status)) {
                         appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
-                        addNotification(buildNotificationEntry(msg.process));
+                        if (!seenProcessIdsRef.current.has(msg.process.id)) {
+                            seenProcessIdsRef.current.add(msg.process.id);
+                            addNotification(buildNotificationEntry(msg.process));
+                        }
                     }
                 }
                 break;
@@ -131,6 +135,7 @@ function AppInner() {
                 break;
             case 'processes-cleared':
                 appDispatch({ type: 'PROCESSES_CLEARED' });
+                seenProcessIdsRef.current.clear();
                 break;
             case 'queue-updated':
                 if (msg.queue) {

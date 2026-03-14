@@ -197,6 +197,31 @@ describe('App WebSocket → Notification wiring', () => {
         expect(mockAddNotification.mock.calls[0][0].type).toBe('warning');
     });
 
+    it('duplicate process-updated events for same processId call addNotification exactly once', () => {
+        const onMessage = renderAndCapture();
+        const msg = makeProcessMsg({ id: 'proc-dup', status: 'completed' });
+
+        act(() => onMessage(msg));
+        act(() => onMessage(msg));
+        act(() => onMessage(msg));
+
+        expect(mockAddNotification).toHaveBeenCalledOnce();
+    });
+
+    it('processes-cleared resets dedup so same processId can notify again', () => {
+        const onMessage = renderAndCapture();
+        const msg = makeProcessMsg({ id: 'proc-reset', status: 'completed' });
+
+        act(() => onMessage(msg));
+        expect(mockAddNotification).toHaveBeenCalledTimes(1);
+
+        act(() => onMessage({ type: 'processes-cleared' }));
+        mockAddNotification.mockClear();
+
+        act(() => onMessage(msg));
+        expect(mockAddNotification).toHaveBeenCalledTimes(1);
+    });
+
     it('notification includes processId from process payload', () => {
         const onMessage = renderAndCapture();
         act(() => onMessage(makeProcessMsg({ id: 'proc-xyz' })));

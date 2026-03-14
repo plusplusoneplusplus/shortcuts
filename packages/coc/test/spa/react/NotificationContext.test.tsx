@@ -41,6 +41,34 @@ describe('notificationReducer', () => {
         expect(result.notifications[19].id).toBe('e18');
     });
 
+    it('ADD with duplicate processId is a no-op', () => {
+        const existing: NotificationEntry = {
+            id: 'n1', type: 'success', title: 'first', detail: '', timestamp: 100, read: false,
+            processId: 'proc-42',
+        };
+        const state = { notifications: [existing] };
+        const duplicate: NotificationEntry = {
+            id: 'n2', type: 'error', title: 'second', detail: '', timestamp: 200, read: false,
+            processId: 'proc-42',
+        };
+        const result = notificationReducer(state, { type: 'ADD', entry: duplicate });
+        expect(result).toBe(state); // same reference — no change
+        expect(result.notifications).toHaveLength(1);
+        expect(result.notifications[0].id).toBe('n1');
+    });
+
+    it('ADD without processId does NOT deduplicate', () => {
+        const existing: NotificationEntry = {
+            id: 'n1', type: 'success', title: 'first', detail: '', timestamp: 100, read: false,
+        };
+        const state = { notifications: [existing] };
+        const second: NotificationEntry = {
+            id: 'n2', type: 'info', title: 'second', detail: '', timestamp: 200, read: false,
+        };
+        const result = notificationReducer(state, { type: 'ADD', entry: second });
+        expect(result.notifications).toHaveLength(2);
+    });
+
     it('MARK_ALL_READ sets all entries to read', () => {
         const state = { notifications: [makeEntry('a', false), makeEntry('b', false), makeEntry('c', true)] };
         const result = notificationReducer(state, { type: 'MARK_ALL_READ' });

@@ -39,6 +39,10 @@ let nextId = 1;
 export function notificationReducer(state: State, action: Action): State {
     switch (action.type) {
         case 'ADD': {
+            if (action.entry.processId &&
+                state.notifications.some(n => n.processId === action.entry.processId)) {
+                return state;
+            }
             const updated = [action.entry, ...state.notifications];
             return { notifications: updated.slice(0, MAX_ENTRIES) };
         }
