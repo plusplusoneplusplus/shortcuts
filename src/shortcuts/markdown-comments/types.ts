@@ -152,31 +152,3 @@ export interface AIClarificationConfig {
     tool: AIToolType;
 }
 
-/**
- * Legacy type alias for backward compatibility
- * @deprecated Use AIProcessStatus from ai-service instead
- */
-export type ClarificationProcessStatus = AIProcessStatus;
-
-/**
- * Legacy interface for backward compatibility
- * @deprecated Use AIProcess from ai-service instead
- */
-export interface ClarificationProcess {
-    /** Unique identifier */
-    id: string;
-    /** Preview of the prompt (first ~50 chars) */
-    promptPreview: string;
-    /** Full prompt text */
-    fullPrompt: string;
-    /** Current status */
-    status: ClarificationProcessStatus;
-    /** When the process started */
-    startTime: Date;
-    /** When the process ended (if finished) */
-    endTime?: Date;
-    /** Error message if failed */
-    error?: string;
-    /** The clarification result if completed */
-    result?: string;
-}
