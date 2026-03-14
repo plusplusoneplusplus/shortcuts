@@ -9,6 +9,7 @@ import { getApiBase } from '../utils/config';
 import { escapeHtml } from '../utils/format';
 import { invalidateDisplaySettings } from '../hooks/useDisplaySettings';
 import { PreferencesSection } from './PreferencesSection';
+import { ProviderTokensSection } from './ProviderTokensSection';
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -645,6 +646,12 @@ export function AdminPanel() {
 
             {/* Preferences */}
             <PreferencesSection
+                onError={msg => addToast(msg, 'error')}
+                onSuccess={msg => addToast(msg, 'success')}
+            />
+
+            {/* Provider Tokens */}
+            <ProviderTokensSection
                 onError={msg => addToast(msg, 'error')}
                 onSuccess={msg => addToast(msg, 'success')}
             />
