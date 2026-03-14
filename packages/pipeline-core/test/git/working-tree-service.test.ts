@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import * as fs from 'fs';
 import * as path from 'path';
 import { parsePorcelain, WorkingTreeService } from '../../src/git/working-tree-service';
 
@@ -287,5 +288,78 @@ describe('WorkingTreeService.unstageFiles', () => {
         expect(result.unstaged).toBe(0);
         expect(result.errors).toHaveLength(1);
         expect(result.errors[0]).toContain('rm failed');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkingTreeService.deleteUntrackedFile
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('fs')>();
+    return {
+        ...actual,
+        existsSync: vi.fn(),
+        statSync: vi.fn(),
+        unlinkSync: vi.fn(),
+        rmSync: vi.fn(),
+    };
+});
+
+const mockFs = vi.mocked(fs);
+
+describe('WorkingTreeService.deleteUntrackedFile', () => {
+    const service = new WorkingTreeService();
+    const repoRoot = ROOT;
+    const filePath = path.join(ROOT, 'src', 'foo.ts');
+    const dirPath = path.join(ROOT, '__snapshots__');
+
+    beforeEach(() => {
+        vi.resetAllMocks();
+    });
+
+    it('returns error when file does not exist', async () => {
+        mockFs.existsSync.mockReturnValue(false);
+        const result = await service.deleteUntrackedFile(repoRoot, filePath);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('does not exist');
+        expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+        expect(mockFs.rmSync).not.toHaveBeenCalled();
+    });
+
+    it('calls unlinkSync for a regular file', async () => {
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
+        const result = await service.deleteUntrackedFile(repoRoot, filePath);
+        expect(result.success).toBe(true);
+        expect(mockFs.unlinkSync).toHaveBeenCalledWith(filePath);
+        expect(mockFs.rmSync).not.toHaveBeenCalled();
+    });
+
+    it('calls rmSync with recursive:true for a directory', async () => {
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any);
+        const result = await service.deleteUntrackedFile(repoRoot, dirPath);
+        expect(result.success).toBe(true);
+        expect(mockFs.rmSync).toHaveBeenCalledWith(dirPath, { recursive: true });
+        expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it('returns error when unlinkSync throws (e.g. EPERM on Windows)', async () => {
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
+        mockFs.unlinkSync.mockImplementation(() => { throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }); });
+        const result = await service.deleteUntrackedFile(repoRoot, filePath);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('EPERM');
+    });
+
+    it('returns error when rmSync throws', async () => {
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any);
+        mockFs.rmSync.mockImplementation(() => { throw new Error('permission denied'); });
+        const result = await service.deleteUntrackedFile(repoRoot, dirPath);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('permission denied');
     });
 });

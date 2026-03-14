@@ -281,15 +281,20 @@ export class WorkingTreeService {
     }
 
     /**
-     * Delete an untracked file from the filesystem.
-     * Uses `fs.unlinkSync` — the file must exist.
+     * Delete an untracked file or directory from the filesystem.
+     * Directories (e.g. untracked snapshot folders) are removed recursively.
      */
     async deleteUntrackedFile(repoRoot: string, filePath: string): Promise<GitOperationResult> {
         try {
             if (!fs.existsSync(filePath)) {
                 return { success: false, error: `File does not exist: ${filePath}` };
             }
-            fs.unlinkSync(filePath);
+            const stat = fs.statSync(filePath);
+            if (stat.isDirectory()) {
+                fs.rmSync(filePath, { recursive: true });
+            } else {
+                fs.unlinkSync(filePath);
+            }
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
