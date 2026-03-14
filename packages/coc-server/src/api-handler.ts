@@ -1210,6 +1210,36 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     // Working-tree endpoints (via WorkingTreeService)
     // ------------------------------------------------------------------
 
+    // POST /api/workspaces/:id/git/amend — Amend the HEAD commit message
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/amend$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!body.title || typeof body.title !== 'string' || !body.title.trim()) {
+                return handleAPIError(res, missingFields(['title']));
+            }
+
+            const result = await branchService.amendCommitMessage(
+                ws.rootPath,
+                body.title,
+                typeof body.body === 'string' ? body.body : undefined
+            );
+            if (!result.success) {
+                return handleAPIError(res, badRequest(result.error || 'Failed to amend commit message'));
+            }
+            gitCache.invalidateMutable(id);
+            getWsServer?.()?.broadcastGitChanged(id, 'amend');
+            sendJSON(res, 200, { hash: result.hash });
+        },
+    });
+
     const workingTreeService = new WorkingTreeService();
 
     // GET /api/workspaces/:id/git/changes — All working-tree changes

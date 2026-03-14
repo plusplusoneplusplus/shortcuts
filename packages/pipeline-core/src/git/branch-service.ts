@@ -660,6 +660,28 @@ export class BranchService {
     }
 
     /**
+     * Amend the HEAD commit message (title + optional body).
+     * Runs `git commit --amend --no-edit` variant that only changes the message.
+     * Returns the new HEAD hash on success.
+     */
+    async amendCommitMessage(repoRoot: string, title: string, body?: string): Promise<{ success: boolean; hash?: string; error?: string }> {
+        if (!title || !title.trim()) {
+            return { success: false, error: 'Commit title must not be empty' };
+        }
+        const message = body ? `${title}\n\n${body}` : title;
+        const escaped = message.replace(/"/g, '\\"');
+        try {
+            await this.execGitAsync(`git commit --amend --only -m "${escaped}"`, { cwd: repoRoot });
+            const hash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
+            return { success: true, hash };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to amend commit message', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
      * Check if there are uncommitted changes (staged or unstaged).
      */
     hasUncommittedChanges(repoRoot: string): boolean {

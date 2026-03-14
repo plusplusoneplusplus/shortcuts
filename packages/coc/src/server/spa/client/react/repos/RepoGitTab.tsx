@@ -26,6 +26,7 @@ import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './WorkingTree';
 import { WorkingTreeFileDiff } from './WorkingTreeFileDiff';
 import { BranchPickerModal } from './BranchPickerModal';
+import { AmendMessageModal } from './AmendMessageModal';
 import { useApp } from '../context/AppContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import type { GitCommitItem } from './CommitList';
@@ -78,6 +79,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range'; commit?: GitCommitItem } | null>(null);
     const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+    const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
 
     const fetchCommits = useCallback((refresh = false) => {
         const qs = refresh ? '&refresh=true' : '';
@@ -381,6 +383,25 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
     }, [closeContextMenu, workspaceId, refreshAll]);
 
+    const handleAmendConfirm = useCallback(async (title: string, body: string) => {
+        if (!amendingCommit) return;
+        setAmendingCommit(null);
+        setActionError(null);
+        try {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/amend`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, body }),
+            });
+            if (result.error) throw new Error(result.error);
+            refreshAll();
+            setEnqueueToast('Commit message amended.');
+            setTimeout(() => setEnqueueToast(null), 3000);
+        } catch (err: any) {
+            setActionError(err.message || 'Amend failed');
+        }
+    }, [amendingCommit, workspaceId, refreshAll]);
+
     const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
         const commit = commits.find(c => c.hash === commitHash);
         if (!commit) return;
@@ -457,6 +478,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
         if (contextMenu.type === 'commit' && contextMenu.commit) {
             const { commit } = contextMenu;
+            const isHead = commits.length > 0 && commits[0].hash === commit.hash;
             items.push({
                 label: 'Copy Hash',
                 icon: '📋',
@@ -467,6 +489,14 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '🔍',
                 onClick: () => { handleSelect(commit); },
             });
+            if (isHead) {
+                items.push({ label: '', separator: true, onClick: () => {} });
+                items.push({
+                    label: 'Amend Message\u2026',
+                    icon: '✏️',
+                    onClick: () => { closeContextMenu(); setAmendingCommit(commit); },
+                });
+            }
             items.push({ label: '', separator: true, onClick: () => {} });
             items.push({
                 label: 'Hard Reset to Here',
@@ -491,7 +521,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSelect, handleHardReset]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSelect, handleHardReset, commits, closeContextMenu]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -704,6 +734,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 fetchCommits(true);
             }}
         />
+        {amendingCommit && (
+            <AmendMessageModal
+                commit={amendingCommit}
+                onConfirm={handleAmendConfirm}
+                onCancel={() => setAmendingCommit(null)}
+            />
+        )}
         </>
     );
 }

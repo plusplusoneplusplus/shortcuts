@@ -718,3 +718,76 @@ describe('BranchService', () => {
         });
     });
 });
+
+// ── amendCommitMessage ───────────────────────────────────────
+describe('BranchService.amendCommitMessage', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('runs git commit --amend --only -m with title only', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('abc1234\n');
+
+        const result = await service.amendCommitMessage('/repo', 'Fix typo in README');
+
+        expect(result).toEqual({ success: true, hash: 'abc1234' });
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            'git commit --amend --only -m "Fix typo in README"',
+            expect.objectContaining({ cwd: '/repo' })
+        );
+    });
+
+    it('includes body separated by double newline', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('def5678\n');
+
+        const result = await service.amendCommitMessage('/repo', 'feat: add button', 'Extended description here.');
+
+        expect(result.success).toBe(true);
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            'git commit --amend --only -m "feat: add button\n\nExtended description here."',
+            expect.objectContaining({ cwd: '/repo' })
+        );
+    });
+
+    it('returns error when title is empty', async () => {
+        const result = await service.amendCommitMessage('/repo', '');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/title.*empty/i);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns error when title is whitespace only', async () => {
+        const result = await service.amendCommitMessage('/repo', '   ');
+
+        expect(result.success).toBe(false);
+        expect(mockedExecAsync).not.toHaveBeenCalled();
+    });
+
+    it('returns error result on git failure', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('nothing to amend'));
+
+        const result = await service.amendCommitMessage('/repo', 'Some title');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('nothing to amend');
+    });
+
+    it('escapes double quotes in the message', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+        mockedExecSync.mockReturnValueOnce('aaa0001\n');
+
+        await service.amendCommitMessage('/repo', 'Fix "the" bug');
+
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            'git commit --amend --only -m "Fix \\"the\\" bug"',
+            expect.anything()
+        );
+    });
+});
