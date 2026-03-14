@@ -27,7 +27,6 @@ import {
     Attachment,
     DeliveryMode,
     MCPServerConfig,
-    MCPControlOptions,
     SendMessageOptions,
     SystemMessageConfig,
     TokenUsage,
@@ -36,13 +35,9 @@ import {
     PermissionRequest,
     PermissionRequestResult,
     PermissionHandler,
-    MCPServerConfigBase,
-    MCPLocalServerConfig,
-    MCPRemoteServerConfig,
     approveAllPermissions,
     denyAllPermissions,
     ToolEvent,
-    AgentMode,
 } from './types';
 
 // Re-export types that were previously exported from this file
