@@ -295,6 +295,31 @@ export class RepoTreeService {
     }
 
     /**
+     * List the contents of `relativePath` to the given depth.
+     * depth=1 returns the same flat TreeListResult as listDirectory().
+     * depth>1 populates `children` on directory entries recursively.
+     * Truncated directories are not recursed into.
+     */
+    async listDirectoryDeep(
+        repoId: string,
+        relativePath: string,
+        depth: number,
+        options?: { showIgnored?: boolean },
+    ): Promise<TreeListResult> {
+        const result = await this.listDirectory(repoId, relativePath, options);
+        if (depth <= 1) {
+            return result;
+        }
+        for (const entry of result.entries) {
+            if (entry.type === 'dir' && !result.truncated) {
+                const child = await this.listDirectoryDeep(repoId, entry.path, depth - 1, options);
+                entry.children = child.entries;
+            }
+        }
+        return result;
+    }
+
+    /**
      * Recursively list all files under `relativePath` inside the repo.
      * Returns a flat array of relative paths (files only, no directories).
      * Respects gitignore unless `showIgnored` is set. Capped by `maxEntries`.

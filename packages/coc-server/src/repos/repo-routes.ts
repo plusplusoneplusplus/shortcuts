@@ -107,7 +107,11 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                 }
 
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
-                const result = await service.listDirectory(parsed.repoId, parsed.path, { showIgnored });
+                const rawDepth = parseInt(String(parsedUrl.query.depth ?? '1'), 10);
+                const depth = Math.min(Math.max(isNaN(rawDepth) ? 1 : rawDepth, 1), 5);
+                const result = depth > 1
+                    ? await service.listDirectoryDeep(parsed.repoId, parsed.path, depth, { showIgnored })
+                    : await service.listDirectory(parsed.repoId, parsed.path, { showIgnored });
                 sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {

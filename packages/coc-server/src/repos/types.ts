@@ -24,6 +24,8 @@ export interface TreeEntry {
     size?: number;
     /** Path relative to the repo root, e.g. "src/index.ts". */
     path: string;
+    /** Nested children, populated only for directory entries when depth > 1. */
+    children?: TreeEntry[];
 }
 
 /** Result of listing a single directory inside a repo. */
