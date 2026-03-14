@@ -143,6 +143,19 @@ export function parseActivityDeepLink(hash: string): string | null {
 
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'copilot', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
+/** Maps Alt+<letter> to a repo sub-tab key. Used by the keyboard handler and tooltip hints. */
+export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
+    i: 'info',
+    g: 'git',
+    e: 'explorer',
+    p: 'tasks',
+    r: 'pull-requests',
+    a: 'activity',
+    w: 'workflows',
+    s: 'schedules',
+    c: 'copilot',
+};
+
 export function Router() {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
@@ -321,32 +334,31 @@ export function Router() {
         return () => window.removeEventListener('hashchange', handleHash);
     }, [dispatch, queueDispatch]);
 
-    // Keyboard shortcut: A → jump to Activity sub-tab (only when Repos tab is active + a repo is selected)
+    // Keyboard shortcuts for repo sub-tabs:
+    //   Alt+<letter> → switches to the corresponding sub-tab (see REPO_TAB_SHORTCUTS)
+    //   bare W       → switches to the wiki sub-tab (legacy shortcut, preserved)
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
             if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
-            if (e.key === 'a' || e.key === 'A') {
-                dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-                location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/activity';
-            }
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [dispatch, state.activeTab, state.selectedRepoId]);
 
-    // Keyboard shortcut: W → jump to Wiki sub-tab (only when Repos tab is active + a repo is selected)
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            const target = e.target as HTMLElement;
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
-            if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
-            if (e.key === 'w' || e.key === 'W') {
-                dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
-                location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/wiki';
+            if (e.altKey && !e.ctrlKey && !e.metaKey) {
+                const tab = REPO_TAB_SHORTCUTS[e.key.toLowerCase()];
+                if (tab) {
+                    e.preventDefault();
+                    dispatch({ type: 'SET_REPO_SUB_TAB', tab });
+                    const suffix = tab !== 'info' ? '/' + tab : '';
+                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + suffix;
+                }
+                return;
+            }
+
+            if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                if (e.key === 'w' || e.key === 'W') {
+                    dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
+                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/wiki';
+                }
             }
         };
         document.addEventListener('keydown', handler);

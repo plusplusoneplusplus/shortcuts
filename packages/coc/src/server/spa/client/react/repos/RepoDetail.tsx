@@ -36,16 +36,16 @@ interface RepoDetailProps {
     onRefresh: () => void;
 }
 
-export const SUB_TABS: { key: RepoSubTab; label: string }[] = [
-    { key: 'info', label: 'Info' },
-    { key: 'git', label: 'Git' },
-    { key: 'explorer', label: 'Explorer' },
-    { key: 'tasks', label: 'Plans' },
-    { key: 'pull-requests', label: 'Pull Requests' },
-    { key: 'activity', label: 'Activity' },
-    { key: 'workflows', label: 'Workflows' },
-    { key: 'schedules', label: 'Schedules' },
-    { key: 'copilot', label: 'Copilot' },
+export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
+    { key: 'info', label: 'Info', shortcut: 'Alt+I' },
+    { key: 'git', label: 'Git', shortcut: 'Alt+G' },
+    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
+    { key: 'tasks', label: 'Plans', shortcut: 'Alt+P' },
+    { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
+    { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
+    { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
+    { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
+    { key: 'copilot', label: 'Copilot', shortcut: 'Alt+C' },
 ];
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
@@ -362,6 +362,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     <button
                         key={t.key}
                         data-subtab={t.key}
+                        title={t.shortcut}
                         className={cn(
                             'repo-sub-tab text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
                             isMobile ? 'px-2 py-1.5' : 'px-3 py-2',
