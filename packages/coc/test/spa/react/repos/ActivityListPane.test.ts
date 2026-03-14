@@ -337,6 +337,60 @@ describe('ActivityListPane pinned chats', () => {
         });
     });
 
+    describe('collapsible running tasks section', () => {
+        it('renders a running tasks section toggle button with data-testid', () => {
+            expect(source).toContain('data-testid="running-tasks-section-toggle"');
+        });
+
+        it('uses showRunning state for collapsing', () => {
+            expect(source).toContain('showRunning');
+            expect(source).toContain('setShowRunning');
+        });
+
+        it('initializes showRunning to true', () => {
+            expect(source).toContain('const [showRunning, setShowRunning] = useState(true)');
+        });
+
+        it('renders chevron toggle in running tasks header', () => {
+            const runningHeader = source.substring(
+                source.indexOf('running-tasks-section-toggle'),
+                source.indexOf('running-tasks-section-toggle') + 200,
+            );
+            expect(runningHeader).toContain('showRunning ? \'▼\' : \'▶\'');
+        });
+
+        it('wraps running task list in showRunning conditional', () => {
+            expect(source).toContain('{showRunning && (');
+        });
+    });
+
+    describe('collapsible queued tasks section', () => {
+        it('renders a queued tasks section toggle button with data-testid', () => {
+            expect(source).toContain('data-testid="queued-tasks-section-toggle"');
+        });
+
+        it('uses showQueued state for collapsing', () => {
+            expect(source).toContain('showQueued');
+            expect(source).toContain('setShowQueued');
+        });
+
+        it('initializes showQueued to true', () => {
+            expect(source).toContain('const [showQueued, setShowQueued] = useState(true)');
+        });
+
+        it('renders chevron toggle in queued tasks header', () => {
+            const queuedHeader = source.substring(
+                source.indexOf('queued-tasks-section-toggle'),
+                source.indexOf('queued-tasks-section-toggle') + 200,
+            );
+            expect(queuedHeader).toContain('showQueued ? \'▼\' : \'▶\'');
+        });
+
+        it('wraps queued task list in showQueued conditional', () => {
+            expect(source).toContain('{showQueued && (');
+        });
+    });
+
     describe('keyword search (Ctrl+F)', () => {
         it('exports taskMatchesSearch helper', () => {
             expect(source).toContain('export function taskMatchesSearch(');

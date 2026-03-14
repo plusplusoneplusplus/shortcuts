@@ -228,6 +228,8 @@ export function ActivityListPane({
         return filteredRunning.filter(t => pinnedChatIds.has(t.id)).length;
     }, [filteredRunning, pinnedChatIds]);
 
+    const [showRunning, setShowRunning] = useState(true);
+    const [showQueued, setShowQueued] = useState(true);
     const [showPinned, setShowPinned] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
@@ -466,93 +468,105 @@ export function ActivityListPane({
 
                 {filteredRunning.length > 0 && (
                     <div>
-                        <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] mb-1 font-medium">
-                            Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            {filteredRunning.map(task => (
-                                <QueueTaskItem
-                                    key={task.id}
-                                    task={task}
-                                    status="running"
-                                    now={now}
-                                    selected={selectedTaskId === task.id}
-                                    isPinned={pinnedChatIds?.has(task.id) ?? false}
-                                    onClick={() => onSelectTask(task.id, task)}
-                                    onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
-                                />
-                            ))}
-                        </div>
+                        <button
+                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
+                            onClick={() => setShowRunning(!showRunning)}
+                            data-testid="running-tasks-section-toggle"
+                        >
+                            {showRunning ? '▼' : '▶'} Running Tasks <span className="text-[10px]">({filteredRunning.length})</span>
+                        </button>
+                        {showRunning && (
+                            <div className="flex flex-col gap-1">
+                                {filteredRunning.map(task => (
+                                    <QueueTaskItem
+                                        key={task.id}
+                                        task={task}
+                                        status="running"
+                                        now={now}
+                                        selected={selectedTaskId === task.id}
+                                        isPinned={pinnedChatIds?.has(task.id) ?? false}
+                                        onClick={() => onSelectTask(task.id, task)}
+                                        onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {filteredQueued.length > 0 && (
                     <div>
-                        <div className="text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] mb-1 font-medium">
-                            Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            {!isMobile && (
-                                <PauseInsertZone
-                                    index={-1}
-                                    active={insertingPauseAt === -1}
-                                    onMouseEnter={() => setInsertingPauseAt(-1)}
-                                    onMouseLeave={() => setInsertingPauseAt(null)}
-                                    onClick={() => handleInsertPauseMarker(-1)}
-                                />
-                            )}
-                            {filteredQueued.map((item: any, index: number) => {
-                                const globalIndex = queued.findIndex((q: any) => q.id === item.id);
-                                if (item.kind === 'pause-marker') {
+                        <button
+                            className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors mb-1"
+                            onClick={() => setShowQueued(!showQueued)}
+                            data-testid="queued-tasks-section-toggle"
+                        >
+                            {showQueued ? '▼' : '▶'} Queued Tasks <span className="text-[10px]">({filteredQueued.filter((t: any) => t.kind !== 'pause-marker').length})</span>
+                        </button>
+                        {showQueued && (
+                            <div className="flex flex-col gap-1">
+                                {!isMobile && (
+                                    <PauseInsertZone
+                                        index={-1}
+                                        active={insertingPauseAt === -1}
+                                        onMouseEnter={() => setInsertingPauseAt(-1)}
+                                        onMouseLeave={() => setInsertingPauseAt(null)}
+                                        onClick={() => handleInsertPauseMarker(-1)}
+                                    />
+                                )}
+                                {filteredQueued.map((item: any, index: number) => {
+                                    const globalIndex = queued.findIndex((q: any) => q.id === item.id);
+                                    if (item.kind === 'pause-marker') {
+                                        return (
+                                            <PauseMarkerRow
+                                                key={item.id}
+                                                markerId={item.id}
+                                                onRemove={() => handleRemovePauseMarker(item.id)}
+                                            />
+                                        );
+                                    }
                                     return (
-                                        <PauseMarkerRow
-                                            key={item.id}
-                                            markerId={item.id}
-                                            onRemove={() => handleRemovePauseMarker(item.id)}
-                                        />
-                                    );
-                                }
-                                return (
-                                    <div key={item.id}>
-                                        <div
-                                            data-queue-index={index}
-                                            draggable={!isMobile}
-                                            onDragStart={isMobile ? undefined : createDragStartHandler(item.id, index)}
-                                            onDragEnd={isMobile ? undefined : createDragEndHandler()}
-                                            onDragOver={isMobile ? undefined : createDragOverHandler(index)}
-                                            onDragEnter={isMobile ? undefined : createDragEnterHandler(index)}
-                                            onDragLeave={isMobile ? undefined : createDragLeaveHandler(index)}
-                                            onDrop={isMobile ? undefined : createDropHandler(index, handleMoveToPosition)}
-                                            onTouchStart={isMobile ? touchDrag.createTouchStartHandler(item.id, index, handleMoveToPosition) : undefined}
-                                            className={cn(
-                                                !isMobile && 'cursor-grab active:cursor-grabbing',
-                                                activeDraggedTaskId === item.id && 'opacity-40',
-                                                activeDropTargetIndex === index && activeDropPosition === 'above' && 'border-t-2 border-[#007fd4]',
-                                                activeDropTargetIndex === index && activeDropPosition === 'below' && 'border-b-2 border-[#007fd4]',
+                                        <div key={item.id}>
+                                            <div
+                                                data-queue-index={index}
+                                                draggable={!isMobile}
+                                                onDragStart={isMobile ? undefined : createDragStartHandler(item.id, index)}
+                                                onDragEnd={isMobile ? undefined : createDragEndHandler()}
+                                                onDragOver={isMobile ? undefined : createDragOverHandler(index)}
+                                                onDragEnter={isMobile ? undefined : createDragEnterHandler(index)}
+                                                onDragLeave={isMobile ? undefined : createDragLeaveHandler(index)}
+                                                onDrop={isMobile ? undefined : createDropHandler(index, handleMoveToPosition)}
+                                                onTouchStart={isMobile ? touchDrag.createTouchStartHandler(item.id, index, handleMoveToPosition) : undefined}
+                                                className={cn(
+                                                    !isMobile && 'cursor-grab active:cursor-grabbing',
+                                                    activeDraggedTaskId === item.id && 'opacity-40',
+                                                    activeDropTargetIndex === index && activeDropPosition === 'above' && 'border-t-2 border-[#007fd4]',
+                                                    activeDropTargetIndex === index && activeDropPosition === 'below' && 'border-b-2 border-[#007fd4]',
+                                                )}
+                                            >
+                                                <QueueTaskItem
+                                                    task={item}
+                                                    status="queued"
+                                                    now={now}
+                                                    selected={selectedTaskId === item.id}
+                                                    onClick={() => onSelectTask(item.id, item)}
+                                                    onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
+                                                />
+                                            </div>
+                                            {!isMobile && (
+                                                <PauseInsertZone
+                                                    index={globalIndex}
+                                                    active={insertingPauseAt === globalIndex}
+                                                    onMouseEnter={() => setInsertingPauseAt(globalIndex)}
+                                                    onMouseLeave={() => setInsertingPauseAt(null)}
+                                                    onClick={() => handleInsertPauseMarker(globalIndex)}
+                                                />
                                             )}
-                                        >
-                                            <QueueTaskItem
-                                                task={item}
-                                                status="queued"
-                                                now={now}
-                                                selected={selectedTaskId === item.id}
-                                                onClick={() => onSelectTask(item.id, item)}
-                                                onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
-                                            />
                                         </div>
-                                        {!isMobile && (
-                                            <PauseInsertZone
-                                                index={globalIndex}
-                                                active={insertingPauseAt === globalIndex}
-                                                onMouseEnter={() => setInsertingPauseAt(globalIndex)}
-                                                onMouseLeave={() => setInsertingPauseAt(null)}
-                                                onClick={() => handleInsertPauseMarker(globalIndex)}
-                                            />
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 )}
 
