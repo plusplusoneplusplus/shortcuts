@@ -14,6 +14,12 @@
     transition: background-color 0.2s;
 }
 
+/* Explicit override for commented-text inside code blocks (higher specificity) */
+.code-block .commented-text {
+    background-color: var(--highlight-open);
+    border-bottom-color: var(--comment-border-user);
+}
+
 .commented-text:hover {
     background-color: var(--highlight-hover);
 }

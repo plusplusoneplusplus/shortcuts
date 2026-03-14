@@ -22,6 +22,7 @@ import { MessageContext } from './editor-host';
 import { EditorMessageRouter, WebviewMessage, COLLAPSED_SECTIONS_KEY_PREFIX } from './editor-message-router';
 import { VscodeEditorHost } from './vscode-editor-host';
 import { StateStore } from './state-store';
+import { CommentsSettings } from './types';
 
 /**
  * Review Editor View - Custom editor provider for markdown files with inline comments

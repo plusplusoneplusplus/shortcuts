@@ -1368,4 +1368,141 @@ suite('Webview Logic Tests', () => {
             );
         });
     });
+
+    suite('Code Block Comment Highlighting', () => {
+        /**
+         * Simulate renderCodeBlock inline highlight logic using getHighlightColumnsForLine.
+         * This mirrors the fixed renderCodeBlock implementation.
+         */
+        function renderCodeLineWithComments(
+            htmlLine: string,
+            plainLine: string,
+            comments: MarkdownComment[],
+            actualLine: number
+        ): string {
+            if (comments.length === 0) return htmlLine;
+            const sorted = [...comments].sort((a, b) => b.selection.startColumn - a.selection.startColumn);
+            let result = htmlLine;
+            sorted.forEach(comment => {
+                const { startCol, endCol } = getHighlightColumnsForLine(comment.selection, actualLine, plainLine.length);
+                const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+                const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+                result = applyCommentHighlightToRange(result, plainLine, startCol, endCol, comment.id, statusClass, typeClass);
+            });
+            return result;
+        }
+
+        function makeComment(id: string, startLine: number, startCol: number, endLine: number, endCol: number, status: CommentStatus = 'open'): MarkdownComment {
+            return {
+                id,
+                filePath: '/test/file.md',
+                selection: { startLine, startColumn: startCol, endLine, endColumn: endCol },
+                selectedText: 'text',
+                comment: 'test',
+                status,
+                createdAt: '2024-01-01T00:00:00Z',
+                updatedAt: '2024-01-01T00:00:00Z'
+            };
+        }
+
+        suite('single-line code block comment', () => {
+            test('should produce commented-text span for plain text line', () => {
+                const plain = 'const x = 5;';
+                const comment = makeComment('c1', 2, 1, 2, 6);  // "const"
+                const result = renderCodeLineWithComments(plain, plain, [comment], 2);
+                assert.ok(result.includes('commented-text'), 'Should have commented-text class');
+                assert.ok(result.includes('data-comment-id="c1"'), 'Should have correct comment id');
+            });
+
+            test('should produce commented-text span inside syntax-highlighted HTML', () => {
+                // Simulate hljs output for "const x = 5;"
+                const html = '<span class="hljs-keyword">const</span> x = <span class="hljs-number">5</span>;';
+                const plain = 'const x = 5;';
+                const comment = makeComment('c1', 2, 1, 2, 6);  // columns 1-6 → "const"
+                const result = renderCodeLineWithComments(html, plain, [comment], 2);
+                assert.ok(result.includes('commented-text'), 'Should have commented-text class');
+                assert.ok(result.includes('data-comment-id="c1"'), 'Should have correct comment id');
+                assert.ok(result.includes('hljs-keyword'), 'Should preserve syntax highlight spans');
+            });
+
+            test('should apply resolved status class', () => {
+                const plain = 'const x = 5;';
+                const comment = makeComment('c1', 2, 1, 2, 6, 'resolved');
+                const result = renderCodeLineWithComments(plain, plain, [comment], 2);
+                assert.ok(result.includes('resolved'), 'Should include resolved class');
+            });
+
+            test('should apply highlight to mid-line selection', () => {
+                const plain = 'let result = value;';
+                const comment = makeComment('c1', 3, 5, 3, 11);  // "result"
+                const result = renderCodeLineWithComments(plain, plain, [comment], 3);
+                assert.ok(result.includes('commented-text'), 'Should have commented-text class');
+                // Content before selection should be preserved
+                assert.ok(result.startsWith('let ') || result.includes('let '), 'Should preserve content before highlight');
+            });
+        });
+
+        suite('multi-line code block comment column adjustment', () => {
+            test('first line of multi-line comment uses startColumn to end of line', () => {
+                const plain = 'function foo() {';
+                const comment = makeComment('c1', 5, 10, 7, 3);  // starts at col 10 on line 5, ends col 3 on line 7
+                const { startCol, endCol } = getHighlightColumnsForLine(comment.selection, 5, plain.length);
+                assert.strictEqual(startCol, 10, 'First line should start at startColumn');
+                assert.strictEqual(endCol, plain.length + 1, 'First line should end at line end');
+            });
+
+            test('middle line of multi-line comment gets full-width highlight (col 1 to end)', () => {
+                const plain = '  const x = 1;';
+                const comment = makeComment('c1', 5, 3, 8, 5);  // middle line is 6 or 7
+                const { startCol, endCol } = getHighlightColumnsForLine(comment.selection, 6, plain.length);
+                assert.strictEqual(startCol, 1, 'Middle line should start at column 1');
+                assert.strictEqual(endCol, plain.length + 1, 'Middle line should end at line end');
+            });
+
+            test('last line of multi-line comment uses col 1 to endColumn', () => {
+                const plain = '  return x;';
+                const comment = makeComment('c1', 5, 3, 8, 5);
+                const { startCol, endCol } = getHighlightColumnsForLine(comment.selection, 8, plain.length);
+                assert.strictEqual(startCol, 1, 'Last line should start at column 1');
+                assert.strictEqual(endCol, 5, 'Last line should end at endColumn');
+            });
+
+            test('middle line produces full-width commented-text span', () => {
+                const plain = '  let y = 2;';
+                const comment = makeComment('c1', 10, 5, 12, 3);
+                const result = renderCodeLineWithComments(plain, plain, [comment], 11);
+                assert.ok(result.includes('commented-text'), 'Should have commented-text class');
+                // The highlighted portion should cover the whole plain line
+                const textContent = result.replace(/<[^>]+>/g, '');
+                assert.strictEqual(textContent, plain, 'Full line text should be present');
+            });
+
+            test('last line produces partial commented-text span up to endColumn', () => {
+                const plain = 'end;';
+                // endColumn=4 means columns 1-4 → "end"
+                const comment = makeComment('c1', 10, 5, 12, 4);
+                const result = renderCodeLineWithComments(plain, plain, [comment], 12);
+                assert.ok(result.includes('commented-text'), 'Should have commented-text class');
+                // The highlighted portion should contain "end" (columns 1-4)
+                const match = result.match(/<span[^>]*commented-text[^>]*>([^<]*)<\/span>/);
+                assert.ok(match, 'Should find commented-text span');
+                assert.strictEqual(match![1], 'end', 'Should highlight "end" (columns 1-3)');
+            });
+        });
+
+        suite('multiple comments on same code line', () => {
+            test('should apply multiple highlights right-to-left without corruption', () => {
+                const plain = 'const x = foo;';
+                const c1 = makeComment('c1', 2, 1, 2, 6);   // "const"
+                const c2 = makeComment('c2', 2, 11, 2, 14); // "foo"
+                const result = renderCodeLineWithComments(plain, plain, [c1, c2], 2);
+                assert.ok(result.includes('data-comment-id="c1"'), 'Should have c1');
+                assert.ok(result.includes('data-comment-id="c2"'), 'Should have c2');
+                // c2 is rightmost (col 11) and should be applied first (right-to-left)
+                const c2Pos = result.indexOf('data-comment-id="c2"');
+                const c1Pos = result.indexOf('data-comment-id="c1"');
+                assert.ok(c1Pos < c2Pos, 'c1 (leftmost) should appear before c2 in output');
+            });
+        });
+    });
 });

@@ -5,7 +5,7 @@
 import { MarkdownComment } from '../types';
 import { splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
 import { escapeHtml } from '../webview-logic/markdown-renderer';
-import { applyCommentHighlightToRange } from '../webview-logic/selection-utils';
+import { applyCommentHighlightToRange, getHighlightColumnsForLine } from '../webview-logic/selection-utils';
 import { showFloatingPanel } from './panel-manager';
 import { state } from './state';
 import { CodeBlock } from './types';
@@ -108,9 +108,18 @@ export function renderCodeBlock(
         const lineComments = getVisibleCommentsForLine(actualLine, commentsMap);
 
         let lineContent = line || '&nbsp;';
-        // Apply comment highlights to this code line
+        // Apply comment highlights to this code line.
+        // Use getHighlightColumnsForLine so multi-line comments highlight the
+        // correct column range per line (full-width for middle lines, partial for
+        // first/last lines) — matching the regular markdown render path.
         if (lineComments.length > 0) {
-            lineContent = applyCommentsToBlockContent(lineContent, plainLine, lineComments);
+            const sorted = [...lineComments].sort((a, b) => b.selection.startColumn - a.selection.startColumn);
+            sorted.forEach(comment => {
+                const { startCol, endCol } = getHighlightColumnsForLine(comment.selection, actualLine, plainLine.length);
+                const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+                const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+                lineContent = applyCommentHighlightToRange(lineContent, plainLine, startCol, endCol, comment.id, statusClass, typeClass);
+            });
         }
 
         return '<span class="code-line" data-line="' + actualLine + '">' + lineContent + '</span>';
