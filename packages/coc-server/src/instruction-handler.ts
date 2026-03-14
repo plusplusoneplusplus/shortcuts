@@ -50,6 +50,10 @@ function parseMode(raw: string): InstructionMode | undefined {
     return VALID_MODES.has(raw as InstructionMode) ? (raw as InstructionMode) : undefined;
 }
 
+function invalidModeError(raw: string | undefined): ReturnType<typeof badRequest> {
+    return badRequest(`Invalid mode '${raw}'. Valid values: base, ask, plan, autopilot`);
+}
+
 // ============================================================================
 // Route registration
 // ============================================================================
@@ -102,7 +106,7 @@ export function registerInstructionRoutes(routes: Route[], store: ProcessStore):
 
                 const mode = parseMode(match![2] ?? '');
                 if (!mode) {
-                    return handleAPIError(res, badRequest(`Invalid mode '${match![2]}'. Valid values: base, ask, plan, autopilot`));
+                    return handleAPIError(res, invalidModeError(match![2]));
                 }
 
                 const filePath = resolveInstructionPath(workspace.rootPath, mode);
@@ -129,7 +133,7 @@ export function registerInstructionRoutes(routes: Route[], store: ProcessStore):
 
                 const mode = parseMode(match![2] ?? '');
                 if (!mode) {
-                    return handleAPIError(res, badRequest(`Invalid mode '${match![2]}'. Valid values: base, ask, plan, autopilot`));
+                    return handleAPIError(res, invalidModeError(match![2]));
                 }
 
                 const body = await parseBodyOrReject(req, res);
@@ -163,7 +167,7 @@ export function registerInstructionRoutes(routes: Route[], store: ProcessStore):
 
                 const mode = parseMode(match![2] ?? '');
                 if (!mode) {
-                    return handleAPIError(res, badRequest(`Invalid mode '${match![2]}'. Valid values: base, ask, plan, autopilot`));
+                    return handleAPIError(res, invalidModeError(match![2]));
                 }
 
                 const filePath = resolveInstructionPath(workspace.rootPath, mode);
