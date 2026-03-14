@@ -360,8 +360,12 @@ function AppInner() {
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <ReposProvider>
-                <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
-                <Router />
+                <div className="flex flex-col h-full">
+                    <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
+                    <main className="flex-1 overflow-hidden min-h-0 pb-14 md:pb-0">
+                        <Router />
+                    </main>
+                </div>
                 <FloatingChatManager />
                 <BottomNav />
                 <ToastContainer toasts={toasts} removeToast={removeToast} />

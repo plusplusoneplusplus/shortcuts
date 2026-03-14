@@ -1353,6 +1353,13 @@
 }
 
 @layer base {
+    /* Full-viewport height chain so h-full works inside all views */
+    html,
+    body,
+    #app-root {
+        height: 100%;
+    }
+
     /* Responsive body text */
     body {
         @apply text-sm lg:text-base;
