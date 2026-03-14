@@ -22,7 +22,6 @@ import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types
 import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
 import type { GitCommitItem } from './CommitList';
-
 type PopupState = {
     position: { top: number; left: number };
     selection: DiffCommentSelection;
@@ -63,6 +62,20 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError } = useDiffComments(workspaceId, diffContext);
+
+    // Commit-level comments (only fetched when !filePath)
+    const [allCommitComments, setAllCommitComments] = useState<DiffComment[]>([]);
+    const [allCommentsLoading, setAllCommentsLoading] = useState(false);
+
+    useEffect(() => {
+        if (filePath) return;
+        setAllCommentsLoading(true);
+        const params = new URLSearchParams({ oldRef: `${hash}^`, newRef: hash });
+        fetchApi(`/api/diff-comments/${encodeURIComponent(workspaceId)}?${params}`)
+            .then((data: { comments?: DiffComment[] }) => setAllCommitComments(data.comments ?? []))
+            .catch(() => setAllCommitComments([]))
+            .finally(() => setAllCommentsLoading(false));
+    }, [workspaceId, hash, filePath]);
 
     // Always fetch diff on mount / hash / filePath change
     useEffect(() => {
@@ -255,6 +268,14 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                 <div className="sticky top-0 z-10 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-end">
                     <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                    <button
+                        onClick={() => setSidebarOpen(o => !o)}
+                        title="Toggle comments"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        data-testid="toggle-comments-btn"
+                    >
+                        💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
+                    </button>
                 </div>
             )}
 
@@ -321,6 +342,20 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
+                        data-testid="diff-comment-sidebar"
+                    />
+                )}
+                {sidebarOpen && !filePath && (
+                    <CommentSidebar
+                        comments={allCommitComments}
+                        loading={allCommentsLoading}
+                        showFilePath
+                        onResolve={() => undefined}
+                        onUnresolve={() => undefined}
+                        onDelete={() => undefined}
+                        onEdit={() => undefined}
+                        onAskAI={() => undefined}
+                        onCommentClick={handleSidebarCommentClick}
                         data-testid="diff-comment-sidebar"
                     />
                 )}

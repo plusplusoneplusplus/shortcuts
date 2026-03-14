@@ -114,10 +114,10 @@ describe('CommitDetail — comment integration', () => {
         expect(screen.queryByTestId('comment-sidebar')).toBeNull();
     });
 
-    // No toggle button when filePath is absent
-    it('no toggle button when filePath is absent', async () => {
+    // Toggle button is present even when filePath is absent (commit-level comments)
+    it('toggle button is present when filePath is absent', async () => {
         await renderDetail({});
-        expect(screen.queryByTestId('toggle-comments-btn')).toBeNull();
+        expect(screen.queryByTestId('toggle-comments-btn')).toBeTruthy();
     });
 
     // 3. Popup appears when onAddComment fires

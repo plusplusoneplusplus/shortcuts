@@ -11,8 +11,8 @@ type StatusFilter = 'all' | 'open' | 'resolved';
 type CategoryFilter = string;
 
 export interface CommentSidebarProps {
-    taskId: string;
-    filePath: string;
+    taskId?: string;
+    filePath?: string;
     comments: AnyComment[];
     filteredComments?: AnyComment[];
     loading: boolean;
@@ -22,6 +22,7 @@ export interface CommentSidebarProps {
     fullWidth?: boolean;
     showHeader?: boolean;
     showFilters?: boolean;
+    showFilePath?: boolean;
     onResolve: (id: string) => void;
     onUnresolve: (id: string) => void;
     onDelete: (id: string) => void;
@@ -47,6 +48,7 @@ export function CommentSidebar({
     fullWidth = false,
     showHeader = true,
     showFilters = true,
+    showFilePath = false,
     onResolve,
     onUnresolve,
     onDelete,
@@ -247,6 +249,7 @@ export function CommentSidebar({
                         onFixWithAI={onFixWithAI ? () => onFixWithAI(comment.id) : undefined}
                         fixLoading={resolvingCommentId === comment.id}
                         disabled={resolving}
+                        showFilePath={showFilePath}
                     />
                     </div>
                 ))}

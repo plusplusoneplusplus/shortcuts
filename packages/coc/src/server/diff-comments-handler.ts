@@ -420,18 +420,25 @@ export function registerDiffCommentsRoutes(
 
     // ------------------------------------------------------------------
     // GET /api/diff-comments/:wsId — list all comments in workspace
+    // Optional query params: oldRef, newRef — filter by commit range
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
         pattern: collectionPattern,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const [, wsId] = match!;
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
             try {
                 const comments = await manager.listAllComments(wsId);
-                sendJSON(res, 200, { comments });
+                const url = new URL(req.url!, 'http://x');
+                const oldRef = url.searchParams.get('oldRef');
+                const newRef = url.searchParams.get('newRef');
+                const filtered = (oldRef && newRef)
+                    ? comments.filter(c => c.context.oldRef === oldRef && c.context.newRef === newRef)
+                    : comments;
+                sendJSON(res, 200, { comments: filtered });
             } catch {
                 sendError(res, 500, 'Failed to retrieve comments');
             }

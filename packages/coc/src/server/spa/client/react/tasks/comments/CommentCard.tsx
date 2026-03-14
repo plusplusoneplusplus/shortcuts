@@ -12,6 +12,7 @@ import { MarkdownView } from '../../processes/MarkdownView';
 import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import { AICommandMenu } from './AICommandMenu';
 import type { AnyComment } from '../../../shared-comment-types';
+import { isDiffComment } from '../../../shared-comment-types';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
@@ -44,6 +45,7 @@ export interface CommentCardProps {
     onFixWithAI?: () => void;
     fixLoading?: boolean;
     disabled?: boolean;
+    showFilePath?: boolean;
 }
 
 export function CommentCard({
@@ -60,6 +62,7 @@ export function CommentCard({
     onFixWithAI,
     fixLoading,
     disabled = false,
+    showFilePath = false,
 }: CommentCardProps) {
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(comment.comment);
@@ -98,6 +101,11 @@ export function CommentCard({
                 <span className="text-[10px] text-[#848484] truncate">{comment.author || 'Anonymous'}</span>
                 <span className="text-[10px] text-[#a0a0a0] ml-auto shrink-0">{formatRelative(comment.createdAt)}</span>
             </div>
+            {showFilePath && isDiffComment(comment) && (
+                <span className="text-[10px] font-mono text-[#848484] truncate" title={comment.context.filePath}>
+                    {comment.context.filePath.split('/').pop()}
+                </span>
+            )}
 
             {/* Selected text blockquote */}
             {comment.selectedText && (
