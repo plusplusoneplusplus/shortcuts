@@ -102,4 +102,44 @@ describe('TopBar responsive behavior', () => {
         render(<TopBar />);
         expect(document.getElementById('theme-toggle')).toBeTruthy();
     });
+
+    it('processes button has hidden md:inline-flex classes (hidden on mobile)', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const btn = document.getElementById('processes-toggle')!;
+        expect(btn.className).toContain('hidden');
+        expect(btn.className).toContain('md:inline-flex');
+    });
+
+    it('skills button has hidden md:inline-flex classes (hidden on mobile)', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const btn = document.getElementById('skills-toggle')!;
+        expect(btn.className).toContain('hidden');
+        expect(btn.className).toContain('md:inline-flex');
+    });
+
+    it('logs button has hidden md:inline-flex classes (hidden on mobile)', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const btn = document.getElementById('logs-toggle')!;
+        expect(btn.className).toContain('hidden');
+        expect(btn.className).toContain('md:inline-flex');
+    });
+
+    it('memory button has hidden md:inline-flex classes (hidden on mobile)', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const btn = document.getElementById('memory-toggle')!;
+        expect(btn.className).toContain('hidden');
+        expect(btn.className).toContain('md:inline-flex');
+    });
+
+    it('admin button does NOT have hidden class (always visible)', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const btn = document.getElementById('admin-toggle')!;
+        expect(btn.className).not.toContain('hidden');
+        expect(btn.className).toContain('inline-flex');
+    });
 });

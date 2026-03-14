@@ -138,7 +138,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     id="processes-toggle"
                     data-tab="processes"
                     className={
-                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'processes'
                             ? 'active bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
@@ -153,7 +153,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     id="skills-toggle"
                     data-tab="skills"
                     className={
-                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'skills'
                             ? 'active bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
@@ -168,7 +168,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     id="logs-toggle"
                     data-tab="logs"
                     className={
-                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'logs'
                             ? 'active bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
@@ -183,7 +183,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     id="memory-toggle"
                     data-tab="memory"
                     className={
-                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'memory'
                             ? 'active bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
