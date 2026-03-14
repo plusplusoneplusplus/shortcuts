@@ -338,18 +338,16 @@ export class ProcessWebSocketServer {
     // ========================================================================
 
     private handleClientMessage(client: WSClient, message: ClientMessage): void {
+        client.lastSeen = Date.now();
         switch (message.type) {
             case 'ping':
-                client.lastSeen = Date.now();
                 client.send(JSON.stringify({ type: 'pong' }));
                 break;
             case 'subscribe':
-                client.lastSeen = Date.now();
                 client.workspaceId = message.workspaceId;
                 getServerLogger().debug({ clientId: client.id, channel: `workspace:${message.workspaceId}` }, 'WebSocket subscribed');
                 break;
             case 'subscribe-wiki':
-                client.lastSeen = Date.now();
                 if (!client.subscribedWikiIds) {
                     client.subscribedWikiIds = new Set();
                 }
@@ -357,7 +355,6 @@ export class ProcessWebSocketServer {
                 getServerLogger().debug({ clientId: client.id, channel: `wiki:${message.wikiId}` }, 'WebSocket subscribed');
                 break;
             case 'subscribe-file':
-                client.lastSeen = Date.now();
                 if (!client.subscribedFiles) {
                     client.subscribedFiles = new Set();
                 }
@@ -365,7 +362,6 @@ export class ProcessWebSocketServer {
                 getServerLogger().debug({ clientId: client.id, channel: `file:${message.filePath}` }, 'WebSocket subscribed');
                 break;
             case 'unsubscribe-file':
-                client.lastSeen = Date.now();
                 client.subscribedFiles?.delete(message.filePath);
                 break;
         }
