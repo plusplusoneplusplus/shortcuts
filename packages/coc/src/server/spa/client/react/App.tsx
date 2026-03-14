@@ -23,6 +23,7 @@ import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
+import { buildNotificationEntry } from './utils/build-notification-entry';
 
 interface MarkdownReviewDialogState {
     open: boolean;
@@ -121,19 +122,7 @@ function AppInner() {
                     const terminalStatuses = ['completed', 'failed', 'cancelled'];
                     if (terminalStatuses.includes(msg.process.status)) {
                         appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
-                        const p = msg.process;
-                        const durationSec = p.endTime && p.startTime
-                            ? Math.round((+new Date(p.endTime) - +new Date(p.startTime)) / 1000)
-                            : null;
-                        const typeMap: Record<string, 'success' | 'error' | 'warning'> = {
-                            completed: 'success', failed: 'error', cancelled: 'warning',
-                        };
-                        addNotification({
-                            type: typeMap[p.status] ?? 'info',
-                            title: `${p.promptPreview ?? 'Run'} ${p.status}`,
-                            detail: [durationSec ? `${durationSec}s` : null, p.metadata?.workspaceId].filter(Boolean).join(' · '),
-                            processId: p.id,
-                        });
+                        addNotification(buildNotificationEntry(msg.process));
                     }
                 }
                 break;

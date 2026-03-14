@@ -60,7 +60,7 @@ export function NotificationBell() {
 
     const navigateToProcess = useCallback(
         (processId: string) => {
-            dispatch({ type: 'SET_SELECTED_ID', id: processId });
+            dispatch({ type: 'SELECT_PROCESS', id: processId });
             dispatch({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
             setOpen(false);
         },

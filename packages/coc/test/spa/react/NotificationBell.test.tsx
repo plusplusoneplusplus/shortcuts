@@ -189,7 +189,7 @@ describe('NotificationBell — actions', () => {
         act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
         act(() => { fireEvent.click(screen.getByTestId('notification-navigate')); });
 
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_ID', id: 'proc-42' });
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SELECT_PROCESS', id: 'proc-42' });
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
     });
 });
