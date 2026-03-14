@@ -291,6 +291,60 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // GET /api/workspaces/discover?path=<dir> — Scan a directory for git repos not yet registered
+    routes.push({
+        method: 'GET',
+        pattern: '/api/workspaces/discover',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '', true);
+            const dirPath = parsed.query['path'] as string | undefined;
+
+            if (!dirPath) {
+                return handleAPIError(res, badRequest('path query parameter is required'));
+            }
+
+            const resolvedPath = path.resolve(dirPath);
+
+            if (!fs.existsSync(resolvedPath)) {
+                return handleAPIError(res, badRequest('path does not exist'));
+            }
+
+            let stat: fs.Stats;
+            try {
+                stat = fs.statSync(resolvedPath);
+            } catch {
+                return handleAPIError(res, badRequest('path is not accessible'));
+            }
+
+            if (!stat.isDirectory()) {
+                return handleAPIError(res, badRequest('path is not a directory'));
+            }
+
+            let entries: fs.Dirent[];
+            try {
+                entries = fs.readdirSync(resolvedPath, { withFileTypes: true });
+            } catch {
+                return handleAPIError(res, badRequest('unable to read directory'));
+            }
+
+            const existingWorkspaces = await store.getWorkspaces();
+            const registeredPaths = new Set(
+                existingWorkspaces.map(ws => path.resolve(ws.rootPath))
+            );
+
+            const repos: Array<{ path: string; name: string }> = [];
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const childPath = path.join(resolvedPath, entry.name);
+                if (!fs.existsSync(path.join(childPath, '.git'))) continue;
+                if (registeredPaths.has(path.resolve(childPath))) continue;
+                repos.push({ path: childPath, name: path.basename(childPath) });
+            }
+
+            sendJSON(res, 200, { repos });
+        },
+    });
+
     // DELETE /api/workspaces/:id — Remove a workspace
     routes.push({
         method: 'DELETE',

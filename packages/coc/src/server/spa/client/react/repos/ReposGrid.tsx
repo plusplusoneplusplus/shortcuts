@@ -11,6 +11,7 @@ import { fetchApi } from '../hooks/useApi';
 import { Button, cn } from '../shared';
 import { RepoCard } from './RepoCard';
 import { AddRepoDialog } from './AddRepoDialog';
+import { AddFolderDialog } from './AddFolderDialog';
 import { groupReposByRemote, applyGroupOrder, groupKey } from './repoGrouping';
 import type { RepoData, RepoGroup } from './repoGrouping';
 import { getApiBase } from '../utils/config';
@@ -42,6 +43,9 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>(loadGroupExpandedState);
     const [addOpen, setAddOpen] = useState(false);
+    const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
 
     // Group order (persisted via /api/preferences)
     const [groupOrder, setGroupOrder] = useState<string[]>([]);
@@ -63,6 +67,18 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
         }).catch(() => {});
         return () => { cancelled = true; };
     }, []);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        if (!menuOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [menuOpen]);
 
     const rawGroups = groupReposByRemote(repos, expandedState);
     const groups = applyGroupOrder(rawGroups, groupOrder);
@@ -275,9 +291,41 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
             {/* Header with add button */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                 <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Repositories</span>
-                <Button variant="primary" size="sm" id="add-repo-btn" data-testid="add-repo-btn" onClick={() => setAddOpen(true)}>
-                    + Add
-                </Button>
+                <div className="relative" ref={menuRef}>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        id="add-repo-btn"
+                        data-testid="add-repo-btn"
+                        onClick={() => setMenuOpen(prev => !prev)}
+                    >
+                        + Add ▾
+                    </Button>
+                    {menuOpen && (
+                        <ul className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-md text-xs py-1">
+                            <li>
+                                <button
+                                    type="button"
+                                    className="w-full text-left px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    data-testid="add-single-repo-item"
+                                    onClick={() => { setMenuOpen(false); setAddOpen(true); }}
+                                >
+                                    Add Repository
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    type="button"
+                                    className="w-full text-left px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]"
+                                    data-testid="add-workspace-folder-item"
+                                    onClick={() => { setMenuOpen(false); setAddFolderOpen(true); }}
+                                >
+                                    Add Workspace Folder
+                                </button>
+                            </li>
+                        </ul>
+                    )}
+                </div>
             </div>
 
             {/* Repo list */}
@@ -299,12 +347,17 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                 </div>
             )}
 
-            {/* Add dialog */}
+            {/* Add dialogs */}
             <AddRepoDialog
                 open={addOpen}
                 onClose={() => setAddOpen(false)}
                 repos={repos}
                 onSuccess={() => { setAddOpen(false); onRefresh(); }}
+            />
+            <AddFolderDialog
+                open={addFolderOpen}
+                onClose={() => setAddFolderOpen(false)}
+                onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
             />
         </div>
     );
