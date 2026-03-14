@@ -24,10 +24,10 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS.find(t => t.key === 'queue')).toBeUndefined();
     });
 
-    it('"info" is followed by "git" entry', () => {
-        const infoIdx = SUB_TABS.findIndex(t => t.key === 'info');
+    it('"activity" is followed by "git" entry', () => {
+        const activityIdx = SUB_TABS.findIndex(t => t.key === 'activity');
         const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
-        expect(gitIdx).toBe(infoIdx + 1);
+        expect(gitIdx).toBe(activityIdx + 1);
     });
 
     it('"git" is the second entry', () => {
@@ -40,7 +40,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['info', 'git', 'explorer', 'tasks', 'pull-requests', 'activity', 'workflows', 'schedules', 'copilot']);
+        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'info', 'explorer', 'workflows', 'schedules', 'copilot']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {
@@ -48,12 +48,12 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab).toBeUndefined();
     });
 
-    it('has explorer as the third tab (after git)', () => {
-        expect(SUB_TABS[2].key).toBe('explorer');
+    it('has tasks as the third tab (after git)', () => {
+        expect(SUB_TABS[2].key).toBe('tasks');
     });
 
-    it('activity is the sixth entry (after pull-requests)', () => {
-        expect(SUB_TABS[5].key).toBe('activity');
+    it('activity is the first entry', () => {
+        expect(SUB_TABS[0].key).toBe('activity');
     });
 
     it('tasks tab has label "Plans"', () => {

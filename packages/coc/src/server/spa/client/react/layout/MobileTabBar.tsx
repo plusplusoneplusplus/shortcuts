@@ -9,7 +9,7 @@ import { BottomSheet } from '../shared/BottomSheet';
 import { cn } from '../shared';
 import type { RepoSubTab } from '../types/dashboard';
 
-const DEFAULT_PINNED: RepoSubTab[] = ['tasks', 'activity', 'git'];
+const DEFAULT_PINNED: RepoSubTab[] = ['activity', 'git', 'tasks'];
 
 export interface MobileTabBarProps {
     activeTab: RepoSubTab;

@@ -37,12 +37,12 @@ interface RepoDetailProps {
 }
 
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
-    { key: 'info', label: 'Info', shortcut: 'Alt+I' },
+    { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
-    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'tasks', label: 'Plans', shortcut: 'Alt+P' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
-    { key: 'activity', label: 'Activity', shortcut: 'Alt+A' },
+    { key: 'info', label: 'Info', shortcut: 'Alt+I' },
+    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'copilot', label: 'Copilot', shortcut: 'Alt+C' },
