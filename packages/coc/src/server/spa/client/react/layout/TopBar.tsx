@@ -17,7 +17,6 @@ export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Processes', tab: 'processes' },
     { label: 'Wiki', tab: 'wiki' },
     { label: 'Skills', tab: 'skills' },
-    { label: 'Memory', tab: 'memory' },
 ];
 
 export const TABS: { label: string; tab: DashboardTab }[] = SHOW_WIKI_TAB
@@ -117,6 +116,21 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     onClick={onLogsOpen}
                 >
                     &#128203;
+                </button>
+                <button
+                    id="memory-toggle"
+                    data-tab="memory"
+                    className={
+                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        (state.activeTab === 'memory'
+                            ? 'active bg-[#0078d4] text-white'
+                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                    }
+                    aria-label="Memory"
+                    title="Memory"
+                    onClick={() => switchTab('memory')}
+                >
+                    &#129504;
                 </button>
                 <button
                     id="admin-toggle"

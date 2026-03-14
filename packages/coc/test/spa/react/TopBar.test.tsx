@@ -43,22 +43,22 @@ function renderTopBar() {
 // ─── TABS constant ──────────────────────────────────────────────
 
 describe('TABS constant', () => {
-    it('contains Repos, Processes, and Memory', () => {
+    it('contains Repos and Processes (Memory moved to icon button)', () => {
         const labels = TABS.map(t => t.label);
         expect(labels).toContain('Repos');
         expect(labels).toContain('Processes');
-        expect(labels).toContain('Memory');
+        expect(labels).not.toContain('Memory');
     });
 
     it('has matching tab identifiers', () => {
         const tabs = TABS.map(t => t.tab);
         expect(tabs).toContain('repos');
         expect(tabs).toContain('processes');
-        expect(tabs).toContain('memory');
+        expect(tabs).not.toContain('memory');
     });
 
-    it('has exactly 4 entries (wiki hidden)', () => {
-        expect(TABS).toHaveLength(4);
+    it('has exactly 3 entries (wiki hidden, memory moved to icon)', () => {
+        expect(TABS).toHaveLength(3);
     });
 
     it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
@@ -69,7 +69,7 @@ describe('TABS constant', () => {
         const tabs = ALL_TABS.map(t => t.tab);
         expect(tabs).toContain('wiki');
         expect(tabs).toContain('skills');
-        expect(ALL_TABS).toHaveLength(5);
+        expect(ALL_TABS).toHaveLength(4);
     });
 
     it('TABS excludes wiki when SHOW_WIKI_TAB is false', () => {
@@ -168,10 +168,10 @@ describe('TopBar — tab click updates location.hash', () => {
         expect(location.hash).toBe('#repos');
     });
 
-    it('sets hash to #memory when Memory tab is clicked', () => {
+    it('sets hash to #memory when Memory icon button is clicked', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Memory'));
+            fireEvent.click(document.getElementById('memory-toggle')!);
         });
         expect(location.hash).toBe('#memory');
     });
@@ -187,8 +187,8 @@ describe('TopBar — tab click updates location.hash', () => {
 
     it('clicking tabs in sequence updates hash each time', () => {
         renderTopBar();
-        act(() => { fireEvent.click(screen.getByText('Memory')); });
-        expect(location.hash).toBe('#memory');
+        act(() => { fireEvent.click(screen.getByText('Skills')); });
+        expect(location.hash).toBe('#skills');
 
         act(() => { fireEvent.click(screen.getByText('Processes')); });
         expect(location.hash).toBe('#processes');
@@ -214,12 +214,12 @@ describe('TopBar — active tab styling', () => {
         expect(processesBtn.className).not.toContain('bg-[#0078d4]');
     });
 
-    it('clicked tab becomes active', () => {
+    it('memory icon button becomes active when clicked', () => {
         renderTopBar();
         act(() => {
-            fireEvent.click(screen.getByText('Memory'));
+            fireEvent.click(document.getElementById('memory-toggle')!);
         });
-        const memoryBtn = screen.getByText('Memory');
+        const memoryBtn = document.getElementById('memory-toggle')!;
         expect(memoryBtn.className).toContain('bg-[#0078d4]');
         expect(memoryBtn.className).toContain('text-white');
     });
@@ -407,5 +407,49 @@ describe('TopBar — logs icon button', () => {
         renderTopBar();
         const tabs = TABS.map(t => t.label);
         expect(tabs).not.toContain('Logs');
+    });
+});
+
+// ─── TopBar memory icon button ───────────────────────────────────
+
+describe('TopBar — memory icon button', () => {
+    it('renders a memory-toggle button', () => {
+        renderTopBar();
+        expect(document.getElementById('memory-toggle')).toBeTruthy();
+    });
+
+    it('memory-toggle has aria-label and title "Memory"', () => {
+        renderTopBar();
+        const btn = document.getElementById('memory-toggle')!;
+        expect(btn.getAttribute('aria-label')).toBe('Memory');
+        expect(btn.getAttribute('title')).toBe('Memory');
+    });
+
+    it('memory-toggle has touch-target class', () => {
+        renderTopBar();
+        const btn = document.getElementById('memory-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
+
+    it('memory-toggle shows active style when activeTab is memory', () => {
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('memory-toggle')!);
+        });
+        const btn = document.getElementById('memory-toggle')!;
+        expect(btn.className).toContain('bg-[#0078d4]');
+        expect(btn.className).toContain('text-white');
+    });
+
+    it('memory-toggle does not show active style when another tab is active', () => {
+        renderTopBar();
+        const btn = document.getElementById('memory-toggle')!;
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+    });
+
+    it('"Memory" text tab is not rendered in the main nav', () => {
+        renderTopBar();
+        const tabs = TABS.map(t => t.label);
+        expect(tabs).not.toContain('Memory');
     });
 });
