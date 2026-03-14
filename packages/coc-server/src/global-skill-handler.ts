@@ -16,8 +16,9 @@ import {
     DEFAULT_SKILLS_SETTINGS,
     isWithinDirectory,
 } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, parseBody } from './api-handler';
-import { handleAPIError, notFound, invalidJSON, badRequest } from './errors';
+import { sendJSON } from './api-handler';
+import { parseBodyOrReject } from './shared/handler-utils';
+import { handleAPIError, notFound, badRequest } from './errors';
 import { sortSkillsByUsage, listInstalledSkills, getSkillDetail } from './skill-handler';
 import { createSkillRouteHandlers } from './skill-route-handlers';
 import type { Route } from './types';
@@ -139,12 +140,8 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
         method: 'PUT',
         pattern: /^\/api\/skills\/config$/,
         handler: async (req, res) => {
-            let body: any;
-            try {
-                body = await parseBody(req);
-            } catch {
-                return handleAPIError(res, invalidJSON());
-            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
 
             if (!Object.prototype.hasOwnProperty.call(body, 'globalDisabledSkills')) {
                 return handleAPIError(res, badRequest('`globalDisabledSkills` is required'));
