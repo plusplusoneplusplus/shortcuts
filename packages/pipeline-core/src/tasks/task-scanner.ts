@@ -25,8 +25,6 @@ const CONTEXT_FILES = new Set([
     '.gitignore', '.gitattributes'
 ]);
 
-/** Internal file names that should never surface as task documents. */
-const INTERNAL_FILES = new Set([ARCHIVE_UNDO_FILE]);
 
 /**
  * Check if a filename is a context/documentation file that should be excluded from task scanning.
