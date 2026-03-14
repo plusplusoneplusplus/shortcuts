@@ -1120,6 +1120,52 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         },
     });
 
+    // POST /api/workspaces/:id/git/rebase-autosquash — Non-interactive rebase --autosquash (async background job)
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-autosquash$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const id = ws.id;
+
+            // Guard against concurrent rebase-autosquash operations
+            const running = await gitOpsStore.getRunning(id, 'rebase-autosquash');
+            if (running.length > 0) {
+                return handleAPIError(res, conflict('A rebase-autosquash operation is already running'));
+            }
+
+            const jobId = `rebase-autosquash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const job: GitOpJob = {
+                id: jobId,
+                workspaceId: id,
+                op: 'rebase-autosquash',
+                status: 'running',
+                startedAt: new Date().toISOString(),
+                pid: process.pid,
+            };
+            await gitOpsStore.create(job);
+            sendJSON(res, 202, { jobId });
+
+            // Run rebase in background — update store on completion
+            branchService.rebaseAutosquash(ws.rootPath).then(async (result) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: result.success ? 'success' : 'failed',
+                    finishedAt: new Date().toISOString(),
+                    error: result.error,
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'rebase-autosquash');
+            }).catch(async (err) => {
+                await gitOpsStore.update(id, jobId, {
+                    status: 'failed',
+                    finishedAt: new Date().toISOString(),
+                    error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                getWsServer?.()?.broadcastGitChanged(id, 'rebase-autosquash');
+            });
+        },
+    });
+
     // GET /api/workspaces/:id/git/ops/latest — Most recent git op job (supports ?op=pull)
     routes.push({
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/ops\/latest$/,

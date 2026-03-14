@@ -853,3 +853,58 @@ describe('BranchService.cherryPick', () => {
         expect(result.message).toBe('Unknown error');
     });
 });
+
+// ── rebaseAutosquash ──────────────────────────────────────────────
+describe('BranchService.rebaseAutosquash', () => {
+    let service: BranchService;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setLogger(nullLogger);
+        service = new BranchService();
+    });
+
+    it('returns success when rebase applies cleanly', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        const result = await service.rebaseAutosquash('/repo');
+
+        expect(result.success).toBe(true);
+        expect(result.error).toBeUndefined();
+    });
+
+    it('calls git rebase -i --autosquash @{upstream} with GIT_SEQUENCE_EDITOR set', async () => {
+        mockedExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+        await service.rebaseAutosquash('/repo');
+
+        expect(mockedExecAsync).toHaveBeenCalledWith(
+            'git rebase -i --autosquash @{upstream}',
+            expect.objectContaining({
+                cwd: '/repo',
+                timeout: 600000,
+                env: expect.objectContaining({
+                    GIT_SEQUENCE_EDITOR: process.platform === 'win32' ? 'true' : ':',
+                }),
+            })
+        );
+    });
+
+    it('returns failure with error message when git rebase fails', async () => {
+        mockedExecAsync.mockRejectedValueOnce(new Error('no upstream configured'));
+
+        const result = await service.rebaseAutosquash('/repo');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('no upstream configured');
+    });
+
+    it('handles unknown error objects gracefully', async () => {
+        mockedExecAsync.mockRejectedValueOnce('non-error string');
+
+        const result = await service.rebaseAutosquash('/repo');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Unknown error');
+    });
+});

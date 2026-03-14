@@ -62,6 +62,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [fetching, setFetching] = useState(false);
     const [pulling, setPulling] = useState(false);
     const [pushing, setPushing] = useState(false);
+    const [rebasing, setRebasing] = useState(false);
     const pullJobRef = useRef<string | null>(null);
     const pullPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
@@ -337,6 +338,46 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             setPushing(false);
         }
     }, [pushing, workspaceId, refreshAll]);
+
+    const handleRebaseAutosquash = useCallback(async () => {
+        if (rebasing) return;
+        setRebasing(true);
+        setActionError(null);
+        try {
+            const result = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/rebase-autosquash`, {
+                method: 'POST',
+            });
+            if (result.jobId) {
+                // Async rebase — poll for job completion
+                const jobId: string = result.jobId;
+                const poll = setInterval(async () => {
+                    try {
+                        const job = await fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/ops/${encodeURIComponent(jobId)}`);
+                        if (!job || job.status !== 'running') {
+                            clearInterval(poll);
+                            setRebasing(false);
+                            if (job?.status === 'failed') {
+                                setActionError(job.error || 'Rebase failed');
+                            } else {
+                                refreshAll();
+                            }
+                        }
+                    } catch {
+                        clearInterval(poll);
+                        setRebasing(false);
+                    }
+                }, 3000);
+            } else if (result.success === false) {
+                throw new Error(result.error || 'Rebase failed');
+            } else {
+                refreshAll();
+                setRebasing(false);
+            }
+        } catch (err: any) {
+            setActionError(err.message || 'Rebase failed');
+            setRebasing(false);
+        }
+    }, [rebasing, workspaceId, refreshAll]);
 
     const handleSelect = useCallback((commit: GitCommitItem) => {
         setRightPanelView({ type: 'commit', commit });
@@ -676,9 +717,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     onFetch={handleFetch}
                     onPull={handlePull}
                     onPush={handlePush}
+                    onRebaseAutosquash={handleRebaseAutosquash}
                     fetching={fetching}
                     pulling={pulling}
                     pushing={pushing}
+                    rebasing={rebasing}
                 />
                 {scenarioBanner}
                 {refreshError && (

@@ -1,7 +1,7 @@
 /**
  * Git Ops Store — file-based persistence for background git operations.
  *
- * Tracks running / completed / failed git operations (pull, push, fetch) per workspace
+ * Tracks running / completed / failed git operations (pull, push, fetch, rebase-autosquash) per workspace
  * so that the UI can recover status after a page refresh or server restart.
  *
  * Storage layout: `<dataDir>/git-ops/<workspaceId>.json` — one file per workspace
@@ -22,7 +22,7 @@ import { getLogger } from '../logger';
 // Types
 // ============================================================================
 
-export type GitOpType = 'pull' | 'push' | 'fetch';
+export type GitOpType = 'pull' | 'push' | 'fetch' | 'rebase-autosquash';
 export type GitOpStatus = 'running' | 'success' | 'failed' | 'interrupted';
 
 export interface GitOpJob {

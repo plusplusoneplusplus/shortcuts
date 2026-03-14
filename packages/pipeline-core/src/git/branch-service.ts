@@ -25,6 +25,7 @@ interface GitExecOptions {
     cwd: string;
     timeout?: number;
     encoding?: BufferEncoding;
+    env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -55,11 +56,10 @@ export class BranchService {
             cwd: options.cwd,
             timeout: options.timeout || 30000,
             shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
-            // Prevent git from prompting for credentials on the terminal, which
-            // would cause the process to hang and eventually be killed (SIGTERM).
             env: {
                 ...process.env,
                 GIT_TERMINAL_PROMPT: '0',
+                ...options.env,
             },
         });
         return stdout;
@@ -609,6 +609,27 @@ export class BranchService {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', 'Failed to pull', error instanceof Error ? error : undefined);
+            return { success: false, error: errorMessage };
+        }
+    }
+
+    /**
+     * Run a non-interactive git rebase --autosquash against the upstream branch.
+     * GIT_SEQUENCE_EDITOR is set to a no-op so git accepts the pre-generated
+     * todo list immediately without opening an editor.
+     */
+    async rebaseAutosquash(repoRoot: string): Promise<GitOperationResult> {
+        try {
+            const seqEditor = process.platform === 'win32' ? 'true' : ':';
+            await this.execGitAsync('git rebase -i --autosquash @{upstream}', {
+                cwd: repoRoot,
+                timeout: 600000,
+                env: { GIT_SEQUENCE_EDITOR: seqEditor },
+            });
+            return { success: true };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            getLogger().error('Git', 'Failed to rebase --autosquash', error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };
         }
     }

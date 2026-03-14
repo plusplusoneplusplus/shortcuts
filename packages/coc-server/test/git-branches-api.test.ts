@@ -49,6 +49,7 @@ const mockFetch = vi.fn();
 const mockMergeBranch = vi.fn();
 const mockStashChanges = vi.fn();
 const mockPopStash = vi.fn();
+const mockRebaseAutosquash = vi.fn();
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -69,6 +70,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
             mergeBranch: mockMergeBranch,
             stashChanges: mockStashChanges,
             popStash: mockPopStash,
+            rebaseAutosquash: mockRebaseAutosquash,
         })),
     };
 });
@@ -1021,6 +1023,80 @@ describe('Git Branches API endpoints', () => {
 
             expect(res.status).toBe(400);
             expect(res.json().error).toMatch(/fatal: Could not reset HEAD/);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /api/workspaces/:id/git/rebase-autosquash — Rebase autosquash
+    // -----------------------------------------------------------------------
+
+    describe('POST /api/workspaces/:id/git/rebase-autosquash', () => {
+        it('should return 202 with jobId for async rebase-autosquash', async () => {
+            mockRebaseAutosquash.mockResolvedValue({ success: true });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-autosquash`, {
+                method: 'POST',
+            });
+
+            expect(res.status).toBe(202);
+            const data = res.json();
+            expect(data.jobId).toBeDefined();
+            expect(typeof data.jobId).toBe('string');
+            // Wait for background job to finish before next test
+            await new Promise(resolve => setTimeout(resolve, 200));
+        });
+
+        it('should call rebaseAutosquash with the workspace root path', async () => {
+            mockRebaseAutosquash.mockResolvedValue({ success: true });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-autosquash`, {
+                method: 'POST',
+            });
+
+            // Wait for background job to complete
+            await new Promise(resolve => setTimeout(resolve, 200));
+            expect(mockRebaseAutosquash).toHaveBeenCalledWith(WORKSPACE_ROOT);
+        });
+
+        it('should return 409 when a rebase-autosquash is already running', async () => {
+            mockRebaseAutosquash.mockReturnValue(new Promise(() => {})); // never resolves
+
+            const res1 = await request(`${base()}/api/workspaces/ws-ops-test/git/rebase-autosquash`, {
+                method: 'POST',
+            });
+            expect(res1.status).toBe(202);
+
+            // Second request on same workspace: should be rejected
+            const res2 = await request(`${base()}/api/workspaces/ws-ops-test/git/rebase-autosquash`, {
+                method: 'POST',
+            });
+            expect(res2.status).toBe(409);
+            expect(res2.json().code).toBe('CONFLICT');
+        });
+
+        it('should store failed status when rebase-autosquash fails', async () => {
+            mockRebaseAutosquash.mockResolvedValue({ success: false, error: 'conflict during rebase' });
+
+            const startRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-autosquash`, {
+                method: 'POST',
+            });
+            const { jobId } = startRes.json();
+
+            // Wait for background job to complete
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
+            expect(res.status).toBe(200);
+            const job = res.json();
+            expect(job.status).toBe('failed');
+            expect(job.error).toBe('conflict during rebase');
+        });
+
+        it('should return 404 for unknown workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/ws-does-not-exist-xyz/git/rebase-autosquash`, {
+                method: 'POST',
+            });
+            expect(res.status).toBe(404);
         });
     });
 });

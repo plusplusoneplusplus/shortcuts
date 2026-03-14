@@ -17,17 +17,19 @@ interface GitPanelHeaderProps {
     onFetch?: () => void;
     onPull?: () => void;
     onPush?: () => void;
+    onRebaseAutosquash?: () => void;
     fetching?: boolean;
     pulling?: boolean;
     pushing?: boolean;
+    rebasing?: boolean;
 }
 
 const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .git-refresh-spin { animation: gitRefreshSpin 1s linear infinite; }`;
 
-export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, fetching, pulling, pushing }: GitPanelHeaderProps) {
+export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
-    const hasAnyAction = onFetch || onPull || onPush;
-    const isActioning = fetching || pulling || pushing;
+    const hasAnyAction = onFetch || onPull || onPush || onRebaseAutosquash;
+    const isActioning = fetching || pulling || pushing || rebasing;
 
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -166,6 +168,29 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                                         <path fillRule="evenodd" d="M8 15a.5.5 0 01-.5-.5V2.707L4.354 5.854a.5.5 0 11-.708-.708l4-4a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L8.5 2.707V14.5a.5.5 0 01-.5.5z" />
                                     </svg>
                                     Push
+                                </button>
+                            )}
+                            {onRebaseAutosquash && (
+                                <button
+                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50"
+                                    onClick={() => handleAction(onRebaseAutosquash)}
+                                    disabled={!!rebasing}
+                                    title="Non-interactive git rebase -i --autosquash against upstream"
+                                    data-testid="git-rebase-autosquash-btn"
+                                    type="button"
+                                >
+                                    {rebasing ? (
+                                        <svg className="w-3 h-3 flex-shrink-0 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
+                                            <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
+                                            <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                            <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
+                                            <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+                                        </svg>
+                                    )}
+                                    Rebase (autosquash)
                                 </button>
                             )}
                         </div>
