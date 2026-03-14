@@ -57,19 +57,19 @@ describe('TABS constant', () => {
         expect(tabs).not.toContain('memory');
     });
 
-    it('has exactly 3 entries (wiki hidden, memory moved to icon)', () => {
-        expect(TABS).toHaveLength(3);
+    it('has exactly 2 entries (wiki and skills hidden, memory moved to icon)', () => {
+        expect(TABS).toHaveLength(2);
     });
 
     it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
         expect(SHOW_WIKI_TAB).toBe(false);
     });
 
-    it('ALL_TABS includes wiki and skills entries', () => {
+    it('ALL_TABS includes wiki entry but not skills (skills moved to icon button)', () => {
         const tabs = ALL_TABS.map(t => t.tab);
         expect(tabs).toContain('wiki');
-        expect(tabs).toContain('skills');
-        expect(ALL_TABS).toHaveLength(4);
+        expect(tabs).not.toContain('skills');
+        expect(ALL_TABS).toHaveLength(3);
     });
 
     it('TABS excludes wiki when SHOW_WIKI_TAB is false', () => {
@@ -187,7 +187,7 @@ describe('TopBar — tab click updates location.hash', () => {
 
     it('clicking tabs in sequence updates hash each time', () => {
         renderTopBar();
-        act(() => { fireEvent.click(screen.getByText('Skills')); });
+        act(() => { fireEvent.click(document.getElementById('skills-toggle')!); });
         expect(location.hash).toBe('#skills');
 
         act(() => { fireEvent.click(screen.getByText('Processes')); });
@@ -410,7 +410,57 @@ describe('TopBar — logs icon button', () => {
     });
 });
 
-// ─── TopBar memory icon button ───────────────────────────────────
+// ─── TopBar skills icon button ───────────────────────────────────
+
+describe('TopBar — skills icon button', () => {
+    it('renders a skills-toggle button', () => {
+        renderTopBar();
+        expect(document.getElementById('skills-toggle')).toBeTruthy();
+    });
+
+    it('skills-toggle has aria-label and title "Skills"', () => {
+        renderTopBar();
+        const btn = document.getElementById('skills-toggle')!;
+        expect(btn.getAttribute('aria-label')).toBe('Skills');
+        expect(btn.getAttribute('title')).toBe('Skills');
+    });
+
+    it('skills-toggle has touch-target class', () => {
+        renderTopBar();
+        const btn = document.getElementById('skills-toggle')!;
+        expect(btn.className).toContain('touch-target');
+    });
+
+    it('skills-toggle shows active style when activeTab is skills', () => {
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('skills-toggle')!);
+        });
+        const btn = document.getElementById('skills-toggle')!;
+        expect(btn.className).toContain('bg-[#0078d4]');
+        expect(btn.className).toContain('text-white');
+    });
+
+    it('skills-toggle does not show active style when another tab is active', () => {
+        renderTopBar();
+        const btn = document.getElementById('skills-toggle')!;
+        expect(btn.className).not.toContain('bg-[#0078d4]');
+    });
+
+    it('"Skills" text tab is not rendered in the main nav', () => {
+        renderTopBar();
+        const tabs = TABS.map(t => t.label);
+        expect(tabs).not.toContain('Skills');
+    });
+
+    it('clicking skills-toggle sets hash to #skills', () => {
+        renderTopBar();
+        act(() => {
+            fireEvent.click(document.getElementById('skills-toggle')!);
+        });
+        expect(location.hash).toBe('#skills');
+    });
+});
 
 describe('TopBar — memory icon button', () => {
     it('renders a memory-toggle button', () => {

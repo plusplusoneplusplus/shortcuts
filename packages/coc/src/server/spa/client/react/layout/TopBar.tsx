@@ -16,7 +16,6 @@ export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
     { label: 'Repos', tab: 'repos' },
     { label: 'Processes', tab: 'processes' },
     { label: 'Wiki', tab: 'wiki' },
-    { label: 'Skills', tab: 'skills' },
 ];
 
 export const TABS: { label: string; tab: DashboardTab }[] = SHOW_WIKI_TAB
@@ -102,6 +101,21 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     />
                 </span>
                 <NotificationBell />
+                <button
+                    id="skills-toggle"
+                    data-tab="skills"
+                    className={
+                        `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
+                        (state.activeTab === 'skills'
+                            ? 'active bg-[#0078d4] text-white'
+                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                    }
+                    aria-label="Skills"
+                    title="Skills"
+                    onClick={() => switchTab('skills')}
+                >
+                    &#9889;
+                </button>
                 <button
                     id="logs-toggle"
                     data-tab="logs"
