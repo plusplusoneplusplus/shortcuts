@@ -151,13 +151,14 @@ export function SkillsBundledPanel() {
                             className="text-xs px-2 py-1 bg-[#0078d4] text-white rounded disabled:opacity-50"
                             disabled={installing}
                             onClick={handleInstallAllBundled}
+                            data-testid="skills-install-all-btn"
                         >
                             Install All
                         </button>
                     </div>
                     <ul className="flex flex-col gap-1.5">
                         {bundledSkills.map(skill => (
-                            <li key={skill.name} className="flex items-center gap-2 px-3 py-2 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#2d2d2d]">
+                            <li key={skill.name} className="flex items-center gap-2 px-3 py-2 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#2d2d2d]" data-testid={`skills-bundled-item-${skill.name}`}>
                                 <input
                                     type="checkbox"
                                     checked={selectedBundled.has(skill.name)}

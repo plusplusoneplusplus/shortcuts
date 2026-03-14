@@ -96,7 +96,7 @@ export function SkillsInstalledPanel() {
 
     if (skills.length === 0) {
         return (
-            <div className="p-4 text-sm text-[#848484]">
+            <div className="p-4 text-sm text-[#848484]" data-testid="skills-installed-empty">
                 No global skills installed. Install from the <strong>Bundled</strong> tab or from a GitHub URL.
             </div>
         );
@@ -110,7 +110,7 @@ export function SkillsInstalledPanel() {
                     const isEnabled = !disabledSkills.includes(skill.name);
                     const isExpanded = expandedSkill === skill.name;
                     return (
-                        <li key={skill.name} className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#2d2d2d]">
+                        <li key={skill.name} className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#2d2d2d]" data-testid={`skills-installed-item-${skill.name}`}>
                             <div className="flex items-start justify-between px-3 py-2">
                                 <div
                                     className="flex-1 min-w-0 cursor-pointer"
@@ -148,6 +148,7 @@ export function SkillsInstalledPanel() {
                                         onClick={() => handleDeleteSkill(skill.name)}
                                         className="text-xs text-[#f14c4c] hover:text-[#d32f2f] px-1"
                                         title="Delete skill"
+                                        data-testid={`skills-delete-btn-${skill.name}`}
                                     >
                                         🗑
                                     </button>

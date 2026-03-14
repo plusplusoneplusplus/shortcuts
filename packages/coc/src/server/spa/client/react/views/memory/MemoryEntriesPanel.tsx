@@ -118,10 +118,10 @@ export function MemoryEntriesPanel() {
                 <>
                     <div className="space-y-2">
                         {result.entries.length === 0 && (
-                            <p className="text-sm text-[#888] py-4 text-center">No memory entries found.</p>
+                            <p className="text-sm text-[#888] py-4 text-center" data-testid="memory-entries-empty">No memory entries found.</p>
                         )}
                         {result.entries.map(entry => (
-                            <Card key={entry.id} className="p-3">
+                            <Card key={entry.id} className="p-3" data-testid={`memory-entry-row-${entry.id}`}>
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
                                         <p className="text-sm text-[#1e1e1e] dark:text-[#cccccc] truncate">
@@ -147,20 +147,21 @@ export function MemoryEntriesPanel() {
                                             size="sm"
                                             onClick={() => handleView(entry.id)}
                                             disabled={viewLoading}
+                                            data-testid="memory-entry-view-btn"
                                         >
                                             View
                                         </Button>
                                         {deleteConfirmId === entry.id ? (
                                             <>
-                                                <Button variant="danger" size="sm" onClick={() => handleDelete(entry.id)}>
+                                                <Button variant="danger" size="sm" onClick={() => handleDelete(entry.id)} data-testid="memory-entry-confirm-btn">
                                                     Confirm
                                                 </Button>
-                                                <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmId(null)}>
+                                                <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmId(null)} data-testid="memory-entry-cancel-btn">
                                                     Cancel
                                                 </Button>
                                             </>
                                         ) : (
-                                            <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmId(entry.id)}>
+                                            <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmId(entry.id)} data-testid="memory-entry-delete-btn">
                                                 Delete
                                             </Button>
                                         )}

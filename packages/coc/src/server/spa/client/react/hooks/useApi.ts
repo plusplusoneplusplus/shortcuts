@@ -11,6 +11,8 @@ export async function fetchApi(path: string, options?: RequestInit): Promise<any
     if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
+    // 204 No Content — no body to parse
+    if (res.status === 204) return undefined;
     return res.json();
 }
 

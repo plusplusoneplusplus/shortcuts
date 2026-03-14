@@ -171,10 +171,10 @@ export function MemoryConfigPanel() {
 
                 {/* Save button + feedback */}
                 <div className="flex items-center gap-3 pt-1">
-                    <Button onClick={handleSave} disabled={saving}>
+                    <Button onClick={handleSave} disabled={saving} data-testid="memory-config-save-btn">
                         {saving ? 'Saving…' : 'Save'}
                     </Button>
-                    {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved!</span>}
+                    {saved && <span className="text-sm text-green-600 dark:text-green-400" data-testid="memory-config-saved-toast">Saved!</span>}
                     {saveError && <span className="text-sm text-red-500">{saveError}</span>}
                 </div>
             </Card>

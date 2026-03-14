@@ -67,14 +67,14 @@ export function ExploreCachePanel() {
             )}
 
             {!statsLoading && !statsError && stats && (
-                <dl className="space-y-2 text-sm">
+                <dl className="space-y-2 text-sm" data-testid="explore-cache-stats">
                     <div className="flex justify-between">
                         <dt className="text-[#616161] dark:text-[#9d9d9d]">Raw entries</dt>
-                        <dd className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{stats.rawCount}</dd>
+                        <dd className="font-medium text-[#1e1e1e] dark:text-[#cccccc]" data-testid="explore-cache-raw-count">{stats.rawCount}</dd>
                     </div>
                     <div className="flex justify-between">
                         <dt className="text-[#616161] dark:text-[#9d9d9d]">Consolidated entries</dt>
-                        <dd className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{stats.consolidatedCount}</dd>
+                        <dd className="font-medium text-[#1e1e1e] dark:text-[#cccccc]" data-testid="explore-cache-consolidated-count">{stats.consolidatedCount}</dd>
                     </div>
                     <div className="flex justify-between">
                         <dt className="text-[#616161] dark:text-[#9d9d9d]">Last aggregation</dt>
@@ -92,6 +92,7 @@ export function ExploreCachePanel() {
                     onClick={handleAggregate}
                     disabled={aggregating || statsLoading}
                     loading={aggregating}
+                    data-testid="explore-cache-aggregate-btn"
                 >
                     {aggregating ? 'Aggregating…' : 'Aggregate now'}
                 </Button>

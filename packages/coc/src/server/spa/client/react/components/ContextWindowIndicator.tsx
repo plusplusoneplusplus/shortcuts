@@ -47,6 +47,7 @@ export function ContextWindowIndicator({ tokenLimit, currentTokens, modelName, c
             className={cn('flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400', className)}
             title={ariaLabel}
             aria-label={ariaLabel}
+            data-testid="context-window-indicator"
         >
             {modelName && <span className="shrink-0 whitespace-nowrap">{modelName}</span>}
             <span className="shrink-0 whitespace-nowrap">ctx</span>
@@ -54,9 +55,10 @@ export function ContextWindowIndicator({ tokenLimit, currentTokens, modelName, c
                 <div
                     className={cn('absolute inset-y-0 left-0 rounded-full transition-all duration-300', barColor)}
                     style={{ width: `${pct}%` }}
+                    data-testid="context-window-bar"
                 />
             </div>
-            <span className="shrink-0 whitespace-nowrap tabular-nums">{formatTokenCount(used)}/{formatTokenCount(tokenLimit)}</span>
+            <span className="shrink-0 whitespace-nowrap tabular-nums" data-testid="context-window-label">{formatTokenCount(used)}/{formatTokenCount(tokenLimit)}</span>
         </div>
     );
 }

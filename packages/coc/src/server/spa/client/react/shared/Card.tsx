@@ -10,14 +10,16 @@ export interface CardProps {
     id?: string;
     'data-wiki-id'?: string;
     'data-task-id'?: string;
+    'data-testid'?: string;
 }
 
-export function Card({ className, children, onClick, onContextMenu, 'aria-label': ariaLabel, id, 'data-wiki-id': dataWikiId, 'data-task-id': dataTaskId }: CardProps) {
+export function Card({ className, children, onClick, onContextMenu, 'aria-label': ariaLabel, id, 'data-wiki-id': dataWikiId, 'data-task-id': dataTaskId, 'data-testid': dataTestId }: CardProps) {
     return (
         <div
             id={id}
             data-wiki-id={dataWikiId}
             data-task-id={dataTaskId}
+            data-testid={dataTestId}
             role={onClick ? 'button' : undefined}
             tabIndex={onClick ? 0 : undefined}
             aria-label={ariaLabel}
