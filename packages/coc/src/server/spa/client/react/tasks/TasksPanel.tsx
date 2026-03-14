@@ -826,6 +826,17 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                         />
                     </div>
                 )}
+                {isMobile && selectedFolderPath && (
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        data-testid="tasks-toolbar-queue-folder-btn"
+                        title="Queue all tasks in folder"
+                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', folderPath: selectedFolderPath })}
+                    >
+                        ▶ Queue
+                    </Button>
+                )}
                 {isMobile && (
                     <div className="relative">
                         <Button
@@ -842,6 +853,15 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
                                 className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
                                 data-testid="tasks-toolbar-overflow-menu"
                             >
+                                {selectedFolderPath && (
+                                    <button
+                                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                        data-testid="tasks-toolbar-overflow-queue-folder"
+                                        onClick={() => { setToolbarOverflowOpen(false); queueDispatch({ type: 'OPEN_DIALOG', folderPath: selectedFolderPath }); }}
+                                    >
+                                        ▶ Queue Folder
+                                    </button>
+                                )}
                                 <button
                                     className="w-full text-left px-3 py-2.5 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
                                     data-testid="tasks-toolbar-overflow-new-folder"

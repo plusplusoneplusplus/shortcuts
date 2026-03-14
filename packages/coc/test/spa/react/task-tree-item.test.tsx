@@ -534,3 +534,72 @@ describe('TaskTreeItem — double-click behaviour', () => {
         expect(() => fireEvent.dblClick(screen.getByTestId('task-tree-item-task'))).not.toThrow();
     });
 });
+
+describe('TaskTreeItem — long-press context menu (touch)', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        cleanup();
+    });
+
+    it('fires onFolderContextMenu after 500ms touch hold on a folder', () => {
+        const folder = makeFolder({ name: 'touchfolder' });
+        const onFolderContextMenu = vi.fn();
+        renderItem({ item: folder, onFolderContextMenu });
+        const li = screen.getByTestId('task-tree-item-touchfolder');
+        fireEvent.touchStart(li, {
+            touches: [{ clientX: 120, clientY: 240 }],
+        });
+        expect(onFolderContextMenu).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(500);
+        expect(onFolderContextMenu).toHaveBeenCalledWith(folder, 120, 240);
+    });
+
+    it('does not fire onFolderContextMenu when touch is released before 500ms', () => {
+        const folder = makeFolder({ name: 'touchfolder2' });
+        const onFolderContextMenu = vi.fn();
+        renderItem({ item: folder, onFolderContextMenu });
+        const li = screen.getByTestId('task-tree-item-touchfolder2');
+        fireEvent.touchStart(li, { touches: [{ clientX: 10, clientY: 20 }] });
+        fireEvent.touchEnd(li);
+        vi.advanceTimersByTime(600);
+        expect(onFolderContextMenu).not.toHaveBeenCalled();
+    });
+
+    it('cancels long-press timer on touch move (scroll guard)', () => {
+        const folder = makeFolder({ name: 'scrollfolder' });
+        const onFolderContextMenu = vi.fn();
+        renderItem({ item: folder, onFolderContextMenu });
+        const li = screen.getByTestId('task-tree-item-scrollfolder');
+        fireEvent.touchStart(li, { touches: [{ clientX: 10, clientY: 20 }] });
+        fireEvent.touchMove(li);
+        vi.advanceTimersByTime(600);
+        expect(onFolderContextMenu).not.toHaveBeenCalled();
+    });
+
+    it('fires onFileContextMenu after 500ms touch hold on a file', () => {
+        const doc = makeDocument({ relativePath: 'feat', fileName: 'task.md' });
+        const onFileContextMenu = vi.fn();
+        renderItem({ item: doc, onFileContextMenu });
+        const li = screen.getByTestId('task-tree-item-task');
+        fireEvent.touchStart(li, { touches: [{ clientX: 50, clientY: 60 }] });
+        vi.advanceTimersByTime(500);
+        expect(onFileContextMenu).toHaveBeenCalledWith(doc, 50, 60);
+    });
+
+    it('suppresses click when long-press fires to prevent navigation', () => {
+        const folder = makeFolder({ name: 'noclickfolder' });
+        const onFolderClick = vi.fn();
+        const onFolderContextMenu = vi.fn();
+        renderItem({ item: folder, onFolderClick, onFolderContextMenu });
+        const li = screen.getByTestId('task-tree-item-noclickfolder');
+        fireEvent.touchStart(li, { touches: [{ clientX: 10, clientY: 20 }] });
+        vi.advanceTimersByTime(500);
+        // Simulate the click that fires after touchend on mobile browsers
+        fireEvent.click(li);
+        expect(onFolderClick).not.toHaveBeenCalled();
+    });
+});
