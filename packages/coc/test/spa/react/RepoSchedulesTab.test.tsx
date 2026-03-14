@@ -710,6 +710,23 @@ describe('Split-panel layout', () => {
             expect(screen.getByText(MOCK_SCHEDULE_2.target)).toBeTruthy();
         });
     });
+
+    it('detail panel shows Model field when schedule has a model set', async () => {
+        const scheduleWithModel = { ...MOCK_SCHEDULE, model: 'claude-sonnet-4.6' };
+        await renderWithSchedules([scheduleWithModel]);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('schedule-model').textContent).toBe('claude-sonnet-4.6');
+        });
+    });
+
+    it('detail panel does not show Model field when schedule has no model', async () => {
+        await renderWithSchedules([MOCK_SCHEDULE]);
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('schedule-model')).toBeNull();
+        });
+    });
 });
 
 // ============================================================================

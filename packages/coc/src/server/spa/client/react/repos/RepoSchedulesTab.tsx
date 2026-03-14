@@ -722,6 +722,14 @@ export function ScheduleDetail({ schedule, workspaceId, history: initialHistory,
                                 </>
                             )}
 
+                            {/* Model — only when set */}
+                            {schedule.model && (
+                                <>
+                                    <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Model</dt>
+                                    <dd className="text-[#1e1e1e] dark:text-[#cccccc]" data-testid="schedule-model">{schedule.model}</dd>
+                                </>
+                            )}
+
                             {/* Created */}
                             <dt className="text-[#848484] dark:text-[#777] whitespace-nowrap font-medium">Created</dt>
                             <dd className="text-[#848484]">{formatRelativeTime(schedule.createdAt)}</dd>
