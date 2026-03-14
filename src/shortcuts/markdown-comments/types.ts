@@ -6,10 +6,10 @@
  */
 
 // Import generic AI types from ai-service
-import { AIProcessStatus, AIToolType } from '../ai-service';
+import { AIProcessStatus } from '../ai-service';
 
 // Re-export for backward compatibility
-export type { AIProcessStatus, AIToolType };
+export type { AIProcessStatus };
 
 // Re-export core domain types from pipeline-core (subpath for browser-safe webview bundling)
 export {
@@ -98,15 +98,6 @@ export interface CommentEvent {
     filePath?: string;
 }
 
-/**
- * Tree item data for the comments panel
- */
-export interface CommentTreeItemData {
-    type: 'file' | 'comment';
-    filePath?: string;
-    comment?: MarkdownComment;
-    commentCount?: number;
-}
 
 /**
  * AI instruction types for different kinds of queries.
@@ -144,11 +135,4 @@ export interface ClarificationContext {
     skillName?: string;
 }
 
-/**
- * Configuration for AI clarification feature
- */
-export interface AIClarificationConfig {
-    /** Which AI tool to use */
-    tool: AIToolType;
-}
 
