@@ -293,10 +293,7 @@ export class PromptGenerator extends PromptGeneratorBase<
      * AI-generated comments are excluded from the prompts.
      */
     generatePrompts(options: Partial<PromptGenerationOptions> = {}): string[] {
-        const opts: PromptGenerationOptions = {
-            ...DEFAULT_PROMPT_OPTIONS,
-            ...options
-        };
+        const opts = this.mergeOptions(options);
 
         // Filter to only include user comments, excluding AI-generated comments
         const openComments = this.commentsManager.getOpenComments()
