@@ -309,17 +309,7 @@ export interface CodeBlock {
     isMermaid: boolean;
 }
 
-/**
- * Parsed table structure
- */
-export interface ParsedTable {
-    startLine: number;
-    endLine: number;
-    headers: string[];
-    alignments: Array<'left' | 'center' | 'right'>;
-    rows: string[][];
-    id: string;
-}
+export type { ParsedTable } from '../webview-utils';
 
 /**
  * Global declarations for libraries loaded via CDN
