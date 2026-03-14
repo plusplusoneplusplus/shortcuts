@@ -318,4 +318,22 @@ describe('ActivityListPane pinned chats', () => {
             expect(source).toContain('filteredPinned.length + pinnedRunningCount');
         });
     });
+
+    describe('mark-all-read button mobile visibility', () => {
+        it('completed tasks header row uses flex-wrap so mark-all-read wraps on narrow screens', () => {
+            // The header row div uses flex-wrap to prevent clipping the button on mobile viewports.
+            expect(source).toContain('flex flex-wrap items-center gap-1.5');
+        });
+
+        it('toggle button has min-w-0 to allow shrinking on narrow screens', () => {
+            // The toggle button needs min-w-0 so its text can truncate instead of pushing the action button off-screen.
+            const idx = source.indexOf('Completed Tasks (');
+            const completedSection = source.substring(idx - 600, idx + 300);
+            expect(completedSection).toContain('min-w-0');
+        });
+
+        it('renders mark-all-read-btn when unseen completed tasks exist', () => {
+            expect(source).toContain('data-testid="mark-all-read-btn"');
+        });
+    });
 });

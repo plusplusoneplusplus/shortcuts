@@ -560,9 +560,9 @@ export function ActivityListPane({
 
                 {filteredUnpinned.length > 0 && (
                     <div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                             <button
-                                className="flex items-center gap-1 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
+                                className="flex items-center gap-1 min-w-0 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
                                 onClick={() => setShowHistory(!showHistory)}
                             >
                                 {showHistory ? '▼' : '▶'} Completed Tasks ({filteredUnpinned.length})
