@@ -21,6 +21,12 @@ const DETAIL_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityDetailP
 const FLOATING_CONTEXT_SOURCE = fs.readFileSync(path.join(CONTEXT_DIR, 'FloatingChatsContext.tsx'), 'utf-8');
 const FLOATING_MANAGER_SOURCE = fs.readFileSync(path.join(LAYOUT_DIR, 'FloatingChatManager.tsx'), 'utf-8');
 const FLOATING_CONTENT_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'FloatingChatContent.tsx'), 'utf-8');
+const CHAT_HEADER_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ChatHeader.tsx'), 'utf-8');
+
+const HOOKS_DIR = path.join(
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks'
+);
+const CHAT_WINDOW_ACTIONS_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useChatWindowActions.ts'), 'utf-8');
 
 // ── ActivityChatDetail: variant prop ─────────────────────────────────────────
 
@@ -34,12 +40,12 @@ describe('ActivityChatDetail: variant prop', () => {
     });
 
     it('applies compact padding when variant is floating', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain("variant === 'floating'");
-        expect(CHAT_DETAIL_SOURCE).toContain("p-2");
+        expect(CHAT_HEADER_SOURCE).toContain("variant === 'floating'");
+        expect(CHAT_HEADER_SOURCE).toContain("p-2");
     });
 
     it('hides back button when variant is floating', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain("variant !== 'floating'");
+        expect(CHAT_HEADER_SOURCE).toContain("variant !== 'floating'");
     });
 });
 
@@ -47,42 +53,42 @@ describe('ActivityChatDetail: variant prop', () => {
 
 describe('ActivityChatDetail: float button', () => {
     it('renders float button with correct data-testid', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-float-btn"');
+        expect(CHAT_HEADER_SOURCE).toContain('data-testid="activity-chat-float-btn"');
     });
 
     it('hides float button when variant is floating', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain("variant !== 'floating'");
+        expect(CHAT_HEADER_SOURCE).toContain("variant !== 'floating'");
     });
 
     it('hides float button on mobile', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('!isMobile');
+        expect(CHAT_HEADER_SOURCE).toContain('!isMobile');
     });
 
     it('hides float button when already floating', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('!isFloating(taskId)');
+        expect(CHAT_HEADER_SOURCE).toContain('!isFloating(taskId)');
     });
 
     it('hides float button when isPopOut is true', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('!isPopOut');
+        expect(CHAT_HEADER_SOURCE).toContain('!isPopOut');
     });
 
     it('uses useFloatingChats context', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('useFloatingChats');
+        expect(CHAT_HEADER_SOURCE).toContain('useFloatingChats');
     });
 
     it('calls floatChat on click', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('floatChat(');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('floatChat(');
     });
 
     it('passes taskId, workspaceId, title and status to floatChat', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('taskId,');
-        expect(CHAT_DETAIL_SOURCE).toContain('workspaceId,');
-        expect(CHAT_DETAIL_SOURCE).toContain('title:');
-        expect(CHAT_DETAIL_SOURCE).toContain('status:');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('taskId,');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('workspaceId,');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('title:');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('status:');
     });
 
     it('derives title from task payload prompt', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain("task?.payload?.prompt");
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain("task?.payload?.prompt");
     });
 });
 

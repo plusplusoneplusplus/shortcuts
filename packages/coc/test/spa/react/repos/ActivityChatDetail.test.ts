@@ -23,6 +23,16 @@ const PENDING_INFO_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'queue', 'PendingTaskInfoPanel.tsx'
 );
 
+const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
+const USE_SEND_MESSAGE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'hooks', 'useSendMessage.ts'), 'utf-8');
+const USE_CHAT_SSE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'hooks', 'useChatSSE.ts'), 'utf-8');
+const FOLLOW_UP_INPUT_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'FollowUpInputArea.tsx'), 'utf-8');
+const CHAT_HEADER_SRC = fs.readFileSync(path.join(REACT_SRC, 'repos', 'ChatHeader.tsx'), 'utf-8');
+const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'ConversationArea.tsx'), 'utf-8');
+const MODE_CONFIG_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'modeConfig.ts'), 'utf-8');
+const QUEUED_BUBBLE_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'repos', 'QueuedBubble.tsx'), 'utf-8');
+const CHAT_UTILS_SOURCE = fs.readFileSync(path.join(REACT_SRC, 'utils', 'chatUtils.ts'), 'utf-8');
+
 describe('ActivityChatDetail', () => {
     let source: string;
     let payloadSource: string;
@@ -50,11 +60,7 @@ describe('ActivityChatDetail', () => {
         });
 
         it('spreads processDetails onto the metadata object', () => {
-            const metaBlock = source.substring(
-                source.indexOf('const metadataProcess'),
-                source.indexOf('const metadataProcess') + 400,
-            );
-            expect(metaBlock).toContain('...(processDetails');
+            expect(CHAT_UTILS_SOURCE).toContain('...(processDetails');
         });
 
         it('includes processDetails in useMemo dependency array', () => {
@@ -112,22 +118,22 @@ describe('ActivityChatDetail', () => {
         });
 
         it('renders mode selector as a dropdown', () => {
-            expect(source).toContain('data-testid="mode-selector"');
-            expect(source).toContain('data-testid="mode-dropdown"');
-            expect(source).toContain('<select');
-            expect(source).toContain('<option key={mode} value={mode}>{label}</option>');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-selector"');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-dropdown"');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<select');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<option key={mode} value={mode}>{label}</option>');
         });
 
         it('renders all three mode labels', () => {
-            expect(source).toContain("'ask', '💡 Ask'");
-            expect(source).toContain("'plan', '📋 Plan'");
-            expect(source).toContain("'autopilot', '🤖 Autopilot'");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("'ask', '💡 Ask'");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("'plan', '📋 Plan'");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("'autopilot', '🤖 Autopilot'");
         });
 
         it('sends selectedMode in follow-up message body', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const sendFollowUp') + 1800,
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
             );
             expect(sendBlock).toContain('mode: selectedMode');
         });
@@ -141,38 +147,34 @@ describe('ActivityChatDetail', () => {
         });
 
         it('cycles mode on Shift+Tab keydown', () => {
-            expect(source).toContain("e.key === 'Tab' && e.shiftKey");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("e.key === 'Tab' && e.shiftKey");
         });
 
         it('Shift+Tab prevents default tab behavior', () => {
-            const keyBlock = source.substring(
-                source.indexOf("e.key === 'Tab' && e.shiftKey"),
-                source.indexOf("e.key === 'Tab' && e.shiftKey") + 300,
+            const keyBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf("e.key === 'Tab' && e.shiftKey"),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf("e.key === 'Tab' && e.shiftKey") + 300,
             );
             expect(keyBlock).toContain('e.preventDefault()');
         });
 
         it('Shift+Tab cycles through all three modes in order', () => {
-            const keyBlock = source.substring(
-                source.indexOf("e.key === 'Tab' && e.shiftKey"),
-                source.indexOf("e.key === 'Tab' && e.shiftKey") + 500,
-            );
-            expect(keyBlock).toContain("'ask', 'plan', 'autopilot'");
-            expect(keyBlock).toContain('% modes.length');
+            expect(MODE_CONFIG_SOURCE).toContain("'ask', 'plan', 'autopilot'");
+            expect(MODE_CONFIG_SOURCE).toContain('% MODES.length');
         });
 
         it('Shift+Tab uses functional state update for mode cycling', () => {
-            const keyBlock = source.substring(
-                source.indexOf("e.key === 'Tab' && e.shiftKey"),
-                source.indexOf("e.key === 'Tab' && e.shiftKey") + 300,
+            const keyBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf("e.key === 'Tab' && e.shiftKey"),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf("e.key === 'Tab' && e.shiftKey") + 300,
             );
-            expect(keyBlock).toContain('setSelectedMode(prev =>');
+            expect(keyBlock).toContain('setSelectedMode(cycleMode(');
         });
 
         it('Shift+Tab handler runs after slash command menu check', () => {
-            const onKeyDown = source.substring(
-                source.indexOf('onKeyDown={e =>'),
-                source.indexOf('onPaste={addFromPaste}'),
+            const onKeyDown = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onKeyDown={e =>'),
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('onPaste={onImagePaste}'),
             );
             const slashIdx = onKeyDown.indexOf('slashCommands.handleKeyDown(e)');
             const shiftTabIdx = onKeyDown.indexOf("e.key === 'Tab' && e.shiftKey");
@@ -187,7 +189,7 @@ describe('ActivityChatDetail', () => {
         });
 
         it('imports SlashCommandMenu component', () => {
-            expect(source).toContain("import { SlashCommandMenu }");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { SlashCommandMenu }");
         });
 
         it('accepts workspaceId prop', () => {
@@ -207,34 +209,34 @@ describe('ActivityChatDetail', () => {
         });
 
         it('renders SlashCommandMenu with correct props', () => {
-            expect(source).toContain('<SlashCommandMenu');
-            expect(source).toContain('skills={skills}');
-            expect(source).toContain('filter={slashCommands.menuFilter}');
-            expect(source).toContain('visible={slashCommands.menuVisible}');
-            expect(source).toContain('highlightIndex={slashCommands.highlightIndex}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<SlashCommandMenu');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('skills={skills}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('filter={slashCommands.menuFilter}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('visible={slashCommands.menuVisible}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('highlightIndex={slashCommands.highlightIndex}');
         });
 
         it('calls handleInputChange on textarea change', () => {
-            expect(source).toContain('slashCommands.handleInputChange(');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('slashCommands.handleInputChange(');
         });
 
         it('calls handleKeyDown for slash menu keyboard navigation', () => {
-            expect(source).toContain('slashCommands.handleKeyDown(e)');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('slashCommands.handleKeyDown(e)');
         });
 
         it('extracts skills from message before sending', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const sendFollowUp') + 1800,
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
             );
             expect(sendBlock).toContain('slashCommands.parseAndExtract(');
             expect(sendBlock).toContain('skillNames');
         });
 
         it('dismisses slash menu on send', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const sendFollowUp') + 1800,
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 1800,
             );
             expect(sendBlock).toContain('slashCommands.dismissMenu()');
         });
@@ -246,7 +248,7 @@ describe('ActivityChatDetail', () => {
         });
 
         it('imports ImagePreviews component', () => {
-            expect(source).toContain("import { ImagePreviews } from '../shared/ImagePreviews'");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("import { ImagePreviews } from '../shared/ImagePreviews'");
         });
 
         it('destructures useImagePaste result', () => {
@@ -254,22 +256,22 @@ describe('ActivityChatDetail', () => {
         });
 
         it('attaches onPaste to follow-up textarea', () => {
-            expect(source).toContain('onPaste={addFromPaste}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('onPaste={onImagePaste}');
         });
 
         it('renders ImagePreviews with images and onRemove', () => {
-            expect(source).toContain('<ImagePreviews images={images} onRemove={removeImage}');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<ImagePreviews images={images} onRemove={onImageRemove}');
         });
 
         it('includes images in sendFollowUp POST body', () => {
-            const sendFollowUpSection = source.substring(source.indexOf('const sendFollowUp'));
+            const sendFollowUpSection = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'));
             expect(sendFollowUpSection).toContain('images: images.length > 0');
             expect(sendFollowUpSection).toContain('? images');
             expect(sendFollowUpSection).toContain(': undefined');
         });
 
         it('clears images immediately after send (before waiting for completion)', () => {
-            const sendFollowUpSection = source.substring(source.indexOf('const sendFollowUp'));
+            const sendFollowUpSection = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'));
             const waitIdx = sendFollowUpSection.indexOf('await waitForFollowUpCompletion');
             const clearIdx = sendFollowUpSection.indexOf('clearImages()');
             const catchIdx = sendFollowUpSection.indexOf('} catch');
@@ -282,24 +284,24 @@ describe('ActivityChatDetail', () => {
 
     describe('follow-up send', () => {
         it('POSTs to /processes/:id/message endpoint', () => {
-            expect(source).toContain('`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`');
         });
 
         it('sends content in the body', () => {
-            expect(source).toContain('content,');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('content,');
         });
 
         it('handles Enter key with delivery mode routing', () => {
             // Plain Enter → enqueue
-            expect(source).toContain("void sendFollowUp(undefined, 'enqueue')");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("void onSend(undefined, 'enqueue')");
             // Ctrl+Enter → immediate
-            expect(source).toContain("void sendFollowUp(undefined, 'immediate')");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("void onSend(undefined, 'immediate')");
         });
 
         it('includes deliveryMode in POST body', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const handleCancel'),
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
             );
             expect(sendBlock).toContain('deliveryMode');
         });
@@ -307,11 +309,11 @@ describe('ActivityChatDetail', () => {
 
     describe('session expiry (410)', () => {
         it('detects 410 status on follow-up', () => {
-            expect(source).toContain('response.status === 410');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('response.status === 410');
         });
 
         it('sets session expired flag', () => {
-            expect(source).toContain('setSessionExpired(true)');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('setSessionExpired(true)');
         });
     });
 
@@ -341,9 +343,9 @@ describe('ActivityChatDetail', () => {
         });
 
         it('stores rawContent in lastFailedMessageRef on error paths (not before send)', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const handleCancel'),
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
             );
             // Should NOT set lastFailedMessageRef eagerly before the fetch request
             const preamble = sendBlock.substring(0, sendBlock.indexOf('const response = await fetch'));
@@ -356,29 +358,29 @@ describe('ActivityChatDetail', () => {
         });
 
         it('clears lastFailedMessageRef on successful send', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const handleCancel'),
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
             );
             expect(sendBlock).toContain("lastFailedMessageRef.current = ''");
         });
 
         it('renders Retry button when error is set (not gated on lastFailedMessageRef)', () => {
             // The retry button is shown whenever error is truthy
-            const errorBubbleIdx = source.indexOf('chat-error-bubble');
-            const retrySection = source.substring(
+            const errorBubbleIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('chat-error-bubble');
+            const retrySection = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
                 errorBubbleIdx,
                 errorBubbleIdx + 600,
             );
             // Should NOT require lastFailedMessageRef.current in the render condition
             expect(retrySection).not.toContain('error && lastFailedMessageRef.current');
             expect(retrySection).toContain('Retry');
-            expect(retrySection).toContain('retryLastMessage()');
+            expect(retrySection).toContain('onRetry');
         });
 
         it('uses the shared Button component for the retry button', () => {
-            const errorBubbleIdx = source.indexOf('chat-error-bubble');
-            const retrySection = source.substring(
+            const errorBubbleIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('chat-error-bubble');
+            const retrySection = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
                 errorBubbleIdx,
                 errorBubbleIdx + 600,
             );
@@ -388,8 +390,8 @@ describe('ActivityChatDetail', () => {
         });
 
         it('retry button shows spinner and is disabled while sending', () => {
-            const retryBtnIdx = source.indexOf('data-testid="retry-btn"');
-            const retrySection = source.substring(
+            const retryBtnIdx = FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('data-testid="retry-btn"');
+            const retrySection = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
                 retryBtnIdx - 200,
                 retryBtnIdx + 200,
             );
@@ -422,15 +424,15 @@ describe('ActivityChatDetail', () => {
 
     describe('PendingTaskInfoPanel integration', () => {
         it('imports PendingTaskInfoPanel', () => {
-            expect(source).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
+            expect(CONVERSATION_AREA_SOURCE).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
         });
 
         it('renders PendingTaskInfoPanel for pending tasks', () => {
-            expect(source).toContain('<PendingTaskInfoPanel');
+            expect(CONVERSATION_AREA_SOURCE).toContain('<PendingTaskInfoPanel');
         });
 
         it('passes fullTask || task to PendingTaskInfoPanel', () => {
-            expect(source).toContain('task={fullTask || task}');
+            expect(CONVERSATION_AREA_SOURCE).toContain('task={fullTask || task}');
         });
 
         it('fetches full task data for pending tasks', () => {
@@ -469,46 +471,46 @@ describe('ActivityChatDetail', () => {
 
     describe('SSE chunk timeline merging', () => {
         it('merges consecutive content chunks into a single timeline item', () => {
-            const chunkHandler = source.substring(
-                source.indexOf("es.addEventListener('chunk'"),
-                source.indexOf("const handleToolSSE"),
+            const chunkHandler = USE_CHAT_SSE_SOURCE.substring(
+                USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('chunk'"),
+                USE_CHAT_SSE_SOURCE.indexOf("const handleToolSSE"),
             );
             expect(chunkHandler).toContain("lastItem.type === 'content'");
             expect(chunkHandler).toContain("(lastItem.content || '') + chunk");
-            expect(chunkHandler).toContain('prev.slice(0, -1)');
+            expect(chunkHandler).toContain('tl.slice(0, -1)');
         });
 
         it('creates a new timeline item when last item is not content', () => {
-            const chunkHandler = source.substring(
-                source.indexOf("es.addEventListener('chunk'"),
-                source.indexOf("const handleToolSSE"),
+            const chunkHandler = USE_CHAT_SSE_SOURCE.substring(
+                USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('chunk'"),
+                USE_CHAT_SSE_SOURCE.indexOf("const handleToolSSE"),
             );
             expect(chunkHandler).toContain("type: 'content' as const");
             expect(chunkHandler).toContain('timestamp: new Date().toISOString()');
         });
 
         it('tool events always push a new timeline item (merge boundary)', () => {
-            const toolHandler = source.substring(
-                source.indexOf('const handleToolSSE'),
-                source.indexOf("es.addEventListener('tool-start'"),
+            const toolHandler = USE_CHAT_SSE_SOURCE.substring(
+                USE_CHAT_SSE_SOURCE.indexOf('const handleToolSSE'),
+                USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('tool-start'"),
             );
             expect(toolHandler).toContain('...(last.timeline || [])');
             expect(toolHandler).toContain('type: eventType');
         });
 
         it('handles conversation-snapshot SSE event', () => {
-            expect(source).toContain("es.addEventListener('conversation-snapshot'");
+            expect(USE_CHAT_SSE_SOURCE).toContain("es.addEventListener('conversation-snapshot'");
         });
     });
 
     describe('SET_FOLLOW_UP_STREAMING dispatch', () => {
         it('dispatches SET_FOLLOW_UP_STREAMING true when sending', () => {
-            const sendBlock = source.substring(source.indexOf('const sendFollowUp'));
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'));
             expect(sendBlock).toContain("type: 'SET_FOLLOW_UP_STREAMING', value: true");
         });
 
         it('dispatches SET_FOLLOW_UP_STREAMING false when done', () => {
-            const sendBlock = source.substring(source.indexOf('const sendFollowUp'));
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'));
             expect(sendBlock).toContain("type: 'SET_FOLLOW_UP_STREAMING', value: false");
         });
 
@@ -579,55 +581,55 @@ describe('ActivityChatDetail', () => {
 
     describe('copy conversation', () => {
         it('has copy-conversation button with data-testid', () => {
-            expect(source).toContain('data-testid="copy-conversation-btn"');
+            expect(CHAT_HEADER_SRC).toContain('data-testid="copy-conversation-btn"');
         });
 
         it('imports copyToClipboard and formatConversationAsText', () => {
-            expect(source).toContain('copyToClipboard');
-            expect(source).toContain('formatConversationAsText');
+            expect(CHAT_HEADER_SRC).toContain('copyToClipboard');
+            expect(CHAT_HEADER_SRC).toContain('formatConversationAsText');
         });
 
         it('has copied state for copy button feedback', () => {
-            expect(source).toContain('setCopied(true)');
-            expect(source).toContain('setCopied(false)');
+            expect(CHAT_HEADER_SRC).toContain('setCopied(true)');
+            expect(CHAT_HEADER_SRC).toContain('setCopied(false)');
         });
 
         it('copy button is disabled when loading or turns empty', () => {
-            expect(source).toContain('disabled={loading || turns.length === 0}');
+            expect(CHAT_HEADER_SRC).toContain('disabled={loading || turns.length === 0}');
         });
 
         it('copy button shows checkmark icon after copying (2s revert)', () => {
-            expect(source).toContain('setCopied(false), 2000');
+            expect(CHAT_HEADER_SRC).toContain('setCopied(false), 2000');
         });
     });
 
     describe('mode-based input border colors', () => {
         it('defines MODE_BORDER_COLORS mapping for all three modes', () => {
-            expect(source).toContain('MODE_BORDER_COLORS');
-            expect(source).toContain("autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus:ring-green-500/50' }");
-            expect(source).toContain("ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus:ring-yellow-500/50' }");
-            expect(source).toContain("plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' }");
+            expect(MODE_CONFIG_SOURCE).toContain('MODE_BORDER_COLORS');
+            expect(MODE_CONFIG_SOURCE).toContain("autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus:ring-green-500/50' }");
+            expect(MODE_CONFIG_SOURCE).toContain("ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus:ring-yellow-500/50' }");
+            expect(MODE_CONFIG_SOURCE).toContain("plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' }");
         });
 
         it('applies dynamic border class from MODE_BORDER_COLORS to textarea', () => {
-            expect(source).toContain('MODE_BORDER_COLORS[selectedMode].border');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_BORDER_COLORS[selectedMode].border');
         });
 
         it('applies dynamic focus ring class from MODE_BORDER_COLORS to textarea', () => {
-            expect(source).toContain('MODE_BORDER_COLORS[selectedMode].ring');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_BORDER_COLORS[selectedMode].ring');
         });
 
         it('uses cn() utility to compose textarea classes with mode border', () => {
-            const textareaBlock = source.substring(
-                source.indexOf('<textarea') - 50,
-                source.indexOf('data-testid="activity-chat-input"') + 50,
+            const textareaBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('<textarea') - 50,
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf('data-testid="activity-chat-input"') + 50,
             );
             expect(textareaBlock).toContain('cn(');
             expect(textareaBlock).toContain('MODE_BORDER_COLORS[selectedMode]');
         });
 
         it('MODE_BORDER_COLORS is typed as Record over all mode variants', () => {
-            expect(source).toContain("Record<'ask' | 'plan' | 'autopilot'");
+            expect(MODE_CONFIG_SOURCE).toContain("Record<ChatMode");
         });
     });
 
@@ -641,11 +643,11 @@ describe('ActivityChatDetail', () => {
         });
 
         it('imports DeliveryMode from pipeline-core', () => {
-            expect(source).toContain("import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core'");
+            expect(USE_SEND_MESSAGE_SOURCE).toContain("import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core'");
         });
 
         it('declares QueuedMessage interface with correct status union', () => {
-            expect(source).toContain("status: 'pending-send' | 'queued' | 'steering'");
+            expect(CHAT_UTILS_SOURCE).toContain("status: 'pending-send' | 'queued' | 'steering'");
         });
 
         it('declares pendingQueue state', () => {
@@ -659,94 +661,90 @@ describe('ActivityChatDetail', () => {
 
     describe('keyboard routing', () => {
         it('Ctrl+Enter submits with immediate delivery mode', () => {
-            expect(source).toContain("void sendFollowUp(undefined, 'immediate')");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("void onSend(undefined, 'immediate')");
         });
 
         it('plain Enter submits with enqueue delivery mode', () => {
-            expect(source).toContain("void sendFollowUp(undefined, 'enqueue')");
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain("void onSend(undefined, 'enqueue')");
         });
 
         it('Shift+Enter falls through for newline', () => {
-            const keyBlock = source.substring(
-                source.indexOf("void sendFollowUp(undefined, 'immediate')") - 200,
-                source.indexOf("void sendFollowUp(undefined, 'enqueue')") + 200,
+            const keyBlock = FOLLOW_UP_INPUT_AREA_SOURCE.substring(
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf("void onSend(undefined, 'immediate')") - 200,
+                FOLLOW_UP_INPUT_AREA_SOURCE.indexOf("void onSend(undefined, 'enqueue')") + 200,
             );
             expect(keyBlock).toContain('!e.shiftKey');
         });
 
         it('detects Ctrl or Meta key for immediate mode', () => {
-            expect(source).toContain('e.ctrlKey || e.metaKey');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('e.ctrlKey || e.metaKey');
         });
     });
 
     describe('client-side queue', () => {
         it('queues messages when sending is true', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const handleCancel'),
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
             );
             expect(sendBlock).toContain('if (sending)');
             expect(sendBlock).toContain('setPendingQueue(prev => [...prev, qm])');
         });
 
         it('assigns crypto.randomUUID() as queue message id', () => {
-            expect(source).toContain('crypto.randomUUID()');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('crypto.randomUUID()');
         });
 
         it('includes optimisticId in queued POST body', () => {
-            const sendBlock = source.substring(
-                source.indexOf('const sendFollowUp'),
-                source.indexOf('const handleCancel'),
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
             );
             expect(sendBlock).toContain('optimisticId: qm.id');
         });
 
         it('sends deliveryMode in POST body for normal sends', () => {
-            const sendBlock = source.substring(
-                source.indexOf('// No turn in flight'),
-                source.indexOf('const handleCancel'),
-            );
-            expect(sendBlock).toContain('deliveryMode,');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('deliveryMode,');
         });
     });
 
     describe('SSE queue events', () => {
         it('handles message-queued SSE event in main SSE', () => {
-            expect(source).toContain("es.addEventListener('message-queued'");
+            expect(USE_CHAT_SSE_SOURCE).toContain("es.addEventListener('message-queued'");
         });
 
         it('handles message-steering SSE event in main SSE', () => {
-            expect(source).toContain("es.addEventListener('message-steering'");
+            expect(USE_CHAT_SSE_SOURCE).toContain("es.addEventListener('message-steering'");
         });
 
         it('updates pending queue status on message-queued', () => {
-            const handler = source.substring(
-                source.indexOf("es.addEventListener('message-queued'"),
-                source.indexOf("es.addEventListener('message-queued'") + 300,
+            const handler = USE_CHAT_SSE_SOURCE.substring(
+                USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-queued'"),
+                USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-queued'") + 300,
             );
             expect(handler).toContain("status: 'queued' as const");
         });
 
         it('updates pending queue status on message-steering', () => {
-            const handler = source.substring(
-                source.indexOf("es.addEventListener('message-steering'"),
-                source.indexOf("es.addEventListener('message-steering'") + 300,
+            const handler = USE_CHAT_SSE_SOURCE.substring(
+                USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-steering'"),
+                USE_CHAT_SSE_SOURCE.indexOf("es.addEventListener('message-steering'") + 300,
             );
             expect(handler).toContain("status: 'steering' as const");
         });
 
         it('handles message-queued SSE in follow-up stream', () => {
-            const followUpSSE = source.substring(
-                source.indexOf('const waitForFollowUpCompletion'),
-                source.indexOf('const waitForFollowUpCompletion') + 3000,
+            const followUpSSE = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion') + 3000,
             );
             expect(followUpSSE).toContain("'message-queued'");
         });
 
         it('handles message-steering SSE in follow-up stream', () => {
-            const followUpSSE = source.substring(
-                source.indexOf('const waitForFollowUpCompletion'),
-                source.indexOf('const waitForFollowUpCompletion') + 3000,
+            const followUpSSE = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const waitForFollowUpCompletion') + 3000,
             );
             expect(followUpSSE).toContain("'message-steering'");
         });
@@ -754,55 +752,47 @@ describe('ActivityChatDetail', () => {
 
     describe('queue drain on done', () => {
         it('removes steering messages from queue on done', () => {
-            const finishBlock = source.substring(
-                source.indexOf('const finish = () => {'),
-                source.indexOf('const finish = () => {') + 500,
-            );
-            expect(finishBlock).toContain("m.status !== 'steering'");
+            expect(USE_SEND_MESSAGE_SOURCE).toContain("m.status !== 'steering'");
         });
 
         it('calls flushQueueRef.current on done', () => {
-            const finishBlock = source.substring(
-                source.indexOf('const finish = () => {'),
-                source.indexOf('const finish = () => {') + 800,
-            );
-            expect(finishBlock).toContain('flushQueueRef.current?.()');
+            expect(USE_SEND_MESSAGE_SOURCE).toContain('flushQueueRef.current?.()');
         });
 
         it('drains in sendFollowUp finally block', () => {
-            const finallyBlock = source.substring(
-                source.indexOf('// Drain: remove steering messages consumed by the completed turn'),
-                source.indexOf('// Drain: remove steering messages consumed by the completed turn') + 400,
+            const sendBlock = USE_SEND_MESSAGE_SOURCE.substring(
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp'),
+                USE_SEND_MESSAGE_SOURCE.indexOf('const sendFollowUp') + 5000,
             );
-            expect(finallyBlock).toContain('flushQueueRef.current?.()');
+            expect(sendBlock).toContain('flushQueueRef.current?.()');
         });
     });
 
     describe('optimistic bubble rendering', () => {
         it('defines QueuedBubble component', () => {
-            expect(source).toContain('const QueuedBubble');
+            expect(QUEUED_BUBBLE_SOURCE).toContain('export function QueuedBubble');
         });
 
         it('QueuedBubble shows lightning bolt for steering status', () => {
-            expect(source).toContain("'steering' ? '⚡'");
+            expect(QUEUED_BUBBLE_SOURCE).toContain("'steering' ? '⚡'");
         });
 
         it('QueuedBubble shows clock for queued status', () => {
-            expect(source).toContain("'queued'   ? '🕐'");
+            expect(QUEUED_BUBBLE_SOURCE).toContain("'queued'   ? '🕐'");
         });
 
         it('QueuedBubble shows correct labels', () => {
-            expect(source).toContain("'steering' ? 'steering'");
-            expect(source).toContain("'queued'   ? 'queued'");
-            expect(source).toContain("'sending…'");
+            expect(QUEUED_BUBBLE_SOURCE).toContain("'steering' ? 'steering'");
+            expect(QUEUED_BUBBLE_SOURCE).toContain("'queued'   ? 'queued'");
+            expect(QUEUED_BUBBLE_SOURCE).toContain("'sending…'");
         });
 
         it('renders pendingQueue as QueuedBubble components', () => {
-            expect(source).toContain('{pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}');
+            expect(CONVERSATION_AREA_SOURCE).toContain('{pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}');
         });
 
         it('renders queued bubbles with data-status attribute', () => {
-            expect(source).toContain('data-status={msg.status}');
+            expect(QUEUED_BUBBLE_SOURCE).toContain('data-status={msg.status}');
         });
     });
 
@@ -848,12 +838,12 @@ describe('ActivityChatDetail', () => {
         });
 
         it('ConversationTurnBubble render includes both taskId and wsId props', () => {
-            const bubbleCall = source.substring(
-                source.indexOf('<ConversationTurnBubble'),
-                source.indexOf('<ConversationTurnBubble') + 200,
+            const bubbleCall = CONVERSATION_AREA_SOURCE.substring(
+                CONVERSATION_AREA_SOURCE.indexOf('<ConversationTurnBubble'),
+                CONVERSATION_AREA_SOURCE.indexOf('<ConversationTurnBubble') + 200,
             );
             expect(bubbleCall).toContain('taskId={taskId}');
-            expect(bubbleCall).toContain('wsId={workspaceId}');
+            expect(bubbleCall).toContain('wsId={wsId}');
         });
     });
 
@@ -869,22 +859,22 @@ describe('ActivityChatDetail', () => {
         });
 
         it('imports MetaRow and FilePathValue from PendingTaskPayload', () => {
-            expect(source).toContain("import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload'");
+            expect(CHAT_HEADER_SRC).toContain("import { FilePathValue } from '../queue/PendingTaskPayload'");
         });
 
         it('renders FilePathValue pill with 📄 label when planPath is set', () => {
-            const headerBlock = source.substring(
-                source.indexOf('<Badge status={task.status}'),
-                source.indexOf('<Badge status={task.status}') + 300,
+            const headerBlock = CHAT_HEADER_SRC.substring(
+                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
+                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 300,
             );
             expect(headerBlock).toContain('{planPath && (');
             expect(headerBlock).toContain('<FilePathValue label="📄" value={planPath}');
         });
 
         it('pill is placed after the status Badge in the header', () => {
-            const headerSection = source.substring(
-                source.indexOf('<Badge status={task.status}'),
-                source.indexOf('<Badge status={task.status}') + 300,
+            const headerSection = CHAT_HEADER_SRC.substring(
+                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
+                CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 300,
             );
             expect(headerSection).toContain('{planPath && (');
             expect(headerSection).toContain('<FilePathValue label="📄" value={planPath}');

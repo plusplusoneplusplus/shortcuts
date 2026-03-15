@@ -160,24 +160,34 @@ describe('PendingTaskPayload (standalone)', () => {
 
 describe('ActivityChatDetail imports extracted components', () => {
     let source: string;
+    let conversationAreaSource: string;
+    let chatHeaderSource: string;
     const ACTIVITY_CHAT_DETAIL_PATH = path.join(
         __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ActivityChatDetail.tsx'
+    );
+    const CONVERSATION_AREA_PATH = path.join(
+        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ConversationArea.tsx'
+    );
+    const CHAT_HEADER_PATH = path.join(
+        __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ChatHeader.tsx'
     );
 
     beforeAll(() => {
         source = fs.readFileSync(ACTIVITY_CHAT_DETAIL_PATH, 'utf-8');
+        conversationAreaSource = fs.readFileSync(CONVERSATION_AREA_PATH, 'utf-8');
+        chatHeaderSource = fs.readFileSync(CHAT_HEADER_PATH, 'utf-8');
     });
 
     it('imports PendingTaskInfoPanel from queue module', () => {
-        expect(source).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
+        expect(conversationAreaSource).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
     });
 
     it('imports MetaRow, FilePathValue from queue module', () => {
-        expect(source).toContain("import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload'");
+        expect(chatHeaderSource).toContain("import { FilePathValue } from '../queue/PendingTaskPayload'");
     });
 
     it('uses PendingTaskInfoPanel in JSX', () => {
-        expect(source).toContain('<PendingTaskInfoPanel');
+        expect(conversationAreaSource).toContain('<PendingTaskInfoPanel');
     });
 
     it('exports ActivityChatDetail', () => {

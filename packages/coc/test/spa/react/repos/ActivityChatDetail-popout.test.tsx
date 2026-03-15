@@ -16,6 +16,12 @@ const CONTEXT_DIR = path.join(
 const CHAT_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityChatDetail.tsx'), 'utf-8');
 const DETAIL_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ActivityDetailPane.tsx'), 'utf-8');
 const POPOUT_CONTEXT_SOURCE = fs.readFileSync(path.join(CONTEXT_DIR, 'PopOutContext.tsx'), 'utf-8');
+const CHAT_HEADER_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ChatHeader.tsx'), 'utf-8');
+
+const HOOKS_DIR = path.join(
+    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks'
+);
+const CHAT_WINDOW_ACTIONS_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useChatWindowActions.ts'), 'utf-8');
 
 // ── ActivityChatDetail pop-out button ─────────────────────────────────────────
 
@@ -25,53 +31,53 @@ describe('ActivityChatDetail: pop-out button', () => {
     });
 
     it('renders a pop-out button with correct data-testid', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-popout-btn"');
+        expect(CHAT_HEADER_SOURCE).toContain('data-testid="activity-chat-popout-btn"');
     });
 
     it('hides pop-out button when isPopOut is true', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('!isPopOut');
+        expect(CHAT_HEADER_SOURCE).toContain('!isPopOut');
     });
 
     it('hides pop-out button on mobile', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('!isMobile');
+        expect(CHAT_HEADER_SOURCE).toContain('!isMobile');
     });
 
     it('hides pop-out button when variant is floating', () => {
         // The pop-out guard must include variant !== 'floating'
-        const popoutBtnIdx = CHAT_DETAIL_SOURCE.indexOf('activity-chat-popout-btn');
+        const popoutBtnIdx = CHAT_HEADER_SOURCE.indexOf('activity-chat-popout-btn');
         // Find the render guard preceding the popout button
-        const guardRegion = CHAT_DETAIL_SOURCE.slice(Math.max(0, popoutBtnIdx - 200), popoutBtnIdx);
+        const guardRegion = CHAT_HEADER_SOURCE.slice(Math.max(0, popoutBtnIdx - 200), popoutBtnIdx);
         expect(guardRegion).toContain("variant !== 'floating'");
     });
 
     it('uses usePopOut context', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('usePopOut');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('usePopOut');
     });
 
     it('uses useGlobalToast for popup-blocked notification', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('ToastContext');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('ToastContext');
     });
 
     it('calls window.open with popout route', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('window.open');
-        expect(CHAT_DETAIL_SOURCE).toContain('#popout/activity/');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('window.open');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('#popout/activity/');
     });
 
     it('marks task as popped out after successful window.open', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('markPoppedOut(taskId)');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('markPoppedOut(taskId)');
     });
 
     it('shows a toast when popup is blocked', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('addToast');
-        expect(CHAT_DETAIL_SOURCE).toContain('blocked');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('addToast');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('blocked');
     });
 
     it('uses window name based on taskId to avoid duplicate popups', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('coc-popout-');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('coc-popout-');
     });
 
     it('encodes workspaceId in query param', () => {
-        expect(CHAT_DETAIL_SOURCE).toContain('workspace=');
+        expect(CHAT_WINDOW_ACTIONS_SOURCE).toContain('workspace=');
     });
 });
 

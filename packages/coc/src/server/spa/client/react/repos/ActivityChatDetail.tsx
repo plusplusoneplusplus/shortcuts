@@ -1,88 +1,36 @@
 /**
  * ActivityChatDetail — unified detail surface for the Activity tab.
  *
- * Renders a chat conversation for any queue task (chat, run-workflow,
- * run-script, etc.) without navigating away from the Activity tab.
- * Derives the process ID from the queue task and reuses the existing
- * queue/process/SSE APIs.
- *
- * This component unifies the former ActivityChatDetail and QueueTaskDetail
- * into a single surface with all features: rich SSE streaming (chunk,
- * tool-start/complete/failed, conversation-snapshot), retry-on-error,
- * cancel/move-to-top for pending tasks, conversation caching, mode
- * selector, slash commands, and copy conversation.
+ * Orchestrates data loading, SSE streaming, follow-up messaging, scroll
+ * management, and draft persistence. Delegates rendering to ChatHeader,
+ * ConversationArea, and FollowUpInputArea, and behaviour to useChatSSE,
+ * useSendMessage, useQueuedTaskPoll, and useChatWindowActions.
  */
 
-import { useEffect, useRef, useState, useMemo, useCallback, useContext } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { getApiBase } from '../utils/config';
-import { Button, Spinner, SuggestionChips } from '../shared';
-import { ConversationTurnBubble } from '../processes/ConversationTurnBubble';
-import { ConversationMetadataPopover, getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { getConversationTurns } from '../chat/chatConversationUtils';
+import { getSessionIdFromProcess } from '../processes/ConversationMetadataPopover';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { usePopOut } from '../context/PopOutContext';
-import { ToastContext } from '../context/ToastContext';
-import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useImagePaste } from '../hooks/useImagePaste';
-import { ImagePreviews } from '../shared/ImagePreviews';
-import { cn } from '../shared/cn';
 import { useSlashCommands } from './useSlashCommands';
-import { SlashCommandMenu } from './SlashCommandMenu';
 import type { SkillItem } from './SlashCommandMenu';
-import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
-import { Badge } from '../shared';
-import { FilePathLink } from '../shared/FilePathLink';
-import { CreatedFilesDropdown } from '../shared/CreatedFilesDropdown';
 import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
-import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
-import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
-import { useFloatingChats } from '../context/FloatingChatsContext';
-import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
-import { getDraft, setDraft, clearDraft, pruneExpired } from '../hooks/useDraftStore';
-import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
+import { getDraft, setDraft, pruneExpired } from '../hooks/useDraftStore';
+import { buildMetadataProcess } from '../utils/chatUtils';
+import type { QueuedMessage } from '../utils/chatUtils';
+import { useChatSSE } from '../hooks/useChatSSE';
+import { useSendMessage } from '../hooks/useSendMessage';
+import { useQueuedTaskPoll } from '../hooks/useQueuedTaskPoll';
+import { useChatWindowActions } from '../hooks/useChatWindowActions';
+import { ChatHeader } from './ChatHeader';
+import { ConversationArea } from './ConversationArea';
+import { FollowUpInputArea } from './FollowUpInputArea';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
-
-// A message waiting to be sent after the current AI turn completes.
-interface QueuedMessage {
-    id: string;           // crypto.randomUUID() — used as React key and bubble identifier
-    content: string;
-    deliveryMode: DeliveryMode;
-    status: 'pending-send' | 'queued' | 'steering';
-}
-
-const QueuedBubble: React.FC<{ msg: QueuedMessage }> = ({ msg }) => {
-    const icon =
-        msg.status === 'steering' ? '⚡' :
-        msg.status === 'queued'   ? '🕐' :
-        '…';
-    const label =
-        msg.status === 'steering' ? 'steering' :
-        msg.status === 'queued'   ? 'queued' :
-        'sending…';
-    return (
-        <div className="turn-bubble turn-bubble--optimistic" data-status={msg.status} style={{
-            opacity: msg.status === 'steering' ? 0.9 : 0.75,
-            borderLeft: `3px solid ${msg.status === 'steering' ? 'var(--color-warning, #e8912d)' : 'var(--color-accent-muted, #0078d4)'}`,
-            fontStyle: 'italic',
-            padding: '8px 12px',
-            borderRadius: '6px',
-        }}>
-            <span>{icon}</span>{' '}
-            <span>{msg.content}</span>{' '}
-            <span style={{ fontSize: '0.75em', color: 'var(--color-text-secondary, #848484)', marginLeft: '0.5em' }}>{label}</span>
-        </div>
-    );
-};
-
-const MODE_BORDER_COLORS: Record<'ask' | 'plan' | 'autopilot', { border: string; ring: string }> = {
-    autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus:ring-green-500/50' },
-    ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus:ring-yellow-500/50' },
-    plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' },
-};
 
 export interface ActivityChatDetailProps {
     taskId: string;
@@ -131,24 +79,16 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     // Ref to capture latest followUpInput value for stale-closure-safe draft saves
     const followUpInputRef = useRef<string>('');
     const selectedModeRef = useRef<'ask' | 'plan' | 'autopilot'>('autopilot');
-    const flushQueueRef = useRef<(() => void) | null>(null);
 
-    const eventSourceRef = useRef<EventSource | null>(null);
-    const followUpEventSourceRef = useRef<EventSource | null>(null);
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
     const lastRefreshVersionRef = useRef(0);
     const isInitialLoadRef = useRef(true);
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
-    const { isMobile } = useBreakpoint();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
-    const { markPoppedOut } = usePopOut();
-    const { floatChat, isFloating } = useFloatingChats();
-    const toastCtx = useContext(ToastContext);
     const slashCommands = useSlashCommands(skills);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -161,22 +101,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
-    const metadataProcess = useMemo(() => {
-        if (!task) return null;
-        return {
-            ...task,
-            ...(processDetails || {}),
-            id: processId ?? task.id,
-            metadata: { queueTaskId: task.id, model: task.config?.model, mode: (task as any)?.payload?.mode, ...task.metadata, ...(processDetails?.metadata || {}) },
-        };
-    }, [task, processId, processDetails]);
-
+    const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
-
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
     const pinnedFile = createdFiles.at(-1);
 
-    const setTurnsAndRef= useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
+    const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
         turnsRef.current = resolved;
         setTurns(resolved);
@@ -185,25 +115,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         }
     }, [taskId, appDispatch]);
 
-    const stopStreaming = useCallback(() => {
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
-        setIsStreaming(false);
-    }, []);
-
     const removeStreamingPlaceholder = useCallback(() => {
         setTurnsAndRef(prev => {
             const last = prev[prev.length - 1];
             return last?.role === 'assistant' && last.streaming ? prev.slice(0, -1) : prev;
         });
     }, [setTurnsAndRef]);
-
-    const closeFollowUpStream = useCallback(() => {
-        if (followUpEventSourceRef.current) {
-            followUpEventSourceRef.current.close();
-            followUpEventSourceRef.current = null;
-        }
-    }, []);
 
     const refreshConversation = useCallback(async (pid: string) => {
         try {
@@ -213,6 +130,50 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             setTurnsAndRef(refreshedTurns);
         } catch { /* keep current turns */ }
     }, [setTurnsAndRef]);
+
+    const { sendFollowUp, flushQueueRef, closeFollowUpStream } = useSendMessage({
+        processId,
+        taskId,
+        inputDisabled,
+        sending,
+        setSending,
+        setError,
+        setSessionExpired,
+        setSuggestions,
+        pendingQueue,
+        setPendingQueue,
+        setTurnsAndRef,
+        removeStreamingPlaceholder,
+        refreshConversation,
+        queueDispatch,
+        slashCommands,
+        followUpInputRef,
+        setFollowUpInput,
+        selectedMode,
+        selectedModeRef,
+        images,
+        clearImages,
+        lastFailedMessageRef,
+    });
+
+    const { stopStreaming } = useChatSSE({
+        taskId,
+        task,
+        processId,
+        setIsStreaming,
+        setTask,
+        setPendingQueue,
+        setSuggestions,
+        setSessionTokenLimit,
+        setSessionCurrentTokens,
+        setTurnsAndRef,
+        refreshConversation,
+        flushQueueRef,
+    });
+
+    useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
+
+    const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
 
     // Fetch skills when workspaceId changes
     useEffect(() => {
@@ -321,7 +282,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     if (loadedTask?.status === 'running') {
                         const lastTurn = loadedTurns[loadedTurns.length - 1];
                         if (lastTurn?.role === 'assistant') {
-                            setTurnsAndRef(loadedTurns.map((t, i) =>
+                            setTurnsAndRef(loadedTurns.map((t: ClientConversationTurn, i: number) =>
                                 i === loadedTurns.length - 1 ? { ...t, streaming: true } : t
                             ));
                         } else {
@@ -371,185 +332,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         })();
     }, [taskId, queueState.refreshVersion, setTurnsAndRef]);
 
-    // SSE for running tasks — rich streaming with chunk/tool events
-    useEffect(() => {
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-        }
-        if (!taskId || task?.status !== 'running' || !processId) return;
-
-        const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
-        eventSourceRef.current = es;
-        setIsStreaming(true);
-
-        const ensureAssistantTurn = (prev: ClientConversationTurn[]): ClientConversationTurn[] => {
-            const last = prev[prev.length - 1];
-            if (last && last.role === 'assistant') return prev;
-            return [...prev, { role: 'assistant', content: '', streaming: true, timeline: [] }];
-        };
-
-        es.addEventListener('conversation-snapshot', (event: Event) => {
-            try {
-                const data = JSON.parse((event as MessageEvent).data);
-                if (data.turns) {
-                    setTurnsAndRef(data.turns);
-                }
-                if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
-                if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
-            } catch { /* ignore */ }
-        });
-
-        es.addEventListener('chunk', (event: Event) => {
-            try {
-                const data = JSON.parse((event as MessageEvent).data);
-                const chunk = data.content || '';
-                setTurnsAndRef((prev) => {
-                    const turns = ensureAssistantTurn(prev);
-                    const last = turns[turns.length - 1];
-                    turns[turns.length - 1] = {
-                        ...last,
-                        content: (last.content || '') + chunk,
-                        streaming: true,
-                        timeline: (() => {
-                            const prev = last.timeline || [];
-                            const lastItem = prev[prev.length - 1];
-                            if (lastItem && lastItem.type === 'content') {
-                                return [...prev.slice(0, -1), { ...lastItem, content: (lastItem.content || '') + chunk }];
-                            }
-                            return [...prev, { type: 'content' as const, timestamp: new Date().toISOString(), content: chunk }];
-                        })(),
-                    };
-                    return [...turns];
-                });
-            } catch { /* ignore */ }
-        });
-
-        const handleToolSSE = (eventType: 'tool-start' | 'tool-complete' | 'tool-failed') => (event: Event) => {
-            try {
-                const data = JSON.parse((event as MessageEvent).data);
-                setTurnsAndRef((prev) => {
-                    const turns = ensureAssistantTurn(prev);
-                    const last = turns[turns.length - 1];
-                    const toolCall: any = {
-                        id: data.toolCallId,
-                        toolName: data.toolName || 'unknown',
-                        args: data.parameters || {},
-                        status: eventType === 'tool-start' ? 'running' : eventType === 'tool-complete' ? 'completed' : 'failed',
-                        startTime: new Date().toISOString(),
-                        ...(eventType !== 'tool-start' ? { endTime: new Date().toISOString(), result: data.result, error: data.error } : {}),
-                        ...(data.parentToolCallId ? { parentToolCallId: data.parentToolCallId } : {}),
-                    };
-                    turns[turns.length - 1] = {
-                        ...last,
-                        streaming: true,
-                        timeline: [...(last.timeline || []), { type: eventType, timestamp: new Date().toISOString(), toolCall }],
-                    };
-                    return [...turns];
-                });
-            } catch { /* ignore */ }
-        };
-
-        es.addEventListener('tool-start', handleToolSSE('tool-start'));
-        es.addEventListener('tool-complete', handleToolSSE('tool-complete'));
-        es.addEventListener('tool-failed', handleToolSSE('tool-failed'));
-
-        es.addEventListener('message-queued', (event: Event) => {
-            try {
-                const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'queued' as const } : m));
-            } catch { /* ignore */ }
-        });
-        es.addEventListener('message-steering', (event: Event) => {
-            try {
-                const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'steering' as const } : m));
-            } catch { /* ignore */ }
-        });
-
-        const closeSSE = () => {
-            es.close();
-            eventSourceRef.current = null;
-            setIsStreaming(false);
-        };
-
-        const finish = () => {
-            closeSSE();
-            // Mark the task as no longer running so the streaming placeholder is removed
-            setTask(prev => prev && prev.status === 'running' ? { ...prev, status: 'completed' as const } : prev);
-            void refreshConversation(processId);
-            // Drain queue: remove steering messages and flush next queued message
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            setTimeout(() => { flushQueueRef.current?.(); }, 0);
-        };
-
-        es.addEventListener('done', finish);
-        es.addEventListener('status', (e: Event) => {
-            try {
-                const status = JSON.parse((e as MessageEvent).data)?.status;
-                if (status && !['running', 'queued'].includes(status)) finish();
-            } catch { /* ignore */ }
-        });
-        // On SSE error (e.g. 404 process not yet created), close but don't mark task completed
-        es.onerror = () => { closeSSE(); void refreshConversation(processId); };
-        es.addEventListener('suggestions', (event: Event) => {
-            try {
-                const data = JSON.parse((event as MessageEvent).data);
-                if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
-            } catch { /* ignore */ }
-        });
-        es.addEventListener('token-usage', (event: Event) => {
-            try {
-                const data = JSON.parse((event as MessageEvent).data);
-                if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
-                if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
-                // Attach tokenUsage to the relevant turn
-                if (data.tokenUsage && typeof data.turnIndex === 'number') {
-                    setTurnsAndRef(prev => prev.map(t =>
-                        t.turnIndex === data.turnIndex && t.role === 'assistant'
-                            ? { ...t, tokenUsage: data.tokenUsage }
-                            : t
-                    ));
-                }
-            } catch { /* ignore */ }
-        });
-
-        return () => { es.close(); eventSourceRef.current = null; setIsStreaming(false); };
-    }, [taskId, task?.status, processId, refreshConversation]);
-
-    // Poll queued → running transition
-    useEffect(() => {
-        if (!taskId || task?.status !== 'queued') return;
-        const interval = setInterval(async () => {
-            try {
-                const data = await fetchApi(`/queue/${encodeURIComponent(taskId)}`);
-                const t = data?.task;
-                if (t && t.status !== 'queued') {
-                    setTask(t);
-                    if (t.processId || t.status === 'running') {
-                        const pid = t.processId ?? `queue_${taskId}`;
-                        const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
-                        setProcessDetails(procData?.process || null);
-                        const loadedTurns = getConversationTurns(procData, t);
-                        if (t.status === 'running') {
-                            const lastTurn = loadedTurns[loadedTurns.length - 1];
-                            if (lastTurn?.role === 'assistant') {
-                                setTurnsAndRef(loadedTurns.map((turn, i) =>
-                                    i === loadedTurns.length - 1 ? { ...turn, streaming: true } : turn
-                                ));
-                            } else {
-                                setTurnsAndRef([...loadedTurns, { role: 'assistant', content: '', streaming: true, timeline: [] }]);
-                            }
-                        } else {
-                            setTurnsAndRef(loadedTurns);
-                        }
-                    }
-                }
-            } catch { /* ignore */ }
-        }, 2000);
-        return () => clearInterval(interval);
-    }, [taskId, task?.status, setTurnsAndRef]);
-
     // Scroll to bottom on new turns
     useEffect(() => {
         if (!loading && turns.length > 0 && conversationContainerRef.current) {
@@ -579,181 +361,6 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     // Cleanup on unmount
     useEffect(() => () => { stopStreaming(); closeFollowUpStream(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Keep flushQueueRef in sync with latest pendingQueue for stale-closure-safe drain
-    useEffect(() => {
-        flushQueueRef.current = () => {
-            if (pendingQueue.length === 0 || !processId) return;
-            const [next, ...rest] = pendingQueue;
-            setPendingQueue(rest);
-            setSending(true);
-            queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
-            const timestamp = new Date().toISOString();
-            setTurnsAndRef(prev => ([
-                ...prev,
-                { role: 'user' as const, content: next.content, timestamp, timeline: [] },
-                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [] },
-            ]));
-            fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: next.content, mode: selectedModeRef.current, deliveryMode: next.deliveryMode }),
-            })
-                .then(async (response) => {
-                    if (!response.ok) { removeStreamingPlaceholder(); return; }
-                    await waitForFollowUpCompletion(processId);
-                })
-                .catch(() => { removeStreamingPlaceholder(); })
-                .finally(() => {
-                    setSending(false);
-                    queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
-                    setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-                    setTimeout(() => { flushQueueRef.current?.(); }, 0);
-                });
-        };
-    }, [pendingQueue, processId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const waitForFollowUpCompletion = async (pid: string) => {
-        if (typeof EventSource === 'undefined') {
-            await refreshConversation(pid);
-            return;
-        }
-        closeFollowUpStream();
-        await new Promise<void>(resolve => {
-            const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(pid)}/stream`);
-            followUpEventSourceRef.current = es;
-            let done = false;
-            const finish = () => {
-                if (done) return;
-                done = true;
-                es.close();
-                if (followUpEventSourceRef.current === es) followUpEventSourceRef.current = null;
-                void refreshConversation(pid).finally(() => resolve());
-            };
-            const timeout = setTimeout(finish, 90_000);
-            es.addEventListener('done', () => { clearTimeout(timeout); finish(); });
-            es.addEventListener('status', (e: Event) => {
-                try {
-                    const status = JSON.parse((e as MessageEvent).data)?.status;
-                    if (status && !['running', 'queued'].includes(status)) { clearTimeout(timeout); finish(); }
-                } catch { /* ignore */ }
-            });
-            es.onerror = () => { clearTimeout(timeout); finish(); };
-            es.addEventListener('suggestions', (event: Event) => {
-                try {
-                    const data = JSON.parse((event as MessageEvent).data);
-                    if (Array.isArray(data.suggestions)) setSuggestions(data.suggestions);
-                } catch { /* ignore */ }
-            });
-            es.addEventListener('message-queued', (event: Event) => {
-                try {
-                    const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                    setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'queued' as const } : m));
-                } catch { /* ignore */ }
-            });
-            es.addEventListener('message-steering', (event: Event) => {
-                try {
-                    const { optimisticId } = JSON.parse((event as MessageEvent).data);
-                    setPendingQueue(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'steering' as const } : m));
-                } catch { /* ignore */ }
-            });
-        });
-    };
-
-    const sendFollowUp = async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue') => {
-        const rawContent = (overrideContent ?? followUpInput).trim();
-        if (!rawContent || !processId || inputDisabled) return;
-
-        // Extract slash-command skills from the message text
-        const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(rawContent);
-        const content = cleanedPrompt || rawContent;
-
-        setSuggestions([]);
-        setFollowUpInput('');
-        clearDraft(taskId);
-        slashCommands.dismissMenu();
-        setError(null);
-
-        if (sending) {
-            // AI turn in progress — push to client-side queue and show optimistic bubble
-            const qm: QueuedMessage = {
-                id: crypto.randomUUID(),
-                content: rawContent,
-                deliveryMode,
-                status: 'pending-send',
-            };
-            setPendingQueue(prev => [...prev, qm]);
-            // Immediately POST to server (server will enqueue or steer as appropriate)
-            await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content,
-                    images: images.length > 0 ? images : undefined,
-                    mode: selectedMode,
-                    deliveryMode,
-                    optimisticId: qm.id,
-                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
-                }),
-            }).catch(() => {});
-            clearImages();
-            return;
-        }
-
-        // No turn in flight — send normally
-        setSending(true);
-        queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: true, turnIndex: null });
-
-        const timestamp = new Date().toISOString();
-        setTurnsAndRef(prev => ([
-            ...prev,
-            { role: 'user' as const, content: rawContent, timestamp, timeline: [] },
-            { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [] },
-        ]));
-
-        try {
-            const response = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content,
-                    images: images.length > 0 ? images : undefined,
-                    mode: selectedMode,
-                    deliveryMode,
-                    ...(extractedSkills.length > 0 ? { skillNames: extractedSkills } : {}),
-                }),
-            });
-
-            if (response.status === 410) {
-                setSessionExpired(true);
-                setError('Session expired.');
-                lastFailedMessageRef.current = rawContent;
-                removeStreamingPlaceholder();
-                return;
-            }
-            if (!response.ok) {
-                const body = await response.json().catch(() => null);
-                setError(body?.error || `Failed to send message (${response.status})`);
-                lastFailedMessageRef.current = rawContent;
-                removeStreamingPlaceholder();
-                return;
-            }
-
-            lastFailedMessageRef.current = '';
-            clearImages();
-            await waitForFollowUpCompletion(processId);
-        } catch (err: any) {
-            setError(err?.message || 'Failed to send follow-up message.');
-            lastFailedMessageRef.current = rawContent;
-            removeStreamingPlaceholder();
-        } finally {
-            setSending(false);
-            queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
-            // Drain: remove steering messages consumed by the completed turn, then flush next
-            setPendingQueue(prev => prev.filter(m => m.status !== 'steering'));
-            setTimeout(() => { flushQueueRef.current?.(); }, 0);
-        }
-    };
 
     const handleCancel = async () => {
         await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId), { method: 'DELETE' });
@@ -798,184 +405,49 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
         }
     };
 
-    const handlePopOut = useCallback(() => {
-        const base = window.location.origin + window.location.pathname;
-        const wsParam = workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : '';
-        const url = `${base}${wsParam}#popout/activity/${encodeURIComponent(taskId)}`;
-        const popup = window.open(url, `coc-popout-${taskId}`, 'width=800,height=900');
-        if (!popup) {
-            toastCtx?.addToast('Pop-out blocked. Allow popups for this site and try again.', 'error');
-        } else {
-            markPoppedOut(taskId);
-        }
-    }, [taskId, workspaceId, markPoppedOut, toastCtx]);
-
-    const handleFloat = useCallback(() => {
-        const title = task?.payload?.prompt || task?.payload?.promptContent || task?.prompt || 'Chat';
-        const shortTitle = typeof title === 'string' ? title.slice(0, 60) : 'Chat';
-        floatChat({
-            taskId,
-            workspaceId,
-            title: shortTitle,
-            status: task?.status ?? 'running',
-        });
-    }, [taskId, workspaceId, task, floatChat]);
-
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail">
-            {/* Header */}
-            <div className={cn(
-                'flex items-center justify-between',
-                variant === 'floating'
-                    ? 'px-2 py-2'
-                    : 'px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-            )}>
-                <div className="flex items-center gap-2 min-w-0">
-                    {onBack && variant !== 'floating' && (
-                        <button
-                            className="inline-flex items-center justify-center min-h-7 min-w-7 px-2 text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] mr-1"
-                            onClick={onBack}
-                            data-testid="activity-chat-back-btn"
-                        >
-                            ← Back
-                        </button>
-                    )}
-                    <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">Chat</span>
-                    {task && (
-                        <Badge status={task.status}>
-                            {statusIcon(task.status)} {statusLabel(task.status)}
-                        </Badge>
-                    )}
-                    {planPath && (
-                        <FilePathValue label="📄" value={planPath} />
-                    )}
-                    {pinnedFile && createdFiles.length === 1 && (
-                        <FilePathLink path={pinnedFile.filePath} />
-                    )}
-                    {pinnedFile && createdFiles.length > 1 && (
-                        <CreatedFilesDropdown files={createdFiles} />
-                    )}
-                    {task?.duration != null && (
-                        <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
-                    )}
-                    {!isPending && resumeSessionId && (
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            className="hidden sm:inline-flex"
-                            loading={resumeLaunching}
-                            onClick={() => { void launchInteractiveResume(); }}
-                        >
-                            Resume CLI
-                        </Button>
-                    )}
-                    <ContextWindowIndicator
-                        tokenLimit={sessionTokenLimit}
-                        currentTokens={sessionCurrentTokens}
-                        modelName={sessionModel}
-                        className="hidden sm:flex ml-2 max-w-[180px]"
-                    />
-                </div>
-                <div className="flex items-center gap-2">
-                    {variant !== 'floating' && !isPopOut && !isMobile && !isFloating(taskId) && (
-                        <button
-                            title="Float in current window"
-                            data-testid="activity-chat-float-btn"
-                            onClick={handleFloat}
-                            className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                                <path d="M2 6h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                            </svg>
-                        </button>
-                    )}
-                    {!isPopOut && !isMobile && variant !== 'floating' && (
-                        <button
-                            title="Pop out to new window"
-                            data-testid="activity-chat-popout-btn"
-                            onClick={handlePopOut}
-                            className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M10 2h4v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M14 2L8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                            </svg>
-                        </button>
-                    )}
-                    <button
-                        title="Copy conversation"
-                        data-testid="copy-conversation-btn"
-                        disabled={loading || turns.length === 0}
-                        onClick={() => {
-                            void copyToClipboard(formatConversationAsText(turns)).then(() => {
-                                setCopied(true);
-                                setTimeout(() => setCopied(false), 2000);
-                            });
-                        }}
-                        className="p-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                    >
-                        {copied ? (
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M2 8L6 12L14 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                        ) : (
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <rect x="4" y="4" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                                <path d="M4 4V3a1 1 0 011-1h6a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1.5"/>
-                                <path d="M3 2h7a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5"/>
-                            </svg>
-                        )}
-                    </button>
-                    {!isPending && metadataProcess && (
-                        <ConversationMetadataPopover process={metadataProcess} turnsCount={turns.length} />
-                    )}
-                </div>
-            </div>
-
-            {/* Conversation area */}
-            <div className="relative flex-1 min-h-0">
-                <div ref={conversationContainerRef} data-testid="activity-chat-conversation" className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3', variant === 'floating' ? 'p-2' : 'p-4')}>
-                    {isPending ? (
-                        <PendingTaskInfoPanel task={fullTask || task} onCancel={handleCancel} onMoveToTop={handleMoveToTop} />
-                    ) : loading ? (
-                        <div className="flex items-center gap-2 text-[#848484] text-sm">
-                            <Spinner size="sm" /> Loading conversation...
-                        </div>
-                    ) : turns.length === 0 ? (
-                        <div className="text-[#848484] text-sm">No conversation data available.</div>
-                    ) : (
-                        <div className="space-y-3">
-                            {(() => {
-                                const hasStreaming = turns.some(t => t.streaming);
-                                const renderTurns =
-                                    task?.status === 'running' && !hasStreaming && turns.length > 0
-                                        ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [] }]
-                                        : turns;
-                                return renderTurns.map((turn, i) => (
-                                    <ConversationTurnBubble key={i} turn={turn} taskId={taskId} wsId={workspaceId} />
-                                ));
-                            })()}
-                            {/* Optimistic queued bubbles */}
-                            {pendingQueue.map(msg => <QueuedBubble key={msg.id} msg={msg} />)}
-                        </div>
-                    )}
-                </div>
-                <button
-                    data-testid="scroll-to-bottom-btn"
-                    className={cn(
-                        "absolute bottom-4 right-4 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-[#0078d4] text-white shadow-md hover:bg-[#106ebe] text-sm pointer-events-none opacity-0 transition-opacity",
-                        isScrolledUp && "visible pointer-events-auto opacity-100"
-                    )}
-                    onClick={scrollToBottom}
-                    title="Scroll to bottom"
-                >
-                    ↓
-                </button>
-            </div>
-
-            {/* Follow-up input */}
+            <ChatHeader
+                task={task}
+                metadataProcess={metadataProcess}
+                planPath={planPath}
+                createdFiles={createdFiles}
+                pinnedFile={pinnedFile}
+                onBack={onBack}
+                variant={variant}
+                isPopOut={isPopOut}
+                loading={loading}
+                turns={turns}
+                resumeLaunching={resumeLaunching}
+                resumeSessionId={resumeSessionId}
+                isPending={isPending}
+                sessionTokenLimit={sessionTokenLimit}
+                sessionCurrentTokens={sessionCurrentTokens}
+                sessionModel={sessionModel}
+                copied={copied}
+                setCopied={setCopied}
+                taskId={taskId}
+                onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
+                onPopOut={handlePopOut}
+                onFloat={handleFloat}
+            />
+            <ConversationArea
+                loading={loading}
+                error={error}
+                turns={turns}
+                pendingQueue={pendingQueue}
+                isScrolledUp={isScrolledUp}
+                scrollRef={conversationContainerRef}
+                onScrollToBottom={scrollToBottom}
+                isPending={isPending}
+                task={task}
+                fullTask={fullTask}
+                onCancel={handleCancel}
+                onMoveToTop={handleMoveToTop}
+                variant={variant}
+                taskId={taskId}
+                wsId={workspaceId}
+            />
             {!isPending && noSessionForFollowUp && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                     <div className="text-[#848484] text-sm text-center">
@@ -984,123 +456,25 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 </div>
             )}
             {!isPending && !noSessionForFollowUp && (
-                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3 space-y-2">
-                    {resumeFeedback && (
-                        <div className={`text-xs ${resumeFeedback.type === 'error' ? 'text-[#f14c4c]' : 'text-[#6a9955] dark:text-[#89d185]'}`}>
-                            {resumeFeedback.message}
-                            {resumeFeedback.command && (
-                                <div className="mt-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] px-2 py-1 font-mono text-[11px] break-all text-[#1e1e1e] dark:text-[#cccccc]">
-                                    {resumeFeedback.command}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    {error && <div className="chat-error-bubble bubble-error text-xs text-[#f14c4c]">{error}</div>}
-                    {error && (
-                        <Button
-                            variant="danger"
-                            size="sm"
-                            data-testid="retry-btn"
-                            loading={sending}
-                            disabled={sending}
-                            onClick={() => retryLastMessage()}
-                        >
-                            Retry
-                        </Button>
-                    )}
-                    {suggestions.length > 0 && !sending && task?.status !== 'running' && (
-                        <SuggestionChips
-                            suggestions={suggestions}
-                            onSelect={(text) => { setSuggestions([]); void sendFollowUp(text); }}
-                            disabled={inputDisabled}
-                        />
-                    )}
-                    <ImagePreviews images={images} onRemove={removeImage} />
-                    <div className="flex items-center gap-2">
-                        <div className="shrink-0" data-testid="mode-selector">
-                            <select
-                                value={selectedMode}
-                                onChange={e => setSelectedMode(e.target.value as 'ask' | 'plan' | 'autopilot')}
-                                className="px-2 py-1 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 cursor-pointer"
-                                data-testid="mode-dropdown"
-                            >
-                                {([['ask', '💡 Ask'], ['plan', '📋 Plan'], ['autopilot', '🤖 Autopilot']] as const).map(([mode, label]) => (
-                                    <option key={mode} value={mode}>{label}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="relative flex-1">
-                            <textarea
-                                ref={textareaRef}
-                                rows={1}
-                                value={followUpInput}
-                                disabled={inputDisabled}
-                                placeholder={sessionExpired ? 'Session expired.' : 'Send a message... (type / for skills)'}
-                                className={cn('w-full min-h-[34px] max-h-28 resize-y rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60', MODE_BORDER_COLORS[selectedMode].border, MODE_BORDER_COLORS[selectedMode].ring)}
-                                onChange={e => {
-                                    const val = e.target.value;
-                                    setFollowUpInput(val);
-                                    slashCommands.handleInputChange(val, e.target.selectionStart ?? val.length);
-                                }}
-                                onKeyDown={e => {
-                                    if (slashCommands.handleKeyDown(e)) {
-                                        // If menu consumed the key (arrow nav, enter/tab for selection, escape)
-                                        if (e.key === 'Enter' || e.key === 'Tab') {
-                                            const skill = slashCommands.filteredSkills[slashCommands.highlightIndex];
-                                            if (skill) {
-                                                slashCommands.selectSkill(skill.name, followUpInput, setFollowUpInput);
-                                            }
-                                        }
-                                        return;
-                                    }
-                                    // Shift+Tab cycles through modes (ask → plan → autopilot → ask)
-                                    if (e.key === 'Tab' && e.shiftKey) {
-                                        e.preventDefault();
-                                        setSelectedMode(prev => {
-                                            const modes: Array<'ask' | 'plan' | 'autopilot'> = ['ask', 'plan', 'autopilot'];
-                                            return modes[(modes.indexOf(prev) + 1) % modes.length];
-                                        });
-                                        return;
-                                    }
-                                    if (e.key === 'Enter') {
-                                        if (e.ctrlKey || e.metaKey) {
-                                            // Ctrl+Enter or Cmd+Enter → immediate steering
-                                            e.preventDefault();
-                                            void sendFollowUp(undefined, 'immediate');
-                                        } else if (!e.shiftKey) {
-                                            // Plain Enter → enqueue (default)
-                                            e.preventDefault();
-                                            void sendFollowUp(undefined, 'enqueue');
-                                        }
-                                        // Shift+Enter → newline (fall through)
-                                    }
-                                }}
-                                onPaste={addFromPaste}
-                                data-testid="activity-chat-input"
-                            />
-                            <SlashCommandMenu
-                                skills={skills}
-                                filter={slashCommands.menuFilter}
-                                onSelect={(name) => {
-                                    slashCommands.selectSkill(name, followUpInput, setFollowUpInput);
-                                    textareaRef.current?.focus();
-                                }}
-                                onDismiss={slashCommands.dismissMenu}
-                                visible={slashCommands.menuVisible}
-                                highlightIndex={slashCommands.highlightIndex}
-                            />
-                        </div>
-                        <button
-                            type="button"
-                            disabled={inputDisabled}
-                            className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={() => { void sendFollowUp(); }}
-                            data-testid="activity-chat-send-btn"
-                        >
-                            {sending ? '...' : 'Send'}
-                        </button>
-                    </div>
-                </div>
+                <FollowUpInputArea
+                    inputDisabled={inputDisabled}
+                    sending={sending}
+                    error={error}
+                    resumeFeedback={resumeFeedback}
+                    suggestions={suggestions}
+                    followUpInput={followUpInput}
+                    setFollowUpInput={setFollowUpInput}
+                    selectedMode={selectedMode}
+                    setSelectedMode={setSelectedMode}
+                    onSend={sendFollowUp}
+                    onRetry={retryLastMessage}
+                    skills={skills}
+                    images={images}
+                    onImagePaste={addFromPaste}
+                    onImageRemove={removeImage}
+                    task={task}
+                    slashCommands={slashCommands}
+                />
             )}
         </div>
     );

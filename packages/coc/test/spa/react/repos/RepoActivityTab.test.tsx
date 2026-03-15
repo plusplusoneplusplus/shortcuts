@@ -23,6 +23,15 @@ const ACTIVITY_DETAIL_PANE_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'Activi
 const INDEX_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'index.ts'), 'utf-8');
 const REPO_DETAIL_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'RepoDetail.tsx'), 'utf-8');
 
+// Extracted component and hook sources (split from ActivityChatDetail in refactoring)
+const CHAT_HEADER_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ChatHeader.tsx'), 'utf-8');
+const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ConversationArea.tsx'), 'utf-8');
+const FOLLOW_UP_INPUT_AREA_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'FollowUpInputArea.tsx'), 'utf-8');
+const HOOKS_DIR = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'hooks');
+const USE_CHAT_SSE_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useChatSSE.ts'), 'utf-8');
+const USE_SEND_MESSAGE_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useSendMessage.ts'), 'utf-8');
+const USE_QUEUED_TASK_POLL_SOURCE = fs.readFileSync(path.join(HOOKS_DIR, 'useQueuedTaskPoll.ts'), 'utf-8');
+
 // ── RepoActivityTab structure ──────────────────────────────────────────
 
 describe('RepoActivityTab: component structure', () => {
@@ -208,26 +217,34 @@ describe('ActivityChatDetail: inline chat detail', () => {
     });
 
     it('renders ConversationTurnBubble for turns', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('<ConversationTurnBubble');
+        // ConversationTurnBubble is rendered inside the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('<ConversationTurnBubble');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('<ConversationArea');
     });
 
     it('has SSE streaming for running tasks', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('new EventSource');
+        // SSE logic lives in the extracted useChatSSE hook
+        expect(USE_CHAT_SSE_SOURCE).toContain('new EventSource');
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useChatSSE');
     });
 
     it('polls for queued-to-running transition', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setInterval');
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("task?.status !== 'queued'");
+        // Polling logic lives in the extracted useQueuedTaskPoll hook
+        expect(USE_QUEUED_TASK_POLL_SOURCE).toContain('setInterval');
+        expect(USE_QUEUED_TASK_POLL_SOURCE).toContain("task?.status !== 'queued'");
+        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useQueuedTaskPoll');
     });
 
     it('supports follow-up messages', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('/message');
+        // Message sending logic lives in the extracted useSendMessage hook
+        expect(USE_SEND_MESSAGE_SOURCE).toContain('/message');
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('sendFollowUp');
     });
 
     it('handles session expiry (410)', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('response.status === 410');
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setSessionExpired(true)');
+        // Session expiry handling lives in the extracted useSendMessage hook
+        expect(USE_SEND_MESSAGE_SOURCE).toContain('response.status === 410');
+        expect(USE_SEND_MESSAGE_SOURCE).toContain('setSessionExpired(true)');
     });
 
     it('has data-testid for the chat detail container', () => {
@@ -235,27 +252,33 @@ describe('ActivityChatDetail: inline chat detail', () => {
     });
 
     it('has a back button with data-testid', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-back-btn"');
+        // Back button lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('data-testid="activity-chat-back-btn"');
     });
 
     it('vertically centers mode selector, input, and send button', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('flex items-center gap-2');
+        // Mode selector row lives in the extracted FollowUpInputArea component
+        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex items-center gap-2');
     });
 
     it('has a chat input with data-testid', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-input"');
+        // Chat input lives in the extracted FollowUpInputArea component
+        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-input"');
     });
 
     it('has a send button with data-testid', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="activity-chat-send-btn"');
+        // Send button lives in the extracted FollowUpInputArea component
+        expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="activity-chat-send-btn"');
     });
 
     it('shows loading spinner', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Loading conversation...');
+        // Loading spinner lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('Loading conversation...');
     });
 
     it('shows PendingTaskInfoPanel for queued tasks', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('<PendingTaskInfoPanel');
+        // PendingTaskInfoPanel lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('<PendingTaskInfoPanel');
     });
 
     it('passes cancel and moveToTop handlers', () => {
@@ -263,17 +286,20 @@ describe('ActivityChatDetail: inline chat detail', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('onMoveToTop={handleMoveToTop}');
     });
 
-    it('imports MetaRow and FilePathValue from PendingTaskPayload', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain("import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload'");
+    it('imports FilePathValue from PendingTaskPayload for plan path display', () => {
+        // FilePathValue is used in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain("from '../queue/PendingTaskPayload'");
     });
 
     it('shows no-data message', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('No conversation data available');
+        // No-data message lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('No conversation data available');
     });
 
     it('supports resume CLI', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('resume-cli');
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Resume CLI');
+        // Resume CLI button label lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('Resume CLI');
     });
 
     it('supports image paste', () => {
@@ -281,7 +307,8 @@ describe('ActivityChatDetail: inline chat detail', () => {
     });
 
     it('has scroll-to-bottom button', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('Scroll to bottom');
+        // Scroll-to-bottom button lives in the extracted ConversationArea component
+        expect(CONVERSATION_AREA_SOURCE).toContain('Scroll to bottom');
     });
 
     it('consumes refreshVersion from QueueContext for re-click refresh', () => {
@@ -297,7 +324,7 @@ describe('ActivityChatDetail: inline chat detail', () => {
     it('re-fetches queue task and process data on refresh', () => {
         // The refresh effect should fetch the queue task and process data
         const refreshEffectStart = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('Re-fetch conversation when user re-clicks');
-        const refreshEffectEnd = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('// SSE for running tasks');
+        const refreshEffectEnd = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('// Scroll to bottom on new turns');
         const refreshEffect = ACTIVITY_CHAT_DETAIL_SOURCE.substring(refreshEffectStart, refreshEffectEnd);
         expect(refreshEffect).toContain('/queue/${encodeURIComponent(taskId)}');
         expect(refreshEffect).toContain('/processes/${encodeURIComponent(pid)}');
@@ -305,44 +332,48 @@ describe('ActivityChatDetail: inline chat detail', () => {
     });
 
     it('has copy-conversation button with data-testid', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('data-testid="copy-conversation-btn"');
+        // Copy button lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('data-testid="copy-conversation-btn"');
     });
 
     it('imports copyToClipboard and formatConversationAsText from utils/format', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('copyToClipboard');
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('formatConversationAsText');
+        // These utilities are used in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('copyToClipboard');
+        expect(CHAT_HEADER_SOURCE).toContain('formatConversationAsText');
     });
 
     it('has copied state for copy button feedback', () => {
+        // copied state is managed in the orchestrator and passed to ChatHeader
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('useState(false)');
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setCopied(true)');
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setCopied(false)');
+        expect(CHAT_HEADER_SOURCE).toContain('setCopied(true)');
+        expect(CHAT_HEADER_SOURCE).toContain('setCopied(false)');
     });
 
     it('copy button is disabled when loading or turns empty', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('disabled={loading || turns.length === 0}');
+        // Copy button disabling logic lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('disabled={loading || turns.length === 0}');
     });
 
     it('copy button calls formatConversationAsText with turns', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('formatConversationAsText(turns)');
+        // formatConversationAsText usage lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('formatConversationAsText(turns)');
     });
 
     it('copy button shows checkmark icon after copying (2s revert)', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('setCopied(false), 2000');
+        // 2s revert logic lives in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('setCopied(false), 2000');
     });
 
     it('copy button has clipboard and checkmark SVG icons', () => {
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('M2 8L6 12L14 4');
-        expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('copied ?');
+        // SVG icons live in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('M2 8L6 12L14 4');
+        expect(CHAT_HEADER_SOURCE).toContain('copied ?');
     });
 
     it('header has right-side actions group with copy and metadata', () => {
-        const headerStart = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('{/* Header */}');
-        const headerEnd = ACTIVITY_CHAT_DETAIL_SOURCE.indexOf('{/* Conversation area */}');
-        const headerBlock = ACTIVITY_CHAT_DETAIL_SOURCE.substring(headerStart, headerEnd);
-        // The copy button and metadata popover are in a separate right-side div
-        expect(headerBlock).toContain('copy-conversation-btn');
-        expect(headerBlock).toContain('ConversationMetadataPopover');
+        // The copy button and metadata popover are in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain('copy-conversation-btn');
+        expect(CHAT_HEADER_SOURCE).toContain('ConversationMetadataPopover');
     });
 });
 
