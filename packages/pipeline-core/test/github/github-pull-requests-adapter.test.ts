@@ -53,6 +53,7 @@ function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
         issues: {
             createComment: vi.fn().mockResolvedValue({ data: mockGitHubComment }),
         },
+        request: vi.fn().mockResolvedValue({ data: 'diff --git a/file.ts b/file.ts\n' }),
         ...overrides,
     } as unknown as Octokit;
 }
@@ -233,6 +234,28 @@ describe('GitHubPullRequestsAdapter', () => {
                 reviewers: ['alice', 'bob'],
             });
             expect(octokit.pulls.listReviews).toHaveBeenCalled();
+        });
+    });
+
+    describe('getDiff', () => {
+        it('calls octokit.request with diff accept header', async () => {
+            const diff = await adapter.getDiff('repo', 42);
+            expect((octokit as any).request).toHaveBeenCalledWith(
+                'GET /repos/{owner}/{repo}/pulls/{pull_number}',
+                expect.objectContaining({
+                    owner: 'owner',
+                    repo: 'repo',
+                    pull_number: 42,
+                    headers: expect.objectContaining({ accept: 'application/vnd.github.diff' }),
+                }),
+            );
+            expect(diff).toBe('diff --git a/file.ts b/file.ts\n');
+        });
+
+        it('returns empty string when response data is null', async () => {
+            (octokit as any).request = vi.fn().mockResolvedValue({ data: null });
+            const diff = await adapter.getDiff('repo', 42);
+            expect(diff).toBe('');
         });
     });
 });

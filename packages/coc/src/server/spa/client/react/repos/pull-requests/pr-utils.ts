@@ -33,7 +33,7 @@ export interface PullRequest {
     number?: number;
     title: string;
     description?: string;
-    createdBy?: { displayName?: string; email?: string; avatarUrl?: string };
+    author?: { displayName?: string; email?: string; avatarUrl?: string };
     sourceBranch: string;
     targetBranch: string;
     status: PrStatus;
@@ -80,22 +80,26 @@ export function reviewVoteIcon(vote?: string | null): { icon: string; label: str
 }
 
 /**
- * Returns a human-readable relative time string such as "3h ago", "2d ago", "just now".
+ * Returns an exact, human-readable timestamp string such as "Jan 2, 2024, 02:00 PM".
  * No external dependencies.
  */
-export function formatRelativeTime(iso: string | null | undefined): string {
+export function formatTimestamp(iso: string | null | undefined): string {
     if (!iso) return '';
     const d = new Date(iso);
-    const diff = Date.now() - d.getTime();
-    if (diff < 60_000) return 'just now';
-    const mins = Math.floor(diff / 60_000);
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days === 1) return 'yesterday';
-    if (days < 30) return `${days}d ago`;
-    const months = Math.floor(days / 30);
-    if (months < 12) return `${months}mo ago`;
-    return `${Math.floor(months / 12)}y ago`;
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+/**
+ * @deprecated Use formatTimestamp instead.
+ * Kept for backward compatibility — now returns the same exact timestamp.
+ */
+export function formatRelativeTime(iso: string | null | undefined): string {
+    return formatTimestamp(iso);
 }

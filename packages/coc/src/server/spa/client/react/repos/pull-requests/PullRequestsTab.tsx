@@ -102,7 +102,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     }, [fetchPrs]);
 
     const filtered = prs.filter(pr => {
-        const matchesAuthor = !authorFilter || pr.createdBy?.displayName?.toLowerCase().includes(authorFilter.toLowerCase());
+        const matchesAuthor = !authorFilter || pr.author?.displayName?.toLowerCase().includes(authorFilter.toLowerCase());
         const matchesSearch = !searchText || pr.title.toLowerCase().includes(searchText.toLowerCase());
         return matchesAuthor && matchesSearch;
     });

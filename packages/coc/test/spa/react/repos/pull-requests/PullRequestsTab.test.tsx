@@ -40,7 +40,7 @@ const makePr = (overrides: Partial<any> = {}) => ({
     status: 'open',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    createdBy: { displayName: 'Alice' },
+    author: { displayName: 'Alice' },
     reviewers: [],
     ...overrides,
 });
@@ -142,8 +142,8 @@ describe('client-side filtering', () => {
 
     it('filters PRs by author without re-fetching', async () => {
         mockFetchOk([
-            makePr({ id: 1, title: 'PR One', createdBy: { displayName: 'Alice' } }),
-            makePr({ id: 2, title: 'PR Two', createdBy: { displayName: 'Bob' } }),
+            makePr({ id: 1, title: 'PR One', author: { displayName: 'Alice' } }),
+            makePr({ id: 2, title: 'PR Two', author: { displayName: 'Bob' } }),
         ]);
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));

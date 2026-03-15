@@ -121,6 +121,7 @@ beforeEach(async () => {
         getPullRequest: vi.fn().mockResolvedValue(mockPr),
         getThreads: vi.fn().mockResolvedValue([mockThread]),
         getReviewers: vi.fn().mockResolvedValue([mockReviewer]),
+        getDiff: vi.fn().mockResolvedValue('diff --git a/foo.ts b/foo.ts\n'),
     };
 
     (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
@@ -311,6 +312,50 @@ describe('GET /api/repos/:id/pull-requests/:prId/reviewers', () => {
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getReviewers as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/reviewers`);
+        expect(res.status).toBe(500);
+    });
+});
+
+// ── GET /api/repos/:id/pull-requests/:prId/diff ───────────────────────────────
+
+describe('GET /api/repos/:id/pull-requests/:prId/diff', () => {
+    it('returns diff text on success', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(res.status).toBe(200);
+        const text = await res.text();
+        expect(text).toContain('diff --git');
+    });
+
+    it('returns empty string when getDiff is not implemented', async () => {
+        const svcWithoutDiff = { ...mockSvc };
+        delete (svcWithoutDiff as any).getDiff;
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutDiff);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(res.status).toBe(200);
+        const text = await res.text();
+        expect(text).toBe('');
+    });
+
+    it('returns 404 when repo not found', async () => {
+        (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+            resolveRepo: vi.fn().mockResolvedValue(null),
+        }));
+        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/diff`);
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 401 when unconfigured', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('unconfigured');
+    });
+
+    it('returns 500 on unexpected error', async () => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
         expect(res.status).toBe(500);
     });
 });

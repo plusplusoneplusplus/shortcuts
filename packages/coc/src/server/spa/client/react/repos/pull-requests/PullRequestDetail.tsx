@@ -7,9 +7,10 @@ import { useState, useEffect } from 'react';
 import { Marked } from 'marked';
 import { useApp } from '../../context/AppContext';
 import { getApiBase } from '../../utils/config';
-import { prStatusBadge, formatRelativeTime } from './pr-utils';
+import { prStatusBadge, formatTimestamp } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
+import { UnifiedDiffViewer } from '../UnifiedDiffViewer';
 import type { PullRequest, CommentThread } from './pr-utils';
 
 const descMarked = new Marked({ gfm: true, breaks: true });
@@ -28,7 +29,9 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [threads, setThreads] = useState<CommentThread[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [detailTab, setDetailTab] = useState<'overview' | 'threads'>('overview');
+    const [detailTab, setDetailTab] = useState<'overview' | 'threads' | 'files'>('overview');
+    const [diff, setDiff] = useState<string | null>(null);
+    const [diffLoading, setDiffLoading] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -58,6 +61,21 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             .catch(err => setError(err.message ?? 'Failed to load pull request'))
             .finally(() => setLoading(false));
     }, [repoId, prId]);
+
+    useEffect(() => {
+        if (detailTab !== 'files' || diff !== null) return;
+        setDiffLoading(true);
+        const base = getApiBase();
+        const repoEnc = encodeURIComponent(String(repoId));
+        const prEnc = encodeURIComponent(String(prId));
+        fetch(`${base}/repos/${repoEnc}/pull-requests/${prEnc}/diff`)
+            .then(async r => {
+                const text = await r.text();
+                setDiff(r.ok ? text : '');
+            })
+            .catch(() => setDiff(''))
+            .finally(() => setDiffLoading(false));
+    }, [detailTab, repoId, prId, diff]);
 
     const handleBack = () => {
         dispatch({ type: 'CLEAR_SELECTED_PR' });
@@ -133,9 +151,9 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 </div>
 
                 <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                    {pr.createdBy?.displayName && <span>@{pr.createdBy.displayName}</span>}
-                    <span>· Created {formatRelativeTime(pr.createdAt)}</span>
-                    <span>· Updated {formatRelativeTime(pr.updatedAt)}</span>
+                    {pr.author?.displayName && <span>@{pr.author.displayName}</span>}
+                    <span>· Created {formatTimestamp(pr.createdAt)}</span>
+                    <span>· Updated {formatTimestamp(pr.updatedAt)}</span>
                     {pr.url && (
                         <a
                             href={pr.url}
@@ -172,6 +190,17 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         data-testid="tab-threads"
                     >
                         Threads ({threads.length})
+                    </button>
+                    <button
+                        className={`px-3 py-1 text-sm rounded-t border-b-2 transition-colors ${
+                            detailTab === 'files'
+                                ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-medium'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}
+                        onClick={() => setDetailTab('files')}
+                        data-testid="tab-files"
+                    >
+                        Files Changed
                     </button>
                 </div>
             </div>
@@ -253,6 +282,28 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 {detailTab === 'threads' && (
                     <div data-testid="threads-tab">
                         <ThreadList threads={threads} />
+                    </div>
+                )}
+
+                {detailTab === 'files' && (
+                    <div className="px-0 py-0" data-testid="files-tab">
+                        {diffLoading && (
+                            <div className="flex items-center justify-center py-8">
+                                <span className="text-sm text-gray-500">Loading diff…</span>
+                            </div>
+                        )}
+                        {!diffLoading && diff === '' && (
+                            <p className="px-4 py-4 text-sm text-gray-400 italic">
+                                No diff available for this pull request.
+                            </p>
+                        )}
+                        {!diffLoading && diff && (
+                            <UnifiedDiffViewer
+                                diff={diff}
+                                showLineNumbers={true}
+                                data-testid="pr-diff-viewer"
+                            />
+                        )}
                     </div>
                 )}
             </div>

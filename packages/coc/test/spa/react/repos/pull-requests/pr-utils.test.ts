@@ -2,58 +2,43 @@
  * Tests for pr-utils helpers.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { formatRelativeTime, prStatusBadge, prStatusColor } from '../../../../../src/server/spa/client/react/repos/pull-requests/pr-utils';
+import { describe, it, expect } from 'vitest';
+import { formatRelativeTime, formatTimestamp, prStatusBadge, prStatusColor } from '../../../../../src/server/spa/client/react/repos/pull-requests/pr-utils';
 
-describe('formatRelativeTime', () => {
-    const NOW = new Date('2024-06-15T12:00:00Z').getTime();
-
-    beforeEach(() => {
-        vi.useFakeTimers();
-        vi.setSystemTime(NOW);
+describe('formatTimestamp', () => {
+    it('returns a non-empty string for a valid ISO date', () => {
+        const result = formatTimestamp('2024-01-02T14:00:00Z');
+        expect(result).toBeTruthy();
+        expect(result).not.toBe('');
     });
 
-    afterEach(() => {
-        vi.useRealTimers();
+    it('includes the year in the output', () => {
+        const result = formatTimestamp('2024-01-02T14:00:00Z');
+        expect(result).toContain('2024');
     });
 
-    it('returns "just now" for timestamps within the last 60 seconds', () => {
-        const iso = new Date(NOW - 30_000).toISOString(); // 30s ago
-        expect(formatRelativeTime(iso)).toBe('just now');
+    it('returns empty string for null input', () => {
+        expect(formatTimestamp(null)).toBe('');
     });
 
-    it('returns "just now" for timestamp exactly at now', () => {
-        expect(formatRelativeTime(new Date(NOW).toISOString())).toBe('just now');
+    it('returns empty string for undefined input', () => {
+        expect(formatTimestamp(undefined)).toBe('');
     });
 
-    it('returns minutes ago for timestamps 1–59 minutes old', () => {
-        const iso = new Date(NOW - 5 * 60_000).toISOString(); // 5m ago
-        expect(formatRelativeTime(iso)).toBe('5m ago');
+    it('returns empty string for invalid date string', () => {
+        expect(formatTimestamp('not-a-date')).toBe('');
     });
 
-    it('returns hours ago for timestamps 1–23 hours old', () => {
-        const iso = new Date(NOW - 3 * 3600_000).toISOString(); // 3h ago
-        expect(formatRelativeTime(iso)).toBe('3h ago');
+    it('returns empty string for empty string', () => {
+        expect(formatTimestamp('')).toBe('');
     });
+});
 
-    it('returns "yesterday" for timestamps exactly 1 day old', () => {
-        const iso = new Date(NOW - 25 * 3600_000).toISOString(); // ~25h ago
-        expect(formatRelativeTime(iso)).toBe('yesterday');
-    });
-
-    it('returns days ago for timestamps 2–29 days old', () => {
-        const iso = new Date(NOW - 2 * 86_400_000).toISOString(); // 2d ago
-        expect(formatRelativeTime(iso)).toBe('2d ago');
-    });
-
-    it('returns months ago for timestamps 30+ days old', () => {
-        const iso = new Date(NOW - 60 * 86_400_000).toISOString(); // ~2 months ago
-        expect(formatRelativeTime(iso)).toBe('2mo ago');
-    });
-
-    it('returns years ago for timestamps 12+ months old', () => {
-        const iso = new Date(NOW - 400 * 86_400_000).toISOString(); // ~13 months
-        expect(formatRelativeTime(iso)).toBe('1y ago');
+describe('formatRelativeTime (backward-compat alias)', () => {
+    it('delegates to formatTimestamp and returns a non-empty string for valid ISO', () => {
+        const result = formatRelativeTime('2024-06-15T12:00:00Z');
+        expect(result).toBeTruthy();
+        expect(result).toContain('2024');
     });
 
     it('returns empty string for null input', () => {

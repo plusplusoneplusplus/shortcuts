@@ -209,4 +209,9 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         );
         return reviewers.map(mapAdoReviewer);
     }
+
+    async getDiff(_repositoryId: string, _pullRequestId: number | string): Promise<string> {
+        // ADO diff API is not supported in this adapter.
+        return '';
+    }
 }

@@ -220,6 +220,15 @@ describe('AdoPullRequestsAdapter', () => {
         });
     });
 
+    // ── getDiff ──────────────────────────────────────────────
+
+    describe('getDiff', () => {
+        it('returns empty string (ADO diff not implemented)', async () => {
+            const diff = await adapter.getDiff('repo-id', 42);
+            expect(diff).toBe('');
+        });
+    });
+
     // ── vote mapping ─────────────────────────────────────────
 
     describe('vote mapping', () => {

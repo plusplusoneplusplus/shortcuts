@@ -56,6 +56,8 @@ export interface IPullRequestsService {
         pullRequestId: number | string,
         reviewerIds: string[],
     ): Promise<Reviewer[]>;
+    /** Returns the unified diff for a pull request. Optional — not all providers support this. */
+    getDiff?(repositoryId: string, pullRequestId: number | string): Promise<string>;
 }
 
 export interface IWorkItemsService {

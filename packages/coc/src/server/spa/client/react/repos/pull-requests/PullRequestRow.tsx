@@ -1,4 +1,4 @@
-import { prStatusBadge, formatRelativeTime } from './pr-utils';
+import { prStatusBadge, formatTimestamp } from './pr-utils';
 import type { PullRequest } from './pr-utils';
 
 interface PullRequestRowProps {
@@ -31,16 +31,18 @@ export function PullRequestRow({ pr, onClick }: PullRequestRowProps) {
                         {pr.title}
                     </span>
                 </div>
+                {pr.author?.displayName && (
+                    <div className="pr-author text-xs font-medium text-gray-700 dark:text-gray-300 mt-0.5 flex items-center gap-1">
+                        <span className="inline-block w-4 h-4 rounded-full bg-gray-300 dark:bg-gray-600 text-center leading-4 text-gray-600 dark:text-gray-200 text-[10px] shrink-0" aria-hidden="true">
+                            {pr.author.displayName.charAt(0).toUpperCase()}
+                        </span>
+                        <span>{pr.author.displayName}</span>
+                    </div>
+                )}
                 <div className="pr-branches text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     <span>{pr.targetBranch}</span>
                     <span className="mx-1">←</span>
                     <span>{pr.sourceBranch}</span>
-                    {pr.createdBy?.displayName && (
-                        <>
-                            <span className="mx-1">·</span>
-                            <span className="pr-author">@{pr.createdBy.displayName}</span>
-                        </>
-                    )}
                     {reviewerCount > 0 && (
                         <>
                             <span className="mx-1">·</span>
@@ -49,7 +51,7 @@ export function PullRequestRow({ pr, onClick }: PullRequestRowProps) {
                     )}
                 </div>
                 <div className="pr-time text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    Updated {formatRelativeTime(pr.updatedAt)}
+                    Updated {formatTimestamp(pr.updatedAt)}
                     {pr.commentCount != null && pr.commentCount > 0 && (
                         <>
                             <span className="mx-1">·</span>

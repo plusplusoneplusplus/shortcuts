@@ -218,4 +218,19 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
 
         return this.getReviewers(_repositoryId, pullRequestId);
     }
+
+    async getDiff(_repositoryId: string, pullRequestId: number | string): Promise<string> {
+        const response = await (this.octokit as any).request(
+            'GET /repos/{owner}/{repo}/pulls/{pull_number}',
+            {
+                owner: this.owner,
+                repo: this.repo,
+                pull_number: Number(pullRequestId),
+                headers: {
+                    accept: 'application/vnd.github.diff',
+                },
+            },
+        );
+        return String(response.data ?? '');
+    }
 }

@@ -8,6 +8,7 @@
  * GET  /api/repos/:repoId/pull-requests/:prId        — get single PR
  * GET  /api/repos/:repoId/pull-requests/:prId/threads    — get comment threads
  * GET  /api/repos/:repoId/pull-requests/:prId/reviewers  — get reviewers
+ * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -201,6 +202,50 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
 
                 const reviewers = await svc.getReviewers(repoId, prId);
                 sendJson(res, { reviewers });
+            } catch (err) {
+                if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
+                    send404(res, err.message);
+                } else if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Get unified diff -----------------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/diff$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const prId = decodeURIComponent(match![2]);
+
+                const repo = await new RepoTreeService(dataDir).resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cfg = await readProvidersConfig(dataDir);
+                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!svc || isNoAdoCredentials(svc)) {
+                    if (isNoAdoCredentials(svc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                if (typeof svc.getDiff !== 'function') {
+                    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+                    res.end('');
+                    return;
+                }
+
+                const diff = await svc.getDiff(repoId, prId);
+                res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+                res.end(diff);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
