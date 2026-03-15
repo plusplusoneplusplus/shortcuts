@@ -71,6 +71,8 @@ export interface ExecutionServerOptions {
     aiService?: CopilotSDKService;
     /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */
     configPath?: string;
+    /** Admin token TTL override in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
+    tokenTtlMs?: number;
     /** Queue-specific options. */
     queue?: {
         /** Policy for tasks that were running when the server last stopped (default: 'fail'). */

@@ -261,7 +261,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerPreferencesRoutes(routes, dataDir);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
-    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence, restartExitCode: 75, configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile } });
+    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence, restartExitCode: 75, configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile }, tokenTtlMs: options.tokenTtlMs });
     registerScheduleRoutes(routes, scheduleManager);
 
     // Register memory routes

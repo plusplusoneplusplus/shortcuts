@@ -36,6 +36,14 @@ interface TokenData {
 /** Manages a single time-limited, one-time-use confirmation token. */
 class TokenManager {
     private active: TokenData | null = null;
+    private readonly ttlMs: number;
+
+    constructor(ttlMs = TOKEN_EXPIRY_MS) {
+        this.ttlMs = ttlMs;
+    }
+
+    /** Token TTL in ms (for response headers). */
+    get ttl(): number { return this.ttlMs; }
 
     /** Generate a fresh confirmation token. */
     generate(): TokenData {
@@ -48,7 +56,7 @@ class TokenManager {
     validate(token: string): boolean {
         if (!this.active) { return false; }
         if (this.active.token !== token) { return false; }
-        if (Date.now() - this.active.createdAt > TOKEN_EXPIRY_MS) {
+        if (Date.now() - this.active.createdAt > this.ttlMs) {
             this.active = null;
             return false;
         }
@@ -115,6 +123,8 @@ export interface AdminRouteOptions {
     configFunctions?: AdminConfigFunctions;
     /** Exit code to use for restart (injected to avoid circular import). Defaults to 75. */
     restartExitCode?: number;
+    /** Override token TTL in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
+    tokenTtlMs?: number;
 }
 
 /**
@@ -129,6 +139,10 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
     const wiper = new DataWiper(dataDir, store);
     const resolvedConfigPath = configPath ?? configFunctions?.getConfigFilePath?.() ?? '';
 
+    // Route-scoped token managers — isolated per server instance; TTL configurable for tests.
+    const routeWipeTokenMgr = new TokenManager(options.tokenTtlMs);
+    const routeImportTokenMgr = new TokenManager(options.tokenTtlMs);
+
     // ------------------------------------------------------------------
     // GET /api/admin/data/wipe-token — Generate a wipe confirmation token
     // ------------------------------------------------------------------
@@ -136,10 +150,10 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         method: 'GET',
         pattern: '/api/admin/data/wipe-token',
         handler: async (_req, res) => {
-            const wt = generateWipeToken();
+            const wt = routeWipeTokenMgr.generate();
             sendJSON(res, 200, {
                 token: wt.token,
-                expiresIn: TOKEN_EXPIRY_MS / 1000,
+                expiresIn: routeWipeTokenMgr.ttl / 1000,
             });
         },
     });
@@ -310,7 +324,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 return handleAPIError(res, badRequest('Missing confirmation token. GET /api/admin/data/wipe-token first.'));
             }
 
-            if (!validateWipeToken(confirmToken)) {
+            if (!routeWipeTokenMgr.validate(confirmToken)) {
                 return handleAPIError(res, forbidden('Invalid or expired confirmation token'));
             }
 
@@ -359,10 +373,10 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         method: 'GET',
         pattern: '/api/admin/import-token',
         handler: async (_req, res) => {
-            const it = generateImportToken();
+            const it = routeImportTokenMgr.generate();
             sendJSON(res, 200, {
                 token: it.token,
-                expiresIn: TOKEN_EXPIRY_MS / 1000,
+                expiresIn: routeImportTokenMgr.ttl / 1000,
             });
         },
     });
@@ -418,7 +432,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 return handleAPIError(res, badRequest('Missing confirmation token. GET /api/admin/import-token first.'));
             }
 
-            if (!validateImportToken(confirmToken)) {
+            if (!routeImportTokenMgr.validate(confirmToken)) {
                 return handleAPIError(res, forbidden('Invalid or expired confirmation token'));
             }
 
