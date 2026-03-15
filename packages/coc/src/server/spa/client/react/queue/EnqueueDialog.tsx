@@ -8,6 +8,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { Dialog, FloatingDialog, Button } from '../shared';
 import { fetchApi } from '../hooks/useApi';
+import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/usePreferences';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -43,7 +44,8 @@ export function EnqueueDialog() {
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
-    const [models, setModels] = useState<string[]>([]);
+    const { models: modelInfos } = useModels();
+    const models = modelInfos.map(m => m.id);
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
     const [skills, setSkills] = useState<SkillOption[]>([]);
@@ -75,12 +77,6 @@ export function EnqueueDialog() {
         if (queueState.dialogInitialWorkspaceId) {
             setWorkspaceId(queueState.dialogInitialWorkspaceId);
         }
-        fetchApi('/queue/models')
-            .then((data: any) => {
-                if (Array.isArray(data)) setModels(data);
-                else if (data?.models && Array.isArray(data.models)) setModels(data.models);
-            })
-            .catch(() => { /* ignore */ });
     }, [queueState.showDialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch folders when workspaceId changes

@@ -149,10 +149,10 @@ export function GenerateTaskDialog({
     // --- fetch models on mount ---
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + '/queue/models')
+        fetch(getApiBase() + '/api/models')
             .then(r => (r.ok ? r.json() : []))
-            .then(data => {
-                if (!cancelled) setModels(data?.models ?? (Array.isArray(data) ? data : []));
+            .then((data: any[]) => {
+                if (!cancelled) { if (Array.isArray(data)) setModels(data.map(m => m.id ?? m)); }
             })
             .catch(() => {});
         return () => { cancelled = true; };

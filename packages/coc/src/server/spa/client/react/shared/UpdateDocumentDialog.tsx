@@ -45,10 +45,10 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
 
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + '/queue/models')
+        fetch(getApiBase() + '/api/models')
             .then(r => r.ok ? r.json() : [])
-            .then(data => {
-                if (!cancelled) setModels(data?.models ?? (Array.isArray(data) ? data : []));
+            .then((data: any[]) => {
+                if (!cancelled) setModels(Array.isArray(data) ? data.map(m => m.id ?? m) : []);
             })
             .catch(() => {});
         return () => { cancelled = true; };

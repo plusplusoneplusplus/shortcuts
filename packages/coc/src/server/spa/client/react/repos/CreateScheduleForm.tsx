@@ -65,9 +65,9 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     // Fetch available models once on mount
     useEffect(() => {
         let cancelled = false;
-        fetch(getApiBase() + '/queue/models')
+        fetch(getApiBase() + '/api/models')
             .then(r => r.ok ? r.json() : null)
-            .then(data => { if (!cancelled) setModels(data?.models ?? (Array.isArray(data) ? data : [])); })
+            .then((data: any[]) => { if (!cancelled) setModels(Array.isArray(data) ? data.map(m => m.id ?? m) : []); })
             .catch(() => { /* ignore */ });
         return () => { cancelled = true; };
     }, []);

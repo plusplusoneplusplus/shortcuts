@@ -26,6 +26,7 @@ import { useChatSSE } from '../hooks/useChatSSE';
 import { useSendMessage } from '../hooks/useSendMessage';
 import { useQueuedTaskPoll } from '../hooks/useQueuedTaskPoll';
 import { useChatWindowActions } from '../hooks/useChatWindowActions';
+import type { ModelInfo } from '../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
@@ -106,6 +107,22 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
+
+    // Seed tokenLimit from /api/models as soon as sessionModel is known.
+    // Only runs when sessionTokenLimit is still undefined to avoid clobbering
+    // a value already received via SSE (conversation-snapshot / token-usage).
+    useEffect(() => {
+        if (!sessionModel || sessionTokenLimit !== undefined) return;
+        fetchApi('/models')
+            .then((data: ModelInfo[]) => {
+                if (!Array.isArray(data)) return;
+                const info = data.find(m => m.id === sessionModel);
+                if (info?.tokenLimit && info.tokenLimit > 0) {
+                    setSessionTokenLimit(info.tokenLimit);
+                }
+            })
+            .catch(() => { /* ignore — bar stays hidden until SSE arrives */ });
+    }, [sessionModel, sessionTokenLimit]); // eslint-disable-line react-hooks/exhaustive-deps
     const pinnedFile = createdFiles.at(-1);
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {

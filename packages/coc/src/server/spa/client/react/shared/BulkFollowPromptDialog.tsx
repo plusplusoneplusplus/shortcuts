@@ -101,11 +101,11 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
         (async () => {
             try {
                 const [modelsRes, skillRes] = await Promise.all([
-                    fetch(getApiBase() + '/queue/models').then(r => r.ok ? r.json() : []),
+                    fetch(getApiBase() + '/api/models').then(r => r.ok ? r.json() : []),
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
                 ]);
                 if (cancelled) return;
-                setModels(modelsRes?.models ?? (Array.isArray(modelsRes) ? modelsRes : []));
+                setModels(Array.isArray(modelsRes) ? modelsRes.map((m: any) => m.id ?? m) : []);
                 setSkills(skillRes?.skills ?? []);
             } catch {
                 // ignore
