@@ -27,6 +27,7 @@ export interface RunRecord {
     error?: string;
     durationMs?: number;
     processId?: string;
+    taskId?: string;
     exitCode?: number;
     stdout?: string;
     stderr?: string;

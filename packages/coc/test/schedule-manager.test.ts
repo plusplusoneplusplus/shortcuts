@@ -433,7 +433,7 @@ describe('ScheduleManager', () => {
     });
 
     describe('run history limit', () => {
-        it('caps run history at 10 entries', async () => {
+        it('caps run history at 100 entries', async () => {
             const schedule = manager.addSchedule(REPO_ID, {
                 name: 'History Limit',
                 target: 'test.yaml',
@@ -443,12 +443,12 @@ describe('ScheduleManager', () => {
                 status: 'active',
             });
 
-            for (let i = 0; i < 15; i++) {
+            for (let i = 0; i < 105; i++) {
                 await manager.triggerRun(REPO_ID, schedule.id);
             }
 
             const history = manager.getRunHistory(schedule.id);
-            expect(history.length).toBeLessThanOrEqual(10);
+            expect(history.length).toBeLessThanOrEqual(100);
         });
     });
 
@@ -1061,6 +1061,128 @@ describe('ScheduleManager', () => {
             expect(enqueued[0].payload.mode).toBeUndefined();
 
             mgr.dispose();
+        });
+    });
+
+    describe('taskId field on run records', () => {
+        it('sets taskId on run record when enqueuing a prompt schedule', async () => {
+            const mockQueue = { enqueue: (_task: any) => 'my_task_id_abc' };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Task ID Test',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const run = await mgr.triggerRun(REPO_ID, schedule.id);
+            expect(run.taskId).toBe('my_task_id_abc');
+            expect(run.processId).toBe('queue_my_task_id_abc');
+
+            mgr.dispose();
+        });
+
+        it('sets taskId on run record when enqueuing a script schedule', async () => {
+            const mockQueue = { enqueue: (_task: any) => 'script_task_xyz' };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Script Task ID Test',
+                target: 'echo hello',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'script',
+            });
+
+            const run = await mgr.triggerRun(REPO_ID, schedule.id);
+            expect(run.taskId).toBe('script_task_xyz');
+            expect(run.processId).toBe('queue_script_task_xyz');
+
+            mgr.dispose();
+        });
+
+        it('taskId is undefined when queueManager is absent', async () => {
+            const mgr = new ScheduleManager(persistence, null);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'No Queue',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+            });
+
+            const run = await mgr.triggerRun(REPO_ID, schedule.id);
+            expect(run.taskId).toBeUndefined();
+            expect(run.processId).toBeUndefined();
+
+            mgr.dispose();
+        });
+    });
+
+    describe('restoreRunHistory', () => {
+        it('restores run history from persistence on startup', async () => {
+            const { ScheduleRunPersistence } = await import('../src/server/schedule-run-persistence');
+            const runPersistence = new ScheduleRunPersistence(dataDir);
+
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'History Restore',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            // Trigger a run to populate history, then persist
+            manager.restoreRunHistory(runPersistence);
+            await manager.triggerRun(REPO_ID, schedule.id);
+            manager.dispose();
+
+            // New manager restores history
+            const newManager = new ScheduleManager(persistence);
+            newManager.restore();
+            newManager.restoreRunHistory(runPersistence);
+
+            const history = newManager.getRunHistory(schedule.id);
+            expect(history.length).toBeGreaterThan(0);
+            expect(history[0].scheduleId).toBe(schedule.id);
+
+            newManager.dispose();
+        });
+
+        it('does not persist run history when no runPersistence is wired', async () => {
+            const { ScheduleRunPersistence } = await import('../src/server/schedule-run-persistence');
+            const runPersistence = new ScheduleRunPersistence(dataDir);
+
+            const schedule = manager.addSchedule(REPO_ID, {
+                name: 'No Persist',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            // Trigger run WITHOUT calling restoreRunHistory (so no persistence is wired)
+            await manager.triggerRun(REPO_ID, schedule.id);
+            manager.dispose();
+
+            // New manager restores but gets no history since nothing was persisted
+            const newManager = new ScheduleManager(persistence);
+            newManager.restore();
+            newManager.restoreRunHistory(runPersistence);
+
+            const history = newManager.getRunHistory(schedule.id);
+            expect(history).toHaveLength(0);
+
+            newManager.dispose();
         });
     });
 });

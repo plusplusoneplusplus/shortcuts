@@ -14,6 +14,7 @@ import type { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
 import { getErrorMessage } from '@plusplusoneplusplus/coc-server';
 import { SchedulePersistence } from './schedule-persistence';
+import type { ScheduleRunPersistence } from './schedule-run-persistence';
 
 // ============================================================================
 // Types
@@ -47,6 +48,7 @@ export interface ScheduleRunRecord {
     error?: string;
     durationMs?: number;
     processId?: string;
+    taskId?: string;
 }
 
 export interface ScheduleChangeEvent {
@@ -205,7 +207,7 @@ export function describeCron(expr: string): string {
 // ScheduleManager
 // ============================================================================
 
-const MAX_HISTORY_PER_SCHEDULE = 10;
+const MAX_HISTORY_PER_SCHEDULE = 100;
 
 /** Stamp completedAt, durationMs, and optionally error on a run record. */
 function finaliseRun(
@@ -233,6 +235,7 @@ export class ScheduleManager extends EventEmitter {
     // Dependencies
     private readonly persistence: SchedulePersistence;
     private readonly queueManager: TaskQueueManager | null;
+    private runPersistence: ScheduleRunPersistence | null = null;
     private disposed = false;
 
     constructor(persistence: SchedulePersistence, queueManager: TaskQueueManager | null = null) {
@@ -260,6 +263,21 @@ export class ScheduleManager extends EventEmitter {
         }
         if (total > 0) {
             process.stderr.write(`[ScheduleManager] Restored ${total} schedule(s)\n`);
+        }
+    }
+
+    /**
+     * Restore run history from persistence and inject into in-memory runHistory map.
+     * Must be called after restore().
+     */
+    restoreRunHistory(persistence: ScheduleRunPersistence): void {
+        this.runPersistence = persistence;
+        const restored = persistence.loadAll();
+        for (const [scheduleId, runs] of restored) {
+            this.runHistory.set(scheduleId, runs);
+        }
+        if (restored.size > 0) {
+            process.stderr.write(`[ScheduleManager] Restored run history for ${restored.size} schedule(s)\n`);
         }
     }
 
@@ -514,6 +532,7 @@ export class ScheduleManager extends EventEmitter {
                         displayName: `[Schedule] ${schedule.name}`,
                         repoId,
                     });
+                    run.taskId = taskId;
                     run.processId = `queue_${taskId}`;
                 } else if (schedule.targetType === 'script') {
                     const taskId = this.queueManager.enqueue({
@@ -529,6 +548,7 @@ export class ScheduleManager extends EventEmitter {
                         displayName: `[Schedule:script] ${schedule.name}`,
                         repoId,
                     });
+                    run.taskId = taskId;
                     run.processId = `queue_${taskId}`;
                 }
             }
@@ -567,6 +587,7 @@ export class ScheduleManager extends EventEmitter {
         if (history.length > MAX_HISTORY_PER_SCHEDULE) {
             history.pop();
         }
+        this.persistRunHistory(run.repoId);
     }
 
     private updateRunRecord(scheduleId: string, run: ScheduleRunRecord): void {
@@ -576,6 +597,25 @@ export class ScheduleManager extends EventEmitter {
         if (idx >= 0) {
             history[idx] = run;
         }
+        this.persistRunHistory(run.repoId);
+    }
+
+    private persistRunHistory(repoId: string): void {
+        if (!this.runPersistence) return;
+        const allRuns = this.getAllRunsForRepo(repoId);
+        this.runPersistence.save(repoId, allRuns);
+    }
+
+    private getAllRunsForRepo(repoId: string): ScheduleRunRecord[] {
+        const result: ScheduleRunRecord[] = [];
+        for (const runs of this.runHistory.values()) {
+            for (const run of runs) {
+                if (run.repoId === repoId) {
+                    result.push(run);
+                }
+            }
+        }
+        return result;
     }
 
     private persist(repoId: string): void {

@@ -45,6 +45,7 @@ import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { defaultIsExclusive } from './queue-executor-bridge';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { SchedulePersistence } from './schedule-persistence';
+import { ScheduleRunPersistence } from './schedule-run-persistence';
 import { ScheduleManager } from './schedule-manager';
 import { registerScheduleRoutes } from './schedule-handler';
 import { OutputPruner } from './output-pruner';
@@ -196,8 +197,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Initialize schedule manager with persistent storage
     const schedulePersistence = new SchedulePersistence(dataDir);
+    const scheduleRunPersistence = new ScheduleRunPersistence(dataDir);
     const scheduleManager = new ScheduleManager(schedulePersistence, queueFacade);
     scheduleManager.restore();
+    scheduleManager.restoreRunHistory(scheduleRunPersistence);
 
     // Wire up output file pruner for automatic cleanup
     const outputPruner = new OutputPruner(store, dataDir);
@@ -663,6 +666,7 @@ export type { DiffCommentsStorage } from './diff-comments-handler';
 export { registerAdminRoutes, resetWipeToken, DataWiper } from '@plusplusoneplusplus/coc-server';
 export type { AdminRouteOptions, WipeOptions, WipeResult } from '@plusplusoneplusplus/coc-server';
 export { SchedulePersistence, getRepoScheduleFilePath } from './schedule-persistence';
+export { ScheduleRunPersistence } from './schedule-run-persistence';
 export type { PersistedScheduleState } from './schedule-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
 export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule-manager';

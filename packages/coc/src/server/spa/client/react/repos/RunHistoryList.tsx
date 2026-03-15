@@ -96,7 +96,7 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                         const hasOutput = !!(run.stdout || run.stderr);
                         return (
                             <div key={run.id} className="text-[11px] text-[#616161] dark:text-[#999] py-0.5" data-testid={`run-row-${run.id}`}>
-                                <div className="grid items-center gap-2" style={{ gridTemplateColumns: '16px 1fr 44px 44px' }}>
+                                <div className="grid items-center gap-2" style={{ gridTemplateColumns: '16px 1fr 44px 44px 16px' }}>
                                     {/* Status icon */}
                                     <span className="flex-shrink-0 text-center" aria-label={`Run status: ${run.status}`}>
                                         {run.status === 'completed'
@@ -124,6 +124,22 @@ export function RunHistoryList({ runs: initialRuns, scheduleId, wsId, onRunNow, 
                                             )} data-testid={`exit-code-${run.id}`}>
                                                 {run.exitCode}
                                             </span>
+                                        ) : null}
+                                    </span>
+                                    {/* Activity link */}
+                                    <span className="flex justify-center">
+                                        {run.processId ? (
+                                            <button
+                                                className="text-[#0078d4] hover:text-[#005fa3] leading-none"
+                                                title="Go to activity"
+                                                aria-label="Go to activity"
+                                                data-testid={`activity-link-${run.id}`}
+                                                onClick={() => {
+                                                    location.hash = '#repos/' + encodeURIComponent(wsId) + '/activity/' + encodeURIComponent(run.processId!);
+                                                }}
+                                            >
+                                                ↗
+                                            </button>
                                         ) : null}
                                     </span>
                                 </div>
