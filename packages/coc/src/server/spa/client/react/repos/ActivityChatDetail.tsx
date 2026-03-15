@@ -33,6 +33,9 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import type { SkillItem } from './SlashCommandMenu';
 import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { Badge } from '../shared';
+import { FilePathLink } from '../shared/FilePathLink';
+import { CreatedFilesDropdown } from '../shared/CreatedFilesDropdown';
+import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
 import { FilePathValue } from '../queue/PendingTaskPayload';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
@@ -169,6 +172,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     }, [task, processId, processDetails]);
 
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
+
+    const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
+    const pinnedFile = createdFiles.at(-1);
 
     const setTurnsAndRef= useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
@@ -839,6 +845,12 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                         <Badge status={task.status}>
                             {statusIcon(task.status)} {statusLabel(task.status)}
                         </Badge>
+                    )}
+                    {pinnedFile && createdFiles.length === 1 && (
+                        <FilePathLink path={pinnedFile.filePath} />
+                    )}
+                    {pinnedFile && createdFiles.length > 1 && (
+                        <CreatedFilesDropdown files={createdFiles} />
                     )}
                     {planPath && (
                         <FilePathValue label="📄" value={planPath} />
