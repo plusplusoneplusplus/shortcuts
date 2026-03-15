@@ -203,6 +203,10 @@ export type { MemoryConfig, MemoryBackend } from './memory/memory-config-handler
 export { FileMemoryStore } from './memory/memory-store';
 export type { MemoryEntry, MemoryIndexRecord, MemoryListQuery, MemoryListResult } from './memory/memory-store';
 
+// Model routes
+export { registerModelRoutes } from './models/model-routes';
+export type { ModelStore } from './models/model-routes';
+
 // Wiki module
 export type {
     ProjectInfo,

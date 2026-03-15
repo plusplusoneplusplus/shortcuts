@@ -25,7 +25,7 @@ import { registerAdminRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerDiffCommentsRoutes } from './diff-comments-handler';
 import { registerWikiRoutes } from './wiki';
-import { registerMemoryRoutes, registerRepoRoutes, registerInstructionRoutes, registerProviderRoutes, registerPrRoutes, registerLogsRoutes } from '@plusplusoneplusplus/coc-server';
+import { registerMemoryRoutes, registerRepoRoutes, registerInstructionRoutes, registerProviderRoutes, registerPrRoutes, registerLogsRoutes, registerModelRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
@@ -268,6 +268,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerMemoryRoutes(routes, dataDir, {
         aggregateToolCallsAIInvoker: createCLIAIInvoker({ approvePermissions: true }),
     });
+
+    // Register model routes
+    registerModelRoutes(routes, modelMetadataStore);
 
     // Register server log streaming routes
     registerLogsRoutes(routes);

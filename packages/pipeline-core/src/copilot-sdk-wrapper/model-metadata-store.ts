@@ -49,6 +49,14 @@ class ModelMetadataStore {
         return [...this.cache.values()];
     }
 
+    /**
+     * All cached ModelInfo entries. Alias for getCachedModels().
+     * Empty until initialize() resolves.
+     */
+    getAll(): ModelInfo[] {
+        return this.getCachedModels();
+    }
+
     /** True after at least one successful initialize() call. */
     isInitialized(): boolean {
         return this.initialized;
