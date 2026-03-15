@@ -868,9 +868,8 @@ describe('ActivityChatDetail', () => {
             expect(planPathBlock).toContain("''");
         });
 
-        it('imports FilePathValue from PendingTaskPayload (not MetaRow)', () => {
-            expect(source).toContain("import { FilePathValue } from '../queue/PendingTaskPayload'");
-            expect(source).not.toContain('MetaRow');
+        it('imports MetaRow and FilePathValue from PendingTaskPayload', () => {
+            expect(source).toContain("import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload'");
         });
 
         it('renders FilePathValue pill with 📄 label when planPath is set', () => {

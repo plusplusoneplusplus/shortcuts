@@ -36,7 +36,7 @@ import { Badge } from '../shared';
 import { FilePathLink } from '../shared/FilePathLink';
 import { CreatedFilesDropdown } from '../shared/CreatedFilesDropdown';
 import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
-import { FilePathValue } from '../queue/PendingTaskPayload';
+import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { useFloatingChats } from '../context/FloatingChatsContext';
@@ -846,14 +846,14 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                             {statusIcon(task.status)} {statusLabel(task.status)}
                         </Badge>
                     )}
+                    {planPath && (
+                        <FilePathValue label="📄" value={planPath} />
+                    )}
                     {pinnedFile && createdFiles.length === 1 && (
                         <FilePathLink path={pinnedFile.filePath} />
                     )}
                     {pinnedFile && createdFiles.length > 1 && (
                         <CreatedFilesDropdown files={createdFiles} />
-                    )}
-                    {planPath && (
-                        <FilePathValue label="📄" value={planPath} />
                     )}
                     {task?.duration != null && (
                         <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
