@@ -12,19 +12,15 @@ import * as path from 'path';
 test.use({ viewport: TABLET });
 
 test.describe('Tablet Layout', () => {
-    test('tablet: sidebar is visible', async ({ page, serverUrl }) => {
+    test('tablet: repo tabs visible in TopBar', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-tab-col', 'tab-col-repo');
         await page.goto(`${serverUrl}/#repos`);
 
         await page.click('[data-tab="repos"]');
 
-        // Tablet uses ResponsiveSidebar
-        const sidebar = page.locator('[data-testid="responsive-sidebar"]');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-
-        // Verify it has a reasonable width
-        const box = await sidebar.boundingBox();
-        expect(box!.width).toBeGreaterThan(200);
+        // At tablet/desktop, repos are shown as tabs in the TopBar
+        const repoTabs = page.locator('[data-testid="repo-tab"]');
+        await expect(repoTabs).toHaveCount(1, { timeout: 10000 });
     });
 
     test('tablet: TopBar tab buttons are visible', async ({ page, serverUrl }) => {
@@ -60,22 +56,23 @@ test.describe('Tablet Layout', () => {
         await expect(splitPanel).toBeVisible();
     });
 
-    test('tablet: ReposView renders two-pane layout', async ({ page, serverUrl }) => {
+    test('tablet: ReposView renders detail pane on repo selection', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-tab-2p', 'tab-2p-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
 
-        // Tablet uses ResponsiveSidebar instead of #repos-sidebar
-        await expect(page.locator('[data-testid="responsive-sidebar"]')).toBeVisible();
+        // Repo detail pane should appear
         await expect(page.locator('#repo-detail-content')).toBeVisible();
     });
 
     test('tablet: dialog renders as centered modal', async ({ page, serverUrl }) => {
-        await page.goto(`${serverUrl}/#repos`);
-        await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
-        await page.click('#add-repo-btn');
+        await page.goto(`${serverUrl}/#processes`);
+        await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10000 });
+        // MiniReposSidebar is visible on non-repos pages; its add button opens AddRepoDialog directly
+        await expect(page.locator('[data-testid="mini-repos-sidebar"]')).toBeVisible({ timeout: 5000 });
+        await page.click('[data-testid="mini-add-btn"]');
 
         const overlay = page.locator('#add-repo-overlay');
         await expect(overlay).toBeVisible();

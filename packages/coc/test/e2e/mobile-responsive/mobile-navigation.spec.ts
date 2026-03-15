@@ -24,7 +24,7 @@ test.describe('Mobile Navigation', () => {
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
-        for (const label of ['Repos', 'Processes', 'Skills', 'Memory']) {
+        for (const label of ['Processes', 'Skills', 'Memory', 'Logs']) {
             await expect(bottomNav.locator('button', { hasText: new RegExp(label, 'i') })).toBeVisible();
         }
     });
@@ -61,7 +61,7 @@ test.describe('Mobile Navigation', () => {
         await expect(page.locator('#view-memory')).toBeVisible();
     });
 
-    test('mobile: tapping bottom nav Repos switches view', async ({ page, serverUrl }) => {
+    test('mobile: navigating to repos view via hash', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
@@ -71,8 +71,9 @@ test.describe('Mobile Navigation', () => {
         await bottomNav.locator('button', { hasText: /Processes/i }).tap();
         await expect(page.locator('#view-processes')).toBeVisible();
 
-        // Then tap Repos
-        await bottomNav.locator('button', { hasText: /Repos/i }).tap();
+        // Navigate to repos via hash — BottomNav does not have a Repos button
+        // since repos is the default/home view accessed via the CoC header link
+        await page.goto(`${page.url().split('#')[0]}#repos`);
         await expect(page.locator('#view-repos')).toBeVisible();
     });
 
