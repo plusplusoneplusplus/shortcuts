@@ -168,6 +168,42 @@ describe('WorkingTreeService.getFileDiff', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WorkingTreeService.stageFile
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorkingTreeService.stageFile', () => {
+    afterEach(() => {
+        mockExecAsync.mockReset();
+    });
+
+    const service = new WorkingTreeService();
+    const repoRoot = ROOT;
+
+    it('stages a regular file successfully', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const result = await service.stageFile(repoRoot, path.join(ROOT, 'src', 'foo.ts'));
+        expect(result).toEqual({ success: true });
+    });
+
+    it('returns error on git failure', async () => {
+        mockExecAsync.mockRejectedValue(new Error('fatal: pathspec did not match'));
+        const result = await service.stageFile(repoRoot, path.join(ROOT, 'missing.ts'));
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('pathspec did not match');
+    });
+
+    it('strips trailing path separator so Windows directory paths are quoted correctly', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const dirPath = process.platform === 'win32'
+            ? 'D:\\projects\\shortcuts\\.github\\coc\\'
+            : '/repo/some/dir/';
+        await service.stageFile(repoRoot, dirPath);
+        const cmd = mockExecAsync.mock.calls[0][0] as string;
+        expect(cmd).not.toMatch(/[/\\]"/);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WorkingTreeService.stageFiles
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -221,6 +257,18 @@ describe('WorkingTreeService.stageFiles', () => {
         expect(result.staged).toBe(1);
         expect(result.errors).toHaveLength(1);
         expect(result.errors[0]).toContain('permission denied');
+    });
+
+    it('strips trailing path separator from directory path (Windows regression)', async () => {
+        mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' } as any);
+        const dirWithTrailingSep = process.platform === 'win32'
+            ? 'D:\\projects\\shortcuts\\.github\\coc\\'
+            : '/repo/some/dir/';
+        const result = await service.stageFiles(repoRoot, [dirWithTrailingSep]);
+        expect(result.success).toBe(true);
+        const cmd = mockExecAsync.mock.calls[0][0] as string;
+        // The trailing separator must NOT appear immediately before the closing quote
+        expect(cmd).not.toMatch(/[/\\]"/);
     });
 });
 
