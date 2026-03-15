@@ -12,6 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { atomicWriteJson } from '@plusplusoneplusplus/coc-server';
 import type { ScheduleEntry, ScheduleRunRecord } from './schedule-manager';
 
 // ============================================================================
@@ -117,7 +118,7 @@ export class SchedulePersistence {
             schedules,
         };
         const filePath = getRepoScheduleFilePath(this.dataDir, repoId);
-        this.atomicWrite(filePath, state);
+        atomicWriteJson(filePath, state);
     }
 
     /**
@@ -131,25 +132,6 @@ export class SchedulePersistence {
             }
         } catch {
             // Non-fatal
-        }
-    }
-
-    // ========================================================================
-    // Private — file operations
-    // ========================================================================
-
-    private atomicWrite(filePath: string, state: PersistedScheduleState): void {
-        const tmpPath = filePath + '.tmp';
-        try {
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
-            fs.renameSync(tmpPath, filePath);
-        } catch (err) {
-            process.stderr.write(`[SchedulePersistence] Failed to write ${filePath}: ${err}\n`);
-            try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
         }
     }
 }

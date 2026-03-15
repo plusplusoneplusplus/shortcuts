@@ -12,6 +12,7 @@ import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
 import type { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
+import { getErrorMessage } from '@plusplusoneplusplus/coc-server';
 import { SchedulePersistence } from './schedule-persistence';
 
 // ============================================================================
@@ -205,6 +206,20 @@ export function describeCron(expr: string): string {
 // ============================================================================
 
 const MAX_HISTORY_PER_SCHEDULE = 10;
+
+/** Stamp completedAt, durationMs, and optionally error on a run record. */
+function finaliseRun(
+    run: ScheduleRunRecord,
+    status: 'completed' | 'failed',
+    error?: unknown,
+): void {
+    run.status = status;
+    run.completedAt = new Date().toISOString();
+    run.durationMs = new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime();
+    if (error !== undefined) {
+        run.error = getErrorMessage(error);
+    }
+}
 
 export class ScheduleManager extends EventEmitter {
     // repoId → scheduleId → ScheduleEntry
@@ -518,14 +533,9 @@ export class ScheduleManager extends EventEmitter {
                 }
             }
 
-            run.status = 'completed';
-            run.completedAt = new Date().toISOString();
-            run.durationMs = new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime();
+            finaliseRun(run, 'completed');
         } catch (err) {
-            run.status = 'failed';
-            run.completedAt = new Date().toISOString();
-            run.error = err instanceof Error ? err.message : String(err);
-            run.durationMs = new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime();
+            finaliseRun(run, 'failed', err);
 
             if (schedule.onFailure === 'stop') {
                 schedule.status = 'stopped';

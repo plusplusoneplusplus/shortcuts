@@ -15,7 +15,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBodyOrReject, atomicWriteJSON } from '@plusplusoneplusplus/coc-server';
 import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import {
     DEFAULT_AI_COMMANDS,
@@ -232,15 +232,7 @@ export class TaskCommentsManager {
             comments,
             settings: DEFAULT_SETTINGS,
         };
-        const tempFile = `${file}.tmp`;
-        try {
-            await fs.promises.writeFile(tempFile, JSON.stringify(storage, null, 2), 'utf8');
-            await fs.promises.rename(tempFile, file);
-        } catch (error) {
-            // Clean up temp file on error
-            try { await fs.promises.unlink(tempFile); } catch { /* ignore */ }
-            throw error;
-        }
+        await atomicWriteJSON(file, storage);
     }
 
     /** Add a new comment. */

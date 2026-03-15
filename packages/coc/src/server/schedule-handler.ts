@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { sendJSON, sendError, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBodyOrReject, getErrorMessage } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { ScheduleManager, describeCron, nextCronTime, parseCron } from './schedule-manager';
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager';
@@ -127,8 +127,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
                 });
                 sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager) });
             } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to create schedule';
-                return sendError(res, 400, message);
+                return sendError(res, 400, getErrorMessage(err, 'Failed to create schedule'));
             }
         },
     });
@@ -221,8 +220,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
                 process.stderr.write(`[Schedule] manual-run scheduleId=${scheduleId} repoId=${repoId}\n`);
                 sendJSON(res, 200, { run });
             } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to trigger run';
-                return sendError(res, 404, message);
+                return sendError(res, 404, getErrorMessage(err, 'Failed to trigger run'));
             }
         },
     });

@@ -16,7 +16,7 @@ import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { TaskManager, ARCHIVE_UNDO_FILE, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory, VALID_TASK_STATUSES } from '@plusplusoneplusplus/pipeline-core';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject, resolveCollision, getErrorMessage } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import { resolveTaskRoot } from './task-root-resolver';
 
@@ -213,11 +213,11 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             const folderParam = typeof parsed.query.folder === 'string' && parsed.query.folder
                 ? parsed.query.folder
                 : undefined;
+            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             const tasksFolder = folderParam
                 ? path.resolve(ws.rootPath, folderParam)
-                : resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath;
+                : taskRoot.absolutePath;
             const resolvedPath = path.resolve(tasksFolder, filePath);
-            const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
             if (!isWithinDirectory(resolvedPath, tasksFolder) && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside tasks folder');
             }
@@ -369,22 +369,6 @@ async function copyRecursive(src: string, dest: string): Promise<void> {
         }
     } else {
         await fs.promises.copyFile(src, dest);
-    }
-}
-
-/**
- * If `destPath` already exists on disk, returns a non-colliding variant by
- * appending `-<timestamp>` before the extension. Otherwise returns `destPath`
- * unchanged.
- */
-async function resolveCollision(destPath: string): Promise<string> {
-    try {
-        await fs.promises.access(destPath);
-        const ext = path.extname(destPath);
-        const base = destPath.slice(0, destPath.length - ext.length);
-        return `${base}-${Date.now()}${ext}`;
-    } catch {
-        return destPath;
     }
 }
 
@@ -941,7 +925,7 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     sendJSON(res, 200, { path: newRelPath });
                 }
             } catch (err: any) {
-                return sendError(res, 500, 'Failed to ' + action + ': ' + (err.message || 'Unknown error'));
+                return sendError(res, 500, 'Failed to ' + action + ': ' + getErrorMessage(err));
             }
         },
     });

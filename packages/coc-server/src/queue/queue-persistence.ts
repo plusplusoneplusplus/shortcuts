@@ -86,7 +86,7 @@ export async function sanitizeTaskForPersistence(task: QueuedTask, dataDir: stri
 // ============================================================================
 
 /** Atomic JSON write using temp-file + rename (shared by both persistence classes). */
-export function atomicWriteJson(filePath: string, state: PersistedQueueState): void {
+export function atomicWriteJson(filePath: string, state: unknown): void {
     const tmpPath = filePath + '.tmp';
     try {
         const dir = path.dirname(filePath);

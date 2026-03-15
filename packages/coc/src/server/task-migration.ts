@@ -11,6 +11,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getErrorMessage } from '@plusplusoneplusplus/coc-server';
 
 export interface MigrationResult {
     migrated: boolean;
@@ -116,7 +117,7 @@ export async function migrateTasksToRepoScoped(options: MigrationOptions): Promi
             fs.mkdirSync(path.dirname(dest), { recursive: true });
             fs.copyFileSync(src, dest);
         } catch (err) {
-            result.errors.push(`${relFile}: ${err instanceof Error ? err.message : String(err)}`);
+            result.errors.push(`${relFile}: ${getErrorMessage(err)}`);
         }
     }
 
@@ -132,7 +133,7 @@ export async function migrateTasksToRepoScoped(options: MigrationOptions): Promi
             }, null, 2),
         );
     } catch (err) {
-        result.errors.push(`.migrated-from: ${err instanceof Error ? err.message : String(err)}`);
+        result.errors.push(`.migrated-from: ${getErrorMessage(err)}`);
     }
 
     // Migrate comment hashes
@@ -147,7 +148,7 @@ export async function migrateTasksToRepoScoped(options: MigrationOptions): Promi
         result.commentsMigrated = commentResult.remapped;
         result.errors.push(...commentResult.errors);
     } catch (err) {
-        result.errors.push(`comments: ${err instanceof Error ? err.message : String(err)}`);
+        result.errors.push(`comments: ${getErrorMessage(err)}`);
     }
 
     result.migrated = true;
@@ -216,7 +217,7 @@ export async function migrateCommentHashes(options: {
 
             result.remapped++;
         } catch (err) {
-            result.errors.push(`${file}: ${err instanceof Error ? err.message : String(err)}`);
+            result.errors.push(`${file}: ${getErrorMessage(err)}`);
         }
     }
 

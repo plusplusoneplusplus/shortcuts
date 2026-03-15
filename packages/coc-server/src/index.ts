@@ -64,6 +64,9 @@ export type { WipeOptions, WipeResult } from './data-wiper';
 export { exportAllData } from './data-exporter';
 export { importData } from './data-importer';
 
+// Shared filesystem utilities
+export { atomicWriteJSON, getErrorMessage, resolveCollision } from './shared/fs-utils';
+
 // Queue persistence
 export { QueuePersistence, getRepoQueueFilePath, atomicWriteJson, sanitizeTaskForPersistence } from './queue/queue-persistence';
 export type { PersistedQueueState, QueuePersistenceOptions, RestartPolicy } from './queue/queue-persistence';
