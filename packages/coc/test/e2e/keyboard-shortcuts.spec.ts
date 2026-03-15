@@ -15,12 +15,12 @@ test.describe('Keyboard shortcuts', () => {
         await page.goto(serverUrl);
 
         // Wait for repo to appear and select it
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-        // Press 'A' to jump to Activity sub-tab
-        await page.keyboard.press('a');
+        // Press Alt+A to jump to Activity sub-tab
+        await page.keyboard.press('Alt+a');
 
         // Hash should include 'activity'
         await expect(page).toHaveURL(/activity/);
@@ -31,8 +31,8 @@ test.describe('Keyboard shortcuts', () => {
         await page.goto(serverUrl);
 
         // Wait for repo to appear and select it
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Press 'W' to jump to Wiki sub-tab

@@ -22,8 +22,8 @@ test.describe('Pull Requests — detail view', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item').first()).toBeVisible({ timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]').first()).toBeVisible({ timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await page.click('button[data-subtab="pull-requests"]');
         await expect(page.getByTestId('pr-list')).toBeVisible({ timeout: 10000 });
         await page.getByTestId('pr-row').first().click();
@@ -62,7 +62,7 @@ test.describe('Pull Requests — detail view', () => {
 
     test('shows author display name', async ({ page }) => {
         await expect(page.getByTestId('pr-detail')).toContainText(
-            MOCK_PR_OPEN.createdBy!.displayName!,
+            MOCK_PR_OPEN.author!.displayName!,
             { timeout: 10000 },
         );
     });

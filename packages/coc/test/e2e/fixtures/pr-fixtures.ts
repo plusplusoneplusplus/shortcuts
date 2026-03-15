@@ -10,12 +10,14 @@ import type {
 // ---------------------------------------------------------------------------
 
 export function createMockPullRequest(overrides?: Partial<PullRequest>): PullRequest {
+    const now = new Date();
+    const recentDate = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(); // 2 hours ago
     return {
         id: 1,
         number: 1,
         title: 'feat: add new feature',
         description: 'This PR adds a new feature.',
-        createdBy: {
+        author: {
             displayName: 'Alice Developer',
             email: 'alice@example.com',
             avatarUrl: 'https://example.com/avatar/alice.png',
@@ -24,8 +26,8 @@ export function createMockPullRequest(overrides?: Partial<PullRequest>): PullReq
         targetBranch: 'main',
         status: 'open',
         isDraft: false,
-        createdAt: '2024-01-15T10:00:00.000Z',
-        updatedAt: '2024-01-15T12:00:00.000Z',
+        createdAt: recentDate,
+        updatedAt: recentDate,
         url: 'https://example.com/repos/org/repo/pullrequest/1',
         labels: [],
         reviewers: [],

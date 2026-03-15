@@ -12,8 +12,8 @@ import {
 async function openPrTab(page: any, serverUrl: string, repoId: string) {
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
-    await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-    await page.locator('.repo-item').first().click();
+    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+    await page.locator('[data-testid="repo-tab"]').first().click();
     await page.click('button[data-subtab="pull-requests"]');
 }
 
@@ -24,8 +24,8 @@ test.describe('Pull Requests tab — list', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
 
         const prSubTab = page.locator('button[data-subtab="pull-requests"]');
         await expect(prSubTab).toBeVisible({ timeout: 10000 });
@@ -89,7 +89,7 @@ test.describe('Pull Requests tab — list', () => {
 
         const firstRow = page.locator('.pr-row').first();
         await expect(firstRow.locator('.pr-author')).toContainText(
-            MOCK_PR_LIST[0].createdBy.displayName,
+            MOCK_PR_LIST[0].author!.displayName!,
             { timeout: 10000 },
         );
 
@@ -106,11 +106,11 @@ test.describe('Pull Requests tab — list', () => {
 
         await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
-        // Every row should contain a relative-time string containing "ago"
+        // Every row should contain a timestamp string showing "Updated"
         const rows = page.locator('.pr-row');
         const count = await rows.count();
         for (let i = 0; i < count; i++) {
-            await expect(rows.nth(i).locator('.pr-time')).toContainText('ago', {
+            await expect(rows.nth(i).locator('.pr-time')).toContainText('Updated', {
                 timeout: 10000,
             });
         }
