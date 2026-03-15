@@ -880,4 +880,47 @@ describe('ActivityChatDetail', () => {
             expect(headerSection).toContain('<FilePathValue label="📄" value={planPath}');
         });
     });
+
+    describe('ConversationMiniMap integration', () => {
+        it('imports ConversationMiniMap from processes directory', () => {
+            expect(source).toContain("import { ConversationMiniMap }");
+            expect(source).toContain("'../processes/ConversationMiniMap'");
+        });
+
+        it('declares turnsContainerRef', () => {
+            expect(source).toContain('turnsContainerRef');
+            expect(source).toContain('useRef<HTMLDivElement>(null)');
+        });
+
+        it('renders ConversationMiniMap with required props', () => {
+            expect(source).toContain('<ConversationMiniMap');
+            expect(source).toContain('turns={turns}');
+            expect(source).toContain('scrollContainerRef={conversationContainerRef}');
+            expect(source).toContain('turnsContainerRef={turnsContainerRef}');
+            expect(source).toContain("isStreaming={task?.status === 'running'}");
+        });
+
+        it('hides minimap when variant is floating', () => {
+            expect(source).toContain("variant !== 'floating'");
+        });
+
+        it('passes turnsContainerRef to ConversationArea', () => {
+            expect(source).toContain('turnsContainerRef={turnsContainerRef}');
+        });
+
+        it('ConversationArea accepts turnsContainerRef prop', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('turnsContainerRef');
+            expect(CONVERSATION_AREA_SOURCE).toContain('RefObject<HTMLDivElement');
+        });
+
+        it('ConversationArea attaches turnsContainerRef to turns container div', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('ref={turnsContainerRef}');
+            expect(CONVERSATION_AREA_SOURCE).toContain('space-y-3');
+        });
+
+        it('wraps ConversationArea and minimap in a flex row', () => {
+            const flexWrapper = source.includes('flex-1 min-h-0 flex');
+            expect(flexWrapper).toBe(true);
+        });
+    });
 });

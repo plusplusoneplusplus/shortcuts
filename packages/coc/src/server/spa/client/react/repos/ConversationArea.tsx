@@ -13,6 +13,8 @@ export interface ConversationAreaProps {
     pendingQueue: QueuedMessage[];
     isScrolledUp: boolean;
     scrollRef: React.RefObject<HTMLDivElement>;
+    /** Ref attached to the inner turns container (for minimap navigation) */
+    turnsContainerRef?: React.RefObject<HTMLDivElement | null>;
     onScrollToBottom: () => void;
     isPending: boolean;
     task: any;
@@ -31,6 +33,7 @@ export function ConversationArea({
     pendingQueue,
     isScrolledUp,
     scrollRef,
+    turnsContainerRef,
     onScrollToBottom,
     isPending,
     task,
@@ -57,7 +60,7 @@ export function ConversationArea({
                 ) : turns.length === 0 ? (
                     <div className="text-[#848484] text-sm">No conversation data available.</div>
                 ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-3" ref={turnsContainerRef}>
                         {(() => {
                             const hasStreaming = turns.some(t => t.streaming);
                             const renderTurns =

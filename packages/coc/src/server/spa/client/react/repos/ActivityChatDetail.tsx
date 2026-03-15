@@ -29,6 +29,7 @@ import { useChatWindowActions } from '../hooks/useChatWindowActions';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
+import { ConversationMiniMap } from '../processes/ConversationMiniMap';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -82,6 +83,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     const loadCounterRef = useRef(0);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
+    const turnsContainerRef = useRef<HTMLDivElement>(null);
     const lastRefreshVersionRef = useRef(0);
     const isInitialLoadRef = useRef(true);
 
@@ -431,23 +433,34 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onPopOut={handlePopOut}
                 onFloat={handleFloat}
             />
-            <ConversationArea
-                loading={loading}
-                error={error}
-                turns={turns}
-                pendingQueue={pendingQueue}
-                isScrolledUp={isScrolledUp}
-                scrollRef={conversationContainerRef}
-                onScrollToBottom={scrollToBottom}
-                isPending={isPending}
-                task={task}
-                fullTask={fullTask}
-                onCancel={handleCancel}
-                onMoveToTop={handleMoveToTop}
-                variant={variant}
-                taskId={taskId}
-                wsId={workspaceId}
-            />
+            <div className="relative flex-1 min-h-0 flex">
+                <ConversationArea
+                    loading={loading}
+                    error={error}
+                    turns={turns}
+                    pendingQueue={pendingQueue}
+                    isScrolledUp={isScrolledUp}
+                    scrollRef={conversationContainerRef}
+                    turnsContainerRef={turnsContainerRef}
+                    onScrollToBottom={scrollToBottom}
+                    isPending={isPending}
+                    task={task}
+                    fullTask={fullTask}
+                    onCancel={handleCancel}
+                    onMoveToTop={handleMoveToTop}
+                    variant={variant}
+                    taskId={taskId}
+                    wsId={workspaceId}
+                />
+                {variant !== 'floating' && (
+                    <ConversationMiniMap
+                        turns={turns}
+                        scrollContainerRef={conversationContainerRef}
+                        turnsContainerRef={turnsContainerRef}
+                        isStreaming={task?.status === 'running'}
+                    />
+                )}
+            </div>
             {!isPending && noSessionForFollowUp && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
                     <div className="text-[#848484] text-sm text-center">
