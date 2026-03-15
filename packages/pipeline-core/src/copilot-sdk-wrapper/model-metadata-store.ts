@@ -1,0 +1,57 @@
+import { ModelInfo } from './model-info';
+import { getCopilotSDKService } from './copilot-sdk-service';
+import { getModelContextWindow } from './model-registry';
+import { getLogger } from '../logger';
+
+class ModelMetadataStore {
+    private cache: Map<string, ModelInfo> = new Map();
+    private initialized = false;
+
+    /**
+     * Fetch models from the SDK and populate the cache.
+     * Safe to call multiple times; re-fetches on every call to allow refresh.
+     * Never throws — SDK errors are caught and logged; the cache is left as-is.
+     */
+    async initialize(): Promise<void> {
+        try {
+            const service = getCopilotSDKService();
+            const models = await service.listModels();
+            this.cache.clear();
+            for (const model of models) {
+                this.cache.set(model.id, model);
+            }
+            this.initialized = true;
+        } catch (err) {
+            getLogger().warn(
+                'ModelMetadataStore',
+                `Failed to fetch models from SDK; falling back to static registry. ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
+    }
+
+    /**
+     * Context window for modelId.
+     * Fallback chain: SDK cache → static registry → undefined.
+     */
+    getContextWindow(modelId: string): number | undefined {
+        const info = this.cache.get(modelId);
+        if (info?.capabilities?.limits?.max_context_window_tokens !== undefined) {
+            return info.capabilities.limits.max_context_window_tokens;
+        }
+        return getModelContextWindow(modelId);
+    }
+
+    /**
+     * All cached ModelInfo entries. Empty until initialize() resolves.
+     */
+    getCachedModels(): ModelInfo[] {
+        return [...this.cache.values()];
+    }
+
+    /** True after at least one successful initialize() call. */
+    isInitialized(): boolean {
+        return this.initialized;
+    }
+}
+
+export const modelMetadataStore = new ModelMetadataStore();

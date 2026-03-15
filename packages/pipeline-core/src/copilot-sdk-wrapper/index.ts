@@ -78,6 +78,11 @@ export {
     tryConvertImageFileToDataUrl,
 } from './copilot-sdk-service';
 
+// Model Metadata Store
+export {
+    modelMetadataStore,
+} from './model-metadata-store';
+
 // MCP Config Loader
 export {
     MCPConfigFile,
