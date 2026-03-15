@@ -108,8 +108,11 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     });
 
     function handleRowClick(pr: PullRequest) {
-        dispatch({ type: 'SET_SELECTED_PR', prId: pr.id });
-        window.location.hash = `#repos/${encodeURIComponent(repoId)}/pull-requests/${pr.id}`;
+        // Use pr.number (sequential PR number) not pr.id (GitHub internal DB ID).
+        // GitHub's REST API requires pull_number, not the database id.
+        const prNumber = pr.number ?? pr.id;
+        dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
+        window.location.hash = `#repos/${encodeURIComponent(repoId)}/pull-requests/${prNumber}`;
         if (isMobile) setMobileShowDetail(true);
     }
 

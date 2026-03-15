@@ -244,14 +244,41 @@ describe('error state', () => {
 // ── Row click ──────────────────────────────────────────────────────────────────
 
 describe('row click', () => {
-    it('dispatches SET_SELECTED_PR and updates hash when a row is clicked', async () => {
-        mockFetchOk([makePr({ id: 42, title: 'My PR' })]);
+    it('dispatches SET_SELECTED_PR with pr.number and updates hash when a row is clicked', async () => {
+        // number (42) is the sequential PR number; id (3395712046) is the GitHub DB id.
+        mockFetchOk([makePr({ id: 3395712046, number: 42, title: 'My PR' })]);
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
 
         fireEvent.click(screen.getByTestId('pr-row'));
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 42 });
         expect(window.location.hash).toContain('pull-requests/42');
+    });
+
+    it('does NOT use the GitHub internal DB id in the hash (regression: pr detail 404)', async () => {
+        // Regression guard: using pr.id (large DB id) as pull_number returns 404 from GitHub API.
+        mockFetchOk([makePr({ id: 3395712046, number: 7, title: 'Regression PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByTestId('pr-row'));
+        // Must use the sequential number, never the large DB id.
+        expect(window.location.hash).not.toContain('3395712046');
+        expect(window.location.hash).toContain('pull-requests/7');
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 7 });
+    });
+
+    it('falls back to pr.id when pr.number is absent', async () => {
+        // ADO PRs or legacy data may omit number; id should be used as fallback.
+        const prWithoutNumber = makePr({ id: 99, title: 'ADO PR' });
+        delete prWithoutNumber.number;
+        mockFetchOk([prWithoutNumber]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByTestId('pr-row'));
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 99 });
+        expect(window.location.hash).toContain('pull-requests/99');
     });
 });
 
