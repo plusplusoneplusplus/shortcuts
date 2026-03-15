@@ -14,7 +14,7 @@
  *   error/fatal → red
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { getApiBase } from '../../utils/config';
 import { cn } from '../../shared/cn';
 
@@ -33,6 +33,13 @@ interface LogEntry {
 const LEVEL_NUM: Record<LogLevel, number> = {
     trace: 10, debug: 20, info: 30, warn: 40, error: 50, fatal: 60,
 };
+
+// ── Known structured fields ────────────────────────────────────────────────
+
+/** Fields rendered inline after msg. */
+const KNOWN_INLINE_FIELDS = new Set(['method', 'path', 'status', 'durationMs', 'resource', 'id']);
+/** All fields that are not "extra" (core meta + inline known fields). */
+const CORE_FIELDS = new Set(['ts', 'level', 'component', 'msg', ...KNOWN_INLINE_FIELDS]);
 
 // ── Level badge styles ─────────────────────────────────────────────────────
 
@@ -60,6 +67,23 @@ function rowTextClass(level: LogLevel): string {
         default:
             return '';
     }
+}
+
+function methodBadgeClass(method: string): string {
+    switch (method.toUpperCase()) {
+        case 'GET': return 'bg-[#0078d4]/15 text-[#0078d4] dark:bg-[#0078d4]/30 dark:text-[#4fc3f7]';
+        case 'POST': return 'bg-[#16825d]/15 text-[#16825d] dark:bg-[#16825d]/30 dark:text-[#89d185]';
+        case 'PATCH':
+        case 'PUT': return 'bg-[#cca700]/20 text-[#a07500] dark:bg-[#cca700]/30 dark:text-[#cca700]';
+        case 'DELETE': return 'bg-[#f14c4c]/20 text-[#f14c4c] dark:bg-[#f14c4c]/30 dark:text-[#f48771]';
+        default: return 'bg-[#888]/15 text-[#616161] dark:bg-[#888]/20 dark:text-[#999]';
+    }
+}
+
+function statusTextClass(status: number): string {
+    if (status >= 500) return 'text-[#f14c4c] dark:text-[#f48771]';
+    if (status >= 400) return 'text-[#a07500] dark:text-[#cca700]';
+    return 'text-[#16825d] dark:text-[#89d185]';
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -101,28 +125,111 @@ const FILTER_LEVELS: { label: string; value: LogLevel | 'all' }[] = [
 // ── LogRow ─────────────────────────────────────────────────────────────────
 
 function LogRow({ entry, search }: { entry: LogEntry; search: string }) {
+    const [expanded, setExpanded] = useState(false);
+
+    const method = typeof entry.method === 'string' ? entry.method : undefined;
+    const path = typeof entry.path === 'string' ? entry.path : undefined;
+    const status = typeof entry.status === 'number' ? entry.status : undefined;
+    const durationMs = typeof entry.durationMs === 'number' ? entry.durationMs : undefined;
+    const resource = typeof entry.resource === 'string' ? entry.resource : undefined;
+    const id = entry.id !== undefined && entry.id !== null ? String(entry.id) : undefined;
+
+    const unknownFields = Object.keys(entry).filter(k => !CORE_FIELDS.has(k));
+    const hasUnknown = unknownFields.length > 0;
+
     return (
-        <div
-            className={cn(
-                'flex items-start gap-2 py-0.5 px-3 font-mono text-xs leading-5 hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
-                rowTextClass(entry.level),
-            )}
-            data-testid="log-row"
-            data-level={entry.level}
-        >
-            <span className="shrink-0 text-[#888] dark:text-[#777] w-[90px]">{formatTs(entry.ts)}</span>
-            <span className={cn('shrink-0 inline-block rounded px-1 text-[10px] font-semibold uppercase w-[44px] text-center', levelBadgeClass(entry.level))}>
-                {entry.level}
-            </span>
-            {entry.component && (
-                <span className="shrink-0 text-[#888] dark:text-[#666] w-[80px] truncate" title={entry.component}>
-                    {entry.component}
+        <Fragment>
+            <div
+                className={cn(
+                    'flex items-start gap-2 py-0.5 px-3 font-mono text-xs leading-5 hover:bg-black/[0.03] dark:hover:bg-white/[0.04]',
+                    rowTextClass(entry.level),
+                )}
+                data-testid="log-row"
+                data-level={entry.level}
+            >
+                <span className="shrink-0 text-[#888] dark:text-[#777] w-[90px]">{formatTs(entry.ts)}</span>
+                <span className={cn('shrink-0 inline-block rounded px-1 text-[10px] font-semibold uppercase w-[44px] text-center', levelBadgeClass(entry.level))}>
+                    {entry.level}
                 </span>
+                {entry.component && (
+                    <span className="shrink-0 text-[#888] dark:text-[#666] w-[80px] truncate" title={entry.component}>
+                        {entry.component}
+                    </span>
+                )}
+                <span className="flex-1 min-w-0 break-words whitespace-pre-wrap">
+                    {highlightText(entry.msg, search)}
+                </span>
+                {method && (
+                    <span
+                        className={cn('shrink-0 inline-block rounded px-1 text-[10px] font-semibold uppercase', methodBadgeClass(method))}
+                        data-testid="log-field-method"
+                    >
+                        {method}
+                    </span>
+                )}
+                {path && (
+                    <span
+                        className="shrink-0 text-[#888] dark:text-[#666] max-w-[200px] truncate"
+                        title={path}
+                        data-testid="log-field-path"
+                    >
+                        {path}
+                    </span>
+                )}
+                {status !== undefined && (
+                    <span
+                        className={cn('shrink-0 font-semibold', statusTextClass(status))}
+                        data-testid="log-field-status"
+                    >
+                        {status}
+                    </span>
+                )}
+                {durationMs !== undefined && (
+                    <span className="shrink-0 text-[#888] dark:text-[#666]" data-testid="log-field-duration">
+                        {durationMs}ms
+                    </span>
+                )}
+                {resource && (
+                    <span className="shrink-0 text-[#888] dark:text-[#666]" data-testid="log-field-resource">
+                        {resource}
+                    </span>
+                )}
+                {id && (
+                    <span
+                        className="shrink-0 text-[#888] dark:text-[#666] max-w-[80px] truncate"
+                        title={id}
+                        data-testid="log-field-id"
+                    >
+                        {id}
+                    </span>
+                )}
+                {hasUnknown && (
+                    <button
+                        className="shrink-0 text-[#888] dark:text-[#666] hover:text-[#0078d4] px-0.5 leading-none"
+                        onClick={() => setExpanded(v => !v)}
+                        title={expanded ? 'Collapse details' : 'Expand details'}
+                        data-testid="log-expand-toggle"
+                        aria-expanded={expanded}
+                    >
+                        ⋯
+                    </button>
+                )}
+            </div>
+            {expanded && hasUnknown && (
+                <div
+                    className="font-mono text-xs text-[#888] dark:text-[#666] bg-black/[0.03] dark:bg-white/[0.03] px-[130px] py-0.5 flex flex-wrap gap-x-4"
+                    data-testid="log-row-details"
+                >
+                    {unknownFields.map(k => (
+                        <span key={k}>
+                            <span className="text-[#0078d4] dark:text-[#4fc3f7]">{k}</span>
+                            <span>{': '}</span>
+                            <span>{JSON.stringify((entry as Record<string, unknown>)[k])}</span>
+                        </span>
+                    ))}
+                </div>
             )}
-            <span className="flex-1 min-w-0 break-words whitespace-pre-wrap">
-                {highlightText(entry.msg, search)}
-            </span>
-        </div>
+        </Fragment>
     );
 }
 
