@@ -391,7 +391,9 @@ export function Router() {
         case 'admin':
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <AdminPanel />
+                    <div className="h-full overflow-y-auto" data-testid="admin-scroll-container">
+                        <AdminPanel />
+                    </div>
                 </Suspense>
             );
         case 'logs':
