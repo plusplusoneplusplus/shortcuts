@@ -17,15 +17,12 @@ type SaveStatus = 'idle' | 'saving' | 'success' | 'error';
 
 export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSectionProps) {
     const [hasGithubToken, setHasGithubToken] = useState(false);
-    const [hasAdoToken, setHasAdoToken] = useState(false);
     const [adoOrgUrlSaved, setAdoOrgUrlSaved] = useState('');
 
     const [githubToken, setGithubToken] = useState('');
     const [showGithubToken, setShowGithubToken] = useState(false);
 
-    const [adoToken, setAdoToken] = useState('');
     const [adoOrgUrl, setAdoOrgUrl] = useState('');
-    const [showAdoToken, setShowAdoToken] = useState(false);
 
     const [githubStatus, setGithubStatus] = useState<SaveStatus>('idle');
     const [githubError, setGithubError] = useState('');
@@ -39,18 +36,18 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
                 if (!res.ok) throw new Error('Failed to load provider config');
                 const data = await res.json();
                 const providers = data?.providers ?? {};
-                setHasGithubToken(!!providers?.github?.token);
-                setHasAdoToken(!!providers?.ado?.token);
+                setHasGithubToken(!!providers?.github?.hasToken);
                 if (providers?.ado?.orgUrl) {
                     setAdoOrgUrlSaved(providers.ado.orgUrl);
-                    setAdoOrgUrl(providers.ado.orgUrl !== '****' ? providers.ado.orgUrl : '');
+                    setAdoOrgUrl(providers.ado.orgUrl);
                 }
             } catch (err: any) {
                 onError(err.message || 'Failed to load provider config');
             }
         }
         load();
-    }, [onError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleSaveGithub = async () => {
         if (!githubToken.trim()) return;
@@ -78,24 +75,22 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
     };
 
     const handleSaveAdo = async () => {
-        if (!adoToken.trim() || !adoOrgUrl.trim()) return;
+        if (!adoOrgUrl.trim()) return;
         setAdoStatus('saving');
         setAdoError('');
         try {
             const res = await fetch(getApiBase() + '/providers/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ado: { token: adoToken, orgUrl: adoOrgUrl } }),
+                body: JSON.stringify({ ado: { orgUrl: adoOrgUrl } }),
             });
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
                 throw new Error((body as any).error || `Error ${res.status}`);
             }
-            setAdoToken('');
             setAdoOrgUrlSaved(adoOrgUrl);
-            setHasAdoToken(true);
             setAdoStatus('success');
-            onSuccess('ADO token saved');
+            onSuccess('ADO settings saved');
             setTimeout(() => setAdoStatus('idle'), 3000);
         } catch (err: any) {
             setAdoError(err.message || 'Failed to save');
@@ -111,7 +106,7 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         <Card className="p-4" data-testid="provider-tokens-section">
             <h3 className="text-sm font-semibold mb-3 text-[#1e1e1e] dark:text-[#cccccc]">Provider Tokens</h3>
             <p className="text-xs text-[#616161] dark:text-[#999] mb-4">
-                Update the GitHub PAT or Azure DevOps token used by the Pull Requests feature. Tokens are stored locally in{' '}
+                Update the GitHub PAT used by the Pull Requests feature. Tokens are stored locally in{' '}
                 <span className="font-mono">~/.coc/providers.json</span>.
             </p>
 
@@ -170,11 +165,9 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
             {/* ADO */}
             <div data-testid="ado-subsection">
                 <p className={subHeadClass}>Azure DevOps</p>
-                {hasAdoToken && (
-                    <p className="text-xs text-[#616161] dark:text-[#999] mb-2" data-testid="ado-token-saved">
-                        A token is already saved (<span className="font-mono">****</span>). Enter a new value to replace it.
-                    </p>
-                )}
+                <p className="text-xs text-[#616161] dark:text-[#999] mb-2">
+                    Authentication uses <span className="font-mono">az account get-access-token</span> automatically.
+                </p>
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                         <label className={labelClass} htmlFor="ado-org-url-input">Organization URL</label>
@@ -187,43 +180,20 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
                             onChange={e => setAdoOrgUrl(e.target.value)}
                             data-testid="ado-org-url-input"
                         />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <label className={labelClass} htmlFor="ado-token-input">Personal Access Token</label>
-                        <div className="flex flex-1 gap-1">
-                            <input
-                                id="ado-token-input"
-                                type={showAdoToken ? 'text' : 'password'}
-                                className={inputClass}
-                                placeholder={hasAdoToken ? '****' : 'Enter ADO PAT'}
-                                value={adoToken}
-                                onChange={e => setAdoToken(e.target.value)}
-                                data-testid="ado-token-input"
-                            />
-                            <button
-                                type="button"
-                                className="px-2 text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
-                                onClick={() => setShowAdoToken(v => !v)}
-                                aria-label={showAdoToken ? 'Hide ADO token' : 'Show ADO token'}
-                                data-testid="ado-toggle-visibility"
-                            >
-                                👁
-                            </button>
-                            <button
-                                type="button"
-                                className="px-3 py-1 text-sm bg-[#0078d4] hover:bg-[#106ebe] text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                                onClick={handleSaveAdo}
-                                disabled={adoToken.trim() === '' || adoOrgUrl.trim() === '' || adoStatus === 'saving'}
-                                data-testid="ado-save-button"
-                            >
-                                {adoStatus === 'saving' ? 'Saving…' : 'Save'}
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            className="px-3 py-1 text-sm bg-[#0078d4] hover:bg-[#106ebe] text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={handleSaveAdo}
+                            disabled={adoOrgUrl.trim() === '' || adoStatus === 'saving'}
+                            data-testid="ado-save-button"
+                        >
+                            {adoStatus === 'saving' ? 'Saving…' : 'Save'}
+                        </button>
                     </div>
                 </div>
                 {adoStatus === 'success' && (
                     <p className="mt-2 text-xs text-green-600 dark:text-green-400" data-testid="ado-save-success">
-                        ✅ ADO token saved.
+                        ✅ ADO settings saved.
                     </p>
                 )}
                 {adoStatus === 'error' && (

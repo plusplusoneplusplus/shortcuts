@@ -30,11 +30,11 @@ beforeEach(() => {
 // ── Initial load ────────────────────────────────────────────────────────────────
 
 describe('initial load', () => {
-    it('shows masked placeholder text when GitHub token exists', async () => {
+    it('shows "already saved" message when GitHub hasToken is true', async () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({
-                providers: { github: { token: '****' } },
+                providers: { github: { hasToken: true } },
             }),
         } as any);
 
@@ -46,22 +46,22 @@ describe('initial load', () => {
         expect(screen.getByText(/A token is already saved/)).toBeInTheDocument();
     });
 
-    it('shows masked placeholder when ADO token exists', async () => {
+    it('does NOT show "already saved" message when GitHub hasToken is false', async () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({
-                providers: { ado: { token: '****', orgUrl: 'https://dev.azure.com/myorg' } },
+                providers: { github: { hasToken: false } },
             }),
         } as any);
 
         await act(async () => { await renderSection(); });
 
         await waitFor(() => {
-            expect(screen.getByTestId('ado-token-saved')).toBeInTheDocument();
+            expect(screen.queryByTestId('github-token-saved')).not.toBeInTheDocument();
         });
     });
 
-    it('does NOT show masked placeholder when no GitHub token saved', async () => {
+    it('does NOT show "already saved" message when no GitHub entry in providers', async () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({ providers: {} }),
@@ -78,7 +78,7 @@ describe('initial load', () => {
         global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({
-                providers: { ado: { token: '****', orgUrl: 'https://dev.azure.com/myorg' } },
+                providers: { ado: { orgUrl: 'https://dev.azure.com/myorg' } },
             }),
         } as any);
 
@@ -96,6 +96,32 @@ describe('initial load', () => {
         await act(async () => { await renderSection(); });
 
         await waitFor(() => expect(onError).toHaveBeenCalled());
+    });
+
+    it('does NOT render ADO PAT input field', async () => {
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ providers: {} }),
+        } as any);
+
+        await act(async () => { await renderSection(); });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('ado-token-input')).not.toBeInTheDocument();
+        });
+    });
+
+    it('does NOT render ADO token visibility toggle', async () => {
+        global.fetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ providers: {} }),
+        } as any);
+
+        await act(async () => { await renderSection(); });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('ado-toggle-visibility')).not.toBeInTheDocument();
+        });
     });
 });
 
@@ -133,6 +159,23 @@ describe('GitHub save', () => {
 
         await waitFor(() => expect(screen.getByTestId('github-save-success')).toBeInTheDocument());
         expect(onSuccess).toHaveBeenCalledWith('GitHub token saved');
+    });
+
+    it('sets hasGithubToken true after successful GitHub save', async () => {
+        global.fetch = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
+
+        await act(async () => { await renderSection(); });
+
+        // No "already saved" before save
+        expect(screen.queryByTestId('github-token-saved')).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByTestId('github-token-input'), { target: { value: 'ghp_tok' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('github-save-button')); });
+
+        // "already saved" should now appear
+        await waitFor(() => expect(screen.getByTestId('github-token-saved')).toBeInTheDocument());
     });
 
     it('clears input after successful GitHub save', async () => {
@@ -174,10 +217,10 @@ describe('GitHub save', () => {
     });
 });
 
-// ── ADO save ────────────────────────────────────────────────────────────────────
+// ── ADO save (org URL only — PAT removed) ───────────────────────────────────────
 
 describe('ADO save', () => {
-    it('calls PUT /providers/config with correct ADO body', async () => {
+    it('calls PUT /providers/config with orgUrl only (no token)', async () => {
         global.fetch = vi.fn()
             .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
             .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
@@ -185,7 +228,6 @@ describe('ADO save', () => {
         await act(async () => { await renderSection(); });
 
         fireEvent.change(screen.getByTestId('ado-org-url-input'), { target: { value: 'https://dev.azure.com/myorg' } });
-        fireEvent.change(screen.getByTestId('ado-token-input'), { target: { value: 'my-pat' } });
         await act(async () => { fireEvent.click(screen.getByTestId('ado-save-button')); });
 
         await waitFor(() => {
@@ -193,11 +235,12 @@ describe('ADO save', () => {
             const putCall = calls.find(([_url, opts]: [string, any]) => opts?.method === 'PUT');
             expect(putCall).toBeDefined();
             const body = JSON.parse(putCall[1].body);
-            expect(body).toEqual({ ado: { token: 'my-pat', orgUrl: 'https://dev.azure.com/myorg' } });
+            expect(body).toEqual({ ado: { orgUrl: 'https://dev.azure.com/myorg' } });
+            expect(body.ado.token).toBeUndefined();
         });
     });
 
-    it('shows success message after ADO save', async () => {
+    it('shows success message after ADO org URL save', async () => {
         global.fetch = vi.fn()
             .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any)
             .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) } as any);
@@ -205,11 +248,10 @@ describe('ADO save', () => {
         await act(async () => { await renderSection(); });
 
         fireEvent.change(screen.getByTestId('ado-org-url-input'), { target: { value: 'https://dev.azure.com/myorg' } });
-        fireEvent.change(screen.getByTestId('ado-token-input'), { target: { value: 'my-pat' } });
         await act(async () => { fireEvent.click(screen.getByTestId('ado-save-button')); });
 
         await waitFor(() => expect(screen.getByTestId('ado-save-success')).toBeInTheDocument());
-        expect(onSuccess).toHaveBeenCalledWith('ADO token saved');
+        expect(onSuccess).toHaveBeenCalledWith('ADO settings saved');
     });
 
     it('shows error message when ADO save fails', async () => {
@@ -220,20 +262,10 @@ describe('ADO save', () => {
         await act(async () => { await renderSection(); });
 
         fireEvent.change(screen.getByTestId('ado-org-url-input'), { target: { value: 'https://dev.azure.com/myorg' } });
-        fireEvent.change(screen.getByTestId('ado-token-input'), { target: { value: 'my-pat' } });
         await act(async () => { fireEvent.click(screen.getByTestId('ado-save-button')); });
 
         await waitFor(() => expect(screen.getByTestId('ado-save-error')).toBeInTheDocument());
         expect(screen.getByText(/Bad org URL/)).toBeInTheDocument();
-    });
-
-    it('ADO save button is disabled when token is empty', async () => {
-        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ providers: {} }) } as any);
-
-        await act(async () => { await renderSection(); });
-
-        fireEvent.change(screen.getByTestId('ado-org-url-input'), { target: { value: 'https://dev.azure.com/myorg' } });
-        expect(screen.getByTestId('ado-save-button')).toBeDisabled();
     });
 
     it('ADO save button is disabled when org URL is empty', async () => {
@@ -241,7 +273,6 @@ describe('ADO save', () => {
 
         await act(async () => { await renderSection(); });
 
-        fireEvent.change(screen.getByTestId('ado-token-input'), { target: { value: 'my-pat' } });
         expect(screen.getByTestId('ado-save-button')).toBeDisabled();
     });
 });
@@ -266,18 +297,5 @@ describe('token visibility toggle', () => {
         fireEvent.click(toggle);
         expect(screen.getByTestId('github-token-input')).toHaveAttribute('type', 'password');
     });
-
-    it('ADO token input defaults to type=password', async () => {
-        await act(async () => { await renderSection(); });
-        expect(screen.getByTestId('ado-token-input')).toHaveAttribute('type', 'password');
-    });
-
-    it('toggles ADO token visibility', async () => {
-        await act(async () => { await renderSection(); });
-        const toggle = screen.getByTestId('ado-toggle-visibility');
-        fireEvent.click(toggle);
-        expect(screen.getByTestId('ado-token-input')).toHaveAttribute('type', 'text');
-        fireEvent.click(toggle);
-        expect(screen.getByTestId('ado-token-input')).toHaveAttribute('type', 'password');
-    });
 });
+

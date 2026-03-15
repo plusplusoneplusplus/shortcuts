@@ -16,17 +16,20 @@ import type { ProvidersFileConfig } from './providers-config';
 // Sanitization helper
 // ============================================================================
 
-/** Replace token values with "****" so credentials never leave the server. */
+/** Sanitize config so credentials never leave the server.
+ *  GitHub: returns `{ hasToken: boolean }` instead of the masked string.
+ *  ADO:    returns only `orgUrl` (PAT is no longer stored).
+ */
 function sanitizeConfig(config: ProvidersFileConfig): unknown {
     const sanitized: {
         providers: {
-            github?: { token: string };
+            github?: { hasToken: boolean };
             ado?: { orgUrl: string };
         };
     } = { providers: {} };
 
     if (config.providers.github) {
-        sanitized.providers.github = { token: '****' };
+        sanitized.providers.github = { hasToken: !!config.providers.github.token };
     }
     if (config.providers.ado) {
         sanitized.providers.ado = { orgUrl: config.providers.ado.orgUrl };
