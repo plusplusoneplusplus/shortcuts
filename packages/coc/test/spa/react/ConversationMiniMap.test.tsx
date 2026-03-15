@@ -167,7 +167,7 @@ describe('computeStripHeights', () => {
         const heights = computeStripHeights(turns);
         expect(heights.length).toBe(2);
         expect(heights[0]).toBeGreaterThanOrEqual(4);
-        expect(heights[1]).toBeLessThanOrEqual(40);
+        expect(heights[1]).toBeLessThanOrEqual(60);
     });
 
     it('gives max height to the longest turn', () => {
@@ -177,7 +177,7 @@ describe('computeStripHeights', () => {
             makeTurn({ content: 'b'.repeat(500) }),
         ];
         const heights = computeStripHeights(turns);
-        expect(heights[1]).toBe(40); // longest gets max
+        expect(heights[1]).toBe(60); // longest gets max
     });
 });
 
@@ -499,7 +499,7 @@ describe('ConversationMiniMap', () => {
             expect(screen.getByTestId('minimap-panel')).toBeTruthy();
             // All strips should have max height since content is equal
             const strip = screen.getByTestId('minimap-strip-0');
-            expect(parseInt(strip.style.height)).toBeLessThanOrEqual(40);
+            expect(parseInt(strip.style.height)).toBeLessThanOrEqual(60);
         });
     });
 

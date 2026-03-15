@@ -13,8 +13,8 @@ import type { ClientConversationTurn } from '../types/dashboard';
 // ── Constants ──────────────────────────────────────────────────────────
 
 const MIN_STRIP_HEIGHT = 4;
-const MAX_STRIP_HEIGHT = 40;
-const MINIMAP_WIDTH = 80;
+const MAX_STRIP_HEIGHT = 60;
+const MINIMAP_WIDTH = 56;
 const COLLAPSED_WIDTH = 12;
 const MIN_TURNS_TO_SHOW = 5;
 const NARROW_VIEWPORT_PX = 900;
