@@ -2632,3 +2632,81 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
     });
 
 });
+
+// ============================================================================
+// listModels() Tests
+// ============================================================================
+
+describe('CopilotSDKService - listModels()', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('listModels() resolves with model array from SDK', async () => {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        const models = [
+            {
+                id: 'gpt-5', name: 'GPT-5',
+                capabilities: { supports: { vision: true, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } },
+            },
+            {
+                id: 'claude-sonnet-4.6', name: 'Claude Sonnet 4.6',
+                capabilities: { supports: { vision: true, reasoningEffort: true }, limits: { max_context_window_tokens: 200000 } },
+            },
+        ];
+        mockClient.listModels.mockResolvedValue(models);
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const result = await service.listModels();
+        expect(result).toEqual(models);
+    });
+
+    it('listModels() stops the client after a successful call', async () => {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        mockClient.listModels.mockResolvedValue([]);
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await service.listModels();
+        expect(mockClient.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('listModels() stops the client even when listModels() rejects', async () => {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        const sdkError = new Error('API failure');
+        mockClient.listModels.mockRejectedValue(sdkError);
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        await expect(service.listModels()).rejects.toThrow('API failure');
+        expect(mockClient.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('listModels() throws when SDK is unavailable', async () => {
+        const serviceAny = service as any;
+        serviceAny.availabilityCache = { available: false, error: 'SDK not found' };
+
+        await expect(service.listModels()).rejects.toThrow('SDK not found');
+    });
+
+    it('listModels() throws when service is disposed', async () => {
+        service.dispose();
+        await expect(service.listModels()).rejects.toThrow('CopilotSDKService has been disposed');
+    });
+});

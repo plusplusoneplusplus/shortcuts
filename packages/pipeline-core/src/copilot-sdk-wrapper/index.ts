@@ -46,6 +46,10 @@ export {
     ToolResultObject,
     ToolResultType,
     ZodSchema,
+    // Dynamic model info types
+    ModelInfo,
+    ModelPolicy,
+    ModelBilling,
 } from './types';
 
 // Model Registry

@@ -91,6 +91,9 @@ export { AIModel, VALID_MODELS, DEFAULT_MODEL_ID, ModelDefinition, MODEL_REGISTR
     getActiveModels, isValidModelId, getModelCount, getModelsByTier
 } from './model-registry';
 
+// Re-export dynamic model info types
+export { ModelInfo, ModelPolicy, ModelBilling } from './model-info';
+
 // ============================================================================
 // MCP Server Configuration Types
 // ============================================================================

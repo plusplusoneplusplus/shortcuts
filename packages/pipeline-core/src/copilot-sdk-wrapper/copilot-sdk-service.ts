@@ -39,6 +39,7 @@ import {
     denyAllPermissions,
     ToolEvent,
 } from './types';
+import { ModelInfo } from './model-info';
 
 // Re-export types that were previously exported from this file
 export {
@@ -121,6 +122,7 @@ interface ICopilotClient {
      */
     resumeSession?(sessionId: string, options?: ISessionOptions): Promise<ICopilotSession>;
     stop(): Promise<void>;
+    listModels(): Promise<ModelInfo[]>;
 }
 
 /**
@@ -452,6 +454,33 @@ export class CopilotSDKService {
         aiLog.debug({ clientOptions: options }, 'Creating new CopilotClient');
         const client = new this.sdkModule.CopilotClient(options);
         return client;
+    }
+
+    /**
+     * List all models available to the authenticated user via the Copilot API.
+     *
+     * Creates a short-lived client (no cwd needed) to call the SDK's
+     * `client.listModels()`, then immediately stops the client.
+     *
+     * @returns Array of ModelInfo objects from the SDK.
+     * @throws Error if the SDK is unavailable or the API call fails.
+     */
+    public async listModels(): Promise<ModelInfo[]> {
+        if (this.disposed) {
+            throw new Error('CopilotSDKService has been disposed');
+        }
+
+        const availability = await this.isAvailable();
+        if (!availability.available) {
+            throw new Error(availability.error ?? 'Copilot SDK is not available');
+        }
+
+        const client = await this.createClient();
+        try {
+            return await client.listModels();
+        } finally {
+            client.stop().catch(() => {});
+        }
     }
 
     /**
