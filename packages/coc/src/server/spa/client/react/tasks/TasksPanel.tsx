@@ -3,37 +3,32 @@
  * Renders a two-zone flex layout: left = TaskTree, right = TaskPreview.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TaskProvider, useTaskPanel } from '../context/TaskContext';
-import { useTaskTree, countMarkdownFilesInFolder, isTaskDocument, isTaskDocumentGroup, flattenTaskTree, filterTaskItems } from '../hooks/useTaskTree';
+import { useTaskTree } from '../hooks/useTaskTree';
 import { fetchApi } from '../hooks/useApi';
-import type { TaskFolder, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 import { useFolderActions } from '../hooks/useFolderActions';
 import { useFileActions } from '../hooks/useFileActions';
 import { useArchiveUndo } from '../hooks/useArchiveUndo';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import type { DragItem } from '../hooks/useTaskDragDrop';
-import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { useGlobalToast } from '../context/ToastContext';
-import { TaskTree } from './TaskTree';
-import { TaskPreview } from './TaskPreview';
-import { TaskSearchResults } from './TaskSearchResults';
 import { TaskActions } from './TaskActions';
 import { ContextMenu } from './comments/ContextMenu';
-import type { ContextMenuItem } from './comments/ContextMenu';
-import { FolderActionDialog } from './FolderActionDialog';
-import { FolderMoveDialog } from './FolderMoveDialog';
-import { FileMoveDialog } from './FileMoveDialog';
-import { Dialog } from '../shared/Dialog';
-import { Button } from '../shared/Button';
-import { FollowPromptDialog } from '../shared/FollowPromptDialog';
-import { UpdateDocumentDialog } from '../shared/UpdateDocumentDialog';
-import { BulkFollowPromptDialog } from '../shared/BulkFollowPromptDialog';
 import { Spinner } from '../shared';
 import { normalizeRemoteUrl } from '../repos/repoGrouping';
-import type { RepoData } from '../repos/repoGrouping';
 import type { TasksPanelNavState } from '../types/dashboard';
+import { parseTaskHashParams } from '../utils/taskHashParams';
+import { useTaskSearch } from '../hooks/useTaskSearch';
+import { useFileDialogHandlers } from '../hooks/useFileDialogHandlers';
+import { useFolderDialogHandlers } from '../hooks/useFolderDialogHandlers';
+import { useFileContextMenu } from '../hooks/useFileContextMenu';
+import { useFolderContextMenu } from '../hooks/useFolderContextMenu';
+import { TasksToolbar } from './TasksToolbar';
+import { TasksMillerLayout } from './TasksMillerLayout';
+import { TasksFileDialogs } from './TasksFileDialogs';
+import { TasksFolderDialogs } from './TasksFolderDialogs';
+import { TasksAiDialogs } from './TasksAiDialogs';
 
 interface TasksPanelProps {
     wsId: string;
@@ -43,28 +38,8 @@ interface TasksPanelProps {
     onNavStateChange?: (navState: TasksPanelNavState) => void;
 }
 
-export function parseTaskHashParams(hash: string, wsId: string) {
-    const [hashPath, queryStr] = hash.replace(/^#/, '').split('?');
-    const parts = hashPath.split('/');
-    if (parts[0] !== 'repos' || decodeURIComponent(parts[1] || '') !== wsId || parts[2] !== 'tasks')
-        return { initialFolderPath: null, initialFilePath: null, initialViewMode: null as 'review' | 'source' | null };
-    const taskParts = parts.slice(3).map(p => decodeURIComponent(p)).filter(Boolean);
-
-    const params = new URLSearchParams(queryStr || '');
-    const modeParam = params.get('mode');
-    const initialViewMode: 'review' | 'source' | null = modeParam === 'source' ? 'source' : modeParam === 'review' ? 'review' : null;
-
-    if (!taskParts.length) return { initialFolderPath: null, initialFilePath: null, initialViewMode };
-    const last = taskParts[taskParts.length - 1];
-    if (last.endsWith('.md')) {
-        return {
-            initialFolderPath: taskParts.slice(0, -1).join('/') || null,
-            initialFilePath: taskParts.join('/'),
-            initialViewMode,
-        };
-    }
-    return { initialFolderPath: taskParts.join('/'), initialFilePath: null, initialViewMode };
-}
+// Re-export so existing imports from this module continue to work.
+export { parseTaskHashParams } from '../utils/taskHashParams';
 
 function scrollToEnd(el: HTMLElement | null) {
     if (!el) return;
@@ -83,7 +58,6 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
     const { openFilePath, setOpenFilePath, selectedFilePaths, clearSelection, selectedFolderPath } = useTaskPanel();
     const [initialParams] = useState(() => parseTaskHashParams(location.hash, wsId));
     const scrollRef = useRef<HTMLDivElement>(null);
-    const searchInputRef = useRef<HTMLInputElement>(null);
     const { isMobile } = useBreakpoint();
     const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false);
     const [tasksFolder, setTasksFolder] = useState('.vscode/tasks');
@@ -93,51 +67,11 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
             .catch(() => {});
     }, [wsId]);
 
-    // ── Search state ───────────────────────────────────────────────────
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchInput, setSearchInput] = useState('');
-    const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-
-    const onSearchChange = useCallback((value: string) => {
-        setSearchInput(value);
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-            setSearchQuery(value);
-        }, 150);
-    }, []);
-
-    useEffect(() => {
-        return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-    }, []);
-
-    const onSearchClear = useCallback(() => {
-        setSearchInput('');
-        setSearchQuery('');
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-    }, []);
-
-    // ── Keyboard shortcuts (Ctrl+F / Cmd+F → focus, Escape → clear) ────
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                searchInputRef.current?.focus();
-            }
-            if (e.key === 'Escape') {
-                if (searchInput || searchQuery) {
-                    setSearchInput('');
-                    setSearchQuery('');
-                    searchInputRef.current?.blur();
-                }
-            }
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [searchInput, searchQuery]);
-
-    // ── Search results (derived) ────────────────────────────────────────
-    const allItems = useMemo(() => tree ? flattenTaskTree(tree) : [], [tree]);
-    const searchResults = useMemo(() => filterTaskItems(allItems, searchQuery), [allItems, searchQuery]);
+    const { dispatch: queueDispatch } = useQueue();
+    const { addToast } = useGlobalToast();
+    const { undoAvailable, undoInFlight, setUndoAvailable, undoLastArchive } = useArchiveUndo(wsId, refresh);
+    const folderActions = useFolderActions(wsId, { onArchived: () => setUndoAvailable(true) });
+    const fileActions = useFileActions(wsId, { onArchived: () => setUndoAvailable(true) });
 
     // ── Close toolbar overflow when clicking outside ──────────────────
     useEffect(() => {
@@ -154,13 +88,6 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         return () => document.removeEventListener('mousedown', handler);
     }, [toolbarOverflowOpen]);
 
-    const { state: appState } = useApp();
-    const { dispatch: queueDispatch } = useQueue();
-    const { addToast } = useGlobalToast();
-    const { undoAvailable, undoInFlight, setUndoAvailable, undoLastArchive } = useArchiveUndo(wsId, refresh);
-    const folderActions = useFolderActions(wsId, { onArchived: () => setUndoAvailable(true) });
-    const fileActions = useFileActions(wsId, { onArchived: () => setUndoAvailable(true) });
-
     // ── Sibling repos (same remote URL, different workspace) ──────────
     const siblingRepos = (repos ?? []).filter(r => {
         if (r.workspace.id === wsId) return false;
@@ -172,265 +99,46 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         return normalizeRemoteUrl(currentUrl) === normalizeRemoteUrl(candidateUrl);
     });
 
-    // ── File context-menu state ────────────────────────────────────────
-    interface FileCtxInfo {
-        item: TaskDocument | TaskDocumentGroup;
-        /** All file paths — multiple for document groups. */
-        paths: string[];
-        /** Path used for rename (server detects and renames whole group). */
-        renamePath: string;
-        displayName: string;
-        isArchived: boolean;
-    }
-    interface FileCtxMenu { ctxItem: FileCtxInfo; x: number; y: number }
-    const [fileCtxMenu, setFileCtxMenu] = useState<FileCtxMenu | null>(null);
+    const { searchInput, searchQuery, searchResults, searchInputRef, onSearchChange, onSearchClear } = useTaskSearch(tree ?? null);
 
-    // ── Navigate-to-file state (from search → panel reveal) ────────────
-    const [navigateToFilePath, setNavigateToFilePath] = useState<string | null>(null);
+    const fileDlg = useFileDialogHandlers({ fileActions, refresh, addToast, onSearchClear });
+    const folderDlg = useFolderDialogHandlers({ folderActions, fileActions, refresh, addToast, onOpenGenerateDialog });
 
-    // Listen for external "reveal in panel" requests (e.g. from file preview tooltip goto button).
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const detail = (e as CustomEvent).detail;
-            if (detail?.filePath) {
-                onSearchClear();
-                setNavigateToFilePath(detail.filePath);
-            }
-        };
-        window.addEventListener('coc-reveal-in-panel', handler);
-        return () => window.removeEventListener('coc-reveal-in-panel', handler);
-    }, [onSearchClear]);
+    const { fileMenuItems } = useFileContextMenu({
+        fileCtxMenu: fileDlg.fileCtxMenu,
+        setFileCtxMenu: fileDlg.setFileCtxMenu,
+        tasksFolder,
+        fileActions,
+        refresh,
+        addToast,
+        siblingRepos,
+        onSearchClear,
+        setNavigateToFilePath: fileDlg.setNavigateToFilePath,
+        setFileDialog: fileDlg.setFileDialog,
+        setFileMoveCtxItem: fileDlg.setFileMoveCtxItem,
+        setFileMoveDialogOpen: fileDlg.setFileMoveDialogOpen,
+        setAiDialogTarget: fileDlg.setAiDialogTarget,
+        setAiDialogType: fileDlg.setAiDialogType,
+    });
 
-    type FileDialogAction = 'rename' | 'delete' | null;
-    const [fileDialog, setFileDialog] = useState<{
-        action: FileDialogAction;
-        ctxItem: FileCtxInfo | null;
-        submitting: boolean;
-    }>({ action: null, ctxItem: null, submitting: false });
-
-    const [fileMoveDialogOpen, setFileMoveDialogOpen] = useState(false);
-    const [fileMoveCtxItem, setFileMoveCtxItem] = useState<FileCtxInfo | null>(null);
-
-    // ── File-level AI dialog state ─────────────────────────────────────
-    const [aiDialogTarget, setAiDialogTarget] = useState<{ path: string; name: string } | null>(null);
-    const [aiDialogType, setAiDialogType] = useState<'follow-prompt' | null>(null);
-    const closeAiDialog = useCallback(() => { setAiDialogType(null); setAiDialogTarget(null); }, []);
-
-    const closeFileDialog = useCallback(
-        () => setFileDialog({ action: null, ctxItem: null, submitting: false }),
-        []
-    );
-
-    function buildFileCtxInfo(item: TaskDocument | TaskDocumentGroup): FileCtxInfo {
-        if (isTaskDocument(item)) {
-            const rel = item.relativePath || '';
-            const p = rel ? `${rel}/${item.fileName}` : item.fileName;
-            return { item, paths: [p], renamePath: p, displayName: item.baseName, isArchived: item.isArchived };
-        }
-        // TaskDocumentGroup
-        const paths = item.documents.map(doc => {
-            const rel = doc.relativePath || '';
-            return rel ? `${rel}/${doc.fileName}` : doc.fileName;
-        });
-        return {
-            item,
-            paths,
-            renamePath: paths[0] ?? '',
-            displayName: item.baseName,
-            isArchived: item.isArchived,
-        };
-    }
-
-    const handleFileContextMenu = useCallback(
-        (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => {
-            setFileCtxMenu({ ctxItem: buildFileCtxInfo(item), x, y });
-        },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        []
-    );
-
-    const handleFileRename = useCallback(async (newName: string) => {
-        if (!fileDialog.ctxItem) return;
-        setFileDialog(s => ({ ...s, submitting: true }));
-        try {
-            await fileActions.renameFile(fileDialog.ctxItem.renamePath, newName);
-            refresh();
-            closeFileDialog();
-        } catch (err: any) {
-            addToast(err.message || 'Rename failed', 'error');
-            setFileDialog(s => ({ ...s, submitting: false }));
-        }
-    }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
-
-    const handleFileDelete = useCallback(async () => {
-        if (!fileDialog.ctxItem) return;
-        setFileDialog(s => ({ ...s, submitting: true }));
-        try {
-            for (const p of fileDialog.ctxItem.paths) {
-                await fileActions.deleteFile(p);
-            }
-            refresh();
-            closeFileDialog();
-        } catch (err: any) {
-            addToast(err.message || 'Delete failed', 'error');
-            setFileDialog(s => ({ ...s, submitting: false }));
-        }
-    }, [fileDialog.ctxItem, fileActions, refresh, closeFileDialog, addToast]);
-
-    const handleFileMoveConfirm = useCallback(async (destinationRelativePath: string) => {
-        if (!fileMoveCtxItem) return;
-        for (const p of fileMoveCtxItem.paths) {
-            await fileActions.moveFile(p, destinationRelativePath);
-        }
-        refresh();
-        setFileMoveDialogOpen(false);
-        setFileMoveCtxItem(null);
-    }, [fileMoveCtxItem, fileActions, refresh]);
-
-    // ── Folder context-menu state ──────────────────────────────────────
-    interface FolderCtxMenu {
-        folder: TaskFolder;
-        x: number;
-        y: number;
-        source: 'folder-row' | 'empty-space';
-    }
-    const [folderCtxMenu, setFolderCtxMenu] = useState<FolderCtxMenu | null>(null);
-
-    const handleFolderContextMenu = useCallback(
-        (folder: TaskFolder, x: number, y: number) => setFolderCtxMenu({ folder, x, y, source: 'folder-row' }),
-        []
-    );
-
-    const handleFolderEmptySpaceContextMenu = useCallback(
-        (folder: TaskFolder, x: number, y: number) => setFolderCtxMenu({ folder, x, y, source: 'empty-space' }),
-        []
-    );
-
-    // ── Folder dialog state ────────────────────────────────────────────
-    type FolderDialogAction = 'rename' | 'create-subfolder' | 'create-task' | 'delete' | 'follow-prompt' | null;
-
-    const [folderDialog, setFolderDialog] = useState<{
-        action: FolderDialogAction;
-        folder: TaskFolder | null;
-        submitting: boolean;
-    }>({ action: null, folder: null, submitting: false });
-
-    // ── Move dialog state ──────────────────────────────────────────────
-    const [moveDialogOpen, setMoveDialogOpen] = useState(false);
-    const [moveSourceFolder, setMoveSourceFolder] = useState<TaskFolder | null>(null);
-
-    const closeFolderDialog = useCallback(
-        () => setFolderDialog({ action: null, folder: null, submitting: false }),
-        []
-    );
-
-    const handleFolderContextMenuAction = useCallback(
-        (actionKey: string, folder: TaskFolder) => {
-            setFolderCtxMenu(null);
-            if (actionKey === 'rename') setFolderDialog({ action: 'rename', folder, submitting: false });
-            if (actionKey === 'create-subfolder') setFolderDialog({ action: 'create-subfolder', folder, submitting: false });
-            if (actionKey === 'create-task') setFolderDialog({ action: 'create-task', folder, submitting: false });
-            if (actionKey === 'delete') setFolderDialog({ action: 'delete', folder, submitting: false });
-            if (actionKey === 'follow-prompt') setFolderDialog({ action: 'follow-prompt', folder, submitting: false });
-            if (actionKey === 'generate-task-ai') {
-                onOpenGenerateDialog?.(folder.relativePath || folder.name);
-            }
-            if (actionKey === 'move') {
-                setMoveSourceFolder(folder);
-                setMoveDialogOpen(true);
-            }
-        },
-        []
-    );
-
-    const handleRename = useCallback(async (newName: string) => {
-        if (!folderDialog.folder) return;
-        setFolderDialog(s => ({ ...s, submitting: true }));
-        try {
-            await folderActions.renameFolder(folderDialog.folder.relativePath, newName);
-            refresh();
-            closeFolderDialog();
-        } catch (err: any) {
-            addToast(err.message || 'Rename failed', 'error');
-            setFolderDialog(s => ({ ...s, submitting: false }));
-        }
-    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-
-    const handleCreateSubfolder = useCallback(async (name: string) => {
-        if (!folderDialog.folder) return;
-        setFolderDialog(s => ({ ...s, submitting: true }));
-        try {
-            await folderActions.createSubfolder(folderDialog.folder.relativePath, name);
-            refresh();
-            closeFolderDialog();
-        } catch (err: any) {
-            addToast(err.message || 'Create subfolder failed', 'error');
-            setFolderDialog(s => ({ ...s, submitting: false }));
-        }
-    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-
-    const handleCreateTask = useCallback(async (taskName: string, docType?: string) => {
-        if (!folderDialog.folder) return;
-        setFolderDialog(s => ({ ...s, submitting: true }));
-        try {
-            await folderActions.createTask(folderDialog.folder.relativePath ?? '', taskName, docType);
-            refresh();
-            closeFolderDialog();
-        } catch (err: any) {
-            addToast(err.message || 'Create task failed', 'error');
-            setFolderDialog(s => ({ ...s, submitting: false }));
-        }
-    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-
-    const handleDelete = useCallback(async () => {
-        if (!folderDialog.folder) return;
-        setFolderDialog(s => ({ ...s, submitting: true }));
-        try {
-            await folderActions.deleteFolder(folderDialog.folder.relativePath);
-            refresh();
-            closeFolderDialog();
-        } catch (err: any) {
-            addToast(err.message || 'Delete failed', 'error');
-            setFolderDialog(s => ({ ...s, submitting: false }));
-        }
-    }, [folderDialog.folder, folderActions, refresh, closeFolderDialog, addToast]);
-
-    const handleMoveConfirm = useCallback(async (destinationRelativePath: string) => {
-        if (!moveSourceFolder) return;
-        await folderActions.moveFolder(moveSourceFolder.relativePath, destinationRelativePath);
-        refresh();
-        setMoveDialogOpen(false);
-        setMoveSourceFolder(null);
-    }, [moveSourceFolder, folderActions, refresh]);
-
-    const handleDragDrop = useCallback(async (items: DragItem[], targetFolderPath: string) => {
-        try {
-            for (const item of items) {
-                if (item.type === 'folder') {
-                    await folderActions.moveFolder(item.path, targetFolderPath);
-                } else {
-                    await fileActions.moveFile(item.path, targetFolderPath);
-                }
-            }
-            refresh();
-        } catch (err: any) {
-            addToast(err.message || 'Move failed', 'error');
-        }
-    }, [folderActions, fileActions, refresh, addToast]);
+    const { folderMenuItems } = useFolderContextMenu({
+        folderCtxMenu: folderDlg.folderCtxMenu,
+        setFolderCtxMenu: folderDlg.setFolderCtxMenu,
+        tasksFolder,
+        folderActions,
+        refresh,
+        addToast,
+        siblingRepos,
+        onQueueFolder: (fp) => queueDispatch({ type: 'OPEN_DIALOG', folderPath: fp }),
+        handleFolderContextMenuAction: folderDlg.handleFolderContextMenuAction,
+    });
 
     useEffect(() => {
         scrollToEnd(scrollRef.current);
     }, [openFilePath]);
 
-    const handleColumnsChange = () => {
-        scrollToEnd(scrollRef.current);
-    };
-
-    const handleNavigateBack = () => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollLeft = 0;
-        }
-    };
+    const handleColumnsChange = () => { scrollToEnd(scrollRef.current); };
+    const handleNavigateBack = () => { if (scrollRef.current) scrollRef.current.scrollLeft = 0; };
 
     if (loading) {
         return (
@@ -456,672 +164,113 @@ function TasksPanelInner({ wsId, repos, onOpenGenerateDialog }: TasksPanelProps)
         );
     }
 
-    // ── Build file context-menu items ──────────────────────────────────
-    const noop = () => {};
-    const ws = appState.workspaces.find((w: any) => w.id === wsId);
-    const fileMenuItems: ContextMenuItem[] = fileCtxMenu ? (() => {
-        const { ctxItem } = fileCtxMenu;
-        return [
-            // ── Reveal in Panel ──
-            {
-                label: 'Reveal in Panel',
-                icon: '🔍',
-                onClick: () => {
-                    setFileCtxMenu(null);
-                    onSearchClear();
-                    if (ctxItem.paths[0]) {
-                        setNavigateToFilePath(ctxItem.paths[0]);
-                    }
-                },
-            },
-            { separator: true, label: '', onClick: noop },
-            // ── Clipboard ──
-            {
-                label: 'Copy Path',
-                icon: '📋',
-                onClick: () => {
-                    navigator.clipboard.writeText(`${tasksFolder}/${ctxItem.renamePath}`);
-                },
-            },
-            {
-                label: 'Copy Absolute Path',
-                icon: '📂',
-                onClick: () => {
-                    const abs = [tasksFolder.replace(/\\/g, '/'), ctxItem.renamePath].filter(Boolean).join('/');
-                    navigator.clipboard.writeText(abs);
-                },
-            },
-            { separator: true, label: '', onClick: noop },
-            // ── Archive ──
-            {
-                label: ctxItem.isArchived ? 'Unarchive' : 'Archive',
-                icon: ctxItem.isArchived ? '📤' : '🗄️',
-                onClick: async () => {
-                    setFileCtxMenu(null);
-                    try {
-                        for (const p of ctxItem.paths) {
-                            if (ctxItem.isArchived) {
-                                await fileActions.unarchiveFile(p);
-                            } else {
-                                await fileActions.archiveFile(p);
-                            }
-                        }
-                        refresh();
-                    } catch (err: any) {
-                        addToast(err.message || 'Archive failed', 'error');
-                    }
-                },
-            },
-            { separator: true, label: '', onClick: noop },
-            // ── Rename / Move ──
-            {
-                label: 'Rename',
-                icon: '✏️',
-                onClick: () => {
-                    setFileCtxMenu(null);
-                    setFileDialog({ action: 'rename', ctxItem, submitting: false });
-                },
-            },
-            {
-                label: 'Move File',
-                icon: '📦',
-                onClick: () => {
-                    setFileCtxMenu(null);
-                    setFileMoveCtxItem(ctxItem);
-                    setFileMoveDialogOpen(true);
-                },
-            },
-            ...(siblingRepos.length > 0
-                ? [
-                    {
-                        label: 'Move To Other Repo',
-                        icon: '🔀',
-                        onClick: noop,
-                        children: siblingRepos.map(r => ({
-                            label: r.workspace.name,
-                            icon: '📂',
-                            onClick: () => {
-                                setFileCtxMenu(null);
-                                (async () => {
-                                    try {
-                                        for (const p of ctxItem.paths) {
-                                            await fileActions.moveFileToWorkspace(p, r.workspace.id, '');
-                                        }
-                                        refresh();
-                                        addToast(`Moved to ${r.workspace.name}`, 'success');
-                                    } catch (err: any) {
-                                        addToast(err.message || 'Move failed', 'error');
-                                    }
-                                })();
-                            },
-                        })),
-                    },
-                ]
-                : []),
-            { separator: true, label: '', onClick: noop },
-            // ── Change Status (submenu) ──
-            ...(isTaskDocument(ctxItem.item) || isTaskDocumentGroup(ctxItem.item)
-                ? [
-                    {
-                        label: 'Change Status',
-                        icon: '📌',
-                        onClick: noop,
-                        children: [
-                            { label: 'Pending', icon: '⏳', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'pending'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
-                            { label: 'In Progress', icon: '🔄', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'in-progress'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
-                            { label: 'Done', icon: '✅', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'done'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
-                            { label: 'Future', icon: '📋', onClick: () => { setFileCtxMenu(null); (async () => { try { for (const p of ctxItem.paths) await fileActions.updateStatus(p, 'future'); refresh(); } catch (err: any) { addToast(err.message || 'Status update failed', 'error'); } })(); } },
-                        ],
-                    },
-                ]
-                : []),
-            { separator: true, label: '', onClick: noop },
-            // ── AI Actions ──
-            {
-                label: '✨ Run Skill',
-                icon: '⚡',
-                onClick: () => {
-                    setFileCtxMenu(null);
-                    setAiDialogTarget({ path: ctxItem.renamePath, name: ctxItem.displayName });
-                    setAiDialogType('follow-prompt');
-                },
-            },
-            {
-                label: '✨ Update Document',
-                icon: '✏️',
-                onClick: () => {
-                    setFileCtxMenu(null);
-                    setAiDialogTarget({ path: ctxItem.renamePath, name: ctxItem.displayName });
-                    setAiDialogType('update-document');
-                },
-            },
-            { separator: true, label: '', onClick: noop },
-            // ── Danger ──
-            {
-                label: 'Delete',
-                icon: '🗑️',
-                onClick: () => {
-                    setFileCtxMenu(null);
-                    setFileDialog({ action: 'delete', ctxItem, submitting: false });
-                },
-            },
-        ];
-    })() : [];
-
-    // ── Build folder context-menu items ────────────────────────────────
-    const folderMenuItems: ContextMenuItem[] = folderCtxMenu ? (() => {
-        const folder = folderCtxMenu.folder;
-        if (folderCtxMenu.source === 'empty-space') {
-            return [
-                {
-                    label: 'Create Folder',
-                    icon: '📁',
-                    onClick: () => handleFolderContextMenuAction('create-subfolder', folder),
-                },
-            ];
-        }
-
-        const folderPath = folder.relativePath || folder.name;
-        const isArchived = (folder.relativePath ?? '').startsWith('archive');
-        return [
-            // ── Clipboard ──
-            {
-                label: 'Copy Path',
-                icon: '📋',
-                onClick: () => {
-                    navigator.clipboard.writeText(`${tasksFolder}/${folderPath}`);
-                },
-            },
-            {
-                label: 'Copy Absolute Path',
-                icon: '📂',
-                onClick: () => {
-                    const abs = [tasksFolder.replace(/\\/g, '/'), folderPath].filter(Boolean).join('/');
-                    navigator.clipboard.writeText(abs);
-                },
-            },
-            { separator: true, label: '', onClick: noop },
-            // ── Queue & Archive ──
-            {
-                label: 'Queue All Tasks',
-                icon: '▶',
-                disabled: countMarkdownFilesInFolder(folder) === 0,
-                onClick: () => {
-                    queueDispatch({ type: 'OPEN_DIALOG', folderPath });
-                },
-                children: [
-                    {
-                        label: 'Queue All Tasks',
-                        icon: '▶',
-                        disabled: countMarkdownFilesInFolder(folder) === 0,
-                        onClick: () => {
-                            queueDispatch({ type: 'OPEN_DIALOG', folderPath });
-                        },
-                    },
-                    {
-                        label: 'Run Skill',
-                        icon: '⚡',
-                        onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
-                    },
-                ],
-            },
-            {
-                label: isArchived ? 'Unarchive Folder' : 'Archive Folder',
-                icon: isArchived ? '📤' : '🗄️',
-                onClick: async () => {
-                    if (isArchived) {
-                        await folderActions.unarchiveFolder(folderPath);
-                    } else {
-                        await folderActions.archiveFolder(folderPath);
-                    }
-                    refresh();
-                },
-            },
-            { separator: true, label: '', onClick: noop },
-            // ── Create / Rename / Move ──
-            {
-                label: 'Rename Folder',
-                icon: '✏️',
-                onClick: () => handleFolderContextMenuAction('rename', folder),
-            },
-            {
-                label: 'Create Subfolder',
-                icon: '📁',
-                onClick: () => handleFolderContextMenuAction('create-subfolder', folder),
-            },
-            {
-                label: 'Create Task in Folder',
-                icon: '📄',
-                onClick: () => handleFolderContextMenuAction('create-task', folder),
-            },
-            {
-                label: 'Move Folder',
-                icon: '📦',
-                onClick: () => handleFolderContextMenuAction('move', folder),
-            },
-            ...(siblingRepos.length > 0
-                ? [
-                    {
-                        label: 'Move To Other Repo',
-                        icon: '🔀',
-                        onClick: noop,
-                        children: siblingRepos.map(r => ({
-                            label: r.workspace.name,
-                            icon: '📂',
-                            onClick: () => {
-                                setFolderCtxMenu(null);
-                                (async () => {
-                                    try {
-                                        await folderActions.moveFolderToWorkspace(folderPath, r.workspace.id, '');
-                                        refresh();
-                                        addToast(`Moved to ${r.workspace.name}`, 'success');
-                                    } catch (err: any) {
-                                        addToast(err.message || 'Move failed', 'error');
-                                    }
-                                })();
-                            },
-                        })),
-                    },
-                ]
-                : []),
-            { separator: true, label: '', onClick: noop },
-            // ── AI Actions ──
-            {
-                label: 'Generate Task with AI…',
-                icon: '✨',
-                onClick: () => handleFolderContextMenuAction('generate-task-ai', folder),
-            },
-            {
-                label: 'Bulk Run Skill',
-                icon: '⚡',
-                onClick: () => handleFolderContextMenuAction('follow-prompt', folder),
-            },
-            { separator: true, label: '', onClick: noop },
-            // ── Danger ──
-            {
-                label: 'Delete Folder',
-                icon: '🗑️',
-                onClick: () => handleFolderContextMenuAction('delete', folder),
-            },
-        ];
-    })() : [];
-
     return (
         <div className="flex flex-col h-full">
-            <div className={`repo-tasks-toolbar flex items-center gap-2 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isMobile ? 'py-1.5' : 'py-2'}`}>
-                <Button
-                    variant="primary"
-                    size="sm"
-                    id="repo-tasks-new-btn"
-                    data-testid="repo-tasks-new-btn"
-                    onClick={() => setFolderDialog({ action: 'create-task', folder: tree!, submitting: false })}
-                >
-                    + New Task
-                </Button>
-                {!isMobile && (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        id="repo-tasks-folder-btn"
-                        data-testid="repo-tasks-folder-btn"
-                        onClick={() => setFolderDialog({ action: 'create-subfolder', folder: tree!, submitting: false })}
-                    >
-                        + New Folder
-                    </Button>
-                )}
-                {undoAvailable && (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        data-testid="undo-archive-btn"
-                        title="Undo last archive"
-                        loading={undoInFlight}
-                        onClick={async () => {
-                            try {
-                                await undoLastArchive();
-                                addToast('Archive undone', 'success');
-                            } catch (err: any) {
-                                addToast(err.message || 'Undo failed', 'error');
-                            }
-                        }}
-                    >
-                        ↩ Undo Archive
-                    </Button>
-                )}
-                <div className={`relative flex items-center ${isMobile ? 'flex-1' : 'max-w-[14rem]'}`}>
-                    <span className="absolute left-2 text-[#999] dark:text-[#888] pointer-events-none text-sm" aria-hidden="true">
-                        🔍
-                    </span>
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        placeholder="Search tasks…"
-                        value={searchInput}
-                        onChange={e => onSearchChange(e.target.value)}
-                        className="w-full pl-7 pr-7 py-1 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]"
-                        data-testid="task-search-input"
+            <TasksToolbar
+                isMobile={isMobile}
+                onNewTask={() => folderDlg.setFolderDialog({ action: 'create-task', folder: tree, submitting: false })}
+                onNewFolder={() => folderDlg.setFolderDialog({ action: 'create-subfolder', folder: tree, submitting: false })}
+                undoAvailable={undoAvailable}
+                undoInFlight={undoInFlight}
+                onUndoArchive={undoLastArchive}
+                onUndoError={(msg) => addToast(msg, 'error')}
+                searchInput={searchInput}
+                searchInputRef={searchInputRef}
+                onSearchChange={onSearchChange}
+                onSearchClear={onSearchClear}
+                taskActions={
+                    <TaskActions
+                        wsId={wsId}
+                        openFilePath={openFilePath}
+                        selectedFilePaths={Array.from(selectedFilePaths)}
+                        tasksFolderPath={tasksFolder}
+                        selectedFolderPath={selectedFolderPath}
+                        onClearSelection={clearSelection}
+                        noBorder
                     />
-                    {searchInput && (
-                        <button
-                            type="button"
-                            onClick={onSearchClear}
-                            className="absolute right-1.5 text-[#999] hover:text-[#333] dark:hover:text-[#eee] text-sm leading-none"
-                            aria-label="Clear search"
-                            data-testid="task-search-clear"
-                        >
-                            ✕
-                        </button>
-                    )}
-                </div>
-                {!isMobile && (
-                    <div className="flex-1 min-w-0">
-                        <TaskActions
-                            wsId={wsId}
-                            openFilePath={openFilePath}
-                            selectedFilePaths={Array.from(selectedFilePaths)}
-                            tasksFolderPath={tasksFolder}
-                            selectedFolderPath={selectedFolderPath}
-                            onClearSelection={clearSelection}
-                            noBorder
-                        />
-                    </div>
-                )}
-                {isMobile && selectedFolderPath && (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        data-testid="tasks-toolbar-queue-folder-btn"
-                        title="Queue all tasks in folder"
-                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', folderPath: selectedFolderPath })}
-                    >
-                        ▶ Queue
-                    </Button>
-                )}
-                {isMobile && (
-                    <div className="relative">
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => setToolbarOverflowOpen(prev => !prev)}
-                            data-testid="tasks-toolbar-overflow-btn"
-                            title="More actions"
-                        >
-                            ⋯
-                        </Button>
-                        {toolbarOverflowOpen && (
-                            <div
-                                className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg z-50"
-                                data-testid="tasks-toolbar-overflow-menu"
-                            >
-                                {selectedFolderPath && (
-                                    <button
-                                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                        data-testid="tasks-toolbar-overflow-queue-folder"
-                                        onClick={() => { setToolbarOverflowOpen(false); queueDispatch({ type: 'OPEN_DIALOG', folderPath: selectedFolderPath }); }}
-                                    >
-                                        ▶ Queue Folder
-                                    </button>
-                                )}
-                                <button
-                                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                    data-testid="tasks-toolbar-overflow-new-folder"
-                                    onClick={() => { setToolbarOverflowOpen(false); setFolderDialog({ action: 'create-subfolder', folder: tree!, submitting: false }); }}
-                                >
-                                    + New Folder
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-            <div
-                ref={scrollRef}
-                className="miller-columns flex-1 overflow-x-scroll overflow-y-hidden min-h-0 min-w-0"
-                style={{ WebkitOverflowScrolling: 'touch' } as any}
-                data-testid="tasks-miller-scroll-container"
-            >
-                <div className="flex h-full min-h-0 min-w-full">
-                    <div
-                        className="flex-shrink-0 h-full min-h-0"
-                        style={isMobile && openFilePath ? { display: 'none' } : undefined}
-                    >
-                        {searchQuery ? (
-                            <TaskSearchResults
-                                results={searchResults}
-                                query={searchQuery}
-                                commentCounts={commentCounts}
-                                wsId={wsId}
-                                onFileClick={(path) => setOpenFilePath(path)}
-                                onContextMenu={handleFileContextMenu}
-                            />
-                        ) : (
-                            <TaskTree
-                                tree={tree}
-                                commentCounts={commentCounts}
-                                wsId={wsId}
-                                tasksFolder={tasksFolder}
-                                initialFolderPath={initialParams.initialFolderPath}
-                                initialFilePath={initialParams.initialFilePath}
-                                navigateToFilePath={navigateToFilePath}
-                                onNavigated={() => setNavigateToFilePath(null)}
-                                onColumnsChange={handleColumnsChange}
-                                onNavigateBack={handleNavigateBack}
-                                onFolderContextMenu={handleFolderContextMenu}
-                                onFolderEmptySpaceContextMenu={handleFolderEmptySpaceContextMenu}
-                                onFileContextMenu={handleFileContextMenu}
-                                onDrop={handleDragDrop}
-                            />
-                        )}
-                    </div>
+                }
+                selectedFolderPath={selectedFolderPath}
+                onQueueFolder={(fp) => queueDispatch({ type: 'OPEN_DIALOG', folderPath: fp })}
+                toolbarOverflowOpen={toolbarOverflowOpen}
+                setToolbarOverflowOpen={setToolbarOverflowOpen}
+            />
 
-                    {openFilePath && (
-                        <div className={`h-full min-h-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] ${isMobile ? 'flex-1 min-w-0' : 'flex-1 min-w-[48rem]'}`}>
-                            {isMobile && (
-                                <div className="flex items-center h-9 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
-                                    <button
-                                        onClick={() => {
-                                            if (openFilePath) {
-                                                const parentFolder = openFilePath.includes('/')
-                                                    ? openFilePath.split('/').slice(0, -1).join('/')
-                                                    : '';
-                                                const encoded = parentFolder
-                                                    ? parentFolder.split('/').map(encodeURIComponent).join('/')
-                                                    : '';
-                                                history.replaceState(
-                                                    null, '',
-                                                    `#repos/${encodeURIComponent(wsId)}/tasks${encoded ? '/' + encoded : ''}`
-                                                );
-                                            }
-                                            setOpenFilePath(null);
-                                        }}
-                                        className="flex items-center gap-1 text-xs text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
-                                        data-testid="task-preview-back-btn"
-                                    >
-                                        ← Tasks
-                                    </button>
-                                </div>
-                            )}
-                            <TaskPreview wsId={wsId} filePath={openFilePath} initialViewMode={initialParams.initialViewMode} />
-                        </div>
-                    )}
-                </div>
-            </div>
-            {folderCtxMenu && (
+            <TasksMillerLayout
+                scrollRef={scrollRef}
+                isSearching={!!searchQuery}
+                searchResults={searchResults}
+                searchQuery={searchQuery}
+                tree={tree}
+                commentCounts={commentCounts}
+                wsId={wsId}
+                tasksFolder={tasksFolder}
+                initialFolderPath={initialParams.initialFolderPath}
+                initialFilePath={initialParams.initialFilePath}
+                initialViewMode={initialParams.initialViewMode}
+                navigateToFilePath={fileDlg.navigateToFilePath}
+                onNavigated={() => fileDlg.setNavigateToFilePath(null)}
+                onColumnsChange={handleColumnsChange}
+                onNavigateBack={handleNavigateBack}
+                onFolderContextMenu={folderDlg.handleFolderContextMenu}
+                onFolderEmptySpaceContextMenu={folderDlg.handleFolderEmptySpaceContextMenu}
+                onFileContextMenu={fileDlg.handleFileContextMenu}
+                onDrop={folderDlg.handleDragDrop}
+                openFilePath={openFilePath}
+                setOpenFilePath={setOpenFilePath}
+                isMobile={isMobile}
+                wsIdEncoded={encodeURIComponent(wsId)}
+            />
+
+            {folderDlg.folderCtxMenu && (
                 <ContextMenu
-                    position={{ x: folderCtxMenu.x, y: folderCtxMenu.y }}
+                    position={{ x: folderDlg.folderCtxMenu.x, y: folderDlg.folderCtxMenu.y }}
                     items={folderMenuItems}
-                    onClose={() => setFolderCtxMenu(null)}
+                    onClose={() => folderDlg.setFolderCtxMenu(null)}
                 />
             )}
-
-            {/* File context menu */}
-            {fileCtxMenu && (
+            {fileDlg.fileCtxMenu && (
                 <ContextMenu
-                    position={{ x: fileCtxMenu.x, y: fileCtxMenu.y }}
+                    position={{ x: fileDlg.fileCtxMenu.x, y: fileDlg.fileCtxMenu.y }}
                     items={fileMenuItems}
-                    onClose={() => setFileCtxMenu(null)}
+                    onClose={() => fileDlg.setFileCtxMenu(null)}
                 />
             )}
 
-            {/* Rename File dialog */}
-            {fileDialog.action === 'rename' && fileDialog.ctxItem && (
-                <FolderActionDialog
-                    open
-                    title="Rename File"
-                    label="New name"
-                    initialValue={fileDialog.ctxItem.displayName}
-                    placeholder="Enter new file name"
-                    confirmLabel="Rename"
-                    submitting={fileDialog.submitting}
-                    onClose={closeFileDialog}
-                    onConfirm={handleFileRename}
-                />
-            )}
+            <TasksFileDialogs
+                tree={tree}
+                fileDialog={fileDlg.fileDialog}
+                closeFileDialog={fileDlg.closeFileDialog}
+                handleFileRename={fileDlg.handleFileRename}
+                handleFileDelete={fileDlg.handleFileDelete}
+                fileMoveDialogOpen={fileDlg.fileMoveDialogOpen}
+                fileMoveCtxItem={fileDlg.fileMoveCtxItem}
+                onCloseMoveDialog={() => { fileDlg.setFileMoveDialogOpen(false); fileDlg.setFileMoveCtxItem(null); }}
+                handleFileMoveConfirm={fileDlg.handleFileMoveConfirm}
+            />
 
-            {/* Delete File confirmation dialog */}
-            {fileDialog.action === 'delete' && fileDialog.ctxItem && (
-                <Dialog
-                    open
-                    onClose={closeFileDialog}
-                    title="Delete File"
-                    footer={
-                        <>
-                            <Button variant="secondary" onClick={closeFileDialog}>Cancel</Button>
-                            <Button
-                                variant="danger"
-                                loading={fileDialog.submitting}
-                                onClick={handleFileDelete}
-                            >
-                                Delete
-                            </Button>
-                        </>
-                    }
-                >
-                    Are you sure you want to delete{' '}
-                    <strong>{fileDialog.ctxItem.displayName}</strong>?
-                    This cannot be undone.
-                </Dialog>
-            )}
+            <TasksFolderDialogs
+                tree={tree}
+                folderDialog={folderDlg.folderDialog}
+                closeFolderDialog={folderDlg.closeFolderDialog}
+                handleRename={folderDlg.handleRename}
+                handleCreateSubfolder={folderDlg.handleCreateSubfolder}
+                handleCreateTask={folderDlg.handleCreateTask}
+                handleDelete={folderDlg.handleDelete}
+                moveDialogOpen={folderDlg.moveDialogOpen}
+                moveSourceFolder={folderDlg.moveSourceFolder}
+                onCloseMoveDialog={() => { folderDlg.setMoveDialogOpen(false); folderDlg.setMoveSourceFolder(null); }}
+                handleMoveConfirm={folderDlg.handleMoveConfirm}
+            />
 
-            {/* Move File dialog */}
-            {tree && (
-                <FileMoveDialog
-                    open={fileMoveDialogOpen}
-                    onClose={() => { setFileMoveDialogOpen(false); setFileMoveCtxItem(null); }}
-                    sourceName={fileMoveCtxItem?.displayName ?? null}
-                    tree={tree}
-                    onConfirm={handleFileMoveConfirm}
-                />
-            )}
-
-            {/* Rename Folder dialog */}
-            {folderDialog.action === 'rename' && folderDialog.folder && (
-                <FolderActionDialog
-                    open
-                    title="Rename Folder"
-                    label="New name"
-                    initialValue={folderDialog.folder.name}
-                    placeholder="Enter new folder name"
-                    confirmLabel="Rename"
-                    submitting={folderDialog.submitting}
-                    onClose={closeFolderDialog}
-                    onConfirm={handleRename}
-                />
-            )}
-
-            {/* Create Subfolder dialog */}
-            {folderDialog.action === 'create-subfolder' && folderDialog.folder && (
-                <FolderActionDialog
-                    open
-                    title="Create Subfolder"
-                    label="Subfolder name"
-                    initialValue=""
-                    placeholder="Enter subfolder name"
-                    confirmLabel="Create"
-                    submitting={folderDialog.submitting}
-                    onClose={closeFolderDialog}
-                    onConfirm={handleCreateSubfolder}
-                />
-            )}
-
-            {/* Create Task in Folder dialog (or at root when folder is tree) */}
-            {folderDialog.action === 'create-task' && folderDialog.folder && (
-                <FolderActionDialog
-                    open
-                    title={folderDialog.folder.relativePath ? 'Create Task in Folder' : 'Create Task'}
-                    label="Task name"
-                    initialValue=""
-                    placeholder="Enter task name"
-                    confirmLabel="Create"
-                    showDocType
-                    submitting={folderDialog.submitting}
-                    onClose={closeFolderDialog}
-                    onConfirm={(name, docType) => handleCreateTask(name, docType)}
-                />
-            )}
-
-            {/* Delete Folder confirmation dialog */}
-            {folderDialog.action === 'delete' && folderDialog.folder && (
-                <Dialog
-                    open
-                    onClose={closeFolderDialog}
-                    title="Delete Folder"
-                    footer={
-                        <>
-                            <Button variant="secondary" onClick={closeFolderDialog}>Cancel</Button>
-                            <Button
-                                variant="danger"
-                                loading={folderDialog.submitting}
-                                onClick={handleDelete}
-                            >
-                                Delete
-                            </Button>
-                        </>
-                    }
-                >
-                    Are you sure you want to delete{' '}
-                    <strong>{folderDialog.folder.name}</strong> and all its contents?
-                    This cannot be undone.
-                </Dialog>
-            )}
-
-            {/* Bulk Run Skill dialog */}
-            {folderDialog.action === 'follow-prompt' && folderDialog.folder && (
-                <BulkFollowPromptDialog
-                    wsId={wsId}
-                    folder={folderDialog.folder}
-                    onClose={closeFolderDialog}
-                />
-            )}
-
-            {/* File-level AI dialogs */}
-            {aiDialogType === 'follow-prompt' && aiDialogTarget && (
-                <FollowPromptDialog
-                    wsId={wsId}
-                    taskPath={aiDialogTarget.path}
-                    taskName={aiDialogTarget.name}
-                    onClose={closeAiDialog}
-                />
-            )}
-            {aiDialogType === 'update-document' && aiDialogTarget && (
-                <UpdateDocumentDialog
-                    wsId={wsId}
-                    taskPath={aiDialogTarget.path}
-                    taskName={aiDialogTarget.name}
-                    onClose={closeAiDialog}
-                />
-            )}
-
-            {/* Move Folder dialog */}
-            {tree && (
-                <FolderMoveDialog
-                    open={moveDialogOpen}
-                    onClose={() => { setMoveDialogOpen(false); setMoveSourceFolder(null); }}
-                    sourceFolder={moveSourceFolder}
-                    tree={tree}
-                    onConfirm={handleMoveConfirm}
-                />
-            )}
+            <TasksAiDialogs
+                wsId={wsId}
+                aiDialogType={fileDlg.aiDialogType}
+                aiDialogTarget={fileDlg.aiDialogTarget}
+                closeAiDialog={fileDlg.closeAiDialog}
+                folderDialogAction={folderDlg.folderDialog.action}
+                folderDialogFolder={folderDlg.folderDialog.folder}
+                closeFolderDialog={folderDlg.closeFolderDialog}
+            />
         </div>
     );
 }
