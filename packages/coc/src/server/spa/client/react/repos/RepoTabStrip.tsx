@@ -97,7 +97,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     })}
                 </div>
             ))}
-        </div>
             <div ref={dropdownRef} className="relative flex-shrink-0 px-1">
                 <button
                     data-testid="repo-tab-add-btn"
@@ -135,6 +134,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     </div>
                 )}
             </div>
+        </div>
             <AddRepoDialog
                 open={addOpen}
                 onClose={() => setAddOpen(false)}

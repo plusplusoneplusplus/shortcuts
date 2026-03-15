@@ -307,6 +307,25 @@ describe('RepoTabStrip', () => {
         expect(screen.getAllByTestId('repo-group-separator')).toHaveLength(1);
     });
 
+    it('+ button is inside the scrollable tab container (adjacent to last tab)', () => {
+        render(
+            <RepoTabStrip
+                repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        const tabs = screen.getAllByTestId('repo-tab');
+        const addBtn = screen.getByTestId('repo-tab-add-btn');
+        const lastTab = tabs[tabs.length - 1];
+        // The + button's parent container should be a sibling inside the same scrollable wrapper as the tabs
+        const scrollContainer = lastTab.closest('[data-testid="repo-tab-strip"] > div');
+        expect(scrollContainer).not.toBeNull();
+        expect(scrollContainer!.contains(addBtn)).toBe(true);
+    });
+
     it('renders no separator for a single repo', () => {
         render(
             <RepoTabStrip
