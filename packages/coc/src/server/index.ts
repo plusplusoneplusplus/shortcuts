@@ -38,7 +38,7 @@ import { getBundleETag } from './spa/html-template';
 import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
-import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/pipeline-core';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
@@ -540,6 +540,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     await new Promise<void>((resolve, reject) => {
         server.on('error', reject);
         server.listen(port, host, () => resolve());
+    });
+
+    // Warm up model metadata cache; failure must never block startup.
+    modelMetadataStore.initialize(resolvedAiService).catch((err: unknown) => {
+        process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
     });
 
     // Resolve actual port (important when port 0 is used for random port)

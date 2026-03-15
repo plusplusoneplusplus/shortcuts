@@ -76,6 +76,8 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    // Model Metadata Store
+    modelMetadataStore,
     // MCP Config Loader
     MCPConfigFile,
     MCPConfigLoadResult,

@@ -336,6 +336,8 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    // Model Metadata Store
+    modelMetadataStore,
     TokenUsage,
     MCPServerConfigBase,
     MCPLocalServerConfig,

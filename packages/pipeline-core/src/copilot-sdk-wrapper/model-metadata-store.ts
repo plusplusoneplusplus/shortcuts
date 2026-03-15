@@ -11,10 +11,11 @@ class ModelMetadataStore {
      * Fetch models from the SDK and populate the cache.
      * Safe to call multiple times; re-fetches on every call to allow refresh.
      * Never throws — SDK errors are caught and logged; the cache is left as-is.
+     * @param aiService Optional SDK service instance; falls back to getCopilotSDKService().
      */
-    async initialize(): Promise<void> {
+    async initialize(aiService?: { listModels(): Promise<ModelInfo[]> }): Promise<void> {
         try {
-            const service = getCopilotSDKService();
+            const service = aiService ?? getCopilotSDKService();
             const models = await service.listModels();
             this.cache.clear();
             for (const model of models) {
