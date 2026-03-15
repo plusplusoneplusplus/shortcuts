@@ -1,14 +1,13 @@
 /**
- * Tests for Router — persistent MiniReposSidebar on non-repos pages.
+ * Tests for Router — persistent MiniReposSidebar removed.
  *
  * Verifies that:
- * - MiniReposSidebar wrapper (mini-sidebar-layout) is NOT rendered on the repos tab
- * - MiniReposSidebar wrapper IS rendered on processes, skills, logs, memory, admin, wiki pages
- * - RepoTabStrip is rendered on all tabs (not just repos)
+ * - mini-sidebar-layout and persistent-mini-sidebar are never rendered on any tab
+ * - Each tab still renders its view content directly
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { Router } from '../../../../src/server/spa/client/react/layout/Router';
 import type { DashboardTab } from '../../../../src/server/spa/client/react/types/dashboard';
 
@@ -72,7 +71,9 @@ vi.mock('../../../../src/server/spa/client/react/views/logs/LogsView', () => ({
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe('Router — WithMiniSidebar on non-repos pages', () => {
+const NON_REPOS_TABS: DashboardTab[] = ['processes', 'wiki', 'memory', 'skills', 'admin', 'logs'];
+
+describe('Router — no persistent mini sidebar on any tab', () => {
     it('does NOT render mini-sidebar-layout on repos tab', () => {
         mockActiveTab = 'repos';
         const { container } = render(<Router />);
@@ -80,51 +81,24 @@ describe('Router — WithMiniSidebar on non-repos pages', () => {
         expect(container.querySelector('[data-testid="persistent-mini-sidebar"]')).toBeNull();
     });
 
-    it('renders mini-sidebar-layout on processes tab', () => {
-        mockActiveTab = 'processes';
+    it.each(NON_REPOS_TABS)('does NOT render mini-sidebar-layout on %s tab', (tab) => {
+        mockActiveTab = tab;
         const { container } = render(<Router />);
-        expect(container.querySelector('[data-testid="mini-sidebar-layout"]')).not.toBeNull();
-        expect(container.querySelector('[data-testid="mini-repos-sidebar"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="mini-sidebar-layout"]')).toBeNull();
+        expect(container.querySelector('[data-testid="persistent-mini-sidebar"]')).toBeNull();
+        expect(container.querySelector('[data-testid="mini-repos-sidebar"]')).toBeNull();
     });
 
-    it('renders mini-sidebar-layout on wiki tab', () => {
-        mockActiveTab = 'wiki';
-        const { container } = render(<Router />);
-        expect(container.querySelector('[data-testid="mini-sidebar-layout"]')).not.toBeNull();
-    });
-
-    it('renders mini-sidebar-layout on logs tab', () => {
-        mockActiveTab = 'logs';
-        const { container } = render(<Router />);
-        expect(container.querySelector('[data-testid="mini-sidebar-layout"]')).not.toBeNull();
-    });
-
-    it('renders mini-sidebar-layout on admin tab', () => {
-        mockActiveTab = 'admin';
-        const { container } = render(<Router />);
-        expect(container.querySelector('[data-testid="mini-sidebar-layout"]')).not.toBeNull();
-    });
-
-    it('mini-sidebar has correct nav semantics (via MiniReposSidebar)', () => {
-        mockActiveTab = 'processes';
-        const { container } = render(<Router />);
-        // MiniReposSidebar is rendered inside the persistent sidebar
-        const sidebar = container.querySelector('[data-testid="persistent-mini-sidebar"]');
-        expect(sidebar).not.toBeNull();
-        // The sidebar should contain the MiniReposSidebar
-        expect(sidebar?.querySelector('[data-testid="mini-repos-sidebar"]')).not.toBeNull();
-    });
-
-    it('page content is rendered alongside mini sidebar on processes tab', () => {
+    it('renders view content directly on processes tab', () => {
         mockActiveTab = 'processes';
         const { container } = render(<Router />);
         expect(container.querySelector('#view-processes')).not.toBeNull();
     });
 
-    it('renders ReposView directly (no mini sidebar wrapper) on repos tab', () => {
+    it('renders ReposView directly on repos tab', () => {
         mockActiveTab = 'repos';
         const { container } = render(<Router />);
         expect(container.querySelector('#view-repos')).not.toBeNull();
-        expect(container.querySelector('[data-testid="mini-sidebar-layout"]')).toBeNull();
     });
 });
+
