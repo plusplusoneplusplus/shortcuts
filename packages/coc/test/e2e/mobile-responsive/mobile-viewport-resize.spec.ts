@@ -16,7 +16,7 @@ test.describe('Viewport Resize', () => {
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
         // TopBar tab buttons should be hidden at mobile width
-        const reposTabBtn = page.locator('[data-tab="repos"]').first();
+        const reposTabBtn = page.locator('[data-tab="repos"]');
         // (desktop tab bar is hidden on mobile)
 
         // Resize to tablet viewport
