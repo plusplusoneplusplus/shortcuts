@@ -412,48 +412,40 @@ export class FileProcessStore implements ProcessStore {
 
     async getStorageStats(): Promise<StorageStats> {
         await this.ensureInitialized();
-        // Use readIndex() instead of getAllProcesses() to avoid reading every process file
-        const [indexEntries, workspaces, wikis] = await Promise.all([
-            this.readIndex(),
+        const [processes, workspaces, wikis] = await Promise.all([
+            this.getAllProcesses(),
             this.getWorkspaces(),
             this.getWikis(),
         ]);
 
-        // Stat meta files in parallel
-        const metaSizes = await Promise.all(
-            [this.indexPath, this.workspacesPath, this.wikisPath].map(async (filePath) => {
-                try {
-                    const stat = await fs.stat(filePath);
-                    return stat.size;
-                } catch {
-                    return 0;
-                }
-            })
-        );
-        let storageSize = metaSizes.reduce((sum, size) => sum + size, 0);
-
-        // Add per-process file sizes in parallel
+        let storageSize = 0;
+        // Sum up index file + all per-process files + workspaces + wikis
+        for (const filePath of [this.indexPath, this.workspacesPath, this.wikisPath]) {
+            try {
+                const stat = await fs.stat(filePath);
+                storageSize += stat.size;
+            } catch {
+                // File may not exist yet
+            }
+        }
+        // Add per-process file sizes
         try {
             const entries = await fs.readdir(this.processesDir);
-            const processSizes = await Promise.all(
-                entries
-                    .filter(entry => entry !== 'index.json')
-                    .map(async (entry) => {
-                        try {
-                            const stat = await fs.stat(path.join(this.processesDir, entry));
-                            return stat.size;
-                        } catch {
-                            return 0;
-                        }
-                    })
-            );
-            storageSize += processSizes.reduce((sum, size) => sum + size, 0);
+            for (const entry of entries) {
+                if (entry === 'index.json') { continue; }
+                try {
+                    const stat = await fs.stat(path.join(this.processesDir, entry));
+                    storageSize += stat.size;
+                } catch {
+                    // File may have been removed
+                }
+            }
         } catch {
             // processesDir may not exist yet
         }
 
         return {
-            totalProcesses: indexEntries.length,
+            totalProcesses: processes.length,
             totalWorkspaces: workspaces.length,
             totalWikis: wikis.length,
             storageSize,

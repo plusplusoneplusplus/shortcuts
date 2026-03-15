@@ -4,7 +4,7 @@
  * All tests use a temp directory cleaned up in afterEach.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -908,23 +908,6 @@ describe('FileProcessStore - Admin Methods', () => {
         expect(stats.totalWorkspaces).toBe(0);
         expect(stats.totalWikis).toBe(0);
         expect(stats.storageSize).toBe(0);
-    });
-
-    it('getStorageStats should not read individual process files (uses index only)', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-        await store.addProcess(makeProcess('p3'));
-
-        // Spy on getAllProcesses to ensure it is NOT called (getStorageStats should use readIndex instead)
-        const getAllProcessesSpy = vi.spyOn(store, 'getAllProcesses');
-
-        const stats = await store.getStorageStats();
-
-        expect(stats.totalProcesses).toBe(3);
-        expect(getAllProcessesSpy).not.toHaveBeenCalled();
-
-        getAllProcessesSpy.mockRestore();
     });
 });
 
