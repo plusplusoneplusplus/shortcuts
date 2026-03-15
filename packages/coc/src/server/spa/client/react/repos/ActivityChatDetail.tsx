@@ -17,6 +17,7 @@ import { useApp } from '../context/AppContext';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useSlashCommands } from './useSlashCommands';
 import type { SkillItem } from './SlashCommandMenu';
+import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from '../hooks/useDraftStore';
 import { buildMetadataProcess } from '../utils/chatUtils';
@@ -105,6 +106,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
 
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
+    const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
 
     // Seed tokenLimit from /api/models as soon as sessionModel is known.
     // Only runs when sessionTokenLimit is still undefined to avoid clobbering
@@ -121,6 +123,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
             })
             .catch(() => { /* ignore — bar stays hidden until SSE arrives */ });
     }, [sessionModel, sessionTokenLimit]); // eslint-disable-line react-hooks/exhaustive-deps
+    const pinnedFile = createdFiles.at(-1);
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
         const resolved = typeof next === 'function' ? next(turnsRef.current) : next;
@@ -427,6 +430,8 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 task={task}
                 metadataProcess={metadataProcess}
                 planPath={planPath}
+                createdFiles={createdFiles}
+                pinnedFile={pinnedFile}
                 onBack={onBack}
                 variant={variant}
                 isPopOut={isPopOut}
