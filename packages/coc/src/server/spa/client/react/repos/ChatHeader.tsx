@@ -1,6 +1,5 @@
 import { Badge } from '../shared';
 import { Button } from '../shared';
-import { ReferencesDropdown } from '../shared/ReferencesDropdown';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
 import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
@@ -14,8 +13,6 @@ export interface ChatHeaderProps {
     task: any;
     metadataProcess: any;
     planPath: string;
-    createdFiles: { filePath: string }[];
-    pinnedFile: { filePath: string } | undefined;
     onBack?: () => void;
     variant: 'inline' | 'floating';
     isPopOut: boolean;
@@ -39,8 +36,6 @@ export function ChatHeader({
     task,
     metadataProcess,
     planPath,
-    createdFiles,
-    pinnedFile,
     onBack,
     variant,
     isPopOut,
@@ -88,7 +83,6 @@ export function ChatHeader({
                 {planPath && (
                     <FilePathValue label="📄" value={planPath} />
                 )}
-                <ReferencesDropdown planPath={planPath} files={createdFiles} />
                 {task?.duration != null && (
                     <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
                 )}
