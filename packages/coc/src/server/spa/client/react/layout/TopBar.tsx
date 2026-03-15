@@ -98,7 +98,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 rounded transition-colors items-center ${isOnReposTab ? 'active bg-[#0078d4] text-white' : 'hover:underline'}`}
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC (Copilot Of Copilot)</a>
-                {isOnReposTab && !isMobile && (
+                {!isMobile && (
                     <RepoTabStrip
                         repos={repos}
                         selectedRepoId={state.selectedRepoId}

@@ -3,12 +3,14 @@
  * Reads activeTab from AppContext, renders the appropriate view.
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, type ReactNode } from 'react';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
+import { useRepos } from '../context/ReposContext';
 import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
+import { MiniReposSidebar } from '../repos/MiniReposSidebar';
 import { lazy, Suspense } from 'react';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
@@ -159,6 +161,27 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     s: 'schedules',
     c: 'copilot',
 };
+
+/**
+ * Wraps a page view with the persistent MiniReposSidebar rail on the left.
+ * Shown on all non-repos pages, desktop only (hidden md:flex).
+ */
+function WithMiniSidebar({ children }: { children: ReactNode }) {
+    const { repos, fetchRepos, unseenCounts } = useRepos();
+    return (
+        <div className="flex h-full overflow-hidden" data-testid="mini-sidebar-layout">
+            <aside
+                className="hidden md:flex flex-col w-[160px] flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden"
+                data-testid="persistent-mini-sidebar"
+            >
+                <MiniReposSidebar repos={repos} onRefresh={fetchRepos} unseenCounts={unseenCounts} />
+            </aside>
+            <div className="flex-1 min-w-0 overflow-hidden">
+                {children}
+            </div>
+        </div>
+    );
+}
 
 export function Router() {
     const { state, dispatch } = useApp();
@@ -371,39 +394,47 @@ export function Router() {
 
     switch (state.activeTab) {
         case 'processes':
-            return <ProcessesView />;
+            return <WithMiniSidebar><ProcessesView /></WithMiniSidebar>;
         case 'repos':
             return <ReposView />;
         case 'wiki':
-            return <WikiView />;
+            return <WithMiniSidebar><WikiView /></WithMiniSidebar>;
         case 'memory':
             return (
+                <WithMiniSidebar>
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <MemoryView />
                 </Suspense>
+                </WithMiniSidebar>
             );
         case 'skills':
             return (
+                <WithMiniSidebar>
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <SkillsView />
                 </Suspense>
+                </WithMiniSidebar>
             );
         case 'admin':
             return (
+                <WithMiniSidebar>
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <div className="h-full overflow-y-auto" data-testid="admin-scroll-container">
                         <AdminPanel />
                     </div>
                 </Suspense>
+                </WithMiniSidebar>
             );
         case 'logs':
             return (
+                <WithMiniSidebar>
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <LogsView />
                 </Suspense>
+                </WithMiniSidebar>
             );
         case 'reports':
-            return <StubView id="view-reports" label="Reports" />;
+            return <WithMiniSidebar><StubView id="view-reports" label="Reports" /></WithMiniSidebar>;
         default:
             return <ReposView />;
     }
