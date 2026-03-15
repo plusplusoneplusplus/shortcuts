@@ -1,10 +1,8 @@
 import { Badge } from '../shared';
 import { Button } from '../shared';
-import { FilePathLink } from '../shared/FilePathLink';
-import { CreatedFilesDropdown } from '../shared/CreatedFilesDropdown';
+import { ReferencesDropdown } from '../shared/ReferencesDropdown';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
-import { FilePathValue } from '../queue/PendingTaskPayload';
 import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { cn } from '../shared/cn';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -86,15 +84,7 @@ export function ChatHeader({
                         {statusIcon(task.status)} {statusLabel(task.status)}
                     </Badge>
                 )}
-                {planPath && (
-                    <FilePathValue label="📄" value={planPath} />
-                )}
-                {pinnedFile && createdFiles.length === 1 && (
-                    <FilePathLink path={pinnedFile.filePath} />
-                )}
-                {pinnedFile && createdFiles.length > 1 && (
-                    <CreatedFilesDropdown files={createdFiles} />
-                )}
+                <ReferencesDropdown planPath={planPath} files={createdFiles} />
                 {task?.duration != null && (
                     <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
                 )}
