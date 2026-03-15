@@ -12,6 +12,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
         open ? <div data-testid="add-repo-dialog" /> : null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/repos/AddFolderDialog', () => ({
+    AddFolderDialog: ({ open }: { open: boolean }) =>
+        open ? <div data-testid="add-folder-dialog" /> : null,
+}));
+
 const makeRepo = (id: string, name: string, color = '#ff0000', remoteUrl?: string) => ({
     workspace: { id, name, rootPath: `/repos/${id}`, color, remoteUrl },
     stats: { success: 0, failed: 0, running: 0 },
@@ -112,7 +117,7 @@ describe('RepoTabStrip', () => {
         expect(screen.queryByTestId('repo-tab-unseen-badge')).toBeNull();
     });
 
-    it('opens AddRepoDialog when "+" button is clicked', () => {
+    it('clicking "+" shows add dropdown menu', () => {
         render(
             <RepoTabStrip
                 repos={[]}
@@ -122,9 +127,108 @@ describe('RepoTabStrip', () => {
                 onRefresh={vi.fn()}
             />
         );
-        const addBtn = screen.getByTestId('repo-tab-add-btn');
+        expect(screen.queryByTestId('repo-tab-add-dropdown')).toBeNull();
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
+        expect(screen.getByTestId('repo-tab-add-dropdown')).toBeDefined();
+    });
+
+    it('dropdown contains "Add workspace folder" and "Add specific repository" options', () => {
+        render(
+            <RepoTabStrip
+                repos={[]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
+        expect(screen.getByTestId('repo-tab-add-folder-option')).toBeDefined();
+        expect(screen.getByTestId('repo-tab-add-repo-option')).toBeDefined();
+    });
+
+    it('opens AddFolderDialog when "Add workspace folder" option is clicked', () => {
+        render(
+            <RepoTabStrip
+                repos={[]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
+        expect(screen.queryByTestId('add-folder-dialog')).toBeNull();
+        fireEvent.click(screen.getByTestId('repo-tab-add-folder-option'));
+        expect(screen.getByTestId('add-folder-dialog')).toBeDefined();
+        expect(screen.queryByTestId('repo-tab-add-dropdown')).toBeNull();
+    });
+
+    it('opens AddRepoDialog when "Add specific repository" option is clicked', () => {
+        render(
+            <RepoTabStrip
+                repos={[]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
         expect(screen.queryByTestId('add-repo-dialog')).toBeNull();
-        fireEvent.click(addBtn);
+        fireEvent.click(screen.getByTestId('repo-tab-add-repo-option'));
+        expect(screen.getByTestId('add-repo-dialog')).toBeDefined();
+        expect(screen.queryByTestId('repo-tab-add-dropdown')).toBeNull();
+    });
+
+    it('closes dropdown on outside click', () => {
+        render(
+            <div>
+                <RepoTabStrip
+                    repos={[]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+                <div data-testid="outside" />
+            </div>
+        );
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
+        expect(screen.getByTestId('repo-tab-add-dropdown')).toBeDefined();
+        fireEvent.mouseDown(screen.getByTestId('outside'));
+        expect(screen.queryByTestId('repo-tab-add-dropdown')).toBeNull();
+    });
+
+    it('closes dropdown on Escape key', () => {
+        render(
+            <RepoTabStrip
+                repos={[]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
+        expect(screen.getByTestId('repo-tab-add-dropdown')).toBeDefined();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('repo-tab-add-dropdown')).toBeNull();
+    });
+
+    it('opens AddRepoDialog when "+" button is clicked (regression: via dropdown)', () => {
+        render(
+            <RepoTabStrip
+                repos={[]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        expect(screen.queryByTestId('add-repo-dialog')).toBeNull();
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
+        fireEvent.click(screen.getByTestId('repo-tab-add-repo-option'));
         expect(screen.getByTestId('add-repo-dialog')).toBeDefined();
     });
 

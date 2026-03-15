@@ -3,8 +3,9 @@
  * Each tab shows a color dot, truncated repo name, and an optional unseen badge.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { AddRepoDialog } from './AddRepoDialog';
+import { AddFolderDialog } from './AddFolderDialog';
 import type { RepoData } from './repoGrouping';
 import { groupReposByRemote } from './repoGrouping';
 
@@ -17,8 +18,29 @@ export interface RepoTabStripProps {
 }
 
 export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, onRefresh }: RepoTabStripProps) {
+    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
+    const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
     const groups = groupReposByRemote(repos, {});
+
+    useEffect(() => {
+        if (!dropdownOpen) return;
+        const handleMouseDown = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setDropdownOpen(false);
+            }
+        };
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setDropdownOpen(false);
+        };
+        document.addEventListener('mousedown', handleMouseDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleMouseDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [dropdownOpen]);
 
     return (
         <div
@@ -74,20 +96,53 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     })}
                 </div>
             ))}
-            <button
-                data-testid="repo-tab-add-btn"
-                className="flex-shrink-0 h-7 w-7 rounded flex items-center justify-center text-base hover:bg-black/[0.05] dark:hover:bg-white/[0.08] text-[#1e1e1e] dark:text-[#cccccc]"
-                aria-label="Add repository"
-                title="Add repository"
-                onClick={() => setAddOpen(true)}
-            >
-                +
-            </button>
+            <div ref={dropdownRef} className="relative flex-shrink-0">
+                <button
+                    data-testid="repo-tab-add-btn"
+                    className="h-7 w-7 rounded flex items-center justify-center text-base hover:bg-black/[0.05] dark:hover:bg-white/[0.08] text-[#1e1e1e] dark:text-[#cccccc]"
+                    aria-label="Add repository"
+                    aria-haspopup="true"
+                    aria-expanded={dropdownOpen}
+                    title="Add repository"
+                    onClick={() => setDropdownOpen(prev => !prev)}
+                >
+                    +
+                </button>
+                {dropdownOpen && (
+                    <div
+                        data-testid="repo-tab-add-dropdown"
+                        className="absolute right-0 top-full mt-1 z-50 min-w-[190px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                        role="menu"
+                    >
+                        <button
+                            data-testid="repo-tab-add-folder-option"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => { setDropdownOpen(false); setAddFolderOpen(true); }}
+                        >
+                            📁 Add workspace folder
+                        </button>
+                        <button
+                            data-testid="repo-tab-add-repo-option"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => { setDropdownOpen(false); setAddOpen(true); }}
+                        >
+                            ＋ Add specific repository
+                        </button>
+                    </div>
+                )}
+            </div>
             <AddRepoDialog
                 open={addOpen}
                 onClose={() => setAddOpen(false)}
                 repos={repos}
                 onSuccess={() => { setAddOpen(false); onRefresh(); }}
+            />
+            <AddFolderDialog
+                open={addFolderOpen}
+                onClose={() => setAddFolderOpen(false)}
+                onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
             />
         </div>
     );
