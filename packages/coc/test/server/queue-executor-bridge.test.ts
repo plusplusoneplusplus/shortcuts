@@ -33,6 +33,7 @@ import {
     createQueueExecutor,
     QueuedTask,
     TaskExecutionResult,
+    modelMetadataStore,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
 import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '../../src/server/queue-executor-bridge';
@@ -7345,5 +7346,102 @@ describe('ToolCallCapture integration', () => {
         });
 
         expect(mockWriteRaw).not.toHaveBeenCalled();
+    });
+
+    // ========================================================================
+    // tokenLimit seeding from ModelMetadataStore
+    // ========================================================================
+
+    describe('tokenLimit seeding from ModelMetadataStore', () => {
+        it('tokenLimit seeded from ModelMetadataStore on task creation', async () => {
+            vi.spyOn(modelMetadataStore, 'getContextWindow').mockReturnValue(200_000);
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'seed-1',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Hello' },
+                config: { model: 'gpt-4o' },
+                displayName: 'Seed test',
+            };
+
+            await executor.execute(task);
+
+            expect(modelMetadataStore.getContextWindow).toHaveBeenCalledWith('gpt-4o');
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.tokenLimit).toBe(200_000);
+        });
+
+        it('tokenLimit uses fallback for unknown model', async () => {
+            vi.spyOn(modelMetadataStore, 'getContextWindow').mockReturnValue(128_000);
+
+            const executor = new CLITaskExecutor(store);
+            const task: QueuedTask = {
+                id: 'seed-2',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: { kind: 'chat' as const, mode: 'autopilot', prompt: 'Hello' },
+                config: { model: 'unknown-model-xyz' },
+                displayName: 'Fallback test',
+            };
+
+            await executor.execute(task);
+
+            const addedProcess = (store.addProcess as any).mock.calls[0][0];
+            expect(addedProcess.tokenLimit).toBe(128_000);
+        });
+
+        it('post-response update still overwrites seeded tokenLimit', async () => {
+            vi.spyOn(modelMetadataStore, 'getContextWindow').mockReturnValue(200_000);
+
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: 'AI response',
+                sessionId: 'sess-overwrite-sdk',
+                tokenUsage: {
+                    inputTokens: 100,
+                    outputTokens: 200,
+                    cacheReadTokens: 0,
+                    cacheWriteTokens: 0,
+                    totalTokens: 300,
+                    turnCount: 1,
+                    tokenLimit: 50_000,
+                },
+            });
+
+            // Create a parent process with the seeded tokenLimit and an active session
+            const proc = createCompletedProcessWithSession('proc-overwrite', 'sess-overwrite-sdk');
+            (proc as any).tokenLimit = 200_000;
+            await store.addProcess(proc);
+
+            const executor = new CLITaskExecutor(store);
+            // A follow-up task triggers executeFollowUp which propagates tokenUsage.tokenLimit
+            const task: QueuedTask = {
+                id: 'seed-3',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat' as const,
+                    processId: 'proc-overwrite',
+                    prompt: 'Follow-up question',
+                } as any,
+                config: { model: 'gpt-4o' },
+                displayName: 'Overwrite test',
+            };
+
+            await executor.execute(task);
+
+            const updateCalls = (store.updateProcess as any).mock.calls;
+            const tokenLimitCall = updateCalls.find((call: any[]) => call[1]?.tokenLimit !== undefined);
+            expect(tokenLimitCall).toBeDefined();
+            expect(tokenLimitCall[1].tokenLimit).toBe(50_000);
+        });
     });
 });

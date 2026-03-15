@@ -72,6 +72,7 @@ import {
     toNativePath,
     ToolCallCapture,
     DEFAULT_SKILLS_SETTINGS,
+    modelMetadataStore,
 } from '@plusplusoneplusplus/pipeline-core';
 import { replicateCommit } from '@plusplusoneplusplus/pipeline-core/templates';
 import type { ReplicateResult, ReplicateProgressCallback } from '@plusplusoneplusplus/pipeline-core/templates';
@@ -364,6 +365,9 @@ export class CLITaskExecutor implements TaskExecutor {
         const processId = `queue_${task.id}`;
         const prompt = this.applySkillContent(this.extractPrompt(task), task);
         const workingDirectory = this.getWorkingDirectory(task);
+        const seededTokenLimit = task.config.model !== undefined
+            ? modelMetadataStore.getContextWindow(task.config.model)
+            : undefined;
         const process: AIProcess = {
             id: processId,
             type: task.type,
@@ -372,6 +376,7 @@ export class CLITaskExecutor implements TaskExecutor {
             status: 'running',
             startTime: new Date(),
             workingDirectory,
+            tokenLimit: seededTokenLimit,
             metadata: {
                 type: task.type,
                 queueTaskId: task.id,

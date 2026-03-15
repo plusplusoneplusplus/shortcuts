@@ -204,4 +204,27 @@ describe('SSE token-usage events', () => {
         expect(d.sessionTokenLimit).toBeUndefined();
         expect(d.sessionCurrentTokens).toBeUndefined();
     });
+
+    it('conversation-snapshot includes sessionTokenLimit on first connect (seeded value, before AI response)', async () => {
+        // Simulates a process that was just created with a seeded tokenLimit from
+        // ModelMetadataStore — status is 'running' and no AI response has arrived yet.
+        const proc = createProcessFixture({
+            id: 'p-snap-seeded',
+            status: 'running',
+            conversationTurns: [makeTurn('user', 'Hello', 0)],
+            tokenLimit: 200_000,
+        } as any);
+        store.processes.set(proc.id, proc);
+
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, 'p-snap-seeded', store);
+
+        const frames = parseSSEFrames(res._chunks);
+        const snapshots = frames.filter(f => f.event === 'conversation-snapshot');
+        expect(snapshots).toHaveLength(1);
+        const d = snapshots[0].data as any;
+        expect(typeof d.sessionTokenLimit).toBe('number');
+        expect(d.sessionTokenLimit).toBe(200_000);
+    });
 });
