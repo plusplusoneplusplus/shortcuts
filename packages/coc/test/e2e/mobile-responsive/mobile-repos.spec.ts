@@ -75,6 +75,7 @@ test.describe('Mobile Repos', () => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
         await page.click('#add-repo-btn');
+        await page.locator('[data-testid="add-single-repo-item"]').dispatchEvent('click');
 
         const overlay = page.locator('#add-repo-overlay');
         await expect(overlay).toBeVisible();

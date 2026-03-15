@@ -28,10 +28,10 @@ async function setupRepoWithTasks(
 
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
-    await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
     // Select repo
-    await page.locator('.repo-item').first().click();
+    await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
 
     // Switch to Tasks sub-tab
@@ -119,10 +119,10 @@ test.describe('Status Cycling (011)', () => {
             // Reload the page
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
             // Re-select repo and navigate to Tasks
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });

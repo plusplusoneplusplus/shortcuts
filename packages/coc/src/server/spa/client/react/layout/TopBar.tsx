@@ -75,7 +75,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
             className="h-10 md:h-12 px-3 flex items-center justify-between border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-[#1e1e1e] dark:text-[#cccccc]"
             data-react
         >
-            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
                 <button
                     className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0 rounded border border-transparent hover:border-[#c8c8c8] dark:hover:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-base leading-none touch-target"
                     id="hamburger-btn"

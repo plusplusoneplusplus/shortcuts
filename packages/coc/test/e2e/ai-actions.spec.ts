@@ -73,9 +73,9 @@ async function setupRepoWithAIActions(
 
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
-    await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-    await page.locator('.repo-item').first().click();
+    await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
 
     await page.click('.repo-sub-tab[data-subtab="tasks"]');
@@ -396,8 +396,8 @@ test.describe('AI Actions (007)', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('.repo-item').first().click();
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
@@ -456,8 +456,8 @@ test.describe('AI Actions (007)', () => {
             // Reload to pick up preferences
             await page.reload();
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('.repo-item').first().click();
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
@@ -532,8 +532,8 @@ test.describe('AI Actions (007)', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('.repo-item').first().click();
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });

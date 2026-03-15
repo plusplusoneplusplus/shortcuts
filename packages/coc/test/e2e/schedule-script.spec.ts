@@ -49,8 +49,8 @@ async function waitForTaskStatus(
 async function navigateToSchedules(page: Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
-    await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('.repo-item').first().click();
+    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+    await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10_000 });
     await page.click('[data-subtab="schedules"]');
 }
@@ -110,7 +110,7 @@ test.describe('Schedule Script', () => {
 
         // ScheduleRunRecord status is set to 'completed' immediately after enqueue
         await expect(page.getByText('Run History')).toBeVisible({ timeout: 10_000 });
-        await expect(page.locator('text=completed').first()).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[aria-label="Run status: completed"]')).toBeVisible({ timeout: 10_000 });
     });
 
     test('API: script schedule run captures stdout in queue task result', async ({ serverUrl }) => {

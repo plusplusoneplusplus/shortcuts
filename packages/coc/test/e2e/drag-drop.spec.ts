@@ -30,9 +30,9 @@ async function setupRepoWithTasks(
 
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
-    await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-    await page.locator('.repo-item').first().click();
+    await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
 
     await page.click('.repo-sub-tab[data-subtab="tasks"]');

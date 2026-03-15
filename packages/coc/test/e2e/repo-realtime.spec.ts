@@ -29,8 +29,8 @@ test.describe('Repo real-time: stats badge', () => {
         // Navigate to repos tab and select the repo (info tab is default)
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         // Verify initial stats: 1 completed
@@ -69,8 +69,8 @@ test.describe('Repo real-time: task list', () => {
             // Navigate to repos tab → select repo → switch to Tasks sub-tab
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('.repo-item').first().click();
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
@@ -112,8 +112,8 @@ test.describe('Repo real-time: process status change', () => {
         // Navigate to repos tab and select the repo
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         // Verify running=1 in stats

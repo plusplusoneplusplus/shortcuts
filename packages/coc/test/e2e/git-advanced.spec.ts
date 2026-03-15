@@ -158,8 +158,8 @@ test.describe('Git advanced — Branch inline diff', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10_000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('.repo-sub-tab[data-subtab="git"]');
         await expect(page.locator('.repo-sub-tab[data-subtab="git"]')).toHaveClass(/active/);
@@ -374,8 +374,8 @@ test.describe('Git advanced — Branch large diff Show All', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10_000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('.repo-sub-tab[data-subtab="git"]');
         await expect(page.locator('.repo-sub-tab[data-subtab="git"]')).toHaveClass(/active/);

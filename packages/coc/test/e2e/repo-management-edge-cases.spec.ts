@@ -28,7 +28,9 @@ import { createRepoFixture } from './fixtures/repo-fixtures';
 async function openAddRepoDialog(page: import('@playwright/test').Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
     await page.click('[data-tab="repos"]');
-    await page.click('#add-repo-btn');
+    await page.click('[data-testid="repo-tab-add-btn"]');
+    await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+    await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
     await expect(page.locator('#add-repo-overlay')).toBeVisible({ timeout: 5_000 });
 }
 
@@ -142,9 +144,9 @@ test.describe('Repo remove — confirm dialog', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10_000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Set up a dialog handler BEFORE clicking the button — track that it fires
@@ -163,7 +165,7 @@ test.describe('Repo remove — confirm dialog', () => {
         expect(dialogFired).toBe(true);
 
         // After cancel, repo should still be in the list
-        await expect(page.locator('.repo-item')).toHaveCount(1);
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1);
     });
 
     test('confirming remove deletes the repo', async ({ page, serverUrl }) => {
@@ -171,17 +173,17 @@ test.describe('Repo remove — confirm dialog', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10_000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         page.on('dialog', dialog => dialog.accept());
         await page.click('#repo-remove-btn');
 
         // After accept, repo should be gone
-        await expect(page.locator('.repo-item')).toHaveCount(0, { timeout: 10_000 });
-        await expect(page.locator('#repos-empty')).toBeVisible();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10_000 });
+        await expect(page.locator('#repo-detail-empty')).toBeVisible();
     });
 });
 
@@ -205,9 +207,9 @@ test.describe('Repo remove — with in-progress tasks (current behavior)', () =>
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10_000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Accept the default confirm dialog (no special in-progress-tasks warning expected)
@@ -215,7 +217,7 @@ test.describe('Repo remove — with in-progress tasks (current behavior)', () =>
         await page.click('#repo-remove-btn');
 
         // Repo is removed despite having in-progress tasks
-        await expect(page.locator('.repo-item')).toHaveCount(0, { timeout: 10_000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10_000 });
 
         // Verify the workspace is actually gone from the API
         const res = await request(`${serverUrl}/api/workspaces`);

@@ -43,8 +43,8 @@ function createExplorerRepoFixture(tmpDir: string): string {
 async function gotoExplorer(page: Page, serverUrl: string): Promise<void> {
     // Repos is the implicit default view — navigate to base URL (no tab button needed)
     await page.goto(serverUrl);
-    await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('.repo-item').first().click();
+    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+    await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
     await page.locator('button[data-subtab="explorer"]').click();
     await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 8_000 });

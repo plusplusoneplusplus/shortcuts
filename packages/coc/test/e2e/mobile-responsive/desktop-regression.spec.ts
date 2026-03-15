@@ -109,6 +109,7 @@ test.describe('Desktop Regression', () => {
         await page.click('#hamburger-btn');
         await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible();
         await page.click('#add-repo-btn');
+        await page.locator('[data-testid="add-single-repo-item"]').dispatchEvent('click');
 
         const overlay = page.locator('#add-repo-overlay');
         await expect(overlay).toBeVisible();

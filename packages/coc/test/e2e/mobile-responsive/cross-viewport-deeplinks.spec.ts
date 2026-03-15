@@ -71,9 +71,8 @@ test.describe('Cross-Viewport Deep Links', () => {
         await seedWorkspace(serverUrl, 'dl-tab-ws', 'dl-tab-repo');
         await page.goto(`${serverUrl}/#repos/dl-tab-ws`);
 
-        // Tablet two-pane: sidebar + detail content visible
+        // Tablet layout: repo detail content visible (full-width, no sidebar)
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('[data-testid="responsive-sidebar"]')).toBeVisible({ timeout: 5000 });
     });
 
     test('deeplinks: #processes/:id resolves at tablet viewport', async ({ page, serverUrl }) => {

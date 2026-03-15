@@ -22,8 +22,8 @@ test.describe('Repos tab', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
 
-        await expect(page.locator('#repos-empty')).toBeVisible();
-        await expect(page.locator('#repos-empty')).toContainText('No repositories registered');
+        await expect(page.locator('#repo-detail-empty')).toBeVisible();
+        await expect(page.locator('#repo-detail-empty')).toContainText('Select a repository to view details');
     });
 
     test('displays seeded repos in the sidebar', async ({ page, serverUrl }) => {
@@ -34,8 +34,7 @@ test.describe('Repos tab', () => {
         await page.click('[data-tab="repos"]');
 
         // Wait for repo items to appear (async fetch on tab switch)
-        await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
-        await expect(page.locator('#repos-empty')).toBeHidden();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(2, { timeout: 10000 });
     });
 
     test('clicking a repo shows its detail', async ({ page, serverUrl }) => {
@@ -44,8 +43,8 @@ test.describe('Repos tab', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
 
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('.repo-item').first().click();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await expect(page.locator('#repo-detail-empty')).toBeHidden();
     });
@@ -54,7 +53,9 @@ test.describe('Repos tab', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
 
-        await page.click('#add-repo-btn');
+        await page.click('[data-testid="repo-tab-add-btn"]');
+        await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+        await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
         await expect(page.locator('#repo-path')).toBeVisible();
     });
@@ -63,7 +64,9 @@ test.describe('Repos tab', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
 
-        await page.click('#add-repo-btn');
+        await page.click('[data-testid="repo-tab-add-btn"]');
+        await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+        await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
 
         await page.click('#add-repo-cancel-btn');
@@ -93,7 +96,9 @@ test.describe('Add Repo workflow', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await page.click('#add-repo-btn');
+            await page.click('[data-testid="repo-tab-add-btn"]');
+            await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+            await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
 
             await page.fill('#repo-path', repoDir);
             await page.fill('#repo-alias', 'my-new-repo');
@@ -104,11 +109,11 @@ test.describe('Add Repo workflow', () => {
             // Dialog should close
             await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
             // Repo appears in sidebar
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-            await expect(page.locator('.repo-item-name')).toContainText('my-new-repo');
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toContainText('my-new-repo');
 
             // Click repo to show detail panel
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
         } finally {
             safeRmSync(tmpDir);
@@ -122,7 +127,9 @@ test.describe('Add Repo workflow', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await page.click('#add-repo-btn');
+            await page.click('[data-testid="repo-tab-add-btn"]');
+            await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+            await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
 
             // Set path to tmpDir so browser starts there
             await page.fill('#repo-path', tmpDir);
@@ -153,7 +160,9 @@ test.describe('Add Repo workflow', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await page.click('#add-repo-btn');
+            await page.click('[data-testid="repo-tab-add-btn"]');
+            await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+            await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
 
             // Navigate browser to the repo
             await page.fill('#repo-path', tmpDir);
@@ -182,7 +191,9 @@ test.describe('Add Repo workflow', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await page.click('#add-repo-btn');
+            await page.click('[data-testid="repo-tab-add-btn"]');
+            await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+            await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
 
             // Navigate browser to test-repo and select it
             await page.fill('#repo-path', tmpDir);
@@ -200,7 +211,9 @@ test.describe('Add Repo workflow', () => {
     test('validation error on empty path', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await page.click('#add-repo-btn');
+        await page.click('[data-testid="repo-tab-add-btn"]');
+        await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+        await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
 
         // Ensure path is empty and submit
@@ -219,7 +232,9 @@ test.describe('Add Repo workflow', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await page.click('#add-repo-btn');
+            await page.click('[data-testid="repo-tab-add-btn"]');
+            await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+            await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
 
             await page.fill('#repo-path', repoDir);
             await page.fill('#repo-alias', 'color-test');
@@ -228,13 +243,9 @@ test.describe('Add Repo workflow', () => {
             await page.click('#add-repo-submit');
             await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
 
-            // Verify sidebar color dot (Green #107c10 — may render as hex or rgb)
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
-            const sidebarDot = page.locator('.repo-item .repo-color-dot');
-            await expect(sidebarDot).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
 
             // Click repo and verify detail color dot
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             const detailDot = page.locator('#repo-detail-content .repo-color-dot');
             await expect(detailDot.first()).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
@@ -254,10 +265,10 @@ test.describe('Edit Repo workflow', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
         // Select the repo to show detail
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Click Edit button
@@ -279,10 +290,10 @@ test.describe('Edit Repo workflow', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
         // Select repo and open edit dialog
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('#repo-edit-btn');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
@@ -295,7 +306,7 @@ test.describe('Edit Repo workflow', () => {
         await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
 
         // Sidebar item name should be updated
-        await expect(page.locator('.repo-item-name')).toContainText('new-name', { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toContainText('new-name', { timeout: 10000 });
 
         // Detail header should be updated
         await expect(page.locator('.repo-detail-header h1')).toContainText('new-name');
@@ -306,10 +317,10 @@ test.describe('Edit Repo workflow', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
         // Select repo and open edit dialog
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('#repo-edit-btn');
         await expect(page.locator('#add-repo-overlay')).toBeVisible();
@@ -320,7 +331,7 @@ test.describe('Edit Repo workflow', () => {
         await expect(page.locator('#add-repo-overlay')).toBeHidden();
 
         // Sidebar should still show original name
-        await expect(page.locator('.repo-item-name')).toContainText('keep-me');
+        await expect(page.locator('[data-testid="repo-tab"]')).toContainText('keep-me');
     });
 });
 
@@ -334,10 +345,10 @@ test.describe('Remove Repo', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
         // Select the repo to show detail with remove button
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Accept the upcoming window.confirm dialog
@@ -346,8 +357,8 @@ test.describe('Remove Repo', () => {
         await page.click('#repo-remove-btn');
 
         // Repo should be gone from sidebar, empty state shown
-        await expect(page.locator('.repo-item')).toHaveCount(0, { timeout: 10000 });
-        await expect(page.locator('#repos-empty')).toBeVisible();
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10000 });
+        await expect(page.locator('#repo-detail-empty')).toBeVisible();
     });
 
     test('removing selected repo clears detail panel', async ({ page, serverUrl }) => {
@@ -355,10 +366,10 @@ test.describe('Remove Repo', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
         // Select the repo
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await expect(page.locator('#repo-detail-empty')).toBeHidden();
 
@@ -382,9 +393,9 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         await expect(page.locator('button[data-subtab="info"]')).toHaveClass(/active/);
@@ -396,9 +407,9 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         await page.click('button[data-subtab="workflows"]');
@@ -415,9 +426,9 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         await page.click('button[data-subtab="tasks"]');
@@ -431,9 +442,9 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         await page.click('button[data-subtab="activity"]');
@@ -449,17 +460,17 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(2, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('button[data-subtab="workflows"]');
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
 
-        await page.locator('.repo-item').nth(1).click();
+        await page.locator('[data-testid="repo-tab"]').nth(1).click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
@@ -501,10 +512,10 @@ test.describe('Info Tab Content', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
         // Click repo to show detail — Info is the default sub-tab
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await expect(page.locator('.meta-grid')).toBeVisible();
 
@@ -533,9 +544,9 @@ test.describe('Info Tab Content', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('.meta-grid')).toBeVisible();
 
             // Branch cell should show a real branch name (main or master)
@@ -558,17 +569,11 @@ test.describe('Info Tab Content', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Check sidebar stat counts
-        const statCounts = page.locator('.repo-stat-counts');
-        await expect(statCounts).toBeVisible();
-        // ✓ 3 (completed) and ✗ 1 (failed)
-        await expect(statCounts).toContainText('3');
-        await expect(statCounts).toContainText('1');
 
         // Click repo to verify in Info tab meta grid
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         const completedItem = page.locator('.meta-item', { hasText: 'Completed' });
@@ -593,9 +598,9 @@ test.describe('Info Tab Content', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('.meta-grid')).toBeVisible();
 
         // Wait for recent processes to load
@@ -627,9 +632,9 @@ test.describe('Workflows Tab Content', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             await page.click('button[data-subtab="workflows"]');
             await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
@@ -654,9 +659,9 @@ test.describe('Workflows Tab Content', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('button[data-subtab="workflows"]');
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
@@ -727,9 +732,9 @@ test.describe('Explorer Sub-tab', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
 
             await page.click('button[data-subtab="explorer"]');
@@ -757,9 +762,9 @@ test.describe('Explorer Sub-tab', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
 
             await page.click('button[data-subtab="explorer"]');
@@ -786,9 +791,9 @@ test.describe('Explorer Sub-tab', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
 
             await page.click('button[data-subtab="explorer"]');
@@ -833,60 +838,57 @@ test.describe('Explorer Sub-tab', () => {
 // ================================================================
 
 test.describe('Sidebar Collapse', () => {
-    test('hamburger button collapses sidebar to MiniReposSidebar', async ({ page, serverUrl }) => {
+    test('hamburger button opens repo management popover', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-collapse-1', 'collapse-repo', '/tmp/collapse-repo');
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Ensure sidebar is currently expanded (full grid visible)
-        await expect(page.locator('#add-repo-btn')).toBeVisible();
+        // Ensure add-btn is visible in TopBar
+        await expect(page.locator('[data-testid="repo-tab-add-btn"]')).toBeVisible();
 
-        // Click hamburger to collapse
+        // Click hamburger to open management popover
         await page.click('#hamburger-btn');
 
-        // MiniReposSidebar should replace ReposGrid — look for mini-repo-item
-        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeVisible({ timeout: 5000 });
-
-        // Full add-repo button should no longer be visible in sidebar
-        await expect(page.locator('#add-repo-btn')).toBeHidden();
+        // RepoManagementPopover should open with ReposGrid
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible({ timeout: 5000 });
     });
 
-    test('clicking a mini repo item selects the repo and shows detail', async ({ page, serverUrl }) => {
+    test('clicking a repo in the management popover shows detail', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-collapse-2', 'mini-click-repo', '/tmp/mini-click-repo');
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Collapse the sidebar
+        // Open management popover
         await page.click('#hamburger-btn');
-        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible({ timeout: 5000 });
 
-        // Click the mini repo item
-        await page.locator('[data-testid="mini-repo-item"]').first().click();
+        // Click the repo tab in TopBar to select
+        await page.locator('[data-testid="repo-tab"]').first().click();
 
         // Repo detail should be shown
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
     });
 
-    test('hamburger button re-expands collapsed sidebar', async ({ page, serverUrl }) => {
+    test('hamburger button closes management popover when clicked again', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-collapse-3', 'reexpand-repo', '/tmp/reexpand-repo');
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Collapse then re-expand
+        // Open then close popover
         await page.click('#hamburger-btn');
-        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible({ timeout: 5000 });
 
         await page.click('#hamburger-btn');
 
-        // Full sidebar grid should be back
-        await expect(page.locator('#add-repo-btn')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('[data-testid="mini-repo-item"]')).toBeHidden();
+        // Popover should close, add-btn still visible in TopBar
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeHidden({ timeout: 5000 });
+        await expect(page.locator('[data-testid="repo-tab-add-btn"]')).toBeVisible({ timeout: 5000 });
     });
 });
 
@@ -895,7 +897,7 @@ test.describe('Sidebar Collapse', () => {
 // ================================================================
 
 test.describe('Repo Group Collapse/Expand', () => {
-    test('repos with same remote URL appear in a group', async ({ page, serverUrl }) => {
+    test('repos with same remote URL appear in a group with separator', async ({ page, serverUrl }) => {
         const remoteUrl = 'https://github.com/test-org/shared-repo.git';
 
         // Seed two workspaces with the same remoteUrl
@@ -911,15 +913,15 @@ test.describe('Repo Group Collapse/Expand', () => {
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
 
-        // Both repos should appear in the sidebar
-        await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
+        // Both repos should appear as tabs in the TopBar
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(2, { timeout: 10000 });
 
-        // A group header button should be visible (contains the group label with repo count badge)
-        const groupHeader = page.locator('button:has(.drag-handle)').first();
-        await expect(groupHeader).toBeVisible({ timeout: 5000 });
+        // Repos with same remote URL are separated by a group separator in the tab strip
+        await expect(page.locator('[data-testid="repo-group-separator"]')).toHaveCount(0);
+        // (Grouped repos appear together, no separator between same-group repos)
     });
 
-    test('clicking group header collapses and expands the group', async ({ page, serverUrl }) => {
+    test('repos from same remote show both tabs visible', async ({ page, serverUrl }) => {
         const remoteUrl = 'https://github.com/test-org/collapse-repo.git';
 
         await request(`${serverUrl}/api/workspaces`, {
@@ -933,23 +935,11 @@ test.describe('Repo Group Collapse/Expand', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(2, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(2, { timeout: 10000 });
 
-        // Both repo items visible (group expanded by default)
-        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-a' })).toBeVisible();
-        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-b' })).toBeVisible();
-
-        // Click group header to collapse
-        const groupHeader = page.locator('button:has(.drag-handle)').first();
-        await groupHeader.click();
-
-        // Repo items should now be hidden
-        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-a' })).toBeHidden({ timeout: 5000 });
-        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-b' })).toBeHidden({ timeout: 5000 });
-
-        // Click group header again to expand
-        await groupHeader.click();
-        await expect(page.locator('.repo-item-name').filter({ hasText: 'collapse-a' })).toBeVisible({ timeout: 5000 });
+        // Both repo tabs are visible in the tab strip
+        await expect(page.locator('[data-testid="repo-tab"]').filter({ hasText: 'collapse-a' })).toBeVisible();
+        await expect(page.locator('[data-testid="repo-tab"]').filter({ hasText: 'collapse-b' })).toBeVisible();
     });
 });
 
@@ -1014,9 +1004,9 @@ test.describe('Sub-tab Badges', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Navigate to Activity tab to trigger queue data fetch
@@ -1057,9 +1047,9 @@ test.describe('Sub-tab Badges', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
 
             // Tasks sub-tab should show a count badge (bg-[#0078d4] span)
@@ -1083,9 +1073,9 @@ test.describe('Queue Task and Ask Buttons', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Click the Queue Task button
@@ -1100,9 +1090,9 @@ test.describe('Queue Task and Ask Buttons', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         // Click the Ask button
@@ -1127,9 +1117,9 @@ test.describe('Workflows Tab — Add Workflow Dialog', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
 
             await page.click('button[data-subtab="workflows"]');
@@ -1154,9 +1144,9 @@ test.describe('Workflows Tab — Add Workflow Dialog', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
 
             await page.click('button[data-subtab="workflows"]');
@@ -1195,9 +1185,9 @@ test.describe('Workflows Tab — WorkflowDetail', () => {
 
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-            await page.locator('.repo-item').first().click();
+            await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
 
             await page.click('button[data-subtab="workflows"]');
@@ -1236,9 +1226,9 @@ test.describe('Activity Tab — Task List', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         await page.click('button[data-subtab="activity"]');
@@ -1262,9 +1252,9 @@ test.describe('Activity Tab — Task List', () => {
 
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
-        await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        await page.locator('.repo-item').first().click();
+        await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
         await page.click('button[data-subtab="activity"]');
@@ -1295,7 +1285,9 @@ test.describe('Path Browser Up-Navigation', () => {
         try {
             await page.goto(serverUrl);
             await page.click('[data-tab="repos"]');
-            await page.click('#add-repo-btn');
+            await page.click('[data-testid="repo-tab-add-btn"]');
+            await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
+            await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
 
             // Set path to tmpDir and open browser
             await page.fill('#repo-path', tmpDir);

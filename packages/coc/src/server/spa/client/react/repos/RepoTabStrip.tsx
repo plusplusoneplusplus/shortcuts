@@ -44,9 +44,10 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     return (
         <div
-            className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide flex-1 min-w-0 px-1"
+            className="flex items-center flex-1 min-w-0"
             data-testid="repo-tab-strip"
         >
+        <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide flex-1 min-w-0 px-1">
             {groups.map((group, groupIndex) => (
                 <div key={group.normalizedUrl ?? `ungrouped-${groupIndex}`} className="contents">
                     {groupIndex > 0 && (
@@ -96,7 +97,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     })}
                 </div>
             ))}
-            <div ref={dropdownRef} className="relative flex-shrink-0">
+        </div>
+            <div ref={dropdownRef} className="relative flex-shrink-0 px-1">
                 <button
                     data-testid="repo-tab-add-btn"
                     className="h-7 w-7 rounded flex items-center justify-center text-base hover:bg-black/[0.05] dark:hover:bg-white/[0.08] text-[#1e1e1e] dark:text-[#cccccc]"
