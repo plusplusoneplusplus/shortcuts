@@ -24,6 +24,13 @@ function formatTimeAgo(timestamp: number): string {
     return `${Math.floor(hours / 24)}d ago`;
 }
 
+/** Extract `[Tag]` prefix from a notification title, if present. */
+function parseRepoTag(title: string): { tag: string; rest: string } | null {
+    const match = title.match(/^\[([^\]]+)\]\s*(.*)/);
+    if (!match) return null;
+    return { tag: match[1], rest: match[2] };
+}
+
 export function NotificationBell() {
     const { notifications, unreadCount, markAllRead, clearAll } = useNotifications();
     const { dispatch } = useApp();
@@ -138,7 +145,18 @@ export function NotificationBell() {
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1">
                                             <span className="text-sm font-medium truncate text-[#1e1e1e] dark:text-[#cccccc]" data-testid="notification-title">
-                                                {entry.title}
+                                                {(() => {
+                                                    const parsed = parseRepoTag(entry.title);
+                                                    if (!parsed) return entry.title;
+                                                    return (
+                                                        <>
+                                                            <span className="inline-block px-1 py-0.5 rounded text-[10px] font-semibold bg-[#e8e8e8] dark:bg-[#3c3c3c] text-[#6e6e6e] dark:text-[#999] mr-1 shrink-0" data-testid="notification-repo-tag">
+                                                                {parsed.tag}
+                                                            </span>
+                                                            {parsed.rest}
+                                                        </>
+                                                    );
+                                                })()}
                                             </span>
                                             <span className="text-[10px] text-[#6e6e6e] dark:text-[#999] whitespace-nowrap ml-auto">
                                                 {formatTimeAgo(entry.timestamp)}

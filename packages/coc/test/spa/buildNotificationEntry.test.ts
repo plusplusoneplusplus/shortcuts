@@ -105,4 +105,35 @@ describe('buildNotificationEntry', () => {
         const result = buildNotificationEntry(makeProcess({ status: 'unknown' }));
         expect(result.type).toBe('info');
     });
+
+    // ── Plan acceptance criteria: three notification scenarios ──────────────
+
+    it('scenario A: process with workspaceId resolved to named workspace → title includes [WorkspaceName]', () => {
+        // workspaceName is resolved externally (in App.tsx) and passed as second arg
+        const result = buildNotificationEntry(makeProcess({ promptPreview: 'Run tests', status: 'completed' }), 'Frontend');
+        expect(result.title).toBe('[Frontend] Run tests completed');
+    });
+
+    it('scenario B: process without workspaceId but with workingDirectory → title includes folder name', () => {
+        // workingDirectory-based name is resolved externally (in App.tsx) and passed as second arg
+        const result = buildNotificationEntry(
+            makeProcess({ promptPreview: 'Build', status: 'completed', metadata: undefined }),
+            'my-repo',
+        );
+        expect(result.title).toBe('[my-repo] Build completed');
+    });
+
+    it('scenario C: process with no workspace context → no [tag] prefix in title', () => {
+        const result = buildNotificationEntry(makeProcess({ promptPreview: 'Build', status: 'completed', metadata: undefined }));
+        expect(result.title).toBe('Build completed');
+        expect(result.title).not.toMatch(/^\[/);
+    });
+
+    it('multi-repo: two processes with different workspace names produce distinct titles', () => {
+        const repoA = buildNotificationEntry(makeProcess({ promptPreview: 'Deploy', status: 'completed' }), 'Repo-A');
+        const repoB = buildNotificationEntry(makeProcess({ promptPreview: 'Deploy', status: 'completed' }), 'Repo-B');
+        expect(repoA.title).toBe('[Repo-A] Deploy completed');
+        expect(repoB.title).toBe('[Repo-B] Deploy completed');
+        expect(repoA.title).not.toBe(repoB.title);
+    });
 });

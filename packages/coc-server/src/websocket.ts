@@ -58,6 +58,8 @@ export interface ProcessSummary {
     endTime?: string;
     error?: string;
     workspaceId?: string;
+    workspaceName?: string;
+    workingDirectory?: string;
     title?: string;
 }
 
@@ -431,6 +433,8 @@ export function toProcessSummary(process: AIProcess): ProcessSummary {
         endTime: process.endTime instanceof Date ? process.endTime.toISOString() : (process.endTime ? String(process.endTime) : undefined),
         error: process.error,
         workspaceId: process.metadata?.workspaceId,
+        workspaceName: process.metadata?.workspaceName,
+        workingDirectory: process.workingDirectory,
         title: process.title,
     };
 }

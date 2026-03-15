@@ -127,12 +127,22 @@ function AppInner() {
                         appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
                         if (!seenProcessIdsRef.current.has(msg.process.id)) {
                             seenProcessIdsRef.current.add(msg.process.id);
-                            const wsId = msg.process.metadata?.workspaceId;
-                            const ws = wsId
-                                ? (appState.workspaces as WorkspaceLike[]).find(w => w.id === wsId)
-                                : undefined;
-                            const wsName = ws?.name
-                                ?? (ws?.rootPath ? ws.rootPath.replace(/\\/g, '/').split('/').pop() : undefined);
+                            // Highest priority: server-resolved workspace name.
+                            let wsName: string | undefined = msg.process.workspaceName;
+                            if (!wsName) {
+                                // Fallback 1: lookup by workspaceId.
+                                const wsId = msg.process.workspaceId;
+                                const ws = wsId
+                                    ? (appState.workspaces as WorkspaceLike[]).find(w => w.id === wsId)
+                                    : undefined;
+                                // Fallback 2: longest-prefix match on workingDirectory.
+                                const resolvedWs = ws
+                                    ?? (msg.process.workingDirectory
+                                        ? resolveWorkspaceForPath(msg.process.workingDirectory, appState.workspaces as WorkspaceLike[])
+                                        : null);
+                                wsName = resolvedWs?.name
+                                    ?? (resolvedWs?.rootPath ? resolvedWs.rootPath.replace(/\\/g, '/').split('/').pop() : undefined);
+                            }
                             addNotification(buildNotificationEntry(msg.process, wsName));
                         }
                     }

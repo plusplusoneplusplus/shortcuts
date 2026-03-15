@@ -9,6 +9,9 @@ export interface ProcessLike {
     promptPreview?: string | null;
     startTime?: string | Date | null;
     endTime?: string | Date | null;
+    workspaceId?: string | null;
+    workspaceName?: string | null;
+    workingDirectory?: string | null;
     metadata?: { workspaceId?: string } | null;
 }
 

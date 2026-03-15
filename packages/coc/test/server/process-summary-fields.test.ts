@@ -73,4 +73,28 @@ describe('toProcessSummary — field completeness for notifications', () => {
         expect(summary.fullPrompt).toBeUndefined();
         expect(summary.result).toBeUndefined();
     });
+
+    it('includes workspaceName from metadata', () => {
+        const summary = toProcessSummary(makeAIProcess({
+            metadata: { type: 'code-review', workspaceId: 'ws-abc', workspaceName: 'MyRepo' },
+        }));
+        expect(summary.workspaceName).toBe('MyRepo');
+    });
+
+    it('workspaceName is undefined when metadata has no workspaceName', () => {
+        const summary = toProcessSummary(makeAIProcess({
+            metadata: { type: 'code-review', workspaceId: 'ws-abc' },
+        }));
+        expect(summary.workspaceName).toBeUndefined();
+    });
+
+    it('includes workingDirectory when present on process', () => {
+        const summary = toProcessSummary(makeAIProcess({ workingDirectory: '/home/user/my-repo' }));
+        expect(summary.workingDirectory).toBe('/home/user/my-repo');
+    });
+
+    it('workingDirectory is undefined when not set on process', () => {
+        const summary = toProcessSummary(makeAIProcess({ workingDirectory: undefined }));
+        expect(summary.workingDirectory).toBeUndefined();
+    });
 });
