@@ -176,3 +176,6 @@ export { mergeConsecutiveContentItems } from './timeline-utils';
 
 // Default timeouts
 export { DEFAULT_AI_TIMEOUT_MS } from './timeouts';
+
+// Token Usage Stats
+export { TokenUsageStatsEntry, TokenUsageStatsResponse, aggregateTokenUsageStats } from './token-usage-stats';
