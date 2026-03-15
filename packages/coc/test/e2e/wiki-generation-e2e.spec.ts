@@ -157,7 +157,7 @@ test.describe('Wiki generation end-to-end', () => {
             await expect(page.locator('#wiki-component-tree')).toBeVisible({ timeout: 5_000 });
 
             // At least one component should be listed
-            await expect(page.locator('#wiki-component-tree .tree-node, #wiki-component-tree li').first()).toBeVisible({ timeout: 5_000 });
+            await expect(page.locator('#wiki-component-tree .wiki-tree-component, #wiki-component-tree .wiki-tree-group').first()).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
         }

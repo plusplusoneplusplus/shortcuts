@@ -272,9 +272,9 @@ test.describe('ExplorerPanel – QuickOpen', () => {
 
             await page.locator('[data-testid="quick-open-input"]').fill('index');
 
-            // Should show filtered results or no-results
+            // Should show filtered results or no-results (use .first() to avoid strict-mode violation)
             await expect(
-                page.locator('[data-testid="quick-open-results"], [data-testid="quick-open-no-results"]')
+                page.locator('[data-testid="quick-open-results"], [data-testid="quick-open-no-results"]').first()
             ).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);

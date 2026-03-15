@@ -97,7 +97,7 @@ test.describe('AI service unavailable — workflow generate (503)', () => {
             // Open Add Workflow dialog
             await page.locator('[data-testid="workflows-section"]').getByRole('button', { name: '+ New' }).click();
             // Dialog should show with "AI Generated" template selected by default
-            await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
+            await expect(page.locator('[data-testid="dialog-overlay"]')).toBeVisible({ timeout: 5_000 });
 
             // Fill description (must be ≥10 characters to enable the generate button)
             await page.locator('textarea').fill('Process customer CSV files and summarize results');
@@ -110,7 +110,7 @@ test.describe('AI service unavailable — workflow generate (503)', () => {
                 .toBeVisible({ timeout: 8_000 });
 
             // Dialog should still be open (not closed on error)
-            await expect(page.getByRole('dialog')).toBeVisible();
+            await expect(page.locator('[data-testid="dialog-overlay"]')).toBeVisible();
         } finally {
             safeRmSync(tmpDir);
         }

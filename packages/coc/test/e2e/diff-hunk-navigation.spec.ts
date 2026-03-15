@@ -190,23 +190,25 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         // diff-section is the actual scrollable container (overflow-auto); commit-detail is overflow-hidden
         const scrollContainer = page.getByTestId('diff-section');
 
-        // Scroll to the very bottom so at least one hunk is above the fold
-        await scrollContainer.evaluate((el: HTMLElement) => {
-            el.scrollTop = el.scrollHeight;
-        });
-        await page.waitForTimeout(100);
-        const scrollAtBottom = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
+        // Navigate to the second (last) hunk using the next-hunk button twice
+        // This sets the internal hunk index so prev-hunk knows where to go back to
+        await page.getByTestId('next-hunk-btn').click();
+        await page.waitForTimeout(400);
+        await page.getByTestId('next-hunk-btn').click();
+        await page.waitForTimeout(400);
 
-        // Sanity: we really are scrolled down
-        expect(scrollAtBottom).toBeGreaterThan(0);
+        const scrollAtSecondHunk = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
 
-        // Click ▲ prev hunk
+        // Sanity: we really navigated to the second (lower) hunk
+        expect(scrollAtSecondHunk).toBeGreaterThan(0);
+
+        // Click ▲ prev hunk — should scroll back toward the first hunk
         await page.getByTestId('prev-hunk-btn').click();
         await page.waitForTimeout(700);
 
         const scrollAfterPrev = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
 
-        // Must have scrolled upward from the bottom
-        expect(scrollAfterPrev).toBeLessThan(scrollAtBottom);
+        // Must have scrolled upward from the second hunk
+        expect(scrollAfterPrev).toBeLessThan(scrollAtSecondHunk);
     });
 });
