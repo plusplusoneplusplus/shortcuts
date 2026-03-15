@@ -8,7 +8,6 @@ import { cn } from '../shared/cn';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useFloatingChats } from '../context/FloatingChatsContext';
 import type { ClientConversationTurn } from '../types/dashboard';
-import { FilePathValue } from '../queue/PendingTaskPayload';
 
 export interface ChatHeaderProps {
     task: any;
@@ -84,9 +83,6 @@ export function ChatHeader({
                     <Badge status={task.status}>
                         {statusIcon(task.status)} {statusLabel(task.status)}
                     </Badge>
-                )}
-                {planPath && (
-                    <FilePathValue label="📄" value={planPath} />
                 )}
                 <ReferencesDropdown planPath={planPath} files={createdFiles} />
                 {task?.duration != null && (

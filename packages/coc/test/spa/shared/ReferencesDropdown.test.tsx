@@ -62,16 +62,16 @@ describe('ChatHeader uses ReferencesDropdown', () => {
         expect(CHAT_HEADER_SOURCE).toContain('ReferencesDropdown');
     });
 
-    it('imports FilePathValue from PendingTaskPayload for plan path pill', () => {
-        expect(CHAT_HEADER_SOURCE).toContain("import { FilePathValue } from '../queue/PendingTaskPayload'");
+    it('does not import FilePathValue (inline pill removed)', () => {
+        expect(CHAT_HEADER_SOURCE).not.toContain("import { FilePathValue }");
     });
 
     it('no longer imports CreatedFilesDropdown', () => {
         expect(CHAT_HEADER_SOURCE).not.toContain('CreatedFilesDropdown');
     });
 
-    it('renders inline planPath FilePathValue pill', () => {
-        expect(CHAT_HEADER_SOURCE).toContain('<FilePathValue label="📄"');
+    it('does not render inline planPath FilePathValue pill', () => {
+        expect(CHAT_HEADER_SOURCE).not.toContain('<FilePathValue label="📄"');
     });
 
     it('renders a single ReferencesDropdown with planPath and files', () => {
