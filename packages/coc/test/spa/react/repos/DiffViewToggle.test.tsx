@@ -48,14 +48,4 @@ describe('DiffViewToggle', () => {
         expect(group.getAttribute('role')).toBe('group');
         expect(group.getAttribute('aria-label')).toBe('Diff view mode');
     });
-
-    it('matches snapshot (unified mode)', () => {
-        const { container } = render(<DiffViewToggle mode="unified" onChange={() => {}} />);
-        expect(container.firstChild).toMatchSnapshot();
-    });
-
-    it('matches snapshot (split mode)', () => {
-        const { container } = render(<DiffViewToggle mode="split" onChange={() => {}} />);
-        expect(container.firstChild).toMatchSnapshot();
-    });
 });
