@@ -38,6 +38,14 @@ describe('WorkingTree', () => {
         it('accepts optional onRefresh callback', () => {
             expect(source).toContain('onRefresh?: () => void');
         });
+
+        it('accepts optional refreshKey prop', () => {
+            expect(source).toContain('refreshKey?: number');
+        });
+
+        it('destructures refreshKey in function signature', () => {
+            expect(source).toContain('refreshKey }');
+        });
     });
 
     describe('working changes parent group', () => {
@@ -139,6 +147,30 @@ describe('WorkingTree', () => {
         it('strips trailing slash from directory paths', () => {
             // The basename function should handle paths like "packages/foo/" without returning ""
             expect(source).toContain(".replace(/\\/$/, '')");
+        });
+    });
+
+    describe('refreshKey external refresh', () => {
+        it('imports useRef', () => {
+            expect(source).toContain('useRef');
+        });
+
+        it('declares refreshKeyMountedRef to skip initial render', () => {
+            expect(source).toContain('refreshKeyMountedRef');
+        });
+
+        it('has useEffect depending on refreshKey', () => {
+            expect(source).toContain('[refreshKey, fetchChanges]');
+        });
+
+        it('guards against undefined refreshKey before fetching', () => {
+            expect(source).toContain('if (refreshKey !== undefined)');
+        });
+
+        it('calls fetchChanges when refreshKey changes', () => {
+            const effectIdx = source.indexOf('[refreshKey, fetchChanges]');
+            const fetchCallIdx = source.lastIndexOf('fetchChanges()', effectIdx);
+            expect(fetchCallIdx).toBeGreaterThan(-1);
         });
     });
 

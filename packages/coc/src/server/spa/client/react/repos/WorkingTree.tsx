@@ -5,7 +5,7 @@
  * Follows the same visual style as BranchChanges.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
 import { copyToClipboard } from '../utils/format';
@@ -31,6 +31,8 @@ interface WorkingTreeProps {
     onFileSelect?: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
     /** Currently selected file path for highlighting. */
     selectedFilePath?: string | null;
+    /** Increment this counter to trigger a working-changes re-fetch from the parent. */
+    refreshKey?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -295,7 +297,7 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath }: WorkingTreeProps) {
+export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -316,6 +318,18 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         setError(null);
         fetchChanges().finally(() => setLoading(false));
     }, [workspaceId, fetchChanges]);
+
+    // Re-fetch when parent increments refreshKey (e.g. Refresh button click)
+    const refreshKeyMountedRef = useRef(false);
+    useEffect(() => {
+        if (!refreshKeyMountedRef.current) {
+            refreshKeyMountedRef.current = true;
+            return;
+        }
+        if (refreshKey !== undefined) {
+            fetchChanges();
+        }
+    }, [refreshKey, fetchChanges]);
 
     useEffect(() => {
         if (changes.length > 0 && !workingChangesExpanded) setWorkingChangesExpanded(true);

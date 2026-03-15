@@ -190,6 +190,16 @@ describe('RepoGitTab', () => {
             expect(source).toContain("'Refresh failed'");
         });
 
+        it('increments workingChangesRefreshKey when refreshAll fires', () => {
+            expect(source).toContain('workingChangesRefreshKey');
+            expect(source).toContain('setWorkingChangesRefreshKey');
+            expect(source).toContain('setWorkingChangesRefreshKey(k => k + 1)');
+        });
+
+        it('passes refreshKey to WorkingTree', () => {
+            expect(source).toContain('refreshKey={workingChangesRefreshKey}');
+        });
+
         it('shows refresh error toast', () => {
             expect(source).toContain('data-testid="git-refresh-error"');
         });

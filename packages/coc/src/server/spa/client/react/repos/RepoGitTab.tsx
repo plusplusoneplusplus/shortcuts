@@ -66,6 +66,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const pullJobRef = useRef<string | null>(null);
     const pullPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
+    const [workingChangesRefreshKey, setWorkingChangesRefreshKey] = useState(0);
 
     // Branch-range state (lifted from BranchChanges)
     const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
@@ -170,6 +171,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (refreshing) return;
         setRefreshing(true);
         setRefreshError(null);
+        setWorkingChangesRefreshKey(k => k + 1);
         const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
         Promise.all([fetchCommits(true), fetchBranchRange(true)])
             .then(([loaded]) => {
@@ -748,6 +750,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     onRefresh={refreshAll}
                     onFileSelect={handleWorkingTreeFileSelect}
                     selectedFilePath={selectedWorkingTreeFile}
+                    refreshKey={workingChangesRefreshKey}
                 />
                 {commitListPanel}
             </aside>
