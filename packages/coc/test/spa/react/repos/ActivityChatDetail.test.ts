@@ -856,4 +856,39 @@ describe('ActivityChatDetail', () => {
             expect(bubbleCall).toContain('wsId={workspaceId}');
         });
     });
+
+    describe('plan doc header pill', () => {
+        it('derives planPath from context.files[0] with fallback to planFilePath', () => {
+            const planPathBlock = source.substring(
+                source.indexOf('const planPath'),
+                source.indexOf('const planPath') + 200,
+            );
+            expect(planPathBlock).toContain('task?.payload?.context?.files?.[0]');
+            expect(planPathBlock).toContain('task?.payload?.planFilePath');
+            expect(planPathBlock).toContain("''");
+        });
+
+        it('imports FilePathValue from PendingTaskPayload (not MetaRow)', () => {
+            expect(source).toContain("import { FilePathValue } from '../queue/PendingTaskPayload'");
+            expect(source).not.toContain('MetaRow');
+        });
+
+        it('renders FilePathValue pill with 📄 label when planPath is set', () => {
+            const headerBlock = source.substring(
+                source.indexOf('<Badge status={task.status}'),
+                source.indexOf('<Badge status={task.status}') + 300,
+            );
+            expect(headerBlock).toContain('{planPath && (');
+            expect(headerBlock).toContain('<FilePathValue label="📄" value={planPath}');
+        });
+
+        it('pill is placed after the status Badge in the header', () => {
+            const headerSection = source.substring(
+                source.indexOf('<Badge status={task.status}'),
+                source.indexOf('<Badge status={task.status}') + 300,
+            );
+            expect(headerSection).toContain('{planPath && (');
+            expect(headerSection).toContain('<FilePathValue label="📄" value={planPath}');
+        });
+    });
 });

@@ -33,7 +33,7 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import type { SkillItem } from './SlashCommandMenu';
 import { copyToClipboard, formatConversationAsText, formatDuration, statusIcon, statusLabel } from '../utils/format';
 import { Badge } from '../shared';
-import { MetaRow, FilePathValue } from '../queue/PendingTaskPayload';
+import { FilePathValue } from '../queue/PendingTaskPayload';
 import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel';
 import type { ClientConversationTurn } from '../types/dashboard';
 import { useFloatingChats } from '../context/FloatingChatsContext';
@@ -99,6 +99,12 @@ export interface ActivityChatDetailProps {
 export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline' }: ActivityChatDetailProps) {
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
+
+    // Derive attached plan file path (user-selected at task creation)
+    const planPath: string =
+        task?.payload?.context?.files?.[0] ??
+        task?.payload?.planFilePath ??
+        '';
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);
     const turnsRef = useRef<ClientConversationTurn[]>([]);
     const [loading, setLoading] = useState(true);
@@ -833,6 +839,9 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                         <Badge status={task.status}>
                             {statusIcon(task.status)} {statusLabel(task.status)}
                         </Badge>
+                    )}
+                    {planPath && (
+                        <FilePathValue label="📄" value={planPath} />
                     )}
                     {task?.duration != null && (
                         <span className="text-xs text-[#848484]">{formatDuration(task.duration)}</span>
