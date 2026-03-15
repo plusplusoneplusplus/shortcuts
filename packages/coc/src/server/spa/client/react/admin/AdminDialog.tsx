@@ -20,9 +20,7 @@ export function AdminDialog({ open, onClose }: AdminDialogProps) {
             className="max-w-[900px]"
             id="admin-dialog"
         >
-            <div className="overflow-y-auto max-h-[80vh]">
-                <AdminPanel />
-            </div>
+            <AdminPanel />
         </Dialog>
     );
 }

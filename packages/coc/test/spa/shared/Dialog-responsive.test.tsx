@@ -143,7 +143,20 @@ describe('Dialog responsive layout', () => {
         expect(wrapper.className).toContain('min-h-0');
     });
 
-    it('desktop children wrapper does not have flex-1 min-h-0', () => {
+    it('desktop panel has max-h-[90vh] overflow-hidden for scroll containment', () => {
+        viewportCleanup = mockViewport(1280);
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="Test">
+                <p>Content</p>
+            </Dialog>
+        );
+        const overlay = document.querySelector('[data-testid="dialog-overlay"]') as HTMLElement;
+        const panel = overlay.querySelector(':scope > div') as HTMLElement;
+        expect(panel.className).toContain('max-h-[90vh]');
+        expect(panel.className).toContain('overflow-hidden');
+    });
+
+    it('desktop children wrapper has flex-1 min-h-0 overflow-y-auto for scroll support', () => {
         viewportCleanup = mockViewport(1280);
         render(
             <Dialog open={true} onClose={vi.fn()} title="Test">
@@ -152,7 +165,8 @@ describe('Dialog responsive layout', () => {
         );
         const childContent = document.querySelector('[data-testid="child-content"]') as HTMLElement;
         const wrapper = childContent.parentElement as HTMLElement;
-        expect(wrapper.className).not.toContain('flex-1');
-        expect(wrapper.className).not.toContain('min-h-0');
+        expect(wrapper.className).toContain('flex-1');
+        expect(wrapper.className).toContain('min-h-0');
+        expect(wrapper.className).toContain('overflow-y-auto');
     });
 });
