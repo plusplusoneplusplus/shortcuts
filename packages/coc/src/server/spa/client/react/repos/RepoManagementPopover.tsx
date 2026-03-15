@@ -25,7 +25,13 @@ export function RepoManagementPopover({ open, onClose, repos, onRefresh }: RepoM
             if (e.key === 'Escape') onClose();
         };
         const handleMouseDown = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            const target = e.target as Element;
+            // Don't close when clicking the hamburger toggle button itself;
+            // the button's own onClick handler will toggle the popover.
+            if (target.id === 'hamburger-btn' || target.closest('#hamburger-btn')) {
+                return;
+            }
+            if (containerRef.current && !containerRef.current.contains(target)) {
                 onClose();
             }
         };

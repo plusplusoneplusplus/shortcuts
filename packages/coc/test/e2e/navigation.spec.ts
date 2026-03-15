@@ -86,20 +86,22 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
     });
 
-    test('hamburger button toggles sidebar collapse and expand', async ({ page, serverUrl }) => {
+    test('hamburger button toggles repo management popover open and closed', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         const hamburger = page.locator('#hamburger-btn');
 
-        // Initially expanded (not collapsed)
+        // Initially closed (popover not open)
         await expect(hamburger).toHaveAttribute('aria-pressed', 'false');
 
-        // Click to collapse
+        // Click to open popover
         await hamburger.click();
         await expect(hamburger).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible();
 
-        // Click again to re-expand
+        // Click again to close popover
         await hamburger.click();
         await expect(hamburger).toHaveAttribute('aria-pressed', 'false');
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeHidden();
     });
 
     test('hamburger button is noop when not on Repos tab', async ({ page, serverUrl }) => {
@@ -116,21 +118,19 @@ test.describe('Navigation', () => {
         await expect(hamburger).toHaveAttribute('aria-pressed', 'false');
     });
 
-    test('sidebar collapsed state persists across page reload', async ({ page, serverUrl }) => {
+    test('popover state does not persist across page reload', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
         const hamburger = page.locator('#hamburger-btn');
 
-        // Collapse sidebar
+        // Open popover
         await hamburger.click();
         await expect(hamburger).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeVisible();
 
-        // Verify localStorage was written
-        const stored = await page.evaluate(() => localStorage.getItem('coc-repos-sidebar-collapsed'));
-        expect(stored).toBe('true');
-
-        // Reload and verify sidebar remains collapsed
+        // Reload — popover state is ephemeral, should start closed
         await page.reload();
-        await expect(page.locator('#hamburger-btn')).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('#hamburger-btn')).toHaveAttribute('aria-pressed', 'false');
+        await expect(page.locator('[data-testid="repo-management-popover"]')).toBeHidden();
     });
 
     test('hash navigation routes to Memory tab', async ({ page, serverUrl }) => {
