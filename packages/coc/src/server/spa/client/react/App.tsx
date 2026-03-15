@@ -39,6 +39,7 @@ interface MarkdownReviewDialogState {
 /* @internal – exported for testing only */
 export interface WorkspaceLike {
     id: string;
+    name?: string;
     rootPath?: string;
 }
 
@@ -126,7 +127,13 @@ function AppInner() {
                         appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
                         if (!seenProcessIdsRef.current.has(msg.process.id)) {
                             seenProcessIdsRef.current.add(msg.process.id);
-                            addNotification(buildNotificationEntry(msg.process));
+                            const wsId = msg.process.metadata?.workspaceId;
+                            const ws = wsId
+                                ? (appState.workspaces as WorkspaceLike[]).find(w => w.id === wsId)
+                                : undefined;
+                            const wsName = ws?.name
+                                ?? (ws?.rootPath ? ws.rootPath.replace(/\\/g, '/').split('/').pop() : undefined);
+                            addNotification(buildNotificationEntry(msg.process, wsName));
                         }
                     }
                 }

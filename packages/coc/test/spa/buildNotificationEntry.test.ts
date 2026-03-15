@@ -75,6 +75,32 @@ describe('buildNotificationEntry', () => {
         expect(result.detail).toBe('42s · frontend');
     });
 
+    it('workspaceName overrides workspaceId in detail', () => {
+        const result = buildNotificationEntry(makeProcess(), 'my-repo');
+        expect(result.detail).toBe('42s · my-repo');
+        expect(result.detail).not.toContain('frontend');
+    });
+
+    it('workspaceName prepends [name] to title', () => {
+        const result = buildNotificationEntry(makeProcess({ promptPreview: 'Summarize code', status: 'completed' }), 'my-repo');
+        expect(result.title).toBe('[my-repo] Summarize code completed');
+    });
+
+    it('no workspaceName → no prefix in title', () => {
+        const result = buildNotificationEntry(makeProcess({ promptPreview: 'Summarize code', status: 'completed' }));
+        expect(result.title).toBe('Summarize code completed');
+    });
+
+    it('workspaceName with null promptPreview falls back to "Run" with prefix', () => {
+        const result = buildNotificationEntry(makeProcess({ promptPreview: null }), 'my-repo');
+        expect(result.title).toBe('[my-repo] Run completed');
+    });
+
+    it('workspaceName absent and no workspaceId → detail has no workspace label', () => {
+        const result = buildNotificationEntry(makeProcess({ metadata: undefined }));
+        expect(result.detail).toBe('42s');
+    });
+
     it('unknown status maps to info type', () => {
         const result = buildNotificationEntry(makeProcess({ status: 'unknown' }));
         expect(result.type).toBe('info');

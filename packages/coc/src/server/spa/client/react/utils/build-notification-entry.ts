@@ -25,17 +25,21 @@ const STATUS_TYPE_MAP: Record<string, NotificationEntryInput['type']> = {
     cancelled: 'warning',
 };
 
-export function buildNotificationEntry(process: ProcessLike): NotificationEntryInput {
+export function buildNotificationEntry(process: ProcessLike, workspaceName?: string): NotificationEntryInput {
     const durationSec = process.endTime && process.startTime
         ? Math.round((+new Date(process.endTime as string) - +new Date(process.startTime as string)) / 1000)
         : null;
-    const workspaceLabel = process.metadata?.workspaceId ?? null;
+    const workspaceLabel = workspaceName ?? process.metadata?.workspaceId ?? null;
     const detail = [durationSec != null ? `${durationSec}s` : null, workspaceLabel]
         .filter(Boolean).join(' · ');
+    const promptLabel = process.promptPreview ?? 'Run';
+    const title = workspaceName
+        ? `[${workspaceName}] ${promptLabel} ${process.status}`
+        : `${promptLabel} ${process.status}`;
 
     return {
         type: STATUS_TYPE_MAP[process.status] ?? 'info',
-        title: `${process.promptPreview ?? 'Run'} ${process.status}`,
+        title,
         detail,
         processId: process.id,
     };
