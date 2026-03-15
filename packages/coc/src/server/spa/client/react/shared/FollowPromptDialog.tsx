@@ -57,12 +57,11 @@ export function FollowPromptDialog({ wsId, taskPath, taskName, onClose }: Follow
         (async () => {
             try {
                 const [modelsRes, skillRes] = await Promise.all([
-                    fetch(getApiBase() + '/api/models').then(r => r.ok ? r.json() : []),
+                    fetch(getApiBase() + '/queue/models').then(r => r.ok ? r.json() : { models: [] }),
                     fetch(getApiBase() + `/workspaces/${encodeURIComponent(selectedWsId)}/skills`).then(r => r.ok ? r.json() : null),
                 ]);
                 if (cancelled) return;
-                // /api/models returns ModelInfo[]; extract ids for the select options
-                setModels(Array.isArray(modelsRes) ? modelsRes.map((m: any) => m.id ?? m) : []);
+                setModels(Array.isArray(modelsRes?.models) ? modelsRes.models : []);
                 setSkills(skillRes?.skills ?? []);
             } catch {
                 // ignore

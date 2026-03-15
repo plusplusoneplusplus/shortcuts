@@ -1,9 +1,9 @@
 /**
- * useModels — fetches the server's model registry once and memoises the result.
- * Returns ModelInfo[] (id + tokenLimit + any other metadata from ModelMetadataStore).
+ * useModels — fetches available model IDs from the queue endpoint.
+ * Returns ModelInfo[] for interface compatibility with consumers.
  */
 import { useState, useEffect } from 'react';
-import { fetchApi } from './useApi';
+import { getApiBase } from '../utils/config';
 
 export interface ModelInfo {
     id: string;
@@ -16,8 +16,14 @@ export function useModels(): { models: ModelInfo[]; loading: boolean } {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchApi('/models')
-            .then((data: ModelInfo[]) => setModels(Array.isArray(data) ? data : []))
+        fetch(getApiBase() + '/queue/models')
+            .then(r => (r.ok ? r.json() : { models: [] }))
+            .then((data: { models: string[] }) => {
+                const arr = Array.isArray(data?.models)
+                    ? data.models.map(id => ({ id, tokenLimit: 0 }))
+                    : [];
+                setModels(arr);
+            })
             .catch(() => { /* silently ignore — dialogs stay functional with empty list */ })
             .finally(() => setLoading(false));
     }, []);
