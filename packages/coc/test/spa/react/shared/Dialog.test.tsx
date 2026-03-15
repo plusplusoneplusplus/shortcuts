@@ -1,0 +1,101 @@
+/**
+ * Tests for Dialog shared component.
+ *
+ * Dialog uses useBreakpoint internally. In jsdom, matchMedia is not available,
+ * so useBreakpoint falls back to desktop mode (isMobile=false). This means the
+ * portal overlay is rendered with a backdrop.
+ */
+
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Dialog } from '../../../../src/server/spa/client/react/shared/Dialog';
+
+afterEach(() => {
+    // Clean up any portal nodes appended to document.body
+    document.querySelectorAll('[data-testid="dialog-overlay"]').forEach(el => el.remove());
+});
+
+describe('Dialog', () => {
+    it('renders nothing when open is false', () => {
+        const { container } = render(
+            <Dialog open={false} onClose={vi.fn()}>Content</Dialog>
+        );
+        expect(container.innerHTML).toBe('');
+        expect(screen.queryByTestId('dialog-overlay')).toBeNull();
+    });
+
+    it('renders content when open is true', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()}>
+                <span data-testid="child">Hello</span>
+            </Dialog>
+        );
+        expect(screen.getByTestId('dialog-overlay')).toBeTruthy();
+        expect(screen.getByTestId('child')).toBeTruthy();
+    });
+
+    it('renders the title when provided', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="My Dialog">
+                Content
+            </Dialog>
+        );
+        expect(screen.getByText('My Dialog')).toBeTruthy();
+    });
+
+    it('calls onClose when Escape key is pressed', () => {
+        const onClose = vi.fn();
+        render(<Dialog open={true} onClose={onClose}>Content</Dialog>);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls onClose when close button is clicked', () => {
+        const onClose = vi.fn();
+        render(<Dialog open={true} onClose={onClose} title="Test">Content</Dialog>);
+        fireEvent.click(screen.getByTestId('dialog-close-btn'));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call Escape handler when closed', () => {
+        const onClose = vi.fn();
+        render(<Dialog open={false} onClose={onClose}>Content</Dialog>);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('renders footer when provided', () => {
+        render(
+            <Dialog
+                open={true}
+                onClose={vi.fn()}
+                title="T"
+                footer={<button>Save</button>}
+            >
+                Body
+            </Dialog>
+        );
+        expect(screen.getByText('Save')).toBeTruthy();
+    });
+
+    it('calls onMinimize when minimize button is clicked', () => {
+        const onMinimize = vi.fn();
+        render(
+            <Dialog open={true} onClose={vi.fn()} onMinimize={onMinimize} title="T">
+                Content
+            </Dialog>
+        );
+        fireEvent.click(screen.getByTestId('dialog-minimize-btn'));
+        expect(onMinimize).toHaveBeenCalledTimes(1);
+    });
+
+    it('close button is disabled when disableClose=true', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="T" disableClose>
+                Content
+            </Dialog>
+        );
+        const closeBtn = screen.getByTestId('dialog-close-btn');
+        expect(closeBtn).toBeDisabled();
+    });
+});
