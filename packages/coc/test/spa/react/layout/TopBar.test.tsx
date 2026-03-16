@@ -67,22 +67,24 @@ describe('TopBar responsive behavior', () => {
     it('mobile title "CoC" is visible with md:hidden class', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
-        const mobileTitle = screen.getByText('CoC');
+        const mobileTitle = document.querySelector('[data-tab-mobile="repos"]') as HTMLAnchorElement;
         expect(mobileTitle).toBeTruthy();
         expect(mobileTitle.tagName).toBe('A');
-        expect((mobileTitle as HTMLAnchorElement).href).toContain('#');
+        expect(mobileTitle.href).toContain('#');
         expect(mobileTitle.className).toContain('md:hidden');
     });
 
-    it('desktop title "CoC (Copilot Of Copilot)" has hidden md:inline classes', () => {
+    it('desktop CoC link shows short label with tooltip', () => {
         viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        const desktopTitle = screen.getByText('CoC (Copilot Of Copilot)');
+        const desktopTitle = document.querySelector('[data-tab="repos"]') as HTMLAnchorElement;
         expect(desktopTitle).toBeTruthy();
+        expect(desktopTitle.textContent).toBe('CoC');
         expect(desktopTitle.tagName).toBe('A');
-        expect((desktopTitle as HTMLAnchorElement).href).toContain('#');
+        expect(desktopTitle.href).toContain('#');
         expect(desktopTitle.className).toContain('hidden');
         expect(desktopTitle.className).toContain('md:inline');
+        expect(desktopTitle.title).toBe('Copilot of Copilot');
     });
 
     it('admin link is always present', () => {
