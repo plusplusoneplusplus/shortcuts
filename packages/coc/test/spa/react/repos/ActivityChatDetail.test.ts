@@ -158,9 +158,11 @@ describe('ActivityChatDetail', () => {
             expect(keyBlock).toContain('e.preventDefault()');
         });
 
-        it('Shift+Tab cycles through all three modes in order', () => {
-            expect(MODE_CONFIG_SOURCE).toContain("'ask', 'plan', 'autopilot'");
-            expect(MODE_CONFIG_SOURCE).toContain('% MODES.length');
+        it('Shift+Tab cycles modes via NEXT_MODE map', () => {
+            expect(MODE_CONFIG_SOURCE).toContain('NEXT_MODE');
+            expect(MODE_CONFIG_SOURCE).toContain("ask: 'autopilot'");
+            expect(MODE_CONFIG_SOURCE).toContain("plan: 'autopilot'");
+            expect(MODE_CONFIG_SOURCE).toContain("autopilot: 'ask'");
         });
 
         it('Shift+Tab uses functional state update for mode cycling', () => {

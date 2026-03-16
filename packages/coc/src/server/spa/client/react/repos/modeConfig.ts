@@ -6,8 +6,12 @@ export const MODE_BORDER_COLORS: Record<ChatMode, { border: string; ring: string
     plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus:ring-blue-500/50' },
 };
 
-const MODES: ChatMode[] = ['ask', 'plan', 'autopilot'];
+const NEXT_MODE: Record<ChatMode, ChatMode> = {
+    ask: 'autopilot',
+    plan: 'autopilot',
+    autopilot: 'ask',
+};
 
 export function cycleMode(current: ChatMode): ChatMode {
-    return MODES[(MODES.indexOf(current) + 1) % MODES.length];
+    return NEXT_MODE[current];
 }
