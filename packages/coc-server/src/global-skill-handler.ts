@@ -74,14 +74,10 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
             let skills = listInstalledSkills(globalDir);
 
             // Sort by usage from preferences
-            try {
-                const prefs = readPreferences(dataDir);
-                const usageMap = prefs?.globalSkillUsage;
-                if (usageMap && typeof usageMap === 'object') {
-                    skills = sortSkillsByUsage(skills, usageMap);
-                }
-            } catch {
-                // ignore
+            const prefs = readPreferences(dataDir);
+            const usageMap = prefs?.globalSkillUsage;
+            if (usageMap && typeof usageMap === 'object') {
+                skills = sortSkillsByUsage(skills, usageMap);
             }
 
             sendJSON(res, 200, { skills });
