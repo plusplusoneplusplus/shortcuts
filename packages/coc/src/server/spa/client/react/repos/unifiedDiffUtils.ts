@@ -1,3 +1,5 @@
+import { computeLCS } from '../../diff-utils';
+
 /**
  * Generates a minimal unified diff string compatible with UnifiedDiffViewer.
  * Produces standard unified-diff format with a single hunk covering all changes.
@@ -21,26 +23,6 @@ export function generateUnifiedDiff(
     ];
 
     return [...header, ...diffLines].join('\n');
-}
-
-/**
- * Compute the Longest Common Subsequence table for two string arrays.
- * Returns a 2D table where dp[i][j] = length of LCS of oldLines[0..i-1] and newLines[0..j-1].
- */
-function computeLCS(oldLines: string[], newLines: string[]): number[][] {
-    const m = oldLines.length;
-    const n = newLines.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-    for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-            if (oldLines[i - 1] === newLines[j - 1]) {
-                dp[i][j] = dp[i - 1][j - 1] + 1;
-            } else {
-                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-            }
-        }
-    }
-    return dp;
 }
 
 /**

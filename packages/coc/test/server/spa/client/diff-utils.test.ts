@@ -3,7 +3,38 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeLineDiff, MAX_DIFF_LINES, type DiffLine } from '../../../../src/server/spa/client/diff-utils';
+import { computeLineDiff, computeLCS, MAX_DIFF_LINES, type DiffLine } from '../../../../src/server/spa/client/diff-utils';
+
+describe('computeLCS', () => {
+    it('returns all-zero table for empty inputs', () => {
+        const dp = computeLCS([], []);
+        expect(dp).toEqual([[0]]);
+    });
+
+    it('returns correct LCS length for identical arrays', () => {
+        const lines = ['a', 'b', 'c'];
+        const dp = computeLCS(lines, lines);
+        expect(dp[3][3]).toBe(3);
+    });
+
+    it('returns correct LCS length for disjoint arrays', () => {
+        const dp = computeLCS(['x', 'y'], ['a', 'b']);
+        expect(dp[2][2]).toBe(0);
+    });
+
+    it('returns correct LCS table dimensions', () => {
+        const old = ['a', 'b'];
+        const nw = ['a', 'b', 'c'];
+        const dp = computeLCS(old, nw);
+        expect(dp.length).toBe(3); // m+1
+        expect(dp[0].length).toBe(4); // n+1
+    });
+
+    it('computes LCS of ["a","b","c"] vs ["a","c"] as 2', () => {
+        const dp = computeLCS(['a', 'b', 'c'], ['a', 'c']);
+        expect(dp[3][2]).toBe(2);
+    });
+});
 
 describe('computeLineDiff', () => {
     it('returns context lines for identical strings', () => {

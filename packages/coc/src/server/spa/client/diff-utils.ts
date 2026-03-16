@@ -14,6 +14,27 @@ export interface DiffLine {
 export const MAX_DIFF_LINES = 500;
 
 /**
+ * Compute the Longest Common Subsequence DP table for two string arrays.
+ * Returns a (m+1)×(n+1) table where dp[i][j] is the LCS length of
+ * oldLines[0..i-1] and newLines[0..j-1].
+ */
+export function computeLCS(oldLines: string[], newLines: string[]): number[][] {
+    const m = oldLines.length;
+    const n = newLines.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (oldLines[i - 1] === newLines[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+    return dp;
+}
+
+/**
  * Compute a line-level diff between two strings.
  *
  * Returns an array of DiffLine objects with type 'added', 'removed', or 'context'.
@@ -28,25 +49,12 @@ export function computeLineDiff(oldStr: string, newStr: string): DiffLine[] | nu
         return null;
     }
 
-    // Build LCS table
-    const m = oldLines.length;
-    const n = newLines.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-
-    for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-            if (oldLines[i - 1] === newLines[j - 1]) {
-                dp[i][j] = dp[i - 1][j - 1] + 1;
-            } else {
-                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-            }
-        }
-    }
+    const dp = computeLCS(oldLines, newLines);
 
     // Backtrack to produce diff
     const result: DiffLine[] = [];
-    let i = m;
-    let j = n;
+    let i = oldLines.length;
+    let j = newLines.length;
 
     while (i > 0 || j > 0) {
         if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
