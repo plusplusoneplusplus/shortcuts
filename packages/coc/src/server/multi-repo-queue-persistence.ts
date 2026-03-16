@@ -19,12 +19,12 @@ import {
     getRepoQueueFilePath,
     sanitizeTaskForPersistence,
     atomicWriteJson,
-} from './queue-persistence';
+    restoreRepoQueueState,
+    CURRENT_VERSION,
+    DEBOUNCE_MS,
+    MAX_PERSISTED_HISTORY_DEFAULT,
+} from '@plusplusoneplusplus/coc-server';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline-core';
-
-const CURRENT_VERSION = 3;
-const DEBOUNCE_MS = 300;
-const MAX_PERSISTED_HISTORY_DEFAULT = 100;
 
 // ============================================================================
 // MultiRepoQueuePersistence
@@ -199,88 +199,36 @@ export class MultiRepoQueuePersistence {
             return { restored: 0, historyCount: 0 };
         }
 
-        // v2 → v3 migration: default isPaused to false
-        if (state.version === 2) {
-            state = { ...state, version: 3, isPaused: false };
+        // Apply v2 → v3 migration and validate version before creating any bridge
+        let migratedState = state;
+        if (migratedState.version === 2) {
+            migratedState = { ...migratedState, version: 3, isPaused: false };
         }
-
-        if (state.version !== CURRENT_VERSION) {
+        if (migratedState.version !== CURRENT_VERSION) {
             process.stderr.write(
-                `[MultiRepoQueuePersistence] Unknown version ${state.version} in ${path.basename(filePath)} — skipping\n`
+                `[MultiRepoQueuePersistence] Unknown version ${migratedState.version} in ${path.basename(filePath)} — skipping\n`
             );
             return { restored: 0, historyCount: 0 };
         }
 
         // Get or create the per-repo bridge + queue manager
-        this.bridge.getOrCreateBridge(state.repoRootPath);
-        const queueManager = this.getQueueManager(state.repoRootPath);
+        this.bridge.getOrCreateBridge(migratedState.repoRootPath);
+        const queueManager = this.getQueueManager(migratedState.repoRootPath);
         if (!queueManager) {
             return { restored: 0, historyCount: 0 };
         }
 
-        let restoredPending = 0;
-        const failedFromRunning: QueuedTask[] = [];
-
-        if (Array.isArray(state.pending)) {
-            for (const task of state.pending) {
-                if (task.status === 'running') {
-                    const shouldRequeue = this.restartPolicy === 'requeue' ||
-                        (this.restartPolicy === 'requeue-if-retriable' &&
-                            (task.retryCount ?? 0) < (task.config?.retryAttempts ?? 0));
-
-                    if (shouldRequeue) {
-                        queueManager.enqueue({
-                            type: task.type,
-                            priority: 'high',
-                            payload: task.payload,
-                            config: task.config,
-                            displayName: task.displayName,
-                            repoId: task.repoId,
-                        });
-                        restoredPending++;
-                    } else {
-                        const failedTask: QueuedTask = {
-                            ...task,
-                            status: 'failed',
-                            error: 'Server restarted — task was running when server stopped',
-                            completedAt: Date.now(),
-                        };
-                        failedFromRunning.push(failedTask);
-                    }
-                } else if (task.status === 'queued') {
-                    queueManager.enqueue({
-                        type: task.type,
-                        priority: task.priority,
-                        payload: task.payload,
-                        config: task.config,
-                        displayName: task.displayName,
-                        repoId: task.repoId,
-                    });
-                    restoredPending++;
-                }
-            }
-        }
-
-        const historyToRestore: QueuedTask[] = [];
-        if (failedFromRunning.length > 0) {
-            historyToRestore.push(...failedFromRunning);
-        }
-        if (Array.isArray(state.history)) {
-            historyToRestore.push(...state.history);
-        }
-        if (historyToRestore.length > 0) {
-            queueManager.restoreHistory(historyToRestore);
-        }
-
-        // Restore per-repo pause state
-        if (state.isPaused === true && state.repoId) {
-            queueManager.pauseRepo(state.repoId);
-        }
+        const result = restoreRepoQueueState(
+            migratedState,
+            queueManager,
+            this.restartPolicy,
+            `MultiRepoQueuePersistence/${path.basename(filePath)}`,
+        );
 
         // Subscribe to change events for auto-save
-        this.subscribeToRepo(state.repoRootPath, queueManager);
+        this.subscribeToRepo(migratedState.repoRootPath, queueManager);
 
-        return { restored: restoredPending, historyCount: historyToRestore.length };
+        return result;
     }
 
     // ========================================================================

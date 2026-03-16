@@ -33,9 +33,9 @@ export interface PersistedQueueState {
     isPaused: boolean;
 }
 
-const CURRENT_VERSION = 3;
-const DEBOUNCE_MS = 300;
-const MAX_PERSISTED_HISTORY_DEFAULT = 100;
+export const CURRENT_VERSION = 3;
+export const DEBOUNCE_MS = 300;
+export const MAX_PERSISTED_HISTORY_DEFAULT = 100;
 
 // ============================================================================
 // Helpers
@@ -124,6 +124,103 @@ export interface QueuePersistenceOptions {
     maxPersistedHistory?: number;
     /** Resolve a rootPath to a workspace ID. Required. */
     resolveWorkspaceId: (rootPath: string) => string;
+}
+
+// ============================================================================
+// restoreRepoQueueState — shared pure function
+// ============================================================================
+
+/**
+ * Apply a parsed PersistedQueueState to a TaskQueueManager.
+ * Handles v2→v3 migration, version validation, requeue/fail logic, and pause restore.
+ * Returns { restored, historyCount } or { restored: 0, historyCount: 0 } for unknown versions.
+ *
+ * @param state - Already-parsed persisted state (will be migrated if v2)
+ * @param queueManager - Target queue manager to restore into
+ * @param restartPolicy - How to handle tasks that were running at shutdown
+ * @param label - Optional prefix for log messages (defaults to 'QueuePersistence')
+ */
+export function restoreRepoQueueState(
+    state: PersistedQueueState,
+    queueManager: TaskQueueManager,
+    restartPolicy: RestartPolicy,
+    label?: string,
+): { restored: number; historyCount: number } {
+    const tag = label ?? 'QueuePersistence';
+    let effectiveState = state;
+
+    // v2 → v3 migration: default isPaused to false
+    if (effectiveState.version === 2) {
+        effectiveState = { ...effectiveState, version: 3, isPaused: false };
+    }
+
+    if (effectiveState.version !== CURRENT_VERSION) {
+        process.stderr.write(
+            `[${tag}] Unknown version ${effectiveState.version} — skipping\n`
+        );
+        return { restored: 0, historyCount: 0 };
+    }
+
+    let restoredPending = 0;
+    const failedFromRunning: QueuedTask[] = [];
+
+    if (Array.isArray(effectiveState.pending)) {
+        for (const task of effectiveState.pending) {
+            if (task.status === 'running') {
+                const shouldRequeue = restartPolicy === 'requeue' ||
+                    (restartPolicy === 'requeue-if-retriable' &&
+                        (task.retryCount ?? 0) < (task.config?.retryAttempts ?? 0));
+
+                if (shouldRequeue) {
+                    queueManager.enqueue({
+                        type: task.type,
+                        priority: 'high',
+                        payload: task.payload,
+                        config: task.config,
+                        displayName: task.displayName,
+                        repoId: task.repoId,
+                    });
+                    restoredPending++;
+                } else {
+                    const failedTask: QueuedTask = {
+                        ...task,
+                        status: 'failed',
+                        error: 'Server restarted — task was running when server stopped',
+                        completedAt: Date.now(),
+                    };
+                    failedFromRunning.push(failedTask);
+                }
+            } else if (task.status === 'queued') {
+                queueManager.enqueue({
+                    type: task.type,
+                    priority: task.priority,
+                    payload: task.payload,
+                    config: task.config,
+                    displayName: task.displayName,
+                    repoId: task.repoId,
+                });
+                restoredPending++;
+            }
+        }
+    }
+
+    const historyToRestore: QueuedTask[] = [];
+    if (failedFromRunning.length > 0) {
+        historyToRestore.push(...failedFromRunning);
+    }
+    if (Array.isArray(effectiveState.history)) {
+        historyToRestore.push(...effectiveState.history);
+    }
+    if (historyToRestore.length > 0) {
+        queueManager.restoreHistory(historyToRestore);
+    }
+
+    // Restore per-repo pause state
+    if (effectiveState.isPaused === true && effectiveState.repoId) {
+        queueManager.pauseRepo(effectiveState.repoId);
+    }
+
+    return { restored: restoredPending, historyCount: historyToRestore.length };
 }
 
 // ============================================================================
@@ -229,78 +326,12 @@ export class QueuePersistence {
             return { restored: 0, historyCount: 0 };
         }
 
-        if (state.version === 2) {
-            // Migrate v2 → v3: default to unpaused
-            state = { ...state, version: 3, isPaused: false };
-        }
-
-        if (state.version !== CURRENT_VERSION) {
-            process.stderr.write(
-                `[QueuePersistence] Unknown version ${state.version} in ${path.basename(filePath)} — skipping\n`
-            );
-            return { restored: 0, historyCount: 0 };
-        }
-
-        let restoredPending = 0;
-        const failedFromRunning: QueuedTask[] = [];
-
-        if (Array.isArray(state.pending)) {
-            for (const task of state.pending) {
-                if (task.status === 'running') {
-                    const shouldRequeue = this.restartPolicy === 'requeue' ||
-                        (this.restartPolicy === 'requeue-if-retriable' &&
-                            (task.retryCount ?? 0) < (task.config?.retryAttempts ?? 0));
-
-                    if (shouldRequeue) {
-                        this.queueManager.enqueue({
-                            type: task.type,
-                            priority: 'high',
-                            payload: task.payload,
-                            config: task.config,
-                            displayName: task.displayName,
-                            repoId: task.repoId,
-                        });
-                        restoredPending++;
-                    } else {
-                        const failedTask: QueuedTask = {
-                            ...task,
-                            status: 'failed',
-                            error: 'Server restarted — task was running when server stopped',
-                            completedAt: Date.now(),
-                        };
-                        failedFromRunning.push(failedTask);
-                    }
-                } else if (task.status === 'queued') {
-                    this.queueManager.enqueue({
-                        type: task.type,
-                        priority: task.priority,
-                        payload: task.payload,
-                        config: task.config,
-                        displayName: task.displayName,
-                        repoId: task.repoId,
-                    });
-                    restoredPending++;
-                }
-            }
-        }
-
-        const historyToRestore: QueuedTask[] = [];
-        if (failedFromRunning.length > 0) {
-            historyToRestore.push(...failedFromRunning);
-        }
-        if (Array.isArray(state.history)) {
-            historyToRestore.push(...state.history);
-        }
-        if (historyToRestore.length > 0) {
-            this.queueManager.restoreHistory(historyToRestore);
-        }
-
-        // Restore per-repo pause state
-        if (state.isPaused === true && state.repoId) {
-            this.queueManager.pauseRepo(state.repoId);
-        }
-
-        return { restored: restoredPending, historyCount: historyToRestore.length };
+        return restoreRepoQueueState(
+            state,
+            this.queueManager,
+            this.restartPolicy,
+            `QueuePersistence/${path.basename(filePath)}`,
+        );
     }
 
     // ========================================================================

@@ -49,14 +49,18 @@ vi.mock('../../src/ai-invoker', () => ({
     createCLIAIInvoker: vi.fn().mockReturnValue(vi.fn()),
 }));
 
-vi.mock('../../src/server/image-blob-store', () => ({
-    ImageBlobStore: {
-        loadImages: vi.fn().mockResolvedValue([]),
-        saveImages: vi.fn(),
-        deleteImages: vi.fn(),
-        getBlobsDir: vi.fn(),
-    },
-}));
+vi.mock('@plusplusoneplusplus/coc-server', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-server')>();
+    return {
+        ...actual,
+        ImageBlobStore: {
+            loadImages: vi.fn().mockResolvedValue([]),
+            saveImages: vi.fn(),
+            deleteImages: vi.fn(),
+            getBlobsDir: vi.fn(),
+        },
+    };
+});
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -50,20 +50,17 @@ vi.mock('../../src/ai-invoker', () => ({
 }));
 
 const mockLoadImages = vi.fn().mockResolvedValue([]);
-vi.mock('../../src/server/image-blob-store', () => ({
-    ImageBlobStore: {
-        loadImages: (...args: any[]) => mockLoadImages(...args),
-        saveImages: vi.fn(),
-        deleteImages: vi.fn(),
-        getBlobsDir: vi.fn(),
-    },
-}));
-
 vi.mock('@plusplusoneplusplus/coc-server', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-server')>();
     return {
         ...actual,
         cleanupTempDir: vi.fn(),
+        ImageBlobStore: {
+            loadImages: (...args: any[]) => mockLoadImages(...args),
+            saveImages: vi.fn(),
+            deleteImages: vi.fn(),
+            getBlobsDir: vi.fn(),
+        },
     };
 });
 

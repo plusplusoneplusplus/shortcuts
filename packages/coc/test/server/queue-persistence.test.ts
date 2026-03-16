@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TaskQueueManager, type TaskQueueManagerOptions } from '@plusplusoneplusplus/pipeline-core';
-import { QueuePersistence, getRepoQueueFilePath } from '../../src/server/queue-persistence';
+import { QueuePersistence, getRepoQueueFilePath } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
 // Helpers

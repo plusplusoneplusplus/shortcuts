@@ -68,7 +68,7 @@ export { importData } from './data-importer';
 export { atomicWriteJSON, getErrorMessage, resolveCollision } from './shared/fs-utils';
 
 // Queue persistence
-export { QueuePersistence, getRepoQueueFilePath, atomicWriteJson, sanitizeTaskForPersistence } from './queue/queue-persistence';
+export { QueuePersistence, getRepoQueueFilePath, atomicWriteJson, sanitizeTaskForPersistence, restoreRepoQueueState, CURRENT_VERSION, DEBOUNCE_MS, MAX_PERSISTED_HISTORY_DEFAULT } from './queue/queue-persistence';
 export type { PersistedQueueState, QueuePersistenceOptions, RestartPolicy } from './queue/queue-persistence';
 export { ImageBlobStore } from './queue/image-blob-store';
 
@@ -179,6 +179,9 @@ export * from './providers';
 // Debounced watcher registry (shared utility for file watching with debounce)
 export { DebouncedWatcherRegistry } from './shared/debounced-watcher-registry';
 export type { WatchOptions } from './shared/debounced-watcher-registry';
+
+// Shared queue utilities
+export { truncateDisplayName, applyFollowUpToTask } from './shared/queue-utils';
 
 // Shared handler utilities
 export { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';

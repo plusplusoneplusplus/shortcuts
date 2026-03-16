@@ -645,7 +645,7 @@ export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
 export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 export { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
-export { QueuePersistence } from './queue-persistence';
+export { QueuePersistence } from '@plusplusoneplusplus/coc-server';
 export { OutputPruner } from './output-pruner';
 export { StaleTaskDetector } from './stale-task-detector';
 export type { StaleTaskDetectorOptions } from './stale-task-detector';

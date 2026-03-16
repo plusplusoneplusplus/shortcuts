@@ -17,8 +17,8 @@ import {
     sanitizeTaskForPersistence,
     QueuePersistence,
     getRepoQueueFilePath,
-} from '../../src/server/queue-persistence';
-import { ImageBlobStore } from '../../src/server/image-blob-store';
+} from '@plusplusoneplusplus/coc-server';
+import { ImageBlobStore } from '@plusplusoneplusplus/coc-server';
 
 // SDK mock — needed for multi-repo tests
 import { createMockSDKService } from '../helpers/mock-sdk-service';

@@ -7,9 +7,9 @@ export const MODE_BORDER_COLORS: Record<ChatMode, { border: string; ring: string
 };
 
 const NEXT_MODE: Record<ChatMode, ChatMode> = {
-    ask: 'autopilot',
-    plan: 'autopilot',
     autopilot: 'ask',
+    ask: 'plan',
+    plan: 'autopilot',
 };
 
 export function cycleMode(current: ChatMode): ChatMode {

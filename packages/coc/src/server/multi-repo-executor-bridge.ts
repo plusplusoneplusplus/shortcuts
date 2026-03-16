@@ -18,6 +18,7 @@ import {
     getCopilotSDKService,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, QueueChangeEvent, CreateTaskInput, QueuedTask, QueueStats, Attachment } from '@plusplusoneplusplus/pipeline-core';
+import { applyFollowUpToTask } from '@plusplusoneplusplus/coc-server';
 import {
     QueueExecutorBridgeOptions,
     QueueExecutorBridge,
@@ -155,6 +156,33 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
     }
 
     /**
+     * Find the TaskQueueManager that owns a given task by id.
+     * Returns undefined if the task is not found in any repo queue.
+     */
+    findManagerForTask(taskId: string): TaskQueueManager | undefined {
+        for (const m of this.registry.getAllQueues().values()) {
+            if (m.getTask(taskId)) return m;
+        }
+        return undefined;
+    }
+
+    /**
+     * Get the TaskQueueManager for a given repoId (workspace ID).
+     * Returns undefined if no manager has been registered for that repoId.
+     */
+    getManagerByRepoId(repoId: string): TaskQueueManager | undefined {
+        const rootPath = this.repoIdToPath.get(repoId);
+        if (!rootPath) {
+            // Fallback: scan all managers by path-derived repoId
+            for (const [path, m] of this.registry.getAllQueues()) {
+                if (this.getRepoIdForPath(path) === repoId) return m;
+            }
+            return undefined;
+        }
+        return this.registry.getAllQueues().get(rootPath);
+    }
+
+    /**
      * Returns a shallow-copy map of normalized rootPath → QueueExecutorBridge.
      */
     getAllBridges(): Map<string, QueueExecutorBridge> {
@@ -261,27 +289,8 @@ export class MultiRepoQueueExecutorBridge extends EventEmitter {
      */
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string): Promise<void> {
         for (const manager of this.registry.getAllQueues().values()) {
-            const task = manager.getTask(taskId);
-            if (!task) continue;
-
-            const snippet = prompt.trim();
-            const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
-            manager.updateTask(taskId, {
-                displayName,
-                payload: {
-                    ...task.payload,
-                    prompt,
-                    processId: task.processId,
-                    attachments,
-                    imageTempDir,
-                    ...(mode ? { mode } : {}),
-                    ...(deliveryMode ? { deliveryMode } : {}),
-                },
-            });
-
-            if (!manager.requeueFromHistory(taskId)) {
-                throw new Error(`Task ${taskId} is not available in history`);
-            }
+            if (!manager.getTask(taskId)) continue;
+            applyFollowUpToTask(manager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode);
             return;
         }
         throw new Error(`Task ${taskId} not found in any queue`);

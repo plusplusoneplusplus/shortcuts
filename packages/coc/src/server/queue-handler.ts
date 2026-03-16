@@ -11,9 +11,8 @@
 
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/pipeline-core';
 import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
-import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody, ImageBlobStore, truncateDisplayName } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import { ImageBlobStore } from './image-blob-store';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import * as url from 'url';
 import * as path from 'path';
@@ -44,13 +43,11 @@ function generateDisplayName(type: string, payload: any): string {
     if (payload) {
         // Chat follow-up: use prompt text
         if (payload.kind === 'chat' && payload.processId && typeof payload.prompt === 'string' && payload.prompt.trim()) {
-            const snippet = payload.prompt.trim();
-            return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+            return truncateDisplayName(payload.prompt.trim());
         }
         // Chat with prompt: use prompt text
         if (typeof payload.prompt === 'string' && payload.prompt.trim()) {
-            const snippet = payload.prompt.trim();
-            return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+            return truncateDisplayName(payload.prompt.trim());
         }
         // Chat with context files: use first file path basename
         if (payload.context?.files?.length > 0) {
@@ -250,22 +247,18 @@ function aggregateStats(bridge: MultiRepoQueueExecutorBridge): QueueStats {
 
 /**
  * Search for a task across all per-repo managers and return the owning manager.
+ * @deprecated Use bridge.findManagerForTask(id) instead.
  */
 function findTaskManager(bridge: MultiRepoQueueExecutorBridge, id: string): TaskQueueManager | undefined {
-    for (const m of bridge.registry.getAllQueues().values()) {
-        if (m.getTask(id)) { return m; }
-    }
-    return undefined;
+    return bridge.findManagerForTask(id);
 }
 
 /**
  * Get the TaskQueueManager for a given repoId, or undefined if not found.
+ * @deprecated Use bridge.getManagerByRepoId(repoId) instead.
  */
 function getManagerByRepoId(bridge: MultiRepoQueueExecutorBridge, repoId: string): TaskQueueManager | undefined {
-    for (const [rootPath, m] of bridge.registry.getAllQueues()) {
-        if (bridge.getRepoIdForPath(rootPath) === repoId) { return m; }
-    }
-    return undefined;
+    return bridge.getManagerByRepoId(repoId);
 }
 
 /**

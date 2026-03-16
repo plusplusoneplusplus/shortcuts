@@ -35,6 +35,8 @@ import {
     hasResolveCommentsContext,
     hasReplicationContext,
     saveImagesToTempFiles,
+    ImageBlobStore,
+    applyFollowUpToTask,
 } from '@plusplusoneplusplus/coc-server';
 import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
 import {
@@ -81,7 +83,6 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { createCLIAIInvoker } from '../ai-invoker';
-import { ImageBlobStore } from './image-blob-store';
 import { OutputFileManager } from './output-file-manager';
 import { resolveTaskRoot } from './task-root-resolver';
 
@@ -272,25 +273,7 @@ export class CLITaskExecutor implements TaskExecutor {
         if (!task) {
             throw new Error(`Task ${taskId} not found`);
         }
-
-        const snippet = prompt.trim();
-        const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
-        this.queueManager.updateTask(taskId, {
-            displayName,
-            payload: {
-                ...task.payload,
-                prompt,
-                processId: task.processId,
-                attachments,
-                imageTempDir,
-                ...(mode ? { mode } : {}),
-                ...(deliveryMode ? { deliveryMode } : {}),
-            },
-        });
-
-        if (!this.queueManager.requeueFromHistory(taskId)) {
-            throw new Error(`Task ${taskId} is not available in history`);
-        }
+        applyFollowUpToTask(this.queueManager, taskId, prompt, attachments, imageTempDir, mode, deliveryMode);
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
