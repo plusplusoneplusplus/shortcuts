@@ -64,12 +64,7 @@ export interface GenerateResult {
     suggestedName?: string;
 }
 
-export interface RefineResult {
-    yaml: string;
-    valid: boolean;
-    validationError?: string;
-    suggestedName?: string;
-}
+export type RefineResult = GenerateResult;
 
 export async function generateWorkflow(
     workspaceId: string,
