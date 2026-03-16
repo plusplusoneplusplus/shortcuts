@@ -145,10 +145,11 @@ export function EnqueueDialog() {
         if (effectiveSkills.length === 0 && !effectivePrompt) return;
         setSubmitting(true);
         try {
+            let body: any;
             if (isAskMode) {
                 // Ask mode: create a read-only chat task
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                const body: any = {
+                body = {
                     type: 'chat',
                     priority: 'normal',
                     payload: {
@@ -162,11 +163,6 @@ export function EnqueueDialog() {
                     images: images.length > 0 ? images : undefined,
                 };
                 if (model) body.config = { model };
-                await fetch(getApiBase() + '/queue/tasks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
             } else if (effectiveSkills.length > 0) {
                 // Skill-based task
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
@@ -174,7 +170,7 @@ export function EnqueueDialog() {
                 const displayName = effectiveSkills.length === 1
                     ? `Skill: ${effectiveSkills[0]}`
                     : `Skills: ${effectiveSkills.join(', ')}`;
-                const body: any = {
+                body = {
                     type: 'chat',
                     priority: 'normal',
                     displayName,
@@ -190,15 +186,10 @@ export function EnqueueDialog() {
                     images: images.length > 0 ? images : undefined,
                 };
                 if (model) body.config = { model };
-                await fetch(getApiBase() + '/queue/tasks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
             } else {
                 // Freeform prompt
                 const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-                const body: any = {
+                body = {
                     type: 'chat',
                     priority: 'normal',
                     payload: {
@@ -210,12 +201,12 @@ export function EnqueueDialog() {
                     images: images.length > 0 ? images : undefined,
                 };
                 if (model) body.config = { model };
-                await fetch(getApiBase() + '/queue/tasks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
             }
+            await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
             setPrompt('');
             setSelectedSkills([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
