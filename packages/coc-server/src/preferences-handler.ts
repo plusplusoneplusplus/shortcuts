@@ -10,7 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError } from './api-handler';
+import { sendJSON } from './api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import type { Route } from './types';
 
