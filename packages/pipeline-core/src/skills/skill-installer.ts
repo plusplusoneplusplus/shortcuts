@@ -75,7 +75,7 @@ export async function installSkills(
                     continue;
                 }
 
-                await removeDirectory(targetPath);
+                fs.rmSync(targetPath, { recursive: true, force: true });
             }
 
             if (source.type === 'github' && source.github) {
@@ -242,9 +242,4 @@ async function installFromLocal(sourcePath: string, targetPath: string): Promise
     }
 }
 
-/**
- * Remove a directory recursively
- */
-async function removeDirectory(dirPath: string): Promise<void> {
-    fs.rmSync(dirPath, { recursive: true, force: true });
-}
+
