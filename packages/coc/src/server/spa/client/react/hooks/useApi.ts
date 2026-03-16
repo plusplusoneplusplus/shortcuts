@@ -15,7 +15,3 @@ export async function fetchApi(path: string, options?: RequestInit): Promise<any
     if (res.status === 204) return undefined;
     return res.json();
 }
-
-export function useApi() {
-    return { fetchApi };
-}
