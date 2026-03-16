@@ -8,7 +8,7 @@ export const MODE_BORDER_COLORS: Record<ChatMode, { border: string; ring: string
 
 const NEXT_MODE: Record<ChatMode, ChatMode> = {
     autopilot: 'ask',
-    ask: 'plan',
+    ask: 'autopilot',
     plan: 'autopilot',
 };
 
