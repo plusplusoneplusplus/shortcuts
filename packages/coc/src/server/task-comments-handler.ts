@@ -390,7 +390,7 @@ function findMissingField(body: any): string | null {
 
 /** Validate workspace ID to prevent path traversal. */
 function isValidWorkspaceId(wsId: string): boolean {
-    return /^[a-zA-Z0-9_-]+$/.test(wsId) && !wsId.includes('..');
+    return /^[a-zA-Z0-9_-]+$/.test(wsId);
 }
 
 // ============================================================================

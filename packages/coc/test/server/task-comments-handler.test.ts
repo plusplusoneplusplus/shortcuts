@@ -893,6 +893,14 @@ describe('Task Comments REST API', () => {
             expect([400, 404]).toContain(res.status);
         });
 
+        it('rejects workspace IDs containing dots (regex alone is sufficient)', async () => {
+            // Regression: the `!wsId.includes('..')` check was redundant because
+            // `^[a-zA-Z0-9_-]+$` never allows dots in the first place.
+            const dotId = encodeURIComponent('ws..id');
+            const res = await getJSON(`${baseUrl}/api/comments/${dotId}/task.md`);
+            expect([400, 404]).toContain(res.status);
+        });
+
         it('accepts valid workspace IDs with hyphens and underscores', async () => {
             const res = await getJSON(`${baseUrl}/api/comments/my-workspace_01/task.md`);
             expect(res.status).toBe(200);
