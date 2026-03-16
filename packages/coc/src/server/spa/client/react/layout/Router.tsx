@@ -11,11 +11,14 @@ import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { lazy, Suspense } from 'react';
 
+import { lazy, Suspense } from 'react';
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
+
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
+const UsageStatsView = lazy(() => import('../views/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 const LogsView = lazy(() => import('../views/logs/LogsView').then(m => ({ default: m.LogsView })));
-import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -27,6 +30,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'repos' || h === 'tasks') return 'repos';
     if (h === 'wiki') return 'wiki';
     if (h === 'reports') return 'reports';
+    if (h === 'stats') return 'stats';
     if (h === 'memory') return 'memory';
     if (h === 'skills') return 'skills';
     if (h === 'logs') return 'logs';
@@ -401,6 +405,12 @@ export function Router() {
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <LogsView />
+                </Suspense>
+            );
+        case 'stats':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <UsageStatsView />
                 </Suspense>
             );
         case 'reports':
