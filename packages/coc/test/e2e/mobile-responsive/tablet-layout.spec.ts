@@ -70,9 +70,9 @@ test.describe('Tablet Layout', () => {
     test('tablet: dialog renders as centered modal', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#processes`);
         await expect(page.locator('#view-processes')).toBeVisible({ timeout: 10000 });
-        // MiniReposSidebar is visible on non-repos pages; its add button opens AddRepoDialog directly
-        await expect(page.locator('[data-testid="mini-repos-sidebar"]')).toBeVisible({ timeout: 5000 });
-        await page.click('[data-testid="mini-add-btn"]');
+        // Open AddRepoDialog via the RepoTabStrip add button (mini sidebar was removed)
+        await page.click('[data-testid="repo-tab-add-btn"]');
+        await page.click('[data-testid="repo-tab-add-repo-option"]');
 
         const overlay = page.locator('#add-repo-overlay');
         await expect(overlay).toBeVisible();
