@@ -54,8 +54,13 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const [fullTask, setFullTask] = useState<any>(null);
 
     // Derive attached plan file path (user-selected at task creation)
+    function isAbsolutePath(v: unknown): v is string {
+        if (typeof v !== 'string') return false;
+        return v.startsWith('/') || /^[A-Za-z]:[/\\]/.test(v);
+    }
+    const rawContextFile = task?.payload?.context?.files?.[0];
     const planPath: string =
-        task?.payload?.context?.files?.[0] ??
+        (isAbsolutePath(rawContextFile) ? rawContextFile : undefined) ??
         task?.payload?.planFilePath ??
         '';
     const [turns, setTurns] = useState<ClientConversationTurn[]>([]);

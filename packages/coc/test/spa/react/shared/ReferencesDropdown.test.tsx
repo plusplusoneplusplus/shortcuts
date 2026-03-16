@@ -73,4 +73,11 @@ describe('ReferencesDropdown', () => {
         fireEvent.mouseDown(screen.getByTestId('outside'));
         expect(document.querySelector('[data-full-path="/plan.md"]')).toBeNull();
     });
+
+    it('popover has max-width and scroll constraints', () => {
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+        const popover = document.querySelector('.max-w-\\[320px\\]');
+        expect(popover).not.toBeNull();
+    });
 });

@@ -852,12 +852,21 @@ describe('ActivityChatDetail', () => {
     describe('plan doc header pill', () => {
         it('derives planPath from context.files[0] with fallback to planFilePath', () => {
             const planPathBlock = source.substring(
-                source.indexOf('const planPath'),
-                source.indexOf('const planPath') + 200,
+                source.indexOf('const rawContextFile'),
+                source.indexOf('const rawContextFile') + 300,
             );
             expect(planPathBlock).toContain('task?.payload?.context?.files?.[0]');
             expect(planPathBlock).toContain('task?.payload?.planFilePath');
             expect(planPathBlock).toContain("''");
+        });
+
+        it('guards context.files[0] with isAbsolutePath check', () => {
+            expect(source).toContain('isAbsolutePath');
+            const isAbsBlock = source.substring(
+                source.indexOf('function isAbsolutePath'),
+                source.indexOf('function isAbsolutePath') + 200,
+            );
+            expect(isAbsBlock).toContain("v.startsWith('/')");
         });
 
         it('uses ReferencesDropdown for plan path display (inline pill replaced)', () => {

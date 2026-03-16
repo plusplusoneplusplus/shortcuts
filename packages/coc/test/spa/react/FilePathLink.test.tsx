@@ -45,10 +45,10 @@ describe('FilePathLink', () => {
         expect(span?.className).toContain('text-red');
     });
 
-    it('includes break-all class', () => {
+    it('includes truncate class', () => {
         const { container } = render(<FilePathLink path="/tmp/test.ts" />);
         const span = container.querySelector('.file-path-link');
-        expect(span?.className).toContain('break-all');
+        expect(span?.className).toContain('truncate');
     });
 
     it('returns null for empty path', () => {

@@ -20,7 +20,7 @@ export function FilePathLink({ path, className, shorten = true }: FilePathLinkPr
     const normalized = toForwardSlashes(path);
     return (
         <span
-            className={`file-path-link break-all ${className ?? ''}`}
+            className={`file-path-link truncate max-w-[260px] ${className ?? ''}`}
             data-full-path={normalized}
             title={normalized}
         >
