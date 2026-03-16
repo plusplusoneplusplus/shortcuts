@@ -9,19 +9,13 @@ import { useItemProcessEvents } from '../../hooks/useItemProcessEvents';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { fetchApi } from '../../hooks/useApi';
 import { formatDuration, statusIcon } from '../../utils/format';
+import { detectDarkMode } from '../../utils/theme';
 import { BottomSheet } from '../../shared';
 import type { PhaseDetail } from './WorkflowPhasePopover';
 
 export interface WorkflowDetailViewProps {
     processId: string;
     onNavigateToProcess?: (processId: string) => void;
-}
-
-function detectDarkMode(): boolean {
-    if (typeof document !== 'undefined') {
-        return document.documentElement.classList.contains('dark');
-    }
-    return false;
 }
 
 export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowDetailViewProps) {

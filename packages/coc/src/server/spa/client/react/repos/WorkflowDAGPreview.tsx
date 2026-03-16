@@ -8,18 +8,12 @@ import { WorkflowDAGChart as LinearDAGChart } from '../processes/dag';
 import { DAGLegend } from '../processes/dag/DAGLegend';
 import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildPreviewDAG } from './buildPreviewDAG';
+import { detectDarkMode } from '../utils/theme';
 
 export interface WorkflowDAGPreviewProps {
     yamlContent: string;
     /** Pipeline validation errors to display as pins on DAG nodes */
     validationErrors?: string[];
-}
-
-function detectDarkMode(): boolean {
-    if (typeof document !== 'undefined') {
-        return document.documentElement.classList.contains('dark');
-    }
-    return false;
 }
 
 export function WorkflowDAGPreview({ yamlContent, validationErrors }: WorkflowDAGPreviewProps) {

@@ -3,19 +3,13 @@ import { WorkflowDAGChart } from './WorkflowDAGChart';
 import { buildDAGData } from './buildDAGData';
 import { useWorkflowPhase } from '../../hooks/useWorkflowPhase';
 import { formatDuration, statusIcon } from '../../utils/format';
+import { detectDarkMode } from '../../utils/theme';
 import type { PhaseDetail } from './WorkflowPhasePopover';
 
 export interface WorkflowDAGSectionProps {
     process: any;
     eventSourceRef?: RefObject<EventSource | null>;
     onScrollToConversation?: (phaseName: string) => void;
-}
-
-function detectDarkMode(): boolean {
-    if (typeof document !== 'undefined') {
-        return document.documentElement.classList.contains('dark');
-    }
-    return false;
 }
 
 export function WorkflowDAGSection({ process, eventSourceRef, onScrollToConversation }: WorkflowDAGSectionProps) {
