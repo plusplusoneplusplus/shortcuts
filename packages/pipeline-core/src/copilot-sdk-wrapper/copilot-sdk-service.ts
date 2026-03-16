@@ -16,8 +16,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { AIInvocationResult } from '../ai/types';
-import { ToolCall, ToolCallPermissionRequest, ToolCallPermissionResult } from '../ai/process-types';
+import { ToolCall } from '../ai/process-types';
 import { getAIServiceLogger, createSessionLogger } from '../ai-logger';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
 import { ensureFolderTrusted } from './trusted-folder';
