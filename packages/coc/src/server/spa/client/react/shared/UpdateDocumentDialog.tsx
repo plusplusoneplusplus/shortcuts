@@ -76,7 +76,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                 // Only auto-update the prompt if user hasn't edited it
                 const oldDefault = `Update the document at "${taskPath}" `;
                 const curDefault = prev.startsWith('Update the document at "') && prev.endsWith('" ');
-                if (prev === '' || prev === oldDefault || curDefault) {
+                if (prev === oldDefault || curDefault) {
                     return `Update the document at "${full}" `;
                 }
                 return prev;
