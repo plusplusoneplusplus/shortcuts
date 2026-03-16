@@ -188,6 +188,31 @@ describe('buildBatchResolvePrompt', () => {
         expect(prompt).toContain('**Replies:**');
         expect(prompt).toContain('> Bob: I agree with this.');
     });
+
+    it('trims author and category exactly once (regression: no double-trim)', () => {
+        // Values with surrounding whitespace should be trimmed and emitted without the whitespace.
+        const prompt = buildBatchResolvePrompt(
+            [makeComment({ author: '  Alice  ', category: '  style  ' })],
+            '# Doc',
+            'file.md'
+        );
+
+        expect(prompt).toContain('**Author:** Alice');
+        expect(prompt).toContain('**Category:** style');
+        expect(prompt).not.toContain('**Author:**   Alice  ');
+        expect(prompt).not.toContain('**Category:**   style  ');
+    });
+
+    it('omits author and category when they are whitespace-only', () => {
+        const prompt = buildBatchResolvePrompt(
+            [makeComment({ author: '   ', category: '\t' })],
+            '# Doc',
+            'file.md'
+        );
+
+        expect(prompt).not.toContain('**Author:**');
+        expect(prompt).not.toContain('**Category:**');
+    });
 });
 
 // ============================================================================

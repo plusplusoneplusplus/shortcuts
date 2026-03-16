@@ -956,11 +956,13 @@ export function buildBatchResolvePrompt(
         prompt += c.selectedText;
         prompt += '\n```\n\n';
         prompt += `**Comment:** ${c.comment}\n\n`;
-        if (c.author?.trim()) {
-            prompt += `**Author:** ${c.author.trim()}\n\n`;
+        const author = c.author?.trim();
+        if (author) {
+            prompt += `**Author:** ${author}\n\n`;
         }
-        if (c.category?.trim()) {
-            prompt += `**Category:** ${c.category.trim()}\n\n`;
+        const category = c.category?.trim();
+        if (category) {
+            prompt += `**Category:** ${category}\n\n`;
         }
         if (Array.isArray(c.tags) && c.tags.length > 0) {
             const tags = c.tags.map(tag => tag.trim()).filter(Boolean);
