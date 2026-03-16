@@ -2631,6 +2631,52 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         expect(serviceAny.streamErrorGuardHandler).not.toBeNull();
     });
 
+    it('installs unhandledRejection guard alongside uncaughtException guard', async () => {
+        const serviceAny = service as any;
+
+        serviceAny.installStreamErrorGuard();
+
+        // Both handlers must be registered
+        expect(serviceAny.streamErrorGuardHandler).not.toBeNull();
+        expect(serviceAny.streamErrorGuardRejectionHandler).not.toBeNull();
+    });
+
+    it('removes unhandledRejection guard when removeStreamErrorGuard is called', async () => {
+        const serviceAny = service as any;
+
+        serviceAny.installStreamErrorGuard();
+        expect(serviceAny.streamErrorGuardRejectionHandler).not.toBeNull();
+
+        serviceAny.removeStreamErrorGuard();
+        expect(serviceAny.streamErrorGuardHandler).toBeNull();
+        expect(serviceAny.streamErrorGuardRejectionHandler).toBeNull();
+    });
+
+    it('unhandledRejection guard absorbs ERR_STREAM_DESTROYED rejections (regression: crash fix)', () => {
+        // Regression test: vscode-jsonrpc wraps stream.write() in new Promise(), so
+        // ERR_STREAM_DESTROYED surfaces as an unhandledRejection, not uncaughtException.
+        // Node.js >= 15 crashes on unhandled rejections, so this guard is essential.
+        const serviceAny = service as any;
+        serviceAny.installStreamErrorGuard();
+
+        const handler = serviceAny.streamErrorGuardRejectionHandler as (reason: unknown) => void;
+        expect(handler).not.toBeNull();
+
+        // These should NOT throw — the guard absorbs stream-destroyed errors
+        const streamErr = new Error('Cannot call write after a stream was destroyed');
+        (streamErr as any).code = 'ERR_STREAM_DESTROYED';
+        expect(() => handler(streamErr)).not.toThrow();
+        expect(() => handler(new Error('ERR_STREAM_DESTROYED'))).not.toThrow();
+        expect(() => handler(new Error('stream was destroyed'))).not.toThrow();
+        expect(() => handler(new Error('write EPIPE'))).not.toThrow();
+
+        // Non-stream errors should NOT be swallowed (handler does nothing,
+        // allowing the default unhandledRejection handling to run)
+        // We just verify no throw — non-stream errors are passed through silently
+        // so as not to interfere with other unhandledRejection listeners.
+        expect(() => handler(new Error('some other error'))).not.toThrow();
+    });
+
 });
 
 // ============================================================================

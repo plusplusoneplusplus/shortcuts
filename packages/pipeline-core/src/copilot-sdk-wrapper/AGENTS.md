@@ -35,6 +35,7 @@ sendMessage(cwd="/project-b")  →  CopilotClient(cwd="/project-b")  →  Sessio
 | `availabilityCache` | `SDKAvailabilityResult` | Cached SDK availability check |
 | `activeSessions` | `Map<string, ICopilotSession>` | In-flight sessions tracked for cancellation |
 | `streamErrorGuardHandler` | `uncaughtException` listener | Absorbs `ERR_STREAM_DESTROYED` from SDK stdio |
+| `streamErrorGuardRejectionHandler` | `unhandledRejection` listener | Absorbs `ERR_STREAM_DESTROYED` surfacing as promise rejections (vscode-jsonrpc wraps writes in `new Promise`) |
 | `disposed` | boolean | Guard preventing calls after `dispose()` |
 
 ## Session Lifecycle
@@ -124,13 +125,13 @@ When the `view` tool completes on an image file (`png/jpg/gif/webp/svg`, ≤10MB
 
 ## Stream Error Guard
 
-Installed once when the SDK module is first loaded. Attaches `process.on('uncaughtException')` that swallows errors matching `STREAM_DESTROYED_PATTERNS`:
+Installed once when the SDK module is first loaded. Attaches both `process.on('uncaughtException')` and `process.on('unhandledRejection')` that swallow errors matching `STREAM_DESTROYED_PATTERNS`:
 
 - `'stream was destroyed'`, `'ERR_STREAM_DESTROYED'`, `'cannot call write after a stream was destroyed'`, `'EPIPE'`, `'ECONNRESET'`
 
-**Why needed**: The SDK's `connectViaStdio()` installs a stdin error listener that re-throws `ERR_STREAM_DESTROYED` when the CLI process exits unexpectedly. This would crash the host process as an uncaught exception. The guard absorbs these so the normal error-return path handles them gracefully.
+**Why needed**: The SDK's `connectViaStdio()` installs a stdin error listener that re-throws `ERR_STREAM_DESTROYED` when the CLI process exits unexpectedly. This can surface as either an uncaught exception (direct throw path) or an unhandled rejection (`vscode-jsonrpc` wraps `stream.write()` inside `new Promise()`, so when Node.js calls the write callback synchronously with the error, the rejection can escape the `vscode-jsonrpc` promise chain). Both forms crash Node.js >= 15. Both guards absorb these errors so the normal error-return path handles them gracefully.
 
-Non-matching exceptions are re-thrown to preserve default behavior. Removed during `cleanup()`.
+Non-matching exceptions are re-thrown (uncaughtException path) or left for other listeners (unhandledRejection path). Both are removed during `cleanup()`.
 
 ## MCP Configuration
 

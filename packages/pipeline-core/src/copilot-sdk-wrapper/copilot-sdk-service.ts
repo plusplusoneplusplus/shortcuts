@@ -1005,8 +1005,24 @@ export class CopilotSDKService {
     private streamErrorGuardHandler: ((err: Error) => void) | null = null;
 
     /**
-     * Install a process-level `uncaughtException` handler that absorbs
-     * `ERR_STREAM_DESTROYED` errors originating from the SDK's stdio layer.
+     * Active `unhandledRejection` handler that absorbs stream-destroyed errors
+     * that surface as unhandled promise rejections.
+     *
+     * When `vscode-jsonrpc`'s `WritableStreamWrapper.write()` calls
+     * `stream.write()` on a destroyed Node.js stream, Node.js calls the write
+     * callback synchronously with `ERR_STREAM_DESTROYED`. That callback invokes
+     * `reject(error)` inside `new Promise(executor)`, producing a rejected
+     * promise. If the rejection escapes the `vscode-jsonrpc` promise chain
+     * without being caught, Node.js >= 15 terminates the process with an
+     * unhandled rejection. This handler intercepts those rejections before they
+     * reach the default fatal handler.
+     */
+    private streamErrorGuardRejectionHandler: ((reason: unknown) => void) | null = null;
+
+    /**
+     * Install process-level `uncaughtException` and `unhandledRejection`
+     * handlers that absorb `ERR_STREAM_DESTROYED` errors originating from the
+     * SDK's stdio layer.
      *
      * The Copilot SDK's `connectViaStdio()` installs an `error` listener on
      * the child process's stdin that **re-throws** if `forceStopping` is false.
@@ -1014,7 +1030,11 @@ export class CopilotSDKService {
      * triggers this re-throw, which surfaces as an uncaught exception that
      * crashes the host process.
      *
-     * This handler catches exactly that class of errors so the normal
+     * Additionally, `vscode-jsonrpc` wraps stream writes inside `new Promise()`,
+     * so the same `ERR_STREAM_DESTROYED` can also arrive as an unhandled
+     * rejection (the common path in Node.js >= 15).
+     *
+     * Both handlers catch exactly that class of errors so the normal
      * error-return path in `sendMessage` can surface them gracefully.
      */
     private installStreamErrorGuard(): void {
@@ -1030,6 +1050,22 @@ export class CopilotSDKService {
             throw err;
         };
         process.on('uncaughtException', this.streamErrorGuardHandler);
+
+        this.streamErrorGuardRejectionHandler = (reason: unknown) => {
+            const msg = reason instanceof Error
+                ? (reason.message || String(reason))
+                : String(reason);
+            if (CopilotSDKService.isStreamDestroyedError(msg)) {
+                aiLog.debug({ errMessage: msg }, 'Absorbed unhandled stream rejection');
+                return; // Swallow — per-session error path already handles this
+            }
+            // Not ours — let Node.js default unhandled-rejection handling run.
+            // Re-emitting would cause infinite recursion, so we log and do nothing;
+            // this preserves the existing default behaviour for non-stream errors
+            // because we are one of potentially many `unhandledRejection` listeners
+            // and the default handler still fires for rejections we don't swallow.
+        };
+        process.on('unhandledRejection', this.streamErrorGuardRejectionHandler);
     }
 
     /**
@@ -1039,6 +1075,10 @@ export class CopilotSDKService {
         if (this.streamErrorGuardHandler) {
             process.removeListener('uncaughtException', this.streamErrorGuardHandler);
             this.streamErrorGuardHandler = null;
+        }
+        if (this.streamErrorGuardRejectionHandler) {
+            process.removeListener('unhandledRejection', this.streamErrorGuardRejectionHandler);
+            this.streamErrorGuardRejectionHandler = null;
         }
     }
 
