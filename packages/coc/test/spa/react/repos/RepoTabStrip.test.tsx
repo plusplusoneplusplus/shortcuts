@@ -307,7 +307,7 @@ describe('RepoTabStrip', () => {
         expect(screen.getAllByTestId('repo-group-separator')).toHaveLength(1);
     });
 
-    it('+ button is inside the scrollable tab container (adjacent to last tab)', () => {
+    it('+ button is outside the overflow-x-auto scroll container (regression: dropdown must not be clipped)', () => {
         render(
             <RepoTabStrip
                 repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
@@ -320,10 +320,14 @@ describe('RepoTabStrip', () => {
         const tabs = screen.getAllByTestId('repo-tab');
         const addBtn = screen.getByTestId('repo-tab-add-btn');
         const lastTab = tabs[tabs.length - 1];
-        // The + button's parent container should be a sibling inside the same scrollable wrapper as the tabs
+        // The scrollable container holds the tabs but NOT the + button,
+        // so the dropdown is never clipped by overflow-x-auto.
         const scrollContainer = lastTab.closest('[data-testid="repo-tab-strip"] > div');
         expect(scrollContainer).not.toBeNull();
-        expect(scrollContainer!.contains(addBtn)).toBe(true);
+        expect(scrollContainer!.contains(addBtn)).toBe(false);
+        // The + button must still be inside the tab-strip wrapper
+        const stripWrapper = screen.getByTestId('repo-tab-strip');
+        expect(stripWrapper.contains(addBtn)).toBe(true);
     });
 
     it('renders no separator for a single repo', () => {
