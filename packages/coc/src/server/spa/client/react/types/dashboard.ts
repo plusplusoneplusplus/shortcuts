@@ -90,6 +90,19 @@ export interface ChatSessionItem {
     turnCount?: number;    // number of conversation turns (from enriched history)
 }
 
+export interface ClientTokenUsageStatsEntry {
+    date: string;                               // YYYY-MM-DD
+    byModel: Record<string, ClientTokenUsage>;  // model → usage
+    dayTotal: ClientTokenUsage;                 // sum across models
+}
+
+export interface ClientTokenUsageStatsResponse {
+    entries: ClientTokenUsageStatsEntry[];
+    models: string[];                           // all models seen, sorted
+    generatedAt: string;                        // ISO timestamp
+    totalDays: number;
+}
+
 export type WikiViewMode = 'list' | 'detail';
 
 /** Navigation state for the Tasks (Plans) sub-tab, persisted in AppContext. */
