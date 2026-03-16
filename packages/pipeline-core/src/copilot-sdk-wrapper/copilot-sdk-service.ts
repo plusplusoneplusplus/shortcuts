@@ -997,15 +997,6 @@ export class CopilotSDKService {
         this.installStreamErrorGuard();
     }
 
-    /**
-     * Initialize the SDK client with optional working directory.
-     * @deprecated Use createClient() instead. Kept for test compatibility.
-     * @param cwd Optional working directory for the CLI process
-     */
-    private async initializeClient(cwd?: string): Promise<void> {
-        await this.ensureSDKModule();
-    }
-
     // ------------------------------------------------------------------
     // Stream-error safety net
     // ------------------------------------------------------------------
