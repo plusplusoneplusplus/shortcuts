@@ -48,6 +48,7 @@ import { SchedulePersistence } from './schedule-persistence';
 import { ScheduleRunPersistence } from './schedule-run-persistence';
 import { ScheduleManager } from './schedule-manager';
 import { registerScheduleRoutes } from './schedule-handler';
+import { registerStatsRoutes } from './stats-handler';
 import { OutputPruner } from './output-pruner';
 import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
@@ -280,6 +281,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Register per-repo instruction file routes
     registerInstructionRoutes(routes, store);
+
+    // Register token usage stats routes
+    registerStatsRoutes(routes, store);
 
     // Always register wiki routes(they are safe even with no wikis registered)
     const wikiManager = registerWikiRoutes(routes, {

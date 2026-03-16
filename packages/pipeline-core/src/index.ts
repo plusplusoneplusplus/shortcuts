@@ -379,6 +379,10 @@ export {
     setHomeDirectoryOverride,
     // Timeline Utilities
     mergeConsecutiveContentItems,
+    // Token Usage Stats
+    TokenUsageStatsEntry,
+    TokenUsageStatsResponse,
+    aggregateTokenUsageStats,
 } from './ai';
 
 // ============================================================================
