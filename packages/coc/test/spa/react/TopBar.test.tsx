@@ -103,9 +103,10 @@ describe('TopBar', () => {
 
     it('renders the dashboard title as a link to the root page', () => {
         renderTopBar();
-        const title = screen.getByText('CoC (Copilot Of Copilot)');
-        expect(title).toBeDefined();
-        expect(title.tagName).toBe('A');
+        const titles = screen.getAllByText('CoC');
+        const anchorTitles = titles.filter(el => el.tagName === 'A');
+        expect(anchorTitles.length).toBeGreaterThan(0);
+        const title = anchorTitles[0];
         expect((title as HTMLAnchorElement).href).toContain('/');
         expect((title as HTMLAnchorElement).target).not.toBe('_blank');
     });
