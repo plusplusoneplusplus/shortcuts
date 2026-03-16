@@ -286,9 +286,9 @@ describe('ActivityChatDetail: inline chat detail', () => {
         expect(ACTIVITY_CHAT_DETAIL_SOURCE).toContain('onMoveToTop={handleMoveToTop}');
     });
 
-    it('imports FilePathValue from PendingTaskPayload for plan path display', () => {
-        // FilePathValue is used in the extracted ChatHeader component
-        expect(CHAT_HEADER_SOURCE).toContain("from '../queue/PendingTaskPayload'");
+    it('uses ReferencesDropdown for plan path display (inline FilePathValue pill replaced)', () => {
+        // ReferencesDropdown is used in the extracted ChatHeader component
+        expect(CHAT_HEADER_SOURCE).toContain("from '../shared/ReferencesDropdown'");
     });
 
     it('shows no-data message', () => {

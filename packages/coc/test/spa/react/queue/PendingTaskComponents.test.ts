@@ -182,8 +182,8 @@ describe('ActivityChatDetail imports extracted components', () => {
         expect(conversationAreaSource).toContain("import { PendingTaskInfoPanel } from '../queue/PendingTaskInfoPanel'");
     });
 
-    it('imports MetaRow, FilePathValue from queue module', () => {
-        expect(chatHeaderSource).toContain("import { FilePathValue } from '../queue/PendingTaskPayload'");
+    it('uses ReferencesDropdown for plan path display (inline FilePathValue pill replaced)', () => {
+        expect(chatHeaderSource).toContain("import { ReferencesDropdown } from '../shared/ReferencesDropdown'");
     });
 
     it('uses PendingTaskInfoPanel in JSX', () => {

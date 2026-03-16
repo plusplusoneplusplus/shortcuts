@@ -1,6 +1,5 @@
 import { Badge } from '../shared';
 import { Button } from '../shared';
-import { FilePathValue } from '../queue/PendingTaskPayload';
 import { ReferencesDropdown } from '../shared/ReferencesDropdown';
 import { ConversationMetadataPopover } from '../processes/ConversationMetadataPopover';
 import { ContextWindowIndicator } from '../components/ContextWindowIndicator';
@@ -84,9 +83,6 @@ export function ChatHeader({
                     <Badge status={task.status}>
                         {statusIcon(task.status)} {statusLabel(task.status)}
                     </Badge>
-                )}
-                {planPath && (
-                    <FilePathValue label="📄" value={planPath} />
                 )}
                 <ReferencesDropdown planPath={planPath} files={createdFiles} />
                 {task?.duration != null && (

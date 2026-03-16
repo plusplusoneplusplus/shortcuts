@@ -858,26 +858,24 @@ describe('ActivityChatDetail', () => {
             expect(planPathBlock).toContain("''");
         });
 
-        it('imports MetaRow and FilePathValue from PendingTaskPayload', () => {
-            expect(CHAT_HEADER_SRC).toContain("import { FilePathValue } from '../queue/PendingTaskPayload'");
+        it('uses ReferencesDropdown for plan path display (inline pill replaced)', () => {
+            expect(CHAT_HEADER_SRC).toContain("import { ReferencesDropdown } from '../shared/ReferencesDropdown'");
         });
 
-        it('renders FilePathValue pill with 📄 label when planPath is set', () => {
+        it('renders ReferencesDropdown with planPath and files after the status Badge', () => {
             const headerBlock = CHAT_HEADER_SRC.substring(
                 CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
                 CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 300,
             );
-            expect(headerBlock).toContain('{planPath && (');
-            expect(headerBlock).toContain('<FilePathValue label="📄" value={planPath}');
+            expect(headerBlock).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} />');
         });
 
-        it('pill is placed after the status Badge in the header', () => {
+        it('ReferencesDropdown is placed after the status Badge in the header', () => {
             const headerSection = CHAT_HEADER_SRC.substring(
                 CHAT_HEADER_SRC.indexOf('<Badge status={task.status}'),
                 CHAT_HEADER_SRC.indexOf('<Badge status={task.status}') + 300,
             );
-            expect(headerSection).toContain('{planPath && (');
-            expect(headerSection).toContain('<FilePathValue label="📄" value={planPath}');
+            expect(headerSection).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} />');
         });
     });
 
