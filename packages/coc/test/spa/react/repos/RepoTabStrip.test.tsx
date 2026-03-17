@@ -8,8 +8,13 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { RepoTabStrip } from '../../../../src/server/spa/client/react/repos/RepoTabStrip';
 
 const mockDispatch = vi.fn();
+const mockQueueDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({ state: {}, dispatch: mockDispatch }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: {}, dispatch: mockQueueDispatch }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
@@ -24,6 +29,14 @@ vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
 vi.mock('../../../../src/server/spa/client/react/repos/AddFolderDialog', () => ({
     AddFolderDialog: ({ open }: { open: boolean }) =>
         open ? <div data-testid="add-folder-dialog" /> : null,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () => ({
+    GenerateTaskDialog: ({ wsId, initialFolder, onClose }: { wsId: string; initialFolder?: string; onClose: () => void }) => (
+        <div data-testid="generate-task-dialog" data-ws-id={wsId} data-folder={initialFolder ?? ''}>
+            <button data-testid="generate-task-dialog-close" onClick={onClose} />
+        </div>
+    ),
 }));
 
 const makeRepo = (id: string, name: string, color = '#ff0000', remoteUrl?: string) => ({
@@ -577,6 +590,93 @@ describe('RepoTabStrip', () => {
 
             fetchSpy.mockRestore();
             vi.restoreAllMocks();
+        });
+
+        it('context menu contains Queue Task, Ask, and Generate Plan items', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-queue-task')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-ask')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-generate-plan')).toBeDefined();
+        });
+
+        it('clicking Queue Task dispatches OPEN_DIALOG with workspaceId and closes menu', () => {
+            mockQueueDispatch.mockClear();
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-queue-task'));
+            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r1' });
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+        });
+
+        it('clicking Ask dispatches OPEN_DIALOG with workspaceId and mode=ask and closes menu', () => {
+            mockQueueDispatch.mockClear();
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-ask'));
+            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r1', mode: 'ask' });
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+        });
+
+        it('clicking Generate Plan opens GenerateTaskDialog for the right-clicked repo and closes menu', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            expect(screen.queryByTestId('generate-task-dialog')).toBeNull();
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-generate-plan'));
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+            const dialog = screen.getByTestId('generate-task-dialog');
+            expect(dialog).toBeDefined();
+            expect(dialog.getAttribute('data-ws-id')).toBe('r1');
+        });
+
+        it('actions target the right-clicked repo, not the selected one', () => {
+            mockQueueDispatch.mockClear();
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                    selectedRepoId="r1"
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            const tabs = screen.getAllByTestId('repo-tab');
+            // Right-click on the second tab (Beta, r2) while r1 is selected
+            fireEvent.contextMenu(tabs[1]);
+            fireEvent.click(screen.getByTestId('repo-tab-context-queue-task'));
+            expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'r2' });
         });
     });
 });
