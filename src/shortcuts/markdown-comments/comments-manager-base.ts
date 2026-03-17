@@ -8,8 +8,7 @@
 
 import { EventEmitter } from 'events';
 import * as path from 'path';
-import { ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '@plusplusoneplusplus/forge';
-import { Logger, consoleLogger } from '@plusplusoneplusplus/forge';
+import { ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile, Logger, consoleLogger } from '@plusplusoneplusplus/forge';
 import {
     BaseAnchor,
     BaseComment,
