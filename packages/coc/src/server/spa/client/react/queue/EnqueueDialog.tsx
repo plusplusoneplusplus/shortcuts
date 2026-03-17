@@ -149,6 +149,52 @@ export function EnqueueDialog() {
         setActiveTab('advanced');
     }, [isAskMode, queueDispatch]);
 
+    const handleRunTemplate = useCallback(async (t: import('../hooks/useSkillTemplates').SkillTemplate) => {
+        const effectiveMode = t.mode;
+        const effectiveModel = t.model || '';
+        const effectiveSkills = t.skills;
+        const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
+
+        let body: any;
+        if (effectiveMode === 'ask') {
+            body = {
+                type: 'chat', priority: 'normal',
+                payload: {
+                    kind: 'chat', mode: 'ask',
+                    prompt: `Ask: ${effectiveSkills.join(', ')}`,
+                    workspaceId: workspaceId || undefined,
+                    workingDirectory: ws?.rootPath || undefined,
+                    ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
+                },
+            };
+        } else {
+            const displayName = effectiveSkills.length === 1
+                ? `Skill: ${effectiveSkills[0]}`
+                : `Skills: ${effectiveSkills.join(', ')}`;
+            body = {
+                type: 'chat', priority: 'normal', displayName,
+                payload: {
+                    kind: 'chat', mode: 'autopilot',
+                    prompt: `Use the ${effectiveSkills.join(', ')} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
+                    workingDirectory: ws?.rootPath || folderPath || '',
+                    ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
+                },
+            };
+        }
+        if (effectiveModel) body.config = { model: effectiveModel };
+
+        setSubmitting(true);
+        try {
+            await fetch(getApiBase() + '/queue/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            queueDispatch({ type: 'CLOSE_DIALOG' });
+        } catch { /* ignore */ }
+        finally { setSubmitting(false); }
+    }, [appState.workspaces, workspaceId, folderPath, queueDispatch]);
+
     const handleSaveTemplate = useCallback(() => {
         const mode = isAskMode ? 'ask' : 'task';
         const parts: string[] = [mode];
@@ -356,6 +402,7 @@ export function EnqueueDialog() {
                     currentMode={isAskMode ? 'ask' : 'task'}
                     currentSkills={selectedSkills}
                     onSelect={handleSelectTemplate}
+                    onRun={handleRunTemplate}
                     onSave={handleSaveTemplate}
                     onDelete={deleteTemplate}
                 />

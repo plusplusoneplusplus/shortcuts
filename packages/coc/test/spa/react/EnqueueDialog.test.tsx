@@ -2073,4 +2073,164 @@ describe('EnqueueDialog ask mode', () => {
             expect(textarea).toHaveProperty('value', '');
         });
     });
+
+    it('clicking the ▶ Run button on a task template immediately POSTs to /queue/tasks and closes dialog', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skillTemplates: [
+                            {
+                                id: 'tmpl-run-1',
+                                name: 'task: impl [gpt-4]',
+                                model: 'gpt-4',
+                                mode: 'task',
+                                skills: ['impl'],
+                            },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Switch to Templates tab
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+
+        // Click the ▶ Run button (not the card itself)
+        const runBtn = await screen.findByTestId('template-run-tmpl-run-1');
+        await act(async () => { fireEvent.click(runBtn); });
+
+        await waitFor(() => {
+            expect(postBody).not.toBeNull();
+        });
+
+        expect(postBody.type).toBe('chat');
+        expect(postBody.payload.kind).toBe('chat');
+        expect(postBody.payload.mode).toBe('autopilot');
+        expect(postBody.payload.prompt).toContain('impl');
+        expect(postBody.config).toEqual({ model: 'gpt-4' });
+        expect(postBody.displayName).toBe('Skill: impl');
+    });
+
+    it('clicking the ▶ Run button on an ask-mode template POSTs with mode:ask', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skillTemplates: [
+                            {
+                                id: 'tmpl-ask-1',
+                                name: 'ask: review',
+                                model: '',
+                                mode: 'ask',
+                                skills: ['review'],
+                            },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+
+        const runBtn = await screen.findByTestId('template-run-tmpl-ask-1');
+        await act(async () => { fireEvent.click(runBtn); });
+
+        await waitFor(() => {
+            expect(postBody).not.toBeNull();
+        });
+
+        expect(postBody.payload.mode).toBe('ask');
+        expect(postBody.payload.prompt).toContain('review');
+        expect(postBody.config).toBeUndefined();
+    });
+
+    it('clicking the card itself still pre-fills and switches to Advanced tab (not a run)', async () => {
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skillTemplates: [
+                            {
+                                id: 'tmpl-prefill-1',
+                                name: 'task: impl',
+                                model: 'gpt-4',
+                                mode: 'task',
+                                skills: ['impl'],
+                            },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+
+        const card = await screen.findByTestId('template-card-tmpl-prefill-1');
+        fireEvent.click(card);
+
+        // Should NOT have posted to /queue/tasks
+        const postCalls = fetchSpy.mock.calls.filter((c: any[]) =>
+            typeof c[0] === 'string' && c[0].includes('/queue/tasks') && c[1]?.method === 'POST'
+        );
+        expect(postCalls).toHaveLength(0);
+    });
 });

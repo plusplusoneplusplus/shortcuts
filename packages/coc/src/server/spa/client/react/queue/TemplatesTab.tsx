@@ -14,6 +14,7 @@ interface TemplatesTabProps {
     currentMode: 'ask' | 'task';
     currentSkills: string[];
     onSelect: (template: SkillTemplate) => void;
+    onRun: (template: SkillTemplate) => void;
     onSave: () => void;
     onDelete: (id: string) => void;
 }
@@ -24,6 +25,7 @@ export function TemplatesTab({
     currentModel,
     currentSkills,
     onSelect,
+    onRun,
     onSave,
     onDelete,
 }: TemplatesTabProps) {
@@ -68,6 +70,19 @@ export function TemplatesTab({
                             className="text-left w-full rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:border-[#0078d4] hover:bg-[#f0f7ff] dark:hover:bg-[#1e3a5f] transition-colors px-3 py-2 relative group"
                             data-testid={`template-card-${t.id}`}
                         >
+                            {/* Run button */}
+                            <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={e => { e.stopPropagation(); onRun(t); }}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onRun(t); } }}
+                                className="absolute top-1.5 right-6 text-[#0078d4] opacity-0 group-hover:opacity-100 transition-opacity px-1 text-xs leading-none"
+                                title="Run this template"
+                                data-testid={`template-run-${t.id}`}
+                            >
+                                ▶
+                            </span>
+
                             {/* Delete button */}
                             <span
                                 role="button"
