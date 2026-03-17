@@ -578,4 +578,27 @@ describe('QueueContext reducer', () => {
             expect(result.streamingChatWorkspaces['ws-2']).toBe(3);
         });
     });
+
+    // ── SET_DIALOG_MODE ────────────────────────────────────────────
+    describe('SET_DIALOG_MODE', () => {
+        it('switches dialogMode to ask while dialog is open', () => {
+            const state = makeState({ showDialog: true, dialogMode: 'task' });
+            const result = queueReducer(state, { type: 'SET_DIALOG_MODE', mode: 'ask' });
+            expect(result.dialogMode).toBe('ask');
+            expect(result.showDialog).toBe(true);
+        });
+
+        it('switches dialogMode to task', () => {
+            const state = makeState({ showDialog: true, dialogMode: 'ask' });
+            const result = queueReducer(state, { type: 'SET_DIALOG_MODE', mode: 'task' });
+            expect(result.dialogMode).toBe('task');
+        });
+
+        it('does not affect any other state', () => {
+            const state = makeState({ showDialog: true, dialogMode: 'task', selectedTaskId: 'abc' });
+            const result = queueReducer(state, { type: 'SET_DIALOG_MODE', mode: 'ask' });
+            expect(result.selectedTaskId).toBe('abc');
+            expect(result.showDialog).toBe(true);
+        });
+    });
 });

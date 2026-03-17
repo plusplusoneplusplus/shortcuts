@@ -109,7 +109,8 @@ export type QueueAction =
     | { type: 'SELECT_QUEUE_TASK'; id: string | null; repoId?: string }
     | { type: 'REFRESH_SELECTED_QUEUE_TASK' }
     | { type: 'CHAT_STREAMING_STARTED'; workspaceId: string }
-    | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string };
+    | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string }
+    | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -213,6 +214,8 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             else updated[action.workspaceId] = next;
             return { ...state, streamingChatWorkspaces: updated };
         }
+        case 'SET_DIALOG_MODE':
+            return { ...state, dialogMode: action.mode };
         default:
             return state;
     }

@@ -2024,21 +2024,20 @@ describe('EnqueueDialog ask mode', () => {
         expect(postBody.payload.prompt).toBe('What does this function do?');
     });
 
-    it('selecting a recent item restores skills and model but does NOT restore the prompt', async () => {
-        // Seed a recent entry with prompt + skills + model in preferences response
+    it('selecting a template card restores skills and model but does NOT restore the prompt', async () => {
+        // Seed a template entry with skills + model in preferences response
         fetchSpy.mockImplementation((url: string) => {
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({
-                        recentFollowPrompts: [
+                        skillTemplates: [
                             {
-                                name: 'impl',
-                                type: 'skill',
-                                timestamp: Date.now() - 1000,
-                                prompt: 'implement the feature',
-                                skills: ['impl'],
+                                id: 'tmpl-1',
+                                name: 'task: impl [gpt-4]',
                                 model: 'gpt-4',
+                                mode: 'task',
+                                skills: ['impl'],
                             },
                         ],
                     }),
@@ -2061,11 +2060,11 @@ describe('EnqueueDialog ask mode', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Click the first recent item card
-        const card = await screen.findByTestId('recent-prompt-card-0');
+        // Click the first template card
+        const card = await screen.findByTestId('template-card-tmpl-1');
         fireEvent.click(card);
 
-        // Prompt textarea should remain empty — recent items are templates, not prompt restores
+        // Prompt textarea should remain empty — templates don't restore the prompt
         await waitFor(() => {
             const textarea = screen.getByRole('textbox');
             expect(textarea).toHaveProperty('value', '');

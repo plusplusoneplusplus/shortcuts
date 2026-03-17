@@ -1,0 +1,127 @@
+/**
+ * TemplatesTab — displays saved (model, mode, skills) templates.
+ * Clicking a card applies those settings and switches to the Advanced tab.
+ * The "Save current" button saves the current Advanced configuration as a new template.
+ */
+
+import React from 'react';
+import type { SkillTemplate } from '../hooks/useSkillTemplates';
+
+interface TemplatesTabProps {
+    templates: SkillTemplate[];
+    loaded: boolean;
+    currentModel: string;
+    currentMode: 'ask' | 'task';
+    currentSkills: string[];
+    onSelect: (template: SkillTemplate) => void;
+    onSave: () => void;
+    onDelete: (id: string) => void;
+}
+
+export function TemplatesTab({
+    templates,
+    loaded,
+    currentModel,
+    currentSkills,
+    onSelect,
+    onSave,
+    onDelete,
+}: TemplatesTabProps) {
+    const canSave = !!currentModel || currentSkills.length > 0;
+
+    if (!loaded) {
+        return (
+            <div className="flex items-center justify-center py-8 text-[#848484] text-sm">
+                <span className="animate-spin mr-2">⟳</span> Loading…
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-2">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <span className="text-xs text-[#848484]">Saved templates</span>
+                <button
+                    type="button"
+                    onClick={onSave}
+                    disabled={!canSave}
+                    className="text-xs px-2 py-1 rounded border border-[#0078d4] text-[#0078d4] hover:bg-[#f0f7ff] dark:hover:bg-[#1e3a5f] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title={canSave ? 'Save current model/mode/skills as a template' : 'Select a model or skill first'}
+                    data-testid="save-template-btn"
+                >
+                    + Save current
+                </button>
+            </div>
+
+            {templates.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-[#848484] text-sm text-center px-4">
+                    No templates yet. Configure model/skills in Advanced, then click <strong className="mx-1">+ Save current</strong>.
+                </div>
+            ) : (
+                <div className="flex flex-col gap-2 overflow-y-auto max-h-[360px]">
+                    {templates.map(t => (
+                        <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => onSelect(t)}
+                            className="text-left w-full rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:border-[#0078d4] hover:bg-[#f0f7ff] dark:hover:bg-[#1e3a5f] transition-colors px-3 py-2 relative group"
+                            data-testid={`template-card-${t.id}`}
+                        >
+                            {/* Delete button */}
+                            <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={e => { e.stopPropagation(); onDelete(t.id); }}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onDelete(t.id); } }}
+                                className="absolute top-1.5 right-1.5 text-[#848484] hover:text-[#cc3333] opacity-0 group-hover:opacity-100 transition-opacity px-1 text-xs leading-none"
+                                title="Delete template"
+                                data-testid={`template-delete-${t.id}`}
+                            >
+                                ×
+                            </span>
+
+                            {/* Optional name */}
+                            {t.name && (
+                                <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-1 pr-5 truncate">
+                                    {t.name}
+                                </div>
+                            )}
+
+                            {/* Mode badge + model tag */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                                    t.mode === 'ask'
+                                        ? 'bg-[#dbeafe] text-[#1d4ed8] dark:bg-[#1e3a5f] dark:text-[#93c5fd]'
+                                        : 'bg-[#dcfce7] text-[#15803d] dark:bg-[#14532d] dark:text-[#86efac]'
+                                }`}>
+                                    {t.mode}
+                                </span>
+                                {t.model && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#848484]">
+                                        {t.model}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Skill chips */}
+                            {t.skills.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {t.skills.map(s => (
+                                        <span
+                                            key={s}
+                                            className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-[#e0e0e0] dark:border-[#555] bg-[#f9f9f9] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                        >
+                                            <span>⚡</span>
+                                            <span>{s}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}

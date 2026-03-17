@@ -18,8 +18,8 @@ import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { useSlashCommands } from '../repos/useSlashCommands';
 import { SlashCommandMenu } from '../repos/SlashCommandMenu';
-import { useRecentSkills } from '../hooks/useRecentSkills';
-import { RecentPromptsTab } from './RecentPromptsTab';
+import { useSkillTemplates } from '../hooks/useSkillTemplates';
+import { TemplatesTab } from './TemplatesTab';
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -45,9 +45,9 @@ export function EnqueueDialog() {
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
-    const [activeTab, setActiveTab] = useState<'recent' | 'advanced'>('recent');
+    const [activeTab, setActiveTab] = useState<'templates' | 'advanced'>('templates');
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
-    const { recentItems, trackUsage, loaded: recentLoaded } = useRecentSkills(workspaceId || undefined);
+    const { templates, saveTemplate, deleteTemplate, loaded: templatesLoaded } = useSkillTemplates(workspaceId || undefined);
     const { models: modelInfos } = useModels();
     const models = modelInfos.map(m => m.id);
     const [folders, setFolders] = useState<FolderOption[]>([]);
@@ -140,11 +140,22 @@ export function EnqueueDialog() {
         );
     }, []);
 
-    const handleSelectRecent = useCallback((entry: import('../hooks/useRecentSkills').RecentSkillEntry) => {
-        if (entry.skills && entry.skills.length > 0) setSelectedSkills(entry.skills);
-        if (entry.model) setModel(entry.model);
+    const handleSelectTemplate = useCallback((t: import('../hooks/useSkillTemplates').SkillTemplate) => {
+        if (t.skills.length > 0) setSelectedSkills(t.skills);
+        if (t.model) setModel(t.model);
+        if (t.mode !== (isAskMode ? 'ask' : 'task')) {
+            queueDispatch({ type: 'SET_DIALOG_MODE', mode: t.mode });
+        }
         setActiveTab('advanced');
-    }, []);
+    }, [isAskMode, queueDispatch]);
+
+    const handleSaveTemplate = useCallback(() => {
+        const mode = isAskMode ? 'ask' : 'task';
+        const parts: string[] = [mode];
+        if (selectedSkills.length > 0) parts.push(selectedSkills.join('+'));
+        if (model) parts.push(`[${model}]`);
+        saveTemplate({ name: parts.join(': '), model: model || '', mode, skills: selectedSkills });
+    }, [isAskMode, model, selectedSkills, saveTemplate]);
 
     const handleSubmit = useCallback(async () => {
         // Parse /skill tokens from prompt text
@@ -220,16 +231,6 @@ export function EnqueueDialog() {
             setPrompt('');
             setSelectedSkills([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
-            // Track recent history for EnqueueDialog
-            const displayName = effectivePrompt.trim()
-                ? (effectivePrompt.length > 40 ? effectivePrompt.slice(0, 40) + '…' : effectivePrompt)
-                : `Skills: ${effectiveSkills.join(', ')}`;
-            trackUsage(displayName, {
-                prompt: effectivePrompt,
-                skills: effectiveSkills.length > 0 ? effectiveSkills : undefined,
-                model: model || undefined,
-                mode: isAskMode ? 'ask' : 'task',
-            });
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
                 if (sk && workspaceId) {
@@ -244,7 +245,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, trackUsage, slashCommands, isAskMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt);
@@ -328,9 +329,9 @@ export function EnqueueDialog() {
                 <ImagePreviews images={images} onRemove={removeImage} showHint />
             </div>
 
-            {/* Lower section tab bar: Recent | Advanced */}
+            {/* Lower section tab bar: Templates | Advanced */}
             <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                {(['recent', 'advanced'] as const).map(tab => (
+                {(['templates', 'advanced'] as const).map(tab => (
                     <button
                         key={tab}
                         type="button"
@@ -341,17 +342,22 @@ export function EnqueueDialog() {
                                 : 'border-transparent text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
                         }`}
                     >
-                        {tab === 'recent' ? `Recent${recentItems.length > 0 ? ` (${recentItems.length})` : ''}` : 'Advanced'}
+                        {tab === 'templates' ? `Templates${templates.length > 0 ? ` (${templates.length})` : ''}` : 'Advanced'}
                     </button>
                 ))}
             </div>
 
             {/* Lower section content */}
-            {activeTab === 'recent' ? (
-                <RecentPromptsTab
-                    items={recentItems}
-                    loaded={recentLoaded}
-                    onSelect={handleSelectRecent}
+            {activeTab === 'templates' ? (
+                <TemplatesTab
+                    templates={templates}
+                    loaded={templatesLoaded}
+                    currentModel={model}
+                    currentMode={isAskMode ? 'ask' : 'task'}
+                    currentSkills={selectedSkills}
+                    onSelect={handleSelectTemplate}
+                    onSave={handleSaveTemplate}
+                    onDelete={deleteTemplate}
                 />
             ) : (
             <>
