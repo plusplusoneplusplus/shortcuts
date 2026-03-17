@@ -23,13 +23,24 @@ interface LastSkillsByMode {
     plan?: string | string[];
 }
 
+interface RecentFollowPrompt {
+    type: string;
+    name: string;
+    timestamp: number;
+    prompt?: string;
+    skills?: string[];
+    model?: string;
+    mode?: 'ask' | 'task';
+    description?: string;
+}
+
 interface PerRepoPreferences {
     lastModel?: string;
     lastModels?: LastModelsByMode;
     lastDepth?: 'deep' | 'normal';
     lastEffort?: 'low' | 'medium' | 'high';
     lastSkills?: LastSkillsByMode;
-    recentFollowPrompts?: { type: string; name: string; timestamp: number }[];
+    recentFollowPrompts?: RecentFollowPrompt[];
 }
 
 const STATUS_ICON: Record<string, string> = {
@@ -41,6 +52,15 @@ function formatSkillValue(val: string | string[] | undefined): string {
     if (!val || (Array.isArray(val) && val.length === 0)) return 'none';
     if (Array.isArray(val)) return val.join(', ');
     return val || 'none';
+}
+
+/** Relative time string, e.g. "5m ago". */
+function relativeTime(ts: number): string {
+    const diff = Date.now() - ts;
+    if (diff < 60_000) return 'just now';
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+    return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
 /** Check if a skill value (string or string[]) has any content. */
@@ -201,7 +221,17 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                         <MetaRow label="Task Skill" value={formatSkillValue(preferences.lastSkills?.task)} />
                         <MetaRow label="Ask Skill" value={formatSkillValue(preferences.lastSkills?.ask)} />
                         <MetaRow label="Plan Skill" value={formatSkillValue(preferences.lastSkills?.plan)} />
-                        <MetaRow label="Recent Prompts" value={String(preferences.recentFollowPrompts?.length ?? 0)} />
+                    </div>
+                )}
+                {/* Recent Prompts subsection */}
+                {!loadingPreferences && !preferencesError && preferences && preferences.recentFollowPrompts && preferences.recentFollowPrompts.length > 0 && (
+                    <div id="repo-recent-prompts-section" className="mt-3">
+                        <h4 className="text-xs font-semibold text-[#848484] mb-2">Recent Prompts ({preferences.recentFollowPrompts.length})</h4>
+                        <div className="flex flex-col gap-2">
+                            {preferences.recentFollowPrompts.map((entry, i) => (
+                                <RecentPromptCard key={i} entry={entry} />
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
@@ -219,5 +249,54 @@ function MetaRow({ label, value, mono, children, valueClass }: { label: string; 
                 </span>
             )}
         </span>
+    );
+}
+
+function RecentPromptCard({ entry }: { entry: RecentFollowPrompt }) {
+    const skillChips = entry.skills && entry.skills.length > 0 ? entry.skills : null;
+    const bodyText = entry.prompt?.trim() || (skillChips ? skillChips.join(', ') : entry.name);
+    return (
+        <div
+            className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] px-3 py-2"
+            data-testid="recent-prompt-card"
+        >
+            {/* Header: timestamp + model badge + mode badge */}
+            <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="text-[11px] text-[#848484] shrink-0">🕐 {relativeTime(entry.timestamp)}</span>
+                <span className="flex-1" />
+                {entry.model && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#848484]" title="Model">
+                        {entry.model}
+                    </span>
+                )}
+                {entry.mode && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                        entry.mode === 'ask'
+                            ? 'bg-[#dbeafe] text-[#1d4ed8] dark:bg-[#1e3a5f] dark:text-[#93c5fd]'
+                            : 'bg-[#dcfce7] text-[#15803d] dark:bg-[#14532d] dark:text-[#86efac]'
+                    }`}>
+                        {entry.mode}
+                    </span>
+                )}
+            </div>
+            {/* Body: prompt preview (2-line clamp) */}
+            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2 mb-1.5">
+                {bodyText}
+            </div>
+            {/* Footer: skill pills */}
+            {skillChips && (
+                <div className="flex flex-wrap gap-1">
+                    {skillChips.map(s => (
+                        <span
+                            key={s}
+                            className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-[#e0e0e0] dark:border-[#555] bg-[#f9f9f9] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                        >
+                            <span>⚡</span>
+                            <span>{s}</span>
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
