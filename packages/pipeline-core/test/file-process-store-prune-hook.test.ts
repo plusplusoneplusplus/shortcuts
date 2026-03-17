@@ -1,7 +1,7 @@
 /**
  * FileProcessStore Prune Hook Tests
  *
- * Tests the onPrune callback that fires when pruneIfNeeded() removes entries.
+ * Tests the onPrune callback that fires when pruneWorkspaceIfNeeded() removes entries.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

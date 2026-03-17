@@ -108,16 +108,15 @@ export class FileProcessStore implements ProcessStore {
             };
             // Write per-process file first (orphan on crash is harmless)
             await this.writeProcessFile(workspaceId, process.id, entry);
-            // Append to workspace index then prune
-            const index = await this.readIndex(workspaceId);
-            index.push(this.toIndexEntry(entry));
-            const { pruned, prunedIds } = await this.pruneIfNeeded(workspaceId, index);
-            await this.writeIndex(workspaceId, pruned);
-            // Update _id-map.json: add new entry, remove pruned entries
+            // Add to _id-map.json before pruning so new ID is present
             const idMap = await this.readIdMap();
             idMap[process.id] = workspaceId;
-            for (const id of prunedIds) { delete idMap[id]; }
             await this.writeIdMap(idMap);
+            // Append to workspace index, prune (removes old IDs from _id-map), then write back
+            const index = await this.readIndex(workspaceId);
+            index.push(this.toIndexEntry(entry));
+            const pruned = await this.pruneWorkspaceIfNeeded(workspaceId, index);
+            await this.writeIndex(workspaceId, pruned);
         });
         this.onProcessChange?.({ type: 'process-added', process });
     }
@@ -704,9 +703,12 @@ export class FileProcessStore implements ProcessStore {
         };
     }
 
-    private async pruneIfNeeded(workspaceId: string, entries: ProcessIndexEntry[]): Promise<{ pruned: ProcessIndexEntry[], prunedIds: string[] }> {
+    private async pruneWorkspaceIfNeeded(
+        workspaceId: string,
+        entries: ProcessIndexEntry[]
+    ): Promise<ProcessIndexEntry[]> {
         if (entries.length <= this.maxProcesses) {
-            return { pruned: entries, prunedIds: [] };
+            return entries;
         }
 
         // Separate non-terminal (running/queued) from terminal processes
@@ -721,23 +723,16 @@ export class FileProcessStore implements ProcessStore {
         }
 
         // Sort terminal by startTime ascending (oldest first)
-        terminal.sort((a, b) => {
-            const timeA = new Date(a.startTime).getTime();
-            const timeB = new Date(b.startTime).getTime();
-            return timeA - timeB;
-        });
+        terminal.sort((a, b) =>
+            new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
 
         // Remove oldest terminal entries until within limit
         const toKeep = this.maxProcesses - nonTerminal.length;
         const keptTerminal = toKeep > 0 ? terminal.slice(terminal.length - toKeep) : [];
+        const prunedEntries = terminal.slice(0, terminal.length - keptTerminal.length);
 
-        const prunedCount = terminal.length - keptTerminal.length;
-        const prunedIds: string[] = [];
-
-        if (prunedCount > 0) {
-            const prunedEntries = terminal.slice(0, prunedCount);
-            prunedIds.push(...prunedEntries.map(e => e.id));
-
+        if (prunedEntries.length > 0) {
             // Notify about pruned entries (load full data for onPrune callback)
             if (this.onPrune) {
                 const fullEntries: StoredProcessEntry[] = [];
@@ -752,9 +747,12 @@ export class FileProcessStore implements ProcessStore {
 
             // Delete pruned process files
             await Promise.all(prunedEntries.map(e => this.deleteProcessFile(workspaceId, e.id)));
+
+            // Remove pruned IDs from _id-map.json
+            await this.removeFromIdMap(prunedEntries.map(e => e.id));
         }
 
-        return { pruned: [...nonTerminal, ...keptTerminal], prunedIds };
+        return [...nonTerminal, ...keptTerminal];
     }
 
     onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void {
