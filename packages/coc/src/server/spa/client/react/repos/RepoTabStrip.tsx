@@ -8,6 +8,8 @@ import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
 import type { RepoData } from './repoGrouping';
 import { groupReposByRemote } from './repoGrouping';
+import { useApp } from '../context/AppContext';
+import { getApiBase } from '../utils/config';
 
 export interface RepoTabStripProps {
     repos: RepoData[];
@@ -28,9 +30,19 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+    const [editRepoId, setEditRepoId] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
     const groups = groupReposByRemote(repos, {});
+    const { dispatch } = useApp();
+
+    const handleRemove = async (repoId: string) => {
+        if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
+        await fetch(getApiBase() + '/workspaces/' + encodeURIComponent(repoId), { method: 'DELETE' });
+        dispatch({ type: 'SET_SELECTED_REPO', id: null });
+        location.hash = '';
+        onRefresh();
+    };
 
     useEffect(() => {
         if (!dropdownOpen) return;
@@ -177,6 +189,13 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 onClose={() => setAddFolderOpen(false)}
                 onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
             />
+            <AddRepoDialog
+                open={editRepoId !== null}
+                onClose={() => setEditRepoId(null)}
+                editId={editRepoId}
+                repos={repos}
+                onSuccess={() => { setEditRepoId(null); onRefresh(); }}
+            />
             {contextMenu !== null && (() => {
                 const ws = repos.flatMap(r => [r.workspace]).find(w => w.id === contextMenu.repoId);
                 if (!ws) return null;
@@ -198,6 +217,29 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             }}
                         >
                             Copy Repo Info
+                        </button>
+                        <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
+                        <button
+                            data-testid="repo-tab-context-edit"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                setEditRepoId(contextMenu.repoId);
+                                setContextMenu(null);
+                            }}
+                        >
+                            Edit
+                        </button>
+                        <button
+                            data-testid="repo-tab-context-remove"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#d16969] hover:bg-[#d16969]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                setContextMenu(null);
+                                handleRemove(contextMenu.repoId);
+                            }}
+                        >
+                            Remove
                         </button>
                     </div>
                 );

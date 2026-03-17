@@ -7,9 +7,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { RepoTabStrip } from '../../../../src/server/spa/client/react/repos/RepoTabStrip';
 
+const mockDispatch = vi.fn();
+vi.mock('../../../../src/server/spa/client/react/context/AppContext', () => ({
+    useApp: () => ({ state: {}, dispatch: mockDispatch }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getApiBase: () => 'http://localhost:4000/api',
+}));
+
 vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
-    AddRepoDialog: ({ open }: { open: boolean }) =>
-        open ? <div data-testid="add-repo-dialog" /> : null,
+    AddRepoDialog: ({ open, editId }: { open: boolean; editId?: string | null }) =>
+        open ? <div data-testid="add-repo-dialog" data-edit-id={editId ?? ''} /> : null,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/AddFolderDialog', () => ({
@@ -478,6 +487,96 @@ describe('RepoTabStrip', () => {
             );
             fireEvent.click(screen.getByTestId('repo-tab'));
             expect(onSelect).toHaveBeenCalledWith('r1');
+        });
+
+        it('context menu contains "Edit" and "Remove" items', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-edit')).toBeDefined();
+            expect(screen.getByTestId('repo-tab-context-remove')).toBeDefined();
+        });
+
+        it('clicking Edit opens AddRepoDialog in edit mode and closes the context menu', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-edit'));
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+            const dialog = screen.getByTestId('add-repo-dialog');
+            expect(dialog).toBeDefined();
+            expect(dialog.getAttribute('data-edit-id')).toBe('r1');
+        });
+
+        it('clicking Remove calls DELETE /workspaces/:id after confirmation, dispatches SET_SELECTED_REPO, and calls onRefresh', async () => {
+            const onRefresh = vi.fn();
+            vi.spyOn(window, 'confirm').mockReturnValue(true);
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
+            mockDispatch.mockClear();
+
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={onRefresh}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-remove'));
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+            // Wait for all async effects: fetch → dispatch → onRefresh
+            await vi.waitFor(() => {
+                expect(fetchSpy).toHaveBeenCalledWith(
+                    'http://localhost:4000/api/workspaces/r1',
+                    { method: 'DELETE' }
+                );
+                expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: null });
+                expect(onRefresh).toHaveBeenCalled();
+            });
+
+            fetchSpy.mockRestore();
+            vi.restoreAllMocks();
+        });
+
+        it('clicking Remove does nothing when user cancels confirmation', () => {
+            const onRefresh = vi.fn();
+            vi.spyOn(window, 'confirm').mockReturnValue(false);
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
+            mockDispatch.mockClear();
+
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={onRefresh}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-remove'));
+            expect(fetchSpy).not.toHaveBeenCalled();
+            expect(mockDispatch).not.toHaveBeenCalled();
+            expect(onRefresh).not.toHaveBeenCalled();
+
+            fetchSpy.mockRestore();
+            vi.restoreAllMocks();
         });
     });
 });
