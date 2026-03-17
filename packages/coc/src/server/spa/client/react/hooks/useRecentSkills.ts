@@ -31,17 +31,17 @@ export interface UseRecentSkillsResult {
 const MAX_RECENT = 5;
 
 export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
+    const prefsUrl = wsId
+        ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
+        : getApiBase() + '/preferences';
     const [recentItems, setRecentItems] = useState<RecentSkillEntry[]>([]);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
-        const url = wsId
-            ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
-            : getApiBase() + '/preferences';
         (async () => {
             try {
-                const res = await fetch(url);
+                const res = await fetch(prefsUrl);
                 if (!res.ok) return;
                 const prefs = await res.json();
                 // Read from legacy key for backwards compatibility
@@ -77,10 +77,7 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
             const updated = [entry, ...filtered].slice(0, MAX_RECENT);
 
             // Fire-and-forget persistence (uses legacy key for backwards compat)
-            const url = wsId
-                ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
-                : getApiBase() + '/preferences';
-            fetch(url, {
+            fetch(prefsUrl, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ recentFollowPrompts: updated }),
