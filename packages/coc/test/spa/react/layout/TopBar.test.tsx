@@ -144,4 +144,25 @@ describe('TopBar responsive behavior', () => {
         expect(btn.className).not.toContain('hidden');
         expect(btn.className).toContain('inline-flex');
     });
+
+    it('active tab uses bottom-border style instead of solid background fill', () => {
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        // repos is the active tab in these tests
+        const desktopLink = document.querySelector('[data-tab="repos"]') as HTMLAnchorElement;
+        expect(desktopLink.className).toContain('active');
+        expect(desktopLink.className).toContain('border-b-2');
+        expect(desktopLink.className).toContain('border-[#0078d4]');
+        expect(desktopLink.className).not.toContain('bg-[#0078d4]');
+        expect(desktopLink.className).not.toContain('text-white');
+    });
+
+    it('inactive icon buttons do not have active border class', () => {
+        viewportCleanup = mockViewport(1024);
+        render(<TopBar />);
+        // processes is not active (activeTab is 'repos')
+        const btn = document.getElementById('processes-toggle')!;
+        expect(btn.className).not.toContain('active');
+        expect(btn.className).not.toContain('border-b-2');
+    });
 });

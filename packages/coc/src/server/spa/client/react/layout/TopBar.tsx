@@ -89,13 +89,13 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 <a
                     href="#"
                     data-tab-mobile="repos"
-                    className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 rounded transition-colors inline-flex items-center ${isOnReposTab ? 'active bg-[#0078d4] text-white' : 'hover:underline'}`}
+                    className={`text-sm font-semibold whitespace-nowrap md:hidden flex-shrink-0 px-2 h-7 transition-colors inline-flex items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC</a>
                 <a
                     href="#"
                     data-tab="repos"
-                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 rounded transition-colors items-center ${isOnReposTab ? 'active bg-[#0078d4] text-white' : 'hover:underline'}`}
+                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
                     title="Copilot of Copilot"
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC</a>
@@ -116,7 +116,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                             className={
                                 `h-8 px-3 rounded text-sm transition-colors ` +
                                 (state.activeTab === tab
-                                    ? 'active bg-[#0078d4] text-white'
+                                    ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]'
                                     : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                             }
                             data-tab={tab}
@@ -146,7 +146,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'processes'
-                            ? 'active bg-[#0078d4] text-white'
+                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Processes"
@@ -161,7 +161,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'skills'
-                            ? 'active bg-[#0078d4] text-white'
+                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Skills"
@@ -176,7 +176,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'logs'
-                            ? 'active bg-[#0078d4] text-white'
+                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Logs"
@@ -191,7 +191,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'memory'
-                            ? 'active bg-[#0078d4] text-white'
+                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Memory"
@@ -206,7 +206,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'stats'
-                            ? 'active bg-[#0078d4] text-white'
+                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Usage"
@@ -221,7 +221,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'admin'
-                            ? 'active bg-[#0078d4] text-white'
+                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Admin"
