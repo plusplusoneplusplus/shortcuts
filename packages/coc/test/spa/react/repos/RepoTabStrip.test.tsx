@@ -383,7 +383,7 @@ describe('RepoTabStrip', () => {
             expect(screen.getByTestId('repo-tab-context-menu')).toBeDefined();
         });
 
-        it('context menu contains a "Copy Info" item', () => {
+        it('context menu contains a "Copy Repo Info" item', () => {
             render(
                 <RepoTabStrip
                     repos={[makeRepo('r1', 'Alpha')]}
@@ -397,7 +397,7 @@ describe('RepoTabStrip', () => {
             expect(screen.getByTestId('repo-tab-context-copy-info')).toBeDefined();
         });
 
-        it('clicking Copy Info writes "<name>: <path>" to clipboard and closes menu', async () => {
+        it('clicking Copy Repo Info writes "<name>: <path>" to clipboard and closes menu', async () => {
             render(
                 <RepoTabStrip
                     repos={[makeRepo('r1', 'Alpha')]}

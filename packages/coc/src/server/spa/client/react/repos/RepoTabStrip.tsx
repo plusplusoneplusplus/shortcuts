@@ -197,7 +197,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 setContextMenu(null);
                             }}
                         >
-                            Copy Info
+                            Copy Repo Info
                         </button>
                     </div>
                 );
