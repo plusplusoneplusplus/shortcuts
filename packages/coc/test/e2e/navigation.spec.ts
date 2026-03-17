@@ -59,7 +59,7 @@ test.describe('Navigation', () => {
         // Navigate directly to repos tab via hash
         await page.goto(`${serverUrl}/#repos`);
 
-        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/bg-\[#0078d4\]/);
+        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
         await expect(page.locator('#view-repos')).toBeVisible();
     });
 
@@ -163,7 +163,7 @@ test.describe('Navigation', () => {
     test('legacy hash #tasks routes to Repos tab', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#tasks`);
 
-        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/bg-\[#0078d4\]/);
+        await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
         await expect(page.locator('#view-repos')).toBeVisible();
     });
 
