@@ -325,6 +325,27 @@ describe('SideBySideDiffViewer — DiffContextMenu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
+    it('shows context menu on right-click even when right-button mousedown fires before contextmenu', async () => {
+        const { container } = render(
+            <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />
+        );
+        const leftCol = container.querySelector<HTMLElement>('[data-split-side="left"][data-diff-line-index="5"]')!;
+        mockSelection({ startEl: leftCol, endEl: leftCol });
+
+        // Step 1: user completes drag selection (left button)
+        await act(async () => { fireEvent.mouseUp(container.firstElementChild!, { button: 0 }); });
+        expect(screen.queryByTestId('context-menu')).toBeNull(); // menu not shown yet
+
+        // Step 2: user right-clicks — browser fires mousedown(2) → mouseup(2) → contextmenu
+        await act(async () => { fireEvent.mouseDown(container.firstElementChild!, { button: 2 }); });
+        await act(async () => { fireEvent.mouseUp(container.firstElementChild!, { button: 2 }); });
+        await act(async () => {
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 });
+        });
+
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
     it('collapsed selection does not show context menu', async () => {
         const { container } = render(
             <SideBySideDiffViewer diff={SIMPLE_DIFF} enableComments />

@@ -144,7 +144,8 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             getHunkCount: () => containerRef.current?.querySelectorAll('[data-edit-start]').length ?? 0,
         }));
 
-        const handleMouseUp = useCallback((_e: React.MouseEvent) => {
+        const handleMouseUp = useCallback((e: React.MouseEvent) => {
+            if (e.button !== 0) return;
             if (!enableComments) return;
             const clear = () => {
                 pendingSelectionRef.current = null;
@@ -207,7 +208,8 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             setToolbar(t => ({ ...t, visible: true, position: { x: e.clientX, y: e.clientY } }));
         }, [enableComments]);
 
-        const handleMouseDown = useCallback(() => {
+        const handleMouseDown = useCallback((e: React.MouseEvent) => {
+            if (e.button !== 0) return;
             pendingSelectionRef.current = null;
             setToolbar(t => ({ ...t, visible: false }));
         }, []);

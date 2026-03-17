@@ -267,6 +267,29 @@ describe('UnifiedDiffViewer — selection detection', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 
+    // 8b. Regression: right-click mousedown does NOT clear pending selection
+    it('shows context menu on right-click even when right-button mousedown fires before contextmenu', async () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={SIMPLE_DIFF} enableComments data-testid="diff" />
+        );
+        const addedEl = container.querySelector<HTMLElement>('[data-line-type="added"]')!;
+        const contextEl = container.querySelector<HTMLElement>('[data-line-type="context"]')!;
+        mockSelection({ startEl: addedEl, endEl: contextEl });
+
+        // Step 1: user completes drag selection (left button)
+        await act(async () => { fireEvent.mouseUp(container.firstElementChild!, { button: 0 }); });
+        expect(screen.queryByTestId('context-menu')).toBeNull(); // menu not shown yet
+
+        // Step 2: user right-clicks — browser fires mousedown(2) → mouseup(2) → contextmenu
+        await act(async () => { fireEvent.mouseDown(container.firstElementChild!, { button: 2 }); });
+        await act(async () => { fireEvent.mouseUp(container.firstElementChild!, { button: 2 }); });
+        await act(async () => {
+            fireEvent.contextMenu(container.firstElementChild!, { clientX: 150, clientY: 200 });
+        });
+
+        expect(screen.getByTestId('context-menu')).toBeTruthy();
+    });
+
     // 9. Context menu click on item dismisses menu
     it('context menu item click dismisses the menu', async () => {
         const { container } = render(

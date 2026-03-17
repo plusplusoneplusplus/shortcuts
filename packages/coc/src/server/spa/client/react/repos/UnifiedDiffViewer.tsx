@@ -371,7 +371,8 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     // Stores the last validated selection so handleContextMenu can use it without stale closures.
     const pendingSelectionRef = useRef<{ selection: DiffCommentSelection; selectedText: string } | null>(null);
 
-    const handleMouseUp = useCallback(() => {
+    const handleMouseUp = useCallback((e: React.MouseEvent) => {
+        if (e.button !== 0) return;
         if (!enableComments) return;
         const clear = () => {
             pendingSelectionRef.current = null;
@@ -431,7 +432,8 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         setToolbar(t => ({ ...t, visible: true, position: { x: e.clientX, y: e.clientY } }));
     }, [enableComments]);
 
-    const handleMouseDown = useCallback(() => {
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        if (e.button !== 0) return;
         pendingSelectionRef.current = null;
         setToolbar(t => ({ ...t, visible: false }));
     }, []);
