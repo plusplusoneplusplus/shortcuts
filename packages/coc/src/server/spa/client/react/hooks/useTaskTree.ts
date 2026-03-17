@@ -156,6 +156,21 @@ export function filterTaskItems(
         });
 }
 
+// ── Status Icon ────────────────────────────────────────────────────────
+
+/**
+ * Return the emoji status icon for a task status string.
+ */
+export function getTaskStatusIcon(status?: string): string {
+    switch (status) {
+        case 'done':        return '✅';
+        case 'in-progress': return '🔄';
+        case 'pending':     return '⏳';
+        case 'future':      return '📋';
+        default:            return '';
+    }
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────
 
 export interface UseTaskTreeResult {

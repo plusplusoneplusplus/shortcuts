@@ -5,7 +5,7 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '../shared';
-import { isTaskDocument, isTaskDocumentGroup } from '../hooks/useTaskTree';
+import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon } from '../hooks/useTaskTree';
 import type { TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 
 export function highlightMatch(text: string, query: string): ReactNode {
@@ -32,15 +32,6 @@ export interface TaskSearchResultsProps {
     onContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
 }
 
-function getStatusIcon(status?: string): string {
-    switch (status) {
-        case 'done': return '✅';
-        case 'in-progress': return '🔄';
-        case 'pending': return '⏳';
-        case 'future': return '📋';
-        default: return '';
-    }
-}
 
 function getItemPath(item: TaskDocument | TaskDocumentGroup): string | null {
     if (isTaskDocument(item)) {
@@ -76,7 +67,7 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick, 
                         ? (item as TaskDocument).baseName || (item as TaskDocument).fileName
                         : (item as TaskDocumentGroup).baseName;
                     const status = isDoc ? (item as TaskDocument).status : undefined;
-                    const statusIcon = getStatusIcon(status);
+                    const statusIcon = getTaskStatusIcon(status);
                     const itemPath = getItemPath(item);
                     const relativePath = isDoc
                         ? (item as TaskDocument).relativePath

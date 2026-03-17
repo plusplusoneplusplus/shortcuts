@@ -4,7 +4,7 @@
 
 import { useRef } from 'react';
 import { cn } from '../shared';
-import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument } from '../hooks/useTaskTree';
+import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument, getTaskStatusIcon } from '../hooks/useTaskTree';
 import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from '../hooks/useTaskTree';
 
 export interface TaskTreeItemProps {
@@ -63,15 +63,6 @@ function getDisplayName(item: TaskNode): string {
     return '';
 }
 
-function getStatusIcon(status?: string): string {
-    switch (status) {
-        case 'done': return '✅';
-        case 'in-progress': return '🔄';
-        case 'pending': return '⏳';
-        case 'future': return '📋';
-        default: return '';
-    }
-}
 
 export function buildFileTooltip(
     path: string | null,
@@ -275,7 +266,7 @@ export function TaskTreeItem({
                     title={status}
                     data-status={status}
                 >
-                    {getStatusIcon(status)}
+                    {getTaskStatusIcon(status)}
                 </span>
             )}
 

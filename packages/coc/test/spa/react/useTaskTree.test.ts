@@ -476,3 +476,33 @@ describe('filterTaskItems — archive sorting', () => {
         expect(results).toHaveLength(0);
     });
 });
+
+// ── getTaskStatusIcon ─────────────────────────────────────────────────
+
+import { getTaskStatusIcon } from '../../../src/server/spa/client/react/hooks/useTaskTree';
+
+describe('getTaskStatusIcon', () => {
+    it('returns ✅ for done', () => {
+        expect(getTaskStatusIcon('done')).toBe('✅');
+    });
+
+    it('returns 🔄 for in-progress', () => {
+        expect(getTaskStatusIcon('in-progress')).toBe('🔄');
+    });
+
+    it('returns ⏳ for pending', () => {
+        expect(getTaskStatusIcon('pending')).toBe('⏳');
+    });
+
+    it('returns 📋 for future', () => {
+        expect(getTaskStatusIcon('future')).toBe('📋');
+    });
+
+    it('returns empty string for unknown status', () => {
+        expect(getTaskStatusIcon('unknown')).toBe('');
+    });
+
+    it('returns empty string when status is undefined', () => {
+        expect(getTaskStatusIcon(undefined)).toBe('');
+    });
+});
