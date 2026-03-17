@@ -124,6 +124,21 @@ function applyParsedSkill(skill: SkillInfo, parsed: ReturnType<typeof parseSkill
     skill.promptBody = parsed.promptBody;
 }
 
+function buildSkillFromDir(skillDir: string, skillName: string): SkillInfo {
+    const skill: SkillInfo = { name: skillName };
+    const skillMdPath = path.join(skillDir, 'SKILL.md');
+    try {
+        const content = fs.readFileSync(skillMdPath, 'utf-8');
+        const parsed = parseSkillMd(content);
+        applyParsedSkill(skill, parsed);
+    } catch {
+        // ignore
+    }
+    skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
+    skill.scripts    = listDirectoryFiles(path.join(skillDir, 'scripts'));
+    return skill;
+}
+
 export function listInstalledSkills(installPath: string): SkillInfo[] {
     if (!fs.existsSync(installPath)) {
         return [];
@@ -139,19 +154,7 @@ export function listInstalledSkills(installPath: string): SkillInfo[] {
             const skillMdPath = path.join(skillDir, 'SKILL.md');
             if (!fs.existsSync(skillMdPath)) continue;
 
-            const skill: SkillInfo = { name: entry.name };
-            try {
-                const content = fs.readFileSync(skillMdPath, 'utf-8');
-                const parsed = parseSkillMd(content);
-                applyParsedSkill(skill, parsed);
-            } catch {
-                // ignore
-            }
-
-            skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
-            skill.scripts = listDirectoryFiles(path.join(skillDir, 'scripts'));
-
-            skills.push(skill);
+            skills.push(buildSkillFromDir(skillDir, entry.name));
         }
     } catch {
         // ignore
@@ -165,18 +168,7 @@ export function getSkillDetail(installPath: string, skillName: string): SkillInf
     const skillMdPath = path.join(skillDir, 'SKILL.md');
     if (!fs.existsSync(skillMdPath)) return null;
 
-    const skill: SkillInfo = { name: skillName };
-    try {
-        const content = fs.readFileSync(skillMdPath, 'utf-8');
-        const parsed = parseSkillMd(content);
-        applyParsedSkill(skill, parsed);
-    } catch {
-        // ignore
-    }
-    skill.references = listDirectoryFiles(path.join(skillDir, 'references'));
-    skill.scripts = listDirectoryFiles(path.join(skillDir, 'scripts'));
-
-    return skill;
+    return buildSkillFromDir(skillDir, skillName);
 }
 
 export const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
