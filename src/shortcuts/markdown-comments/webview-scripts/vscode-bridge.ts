@@ -10,7 +10,7 @@ import {
     CommonMessageTypes
 } from '../../shared/webview/base-vscode-bridge';
 import { state } from './state';
-import { ExtensionMessage, WebviewMessage } from './types';
+import { ExtensionMessage, WebviewMessage, AskAIContext } from './types';
 
 /**
  * Send a message to the extension
@@ -180,8 +180,6 @@ export function openFile(path: string): void {
 export function requestFilePreview(path: string, requestId: string, full?: boolean): void {
     postMessage({ type: 'readFilePreview', path, requestId, full });
 }
-
-import { AskAIContext } from './types';
 
 /**
  * Request AI clarification for selected text (comment mode)
