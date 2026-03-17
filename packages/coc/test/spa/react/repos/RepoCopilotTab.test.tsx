@@ -1,5 +1,5 @@
 /**
- * Tests for RepoCopilotTab — MCP server toggle panel + Agent Skills.
+ * Tests for RepoCopilotTab — Split-panel layout with MCP server toggle panel + Agent Skills + Custom Instructions.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -30,6 +30,14 @@ async function renderTab(workspaceId = 'ws-1') {
         '../../../../src/server/spa/client/react/repos/RepoCopilotTab'
     );
     return render(<RepoCopilotTab workspaceId={workspaceId} />);
+}
+
+/** Helper: navigate the sidebar to the skills section */
+async function navigateToSkills() {
+    await waitFor(() => expect(screen.getByTestId('nav-item-skills')).toBeTruthy());
+    await act(async () => {
+        fireEvent.click(screen.getByTestId('nav-item-skills'));
+    });
 }
 
 const twoServers = {
@@ -232,18 +240,19 @@ describe('saving state', () => {
 describe('Agent Skills section', () => {
     it('renders Agent Skills heading', async () => {
         await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
-        expect(screen.getByText('Agent Skills')).toBeTruthy();
+        await navigateToSkills();
+        expect(screen.getAllByText('Agent Skills').length).toBeGreaterThan(0);
     });
 
     it('renders skills-install-btn', async () => {
         await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+        await navigateToSkills();
         expect(screen.getByTestId('skills-install-btn')).toBeTruthy();
     });
 
     it('shows empty-state when no skills are installed', async () => {
         await act(async () => { await renderTab(); });
+        await navigateToSkills();
         await waitFor(() => screen.getByTestId('skills-empty-state'));
         expect(screen.getByTestId('skills-empty-state')).toBeTruthy();
     });
@@ -254,6 +263,7 @@ describe('Agent Skills section', () => {
             json: async () => ({ skills: [{ name: 'my-skill', description: 'A skill' }] }),
         } as any);
         await act(async () => { await renderTab(); });
+        await navigateToSkills();
         await waitFor(() => screen.getByTestId('skills-list'));
         expect(screen.getByTestId('skill-item-my-skill')).toBeTruthy();
         expect(screen.getByText('A skill')).toBeTruthy();
@@ -265,6 +275,7 @@ describe('Agent Skills section', () => {
             json: async () => ({ skills: [{ name: 'my-skill' }] }),
         } as any);
         await act(async () => { await renderTab(); });
+        await navigateToSkills();
         await waitFor(() => screen.getByTestId('skills-list'));
         await act(async () => {
             fireEvent.click(screen.getByTestId('skill-delete-btn-my-skill'));
@@ -274,6 +285,7 @@ describe('Agent Skills section', () => {
 
     it('opens install dialog when + Install is clicked', async () => {
         await act(async () => { await renderTab(); });
+        await navigateToSkills();
         await waitFor(() => screen.getByTestId('skills-install-btn'));
         // Mock bundled skills response for dialog
         mockFetch.mockResolvedValue({
@@ -284,5 +296,53 @@ describe('Agent Skills section', () => {
             fireEvent.click(screen.getByTestId('skills-install-btn'));
         });
         expect(screen.getByTestId('install-skills-dialog')).toBeTruthy();
+    });
+});
+
+// ── 12. Sidebar navigation ───────────────────────────────────────────────────
+
+describe('sidebar navigation', () => {
+    it('renders all three nav items in the sidebar', async () => {
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('nav-item-mcp')).toBeTruthy();
+        expect(screen.getByTestId('nav-item-skills')).toBeTruthy();
+        expect(screen.getByTestId('nav-item-instructions')).toBeTruthy();
+    });
+
+    it('shows MCP panel by default (mcp is active)', async () => {
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+        // MCP toggles visible without navigating
+        expect(screen.getByTestId('mcp-toggle-github')).toBeTruthy();
+        // Skills panel not rendered yet
+        expect(screen.queryByTestId('skills-install-btn')).toBeNull();
+    });
+
+    it('switching to skills nav item shows skills panel', async () => {
+        await act(async () => { await renderTab(); });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('nav-item-skills'));
+        });
+        expect(screen.getByTestId('skills-install-btn')).toBeTruthy();
+        // MCP panel no longer visible
+        expect(screen.queryByTestId('mcp-toggle-github')).toBeNull();
+    });
+
+    it('switching to instructions nav item shows instructions panel', async () => {
+        await act(async () => { await renderTab(); });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('nav-item-instructions'));
+        });
+        expect(screen.getByTestId('instr-tab-base')).toBeTruthy();
+    });
+
+    it('switching back to mcp nav item shows mcp panel again', async () => {
+        await act(async () => { await renderTab(); });
+        // Go to skills
+        await act(async () => { fireEvent.click(screen.getByTestId('nav-item-skills')); });
+        // Go back to mcp
+        await act(async () => { fireEvent.click(screen.getByTestId('nav-item-mcp')); });
+        await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+        expect(screen.getByTestId('mcp-toggle-github')).toBeTruthy();
     });
 });
