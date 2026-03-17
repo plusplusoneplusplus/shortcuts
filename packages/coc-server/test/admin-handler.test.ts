@@ -372,4 +372,136 @@ describe('Admin HTTP Routes', () => {
             expect(typeof body.exportedAt).toBe('string');
         });
     });
+
+    // ---- PUT /api/admin/config — field validation (Section 11) -----------------------
+
+    describe('PUT /api/admin/config — validation', () => {
+        /** Shared config functions injected so writes are no-ops in tests. */
+        let configServer: http.Server;
+        let configBaseUrl: string;
+        let writtenConfig: Record<string, unknown>;
+
+        beforeEach(async () => {
+            writtenConfig = {};
+            const configFunctions = {
+                getConfigFilePath: () => '/dev/null',
+                getResolvedConfigWithSource: () => ({ config: {}, sources: {} }),
+                loadConfigFile: () => ({}),
+                writeConfigFile: (_path: string, cfg: Record<string, unknown>) => {
+                    Object.assign(writtenConfig, cfg);
+                },
+            };
+            const cfgStore = createMockStore();
+            const cfgDir = dataDir;
+            const cfgRoutes: Route[] = [];
+            registerAdminRoutes(cfgRoutes, { store: cfgStore, dataDir: cfgDir, configFunctions });
+            const cfgHandler = createRouter({ routes: cfgRoutes, spaHtml: '' });
+            configServer = http.createServer(cfgHandler);
+            await new Promise<void>((resolve, reject) => {
+                configServer.on('error', reject);
+                configServer.listen(0, '127.0.0.1', resolve);
+            });
+            configBaseUrl = `http://127.0.0.1:${(configServer.address() as any).port}`;
+        });
+
+        afterEach(async () => {
+            await new Promise<void>(resolve => configServer.close(() => resolve()));
+        });
+
+        async function putConfig(body: unknown): Promise<{ status: number; body: unknown }> {
+            return apiRequest(configBaseUrl, '/api/admin/config', { method: 'PUT', body });
+        }
+
+        // --- parallel ---
+
+        it('parallel: 0 → 400', async () => {
+            const { status, body } = await putConfig({ parallel: 0 });
+            expect(status).toBe(400);
+            expect((body as any).error).toMatch(/parallel/i);
+        });
+
+        it('parallel: -1 → 400', async () => {
+            const { status } = await putConfig({ parallel: -1 });
+            expect(status).toBe(400);
+        });
+
+        it('parallel: 1 → 200 (minimum valid)', async () => {
+            const { status } = await putConfig({ parallel: 1 });
+            expect(status).toBe(200);
+        });
+
+        it('parallel: 4 → 200', async () => {
+            const { status } = await putConfig({ parallel: 4 });
+            expect(status).toBe(200);
+        });
+
+        // --- timeout ---
+
+        it('timeout: 0 → 400', async () => {
+            const { status } = await putConfig({ timeout: 0 });
+            expect(status).toBe(400);
+        });
+
+        it('timeout: -1 → 400', async () => {
+            const { status } = await putConfig({ timeout: -1 });
+            expect(status).toBe(400);
+        });
+
+        it('timeout: 60 → 200', async () => {
+            const { status } = await putConfig({ timeout: 60 });
+            expect(status).toBe(200);
+        });
+
+        it('timeout: null → 200 (clears the timeout)', async () => {
+            const { status } = await putConfig({ timeout: null });
+            expect(status).toBe(200);
+        });
+
+        // --- output (format) ---
+
+        it('output: "invalid_format" → 400', async () => {
+            const { status } = await putConfig({ output: 'invalid_format' });
+            expect(status).toBe(400);
+        });
+
+        it('output: "table" → 200', async () => {
+            const { status } = await putConfig({ output: 'table' });
+            expect(status).toBe(200);
+        });
+
+        it('output: "json" → 200', async () => {
+            const { status } = await putConfig({ output: 'json' });
+            expect(status).toBe(200);
+        });
+
+        it('output: "csv" → 200', async () => {
+            const { status } = await putConfig({ output: 'csv' });
+            expect(status).toBe(200);
+        });
+
+        it('output: "markdown" → 200', async () => {
+            const { status } = await putConfig({ output: 'markdown' });
+            expect(status).toBe(200);
+        });
+
+        // --- unknown extra fields (should be ignored) ---
+
+        it('unknown extra fields are ignored — 400 when no editable keys included', async () => {
+            // Body with ONLY unknown fields → 400 (no editable keys)
+            const { status } = await putConfig({ port: 4000, unknownField: 'foo' });
+            expect(status).toBe(400);
+        });
+
+        it('unknown extra fields alongside valid fields → 200', async () => {
+            const { status } = await putConfig({ parallel: 2, unknownField: 'ignored' });
+            expect(status).toBe(200);
+        });
+
+        // --- empty body ---
+
+        it('empty body → 400 (no editable keys)', async () => {
+            const { status } = await putConfig({});
+            expect(status).toBe(400);
+        });
+    });
 });

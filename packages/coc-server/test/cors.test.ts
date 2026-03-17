@@ -1,0 +1,165 @@
+/**
+ * CORS Headers Tests (Section 12)
+ *
+ * Verifies that the shared router sets the correct CORS headers on every
+ * HTTP response and that OPTIONS preflight requests are handled correctly
+ * without triggering any side effects.
+ *
+ * Cross-platform compatible (Linux/macOS/Windows).
+ */
+
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import * as http from 'http';
+import { createRouter } from '../src/shared/router';
+import { registerApiRoutes } from '../src/api-handler';
+import type { Route } from '../src/types';
+import { createMockProcessStore } from './helpers/mock-process-store';
+import type { MockProcessStore } from './helpers/mock-process-store';
+
+// ============================================================================
+// Mock forge git services
+// ============================================================================
+
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal() as any;
+    return {
+        ...actual,
+        BranchService: vi.fn().mockImplementation(() => ({
+            hasUncommittedChanges: vi.fn(() => false),
+            getBranchStatus: vi.fn(() => null),
+        })),
+        GitRangeService: vi.fn().mockImplementation(() => ({
+            getCurrentBranch: vi.fn(() => 'main'),
+        })),
+        WorkingTreeService: vi.fn().mockImplementation(() => ({
+            getAllChanges: vi.fn(async () => []),
+        })),
+        detectRemoteUrl: vi.fn(() => undefined),
+    };
+});
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function rawRequest(
+    baseUrl: string,
+    path: string,
+    opts: { method?: string; body?: string } = {},
+): Promise<{ status: number; headers: Record<string, string | string[] | undefined> }> {
+    return new Promise((resolve, reject) => {
+        const parsed = new URL(`${baseUrl}${path}`);
+        const req = http.request(
+            {
+                hostname: parsed.hostname,
+                port: parsed.port,
+                path: parsed.pathname + parsed.search,
+                method: opts.method ?? 'GET',
+                headers: { 'Content-Type': 'application/json' },
+            },
+            (res) => {
+                const chunks: Buffer[] = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => {
+                    resolve({ status: res.statusCode ?? 0, headers: res.headers as any });
+                });
+            },
+        );
+        req.on('error', reject);
+        if (opts.body) req.write(opts.body);
+        req.end();
+    });
+}
+
+function makeServer(store: MockProcessStore): http.Server {
+    const routes: Route[] = [];
+    registerApiRoutes(routes, store);
+    const handler = createRouter({ routes, spaHtml: '' });
+    return http.createServer(handler);
+}
+
+async function startServer(server: http.Server): Promise<string> {
+    return new Promise((resolve, reject) => {
+        server.on('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+            const addr = server.address() as { port: number };
+            resolve(`http://127.0.0.1:${addr.port}`);
+        });
+    });
+}
+
+async function stopServer(server: http.Server): Promise<void> {
+    return new Promise(resolve => server.close(() => resolve()));
+}
+
+// ============================================================================
+// CORS header tests
+// ============================================================================
+
+describe('CORS headers', () => {
+    let server: http.Server;
+    let baseUrl: string;
+    let store: MockProcessStore;
+    let addProcessCallCount: number;
+
+    beforeAll(async () => {
+        store = createMockProcessStore();
+        addProcessCallCount = 0;
+        const origAdd = store.addProcess as any;
+        (store.addProcess as any) = vi.fn(async (...args: any[]) => {
+            addProcessCallCount++;
+            return origAdd(...args);
+        });
+        server = makeServer(store);
+        baseUrl = await startServer(server);
+    });
+
+    afterAll(async () => { await stopServer(server); });
+
+    it('OPTIONS /api/processes returns 204 with CORS headers', async () => {
+        const { status, headers } = await rawRequest(baseUrl, '/api/processes', { method: 'OPTIONS' });
+        expect(status).toBe(204);
+        expect(headers['access-control-allow-origin']).toBe('*');
+    });
+
+    it('OPTIONS response includes all required methods', async () => {
+        const { headers } = await rawRequest(baseUrl, '/api/processes', { method: 'OPTIONS' });
+        const methods = String(headers['access-control-allow-methods'] ?? '');
+        expect(methods).toMatch(/GET/);
+        expect(methods).toMatch(/POST/);
+        expect(methods).toMatch(/PATCH/);
+        expect(methods).toMatch(/DELETE/);
+    });
+
+    it('OPTIONS preflight does not trigger any writes (no side effects)', async () => {
+        const callsBefore = addProcessCallCount;
+        await rawRequest(baseUrl, '/api/processes', { method: 'OPTIONS' });
+        expect(addProcessCallCount).toBe(callsBefore);
+    });
+
+    it('GET /api/processes includes Access-Control-Allow-Origin: *', async () => {
+        const { status, headers } = await rawRequest(baseUrl, '/api/processes');
+        expect(status).toBe(200);
+        expect(headers['access-control-allow-origin']).toBe('*');
+    });
+
+    it('POST /api/processes includes Access-Control-Allow-Origin: *', async () => {
+        const { status, headers } = await rawRequest(baseUrl, '/api/processes', {
+            method: 'POST',
+            body: JSON.stringify({
+                id: 'cors-proc-1',
+                promptPreview: 'hi',
+                status: 'running',
+                startTime: new Date().toISOString(),
+            }),
+        });
+        // Either 201 or 400 — either way CORS headers must be present
+        expect([201, 400]).toContain(status);
+        expect(headers['access-control-allow-origin']).toBe('*');
+    });
+
+    it('Access-Control-Allow-Headers is set on all responses', async () => {
+        const { headers } = await rawRequest(baseUrl, '/api/processes');
+        expect(headers['access-control-allow-headers']).toBeDefined();
+    });
+});
