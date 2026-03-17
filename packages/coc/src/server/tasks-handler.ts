@@ -30,13 +30,10 @@ const TRUSTED_READ_ONLY_DIRS: string[] = [
 
 /** Return true when `target` is inside any of the trusted read-only directories or the server data directory. */
 function isWithinTrustedReadOnlyDir(target: string, dataDir?: string): boolean {
-    if (TRUSTED_READ_ONLY_DIRS.some(dir => isWithinDirectory(target, dir))) {
-        return true;
-    }
-    if (dataDir && isWithinDirectory(target, dataDir)) {
-        return true;
-    }
-    return false;
+    return (
+        TRUSTED_READ_ONLY_DIRS.some(dir => isWithinDirectory(target, dir)) ||
+        !!(dataDir && isWithinDirectory(target, dataDir))
+    );
 }
 
 // ============================================================================
