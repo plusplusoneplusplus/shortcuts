@@ -184,7 +184,7 @@ export type ProcessChangeCallback = (event: ProcessEvent) => void;
 export interface ProcessStore {
     addProcess(process: AIProcess): Promise<void>;
     updateProcess(id: string, updates: Partial<AIProcess>): Promise<void>;
-    getProcess(id: string): Promise<AIProcess | undefined>;
+    getProcess(id: string, workspaceId?: string): Promise<AIProcess | undefined>;
     getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]>;
     removeProcess(id: string): Promise<void>;
     /** Remove processes matching filter. Returns count of removed items. */
