@@ -935,4 +935,103 @@ describe('RepoGitTab', () => {
             expect(fallbackIdx).toBeGreaterThan(nullGuardIdx);
         });
     });
+
+    describe('load more pagination', () => {
+        it('tracks skip state initialised to 0', () => {
+            expect(source).toContain('const [skip, setSkip] = useState(0)');
+        });
+
+        it('tracks hasMore state', () => {
+            expect(source).toContain('const [hasMore, setHasMore] = useState(true)');
+        });
+
+        it('tracks isLoadingMore state', () => {
+            expect(source).toContain('const [isLoadingMore, setIsLoadingMore] = useState(false)');
+        });
+
+        it('fetchCommits accepts skipOffset parameter defaulting to 0', () => {
+            expect(source).toContain('skipOffset = 0');
+        });
+
+        it('fetchCommits appends commits when skipOffset > 0', () => {
+            expect(source).toContain('setCommits(prev => [...prev, ...loaded])');
+        });
+
+        it('fetchCommits replaces commits when skipOffset is 0', () => {
+            expect(source).toMatch(/skipOffset > 0[\s\S]*?setCommits\(prev => \[\.\.\.prev, \.\.\.loaded\]\)[\s\S]*?setCommits\(loaded\)/);
+        });
+
+        it('fetchCommits sets hasMore based on returned batch size', () => {
+            expect(source).toContain('setHasMore(loaded.length === 50)');
+        });
+
+        it('fetchCommits passes skip query param when skipOffset > 0', () => {
+            expect(source).toContain('skipOffset > 0 ? `&skip=${skipOffset}` : \'\'');
+        });
+
+        it('defines handleLoadMore callback', () => {
+            expect(source).toContain('const handleLoadMore = useCallback');
+        });
+
+        it('handleLoadMore guards against concurrent calls', () => {
+            const block = source.match(/const handleLoadMore = useCallback[\s\S]*?\}, \[[\s\S]*?\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('if (isLoadingMore || !hasMore) return');
+        });
+
+        it('handleLoadMore advances skip by 50', () => {
+            expect(source).toContain('const nextSkip = skip + 50');
+        });
+
+        it('handleLoadMore calls fetchCommits with nextSkip', () => {
+            expect(source).toContain('fetchCommits(false, nextSkip)');
+        });
+
+        it('handleLoadMore updates skip state on success', () => {
+            expect(source).toContain('.then(() => setSkip(nextSkip))');
+        });
+
+        it('handleLoadMore sets isLoadingMore true before fetch and false after', () => {
+            expect(source).toContain('setIsLoadingMore(true)');
+            expect(source).toContain('setIsLoadingMore(false)');
+        });
+
+        it('renders Load more button with data-testid', () => {
+            expect(source).toContain('data-testid="git-load-more-btn"');
+        });
+
+        it('Load more button is shown only when hasMore is true', () => {
+            expect(source).toContain('{hasMore && (');
+        });
+
+        it('Load more button is disabled when isLoadingMore', () => {
+            expect(source).toContain('disabled={isLoadingMore}');
+        });
+
+        it('Load more button shows "Loading…" text when loading', () => {
+            expect(source).toContain("isLoadingMore ? 'Loading…' : 'Load more'");
+        });
+
+        it('Load more button calls handleLoadMore on click', () => {
+            expect(source).toContain('onClick={handleLoadMore}');
+        });
+
+        it('resets skip to 0 on initial workspace load', () => {
+            const effectBlock = source.match(/\/\/ Initial load[\s\S]*?}, \[workspaceId/);
+            expect(effectBlock).toBeTruthy();
+            expect(effectBlock![0]).toContain('setSkip(0)');
+        });
+
+        it('resets skip to 0 on refreshAll', () => {
+            const refreshBlock = source.match(/const refreshAll = useCallback[\s\S]*?\}, \[refreshing/);
+            expect(refreshBlock).toBeTruthy();
+            expect(refreshBlock![0]).toContain('setSkip(0)');
+        });
+
+        it('resets skip to 0 when branch is switched via BranchPickerModal', () => {
+            const switchedBlock = source.match(/onSwitched=\{[\s\S]*?\}\}/);
+            expect(switchedBlock).toBeTruthy();
+            expect(switchedBlock![0]).toContain('setSkip(0)');
+        });
+    });
 });

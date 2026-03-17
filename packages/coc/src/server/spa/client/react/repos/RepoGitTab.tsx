@@ -53,6 +53,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const initialCommitHash = state.selectedGitCommitHash;
     const initialFilePath = state.selectedGitFilePath;
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
+    const [skip, setSkip] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [unpushedCount, setUnpushedCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -83,13 +86,19 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
 
-    const fetchCommits = useCallback((refresh = false) => {
-        const qs = refresh ? '&refresh=true' : '';
-        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits?limit=50${qs}`)
+    const fetchCommits = useCallback((refresh = false, skipOffset = 0) => {
+        const skipQs = skipOffset > 0 ? `&skip=${skipOffset}` : '';
+        const refreshQs = refresh ? '&refresh=true' : '';
+        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits?limit=50${skipQs}${refreshQs}`)
             .then(data => {
                 const loaded = data.commits || [];
-                setCommits(loaded);
-                setUnpushedCount(data.unpushedCount || 0);
+                if (skipOffset > 0) {
+                    setCommits(prev => [...prev, ...loaded]);
+                } else {
+                    setCommits(loaded);
+                    setUnpushedCount(data.unpushedCount || 0);
+                }
+                setHasMore(loaded.length === 50);
                 return loaded;
             });
     }, [workspaceId]);
@@ -134,6 +143,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     useEffect(() => {
         setLoading(true);
         setError(null);
+        setSkip(0);
         Promise.all([fetchCommits(), fetchBranchRange()])
             .then(([loaded]) => {
                 const target = initialCommitHash
@@ -171,6 +181,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (refreshing) return;
         setRefreshing(true);
         setRefreshError(null);
+        setSkip(0);
         setWorkingChangesRefreshKey(k => k + 1);
         const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
         Promise.all([fetchCommits(true), fetchBranchRange(true)])
@@ -201,6 +212,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             .catch(err => setRefreshError(err.message || 'Refresh failed'))
             .finally(() => setRefreshing(false));
     }, [refreshing, rightPanelView, fetchCommits, fetchBranchRange]);
+
+    // Load more commits (append next page)
+    const handleLoadMore = useCallback(() => {
+        if (isLoadingMore || !hasMore) return;
+        setIsLoadingMore(true);
+        const nextSkip = skip + 50;
+        fetchCommits(false, nextSkip)
+            .then(() => setSkip(nextSkip))
+            .catch(() => {})
+            .finally(() => setIsLoadingMore(false));
+    }, [isLoadingMore, hasMore, skip, fetchCommits]);
 
     // WebSocket: auto-refresh on git-changed events for this workspace
     const gitChangedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -753,6 +775,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     refreshKey={workingChangesRefreshKey}
                 />
                 {commitListPanel}
+                {hasMore && (
+                    <div className="px-4 py-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <button
+                            onClick={handleLoadMore}
+                            disabled={isLoadingMore}
+                            className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
+                            data-testid="git-load-more-btn"
+                        >
+                            {isLoadingMore ? 'Loading…' : 'Load more'}
+                        </button>
+                    </div>
+                )}
             </aside>
             {/* Resize handle — desktop only */}
             <div
@@ -807,6 +841,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             onSwitched={(newBranch) => {
                 setBranchName(newBranch);
                 setBranchPickerOpen(false);
+                setSkip(0);
                 fetchBranchRange(true);
                 fetchCommits(true);
             }}
