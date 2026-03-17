@@ -11,7 +11,7 @@
 import {
     getCopilotSDKService,
     type SendMessageOptions,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     ThemeOutline,
     ThemeAnalysis,

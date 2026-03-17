@@ -4,7 +4,7 @@
  * Deep Wiki Generator CLI Entry Point
  *
  * Standalone CLI tool for auto-generating comprehensive wikis for any codebase.
- * Uses @plusplusoneplusplus/pipeline-core for AI interactions and SDK management.
+ * Uses @plusplusoneplusplus/forge for AI interactions and SDK management.
  *
  * Usage:
  *   deep-wiki discover <repo-path>   Discover component graph for a repository

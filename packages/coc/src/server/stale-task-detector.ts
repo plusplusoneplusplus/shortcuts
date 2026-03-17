@@ -13,8 +13,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { TaskQueueManager, DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager, DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Types

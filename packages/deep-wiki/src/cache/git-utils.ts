@@ -10,7 +10,7 @@
  */
 
 import * as path from 'path';
-import { execAsync } from '@plusplusoneplusplus/pipeline-core';
+import { execAsync } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Git Root Detection

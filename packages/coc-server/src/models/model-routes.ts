@@ -1,7 +1,7 @@
 import * as http from 'http';
 import type { Route } from '../shared/router.js';
 import { sendJson, send500 } from '../shared/router.js';
-import type { ModelInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { ModelInfo } from '@plusplusoneplusplus/forge';
 
 /** Minimal interface required by this route; allows mock injection in tests. */
 export interface ModelStore {

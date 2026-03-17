@@ -6,7 +6,7 @@
  */
 
 import { getApiBase } from './utils/config';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 interface WorkspaceInfo {
     id: string;

@@ -23,7 +23,7 @@ import {
     cyan,
     dim,
 } from '../logger';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import { DataWiper } from '@plusplusoneplusplus/coc-server';
 import type { WipeResult } from '@plusplusoneplusplus/coc-server';
 

@@ -24,9 +24,9 @@ export {
     CommentsConfig,
     DEFAULT_COMMENTS_SETTINGS,
     DEFAULT_COMMENTS_CONFIG
-} from '@plusplusoneplusplus/pipeline-core/editor/types';
+} from '@plusplusoneplusplus/forge/editor/types';
 
-import type { CommentSelection, MarkdownComment } from '@plusplusoneplusplus/pipeline-core/editor/types';
+import type { CommentSelection, MarkdownComment } from '@plusplusoneplusplus/forge/editor/types';
 
 /**
  * Result of anchor relocation attempt (extension-specific format with nested selection)

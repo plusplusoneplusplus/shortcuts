@@ -1,7 +1,7 @@
 /**
  * Process Monitor
  *
- * Re-exports from @plusplusoneplusplus/pipeline-core for backward compatibility.
+ * Re-exports from @plusplusoneplusplus/forge for backward compatibility.
  * The actual implementation has been moved to the pipeline-core package.
  * 
  * The VS Code extension wraps the pure ProcessMonitor to implement vscode.Disposable
@@ -16,11 +16,11 @@ import {
     resetProcessMonitor as resetCoreProcessMonitor,
     ProcessCheckResult,
     DEFAULT_POLL_INTERVAL_MS
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // Re-export types from pipeline-core
-export { ProcessCheckResult, DEFAULT_POLL_INTERVAL_MS } from '@plusplusoneplusplus/pipeline-core';
-export type { ProcessMonitorOptions } from '@plusplusoneplusplus/pipeline-core';
+export { ProcessCheckResult, DEFAULT_POLL_INTERVAL_MS } from '@plusplusoneplusplus/forge';
+export type { ProcessMonitorOptions } from '@plusplusoneplusplus/forge';
 
 /**
  * ProcessMonitor that implements vscode.Disposable

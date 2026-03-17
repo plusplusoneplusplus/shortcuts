@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { componentToPromptItem, runAnalysisExecutor } from '../../src/analysis/analysis-executor';
 import type { ComponentGraph, ComponentInfo } from '../../src/types';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Test Data

@@ -1,4 +1,4 @@
-import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
+import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
 /** A message waiting to be sent after the current AI turn completes. */
 export interface QueuedMessage {

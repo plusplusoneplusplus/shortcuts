@@ -19,17 +19,17 @@ import {
     extractTextFromSelection,
     batchRelocateAnchors,
     DEFAULT_ANCHOR_MATCH_CONFIG,
-} from '@plusplusoneplusplus/pipeline-core/editor/anchor';
+} from '@plusplusoneplusplus/forge/editor/anchor';
 
 import type {
     BaseAnchorData,
     AnchorRelocationResult,
-} from '@plusplusoneplusplus/pipeline-core/editor/anchor';
+} from '@plusplusoneplusplus/forge/editor/anchor';
 
 import type {
     CommentSelection,
     CommentAnchor,
-} from '@plusplusoneplusplus/pipeline-core/editor/types';
+} from '@plusplusoneplusplus/forge/editor/types';
 
 // ============================================================================
 // createAnchorData

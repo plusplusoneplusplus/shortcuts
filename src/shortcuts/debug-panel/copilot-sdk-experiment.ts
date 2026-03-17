@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import { getCopilotSDKService } from '@plusplusoneplusplus/forge';
 import { IAIProcessManager } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';

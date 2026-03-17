@@ -15,7 +15,7 @@ import {
     PipelineConfig,
     AIInvoker,
     PromptItem
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 suite('Pipeline Filter Integration Tests', () => {
     let tempDir: string;

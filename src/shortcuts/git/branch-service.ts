@@ -1,2 +1,2 @@
-export { BranchService, GitBranch, BranchListOptions, PaginatedBranchResult, GitOperationResult } from '@plusplusoneplusplus/pipeline-core';
+export { BranchService, GitBranch, BranchListOptions, PaginatedBranchResult, GitOperationResult } from '@plusplusoneplusplus/forge';
 

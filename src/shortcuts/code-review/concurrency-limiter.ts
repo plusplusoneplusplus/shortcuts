@@ -8,4 +8,4 @@
  */
 
 // Re-export from pipeline-core
-export { ConcurrencyLimiter, DEFAULT_MAX_CONCURRENCY } from '@plusplusoneplusplus/pipeline-core';
+export { ConcurrencyLimiter, DEFAULT_MAX_CONCURRENCY } from '@plusplusoneplusplus/forge';

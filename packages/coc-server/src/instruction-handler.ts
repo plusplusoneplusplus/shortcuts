@@ -15,8 +15,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { INSTRUCTION_DIR, findInstructionFiles } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { INSTRUCTION_DIR, findInstructionFiles } from '@plusplusoneplusplus/forge';
 import { sendJSON } from './api-handler';
 import { handleAPIError, notFound, badRequest } from './errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';

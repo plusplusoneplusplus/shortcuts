@@ -13,7 +13,7 @@ import { createExecutionServer } from '../src/server/index';
 import { createRequestHandler, readJsonBody, sendJson } from '@plusplusoneplusplus/coc-server';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers

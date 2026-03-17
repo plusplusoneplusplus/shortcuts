@@ -15,7 +15,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@plusplusoneplusplus/pipeline-core": "1.0.0",
+    "@plusplusoneplusplus/forge": "1.0.0",
     "js-yaml": "^4.1.0",
     "pino": "^9.x",
     "ws": "^8.18.0"

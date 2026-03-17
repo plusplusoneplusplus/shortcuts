@@ -1,6 +1,6 @@
 # CoC (Copilot of Copilot)
 
-Standalone Node.js CLI for executing YAML-based AI workflows outside VS Code. Consumes `@plusplusoneplusplus/pipeline-core`.
+Standalone Node.js CLI for executing YAML-based AI workflows outside VS Code. Consumes `@plusplusoneplusplus/forge`.
 
 ## Build & Test
 
@@ -184,7 +184,7 @@ src/
 - Non-markdown files auto-wrapped in fenced code blocks before rendering
 - Inline comment system: `useCommentAnchors` + `useCommentInteractions` for text-selection-based annotations
 
-**useMarkdownPreview** hook (`markdown-preview.tsx`) — shared rendering pipeline used by MarkdownReviewEditor, TaskPreview, FilePreview, and conversation bubbles. Delegates to `pipeline-core`'s markdown parsing (code blocks, tables, mermaid) and rendering functions.
+**useMarkdownPreview** hook (`markdown-preview.tsx`) — shared rendering pipeline used by MarkdownReviewEditor, TaskPreview, FilePreview, and conversation bubbles. Delegates to `forge`'s markdown parsing (code blocks, tables, mermaid) and rendering functions.
 
 **Monaco Editor** (`repos/explorer/MonacoFileEditor.tsx`) — used in the repository explorer's PreviewPane for file viewing/editing with syntax highlighting and theme sync.
 

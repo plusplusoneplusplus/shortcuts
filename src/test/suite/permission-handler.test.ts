@@ -8,7 +8,7 @@ import {
     denyAllPermissions,
     PermissionRequest,
     PermissionHandler
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 suite('Permission Handler Tests', () => {
     test('approveAllPermissions should approve all request types', async () => {

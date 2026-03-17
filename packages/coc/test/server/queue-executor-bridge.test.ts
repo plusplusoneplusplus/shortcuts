@@ -34,8 +34,8 @@ import {
     QueuedTask,
     TaskExecutionResult,
     modelMetadataStore,
-} from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
+import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
@@ -54,8 +54,8 @@ const mockFlattenWorkflowResult = vi.fn();
 const mockGatherFeatureContext = vi.fn();
 const mockResolveSkillSync = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
@@ -7297,7 +7297,7 @@ describe('ToolCallCapture integration', () => {
     });
 
     it('should call ToolCallCapture.createToolEventHandler with tool events during executeWithAI', async () => {
-        const { FileToolCallCacheStore: Store } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileToolCallCacheStore: Store } = await import('@plusplusoneplusplus/forge');
         const mockWriteRaw = vi.fn().mockResolvedValue('123-view.json');
         vi.spyOn(Store.prototype, 'writeRaw').mockImplementation(mockWriteRaw);
 
@@ -7332,7 +7332,7 @@ describe('ToolCallCapture integration', () => {
     });
 
     it('should not capture suggest_follow_ups events (not in TASK_FILTER)', async () => {
-        const { FileToolCallCacheStore: Store } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileToolCallCacheStore: Store } = await import('@plusplusoneplusplus/forge');
         const mockWriteRaw = vi.fn().mockResolvedValue('ts.json');
         vi.spyOn(Store.prototype, 'writeRaw').mockImplementation(mockWriteRaw);
 

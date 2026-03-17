@@ -9,8 +9,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { findSkills } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { findSkills } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 

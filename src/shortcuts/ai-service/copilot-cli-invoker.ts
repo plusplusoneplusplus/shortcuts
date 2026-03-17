@@ -22,7 +22,7 @@ import {
     checkProgramExists as coreCheckProgramExists,
     clearProgramExistsCache as coreClearProgramExistsCache,
     parseCopilotOutput
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 
 // Re-export shared utilities for backward compatibility

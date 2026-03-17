@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { emitMessageQueued, emitMessageSteering } from '../src/sse-handler';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 function createMockStore(): Pick<ProcessStore, 'emitProcessEvent'> {
     return {

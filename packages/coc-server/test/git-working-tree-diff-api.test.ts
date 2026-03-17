@@ -23,8 +23,8 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 const mockGetFileDiff = vi.fn();
 const mockGetAllChanges = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         WorkingTreeService: vi.fn().mockImplementation(() => ({

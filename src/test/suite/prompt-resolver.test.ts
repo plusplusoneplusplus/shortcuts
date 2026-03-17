@@ -12,7 +12,7 @@ import {
     promptFileExists,
     validatePromptFile,
     PromptResolverError
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 suite('Prompt Resolver Tests', () => {
     let tempDir: string;

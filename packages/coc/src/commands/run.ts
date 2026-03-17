@@ -15,13 +15,13 @@ import {
     flattenWorkflowResult,
     setLogger,
     FileProcessStore,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     WorkflowConfig,
     WorkflowProgressEvent,
     FlatWorkflowResult,
     AIProcess,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import {
     createCLIAIInvoker,
     createDryRunAIInvoker,

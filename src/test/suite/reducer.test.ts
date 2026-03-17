@@ -20,7 +20,7 @@ import {
     CodeReviewOutput,
     AIInvoker,
     createExecutor
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { aggregateReviewResults } from '../../shortcuts/code-review/response-parser';
 import {
     CodeReviewMetadata,

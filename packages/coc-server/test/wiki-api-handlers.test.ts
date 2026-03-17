@@ -21,7 +21,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../src/shared/router';
 import { registerWikiRoutes } from '../src/wiki/wiki-routes';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../src/types';
 
 // ============================================================================

@@ -15,7 +15,7 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, MarkdownComment } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from './server-logger';
 
 // ============================================================================

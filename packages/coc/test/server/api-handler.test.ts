@@ -13,7 +13,7 @@ import * as http from 'http';
 import * as childProcess from 'child_process';
 import { createExecutionServer } from '../../src/server/index';
 import { sendJSON, sendError, parseQueryParams, stripExcludedFields } from '@plusplusoneplusplus/coc-server';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import * as fs from 'fs';
 import * as os from 'os';

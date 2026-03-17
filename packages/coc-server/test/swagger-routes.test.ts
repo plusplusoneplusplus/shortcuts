@@ -23,7 +23,7 @@ vi.mock('fs', async (importOriginal) => {
 
 import * as fs from 'fs';
 import { createRequestHandler } from '../src/router';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -41,8 +41,8 @@ describe('SPA browser bundle safety', () => {
 
         expect(aiMenuSource).toContain('DASHBOARD_AI_COMMANDS');
         expect(markdownEditorSource).toContain('DASHBOARD_AI_COMMANDS');
-        expect(aiMenuSource).not.toContain('@plusplusoneplusplus/pipeline-core/ai');
-        expect(markdownEditorSource).not.toContain('@plusplusoneplusplus/pipeline-core/ai');
+        expect(aiMenuSource).not.toContain('@plusplusoneplusplus/forge/ai');
+        expect(markdownEditorSource).not.toContain('@plusplusoneplusplus/forge/ai');
     });
 
     it('defines expected default dashboard AI commands', () => {

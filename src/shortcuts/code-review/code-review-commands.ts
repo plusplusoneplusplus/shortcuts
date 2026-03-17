@@ -18,7 +18,7 @@ import {
 import { GitCommitItem } from '../git/git-commit-item';
 import { GitCommitRangeItem } from '../git/git-commit-range-item';
 import { GitLogService } from '../git/git-log-service';
-import { GitRangeService } from '@plusplusoneplusplus/pipeline-core';
+import { GitRangeService } from '@plusplusoneplusplus/forge';
 import { LookedUpCommitItem } from '../git/looked-up-commit-item';
 import { GitCommit, GitCommitRange } from '../git/types';
 import {
@@ -32,7 +32,7 @@ import {
     MapReduceResult,
     Rule,
     RuleReviewResult
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
 import { 
@@ -66,7 +66,7 @@ function codeRuleToRule(codeRule: CodeRule): Rule {
  * Adapter to convert map-reduce ReviewFinding to code-review ReviewFinding
  * The types are compatible but may need mapping for certain fields
  */
-function adaptFinding(mrFinding: import('@plusplusoneplusplus/pipeline-core').ReviewFinding): ReviewFinding {
+function adaptFinding(mrFinding: import('@plusplusoneplusplus/forge').ReviewFinding): ReviewFinding {
     return {
         id: mrFinding.id,
         severity: mrFinding.severity,

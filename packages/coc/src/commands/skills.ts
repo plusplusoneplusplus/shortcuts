@@ -24,7 +24,7 @@ import {
     installBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
     setLogger,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { listInstalledSkills } from '@plusplusoneplusplus/coc-server';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 

@@ -9,8 +9,8 @@
  */
 
 import * as fs from 'fs';
-import { findPromptFiles } from '@plusplusoneplusplus/pipeline-core';
-import type { PromptFileInfo } from '@plusplusoneplusplus/pipeline-core';
+import { findPromptFiles } from '@plusplusoneplusplus/forge';
+import type { PromptFileInfo } from '@plusplusoneplusplus/forge';
 
 export type { PromptFileInfo };
 

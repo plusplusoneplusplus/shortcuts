@@ -13,9 +13,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
-import { GitLogService } from '@plusplusoneplusplus/pipeline-core/git';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { isWithinDirectory } from '@plusplusoneplusplus/forge';
+import { GitLogService } from '@plusplusoneplusplus/forge/git';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 

@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
+import { extractJSON } from '@plusplusoneplusplus/forge';
 import { getErrorMessage } from './error-utils';
 
 export interface ParseOptions {

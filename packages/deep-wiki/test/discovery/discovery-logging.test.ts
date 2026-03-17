@@ -9,8 +9,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock pipeline-core SDK
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: vi.fn(() => ({
@@ -110,7 +110,7 @@ describe('Discovery Phase Logging', () => {
         });
 
         it('should warn on parse failure before retry', async () => {
-            const { getCopilotSDKService } = await import('@plusplusoneplusplus/pipeline-core');
+            const { getCopilotSDKService } = await import('@plusplusoneplusplus/forge');
 
             // Override the mock to return invalid JSON first, then valid JSON
             const mockSendMessage = vi.fn()
@@ -142,7 +142,7 @@ describe('Discovery Phase Logging', () => {
     describe('discoverComponentGraph', () => {
         it('should log standard-size repo detection', async () => {
             // estimateFileCount uses the SDK mock, returns a small number
-            const { getCopilotSDKService } = await import('@plusplusoneplusplus/pipeline-core');
+            const { getCopilotSDKService } = await import('@plusplusoneplusplus/forge');
             const service = getCopilotSDKService();
             // File count response, then discovery response
             vi.mocked(service.sendMessage)

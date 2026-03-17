@@ -6,7 +6,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { QueuedTaskItem, QueuedTasksSectionItem } from '../../shortcuts/ai-service/queued-task-tree-item';
-import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/pipeline-core';
+import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/forge';
 
 /**
  * Create a mock QueuedTask for testing

@@ -16,7 +16,7 @@ vi.mock('../../../src/utils/resolve-working-directory', () => ({
     resolveWorkingDirectory: (p: string) => p,
 }));
 
-vi.mock('@plusplusoneplusplus/pipeline-core', () => ({
+vi.mock('@plusplusoneplusplus/forge', () => ({
     getCopilotSDKService: () => ({
         sendMessage: mockSendMessage,
         isAvailable: mockIsAvailable,

@@ -14,5 +14,5 @@ export {
     applySourceModeInlineHighlighting,
     applyInlineMarkdown,
     resolveImagePath
-} from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+} from '@plusplusoneplusplus/forge/editor/rendering';
 

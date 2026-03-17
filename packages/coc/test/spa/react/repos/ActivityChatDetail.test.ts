@@ -653,7 +653,7 @@ describe('ActivityChatDetail', () => {
         });
 
         it('imports DeliveryMode from pipeline-core', () => {
-            expect(USE_SEND_MESSAGE_SOURCE).toContain("import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core'");
+            expect(USE_SEND_MESSAGE_SOURCE).toContain("import type { DeliveryMode } from '@plusplusoneplusplus/forge'");
         });
 
         it('declares QueuedMessage interface with correct status union', () => {

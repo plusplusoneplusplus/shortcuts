@@ -16,7 +16,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../../src/server/templates-handler';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import type { ProcessStore, Workspace } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, Workspace } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Mock GitLogService
@@ -25,7 +25,7 @@ import type { ProcessStore, Workspace } from '@plusplusoneplusplus/pipeline-core
 const mockGetCommit = vi.fn();
 const mockDispose = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core/git', () => ({
+vi.mock('@plusplusoneplusplus/forge/git', () => ({
     GitLogService: vi.fn().mockImplementation(() => ({
         getCommit: mockGetCommit,
         dispose: mockDispose,

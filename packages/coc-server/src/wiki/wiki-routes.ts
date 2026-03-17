@@ -14,7 +14,7 @@ import type { Route } from '../types';
 import { sendJson as sendJsonImpl, send404 as send404Impl, send500 as send500Impl, readJsonBody as readJsonBodyImpl } from '../router';
 import { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
-import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/forge';
 import { handleWikiAskRequest } from './ask-handler';
 import { handleWikiExploreRequest } from './explore-handler';
 import { handleGetSeeds, handlePutSeeds, handleGetConfig, handlePutConfig } from './admin-handlers';

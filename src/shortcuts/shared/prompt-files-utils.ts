@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { findPromptFiles as coreFindPromptFiles } from '@plusplusoneplusplus/pipeline-core';
+import { findPromptFiles as coreFindPromptFiles } from '@plusplusoneplusplus/forge';
 import { getWorkspaceRoot } from './workspace-utils';
 
 /**

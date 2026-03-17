@@ -5,7 +5,7 @@ import { cn } from '../shared/cn';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { MODE_BORDER_COLORS, cycleMode } from './modeConfig';
 import type { SkillItem } from './SlashCommandMenu';
-import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
+import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
 export interface FollowUpInputAreaProps {
     inputDisabled: boolean;

@@ -392,7 +392,7 @@ describe('Serve Command', () => {
         });
 
         it('should pass a FileProcessStore instance as store', async () => {
-            const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+            const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
 
             await runServeWithSigint({ dataDir: tmpDir, open: false });
 

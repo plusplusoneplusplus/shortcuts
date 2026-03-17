@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { Attachment } from '@plusplusoneplusplus/pipeline-core';
+import type { Attachment } from '@plusplusoneplusplus/forge';
 
 /**
  * Parse a base64 data URL into its components.

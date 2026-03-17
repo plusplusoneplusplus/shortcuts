@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', () => ({
+vi.mock('@plusplusoneplusplus/forge', () => ({
     getCopilotSDKService: () => ({
         sendMessage: mockSendMessage,
         isAvailable: mockIsAvailable,

@@ -11,8 +11,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
-import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
+import { extractJSON } from '@plusplusoneplusplus/forge';
 import type { ComponentInfo, ComponentGraph, CategoryInfo } from '../types';
 import type { ClusterGroup } from './types';
 import { normalizeComponentId } from '../schemas';

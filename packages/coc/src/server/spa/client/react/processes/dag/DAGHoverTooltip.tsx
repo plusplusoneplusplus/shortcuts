@@ -1,4 +1,4 @@
-import type { PipelineConfig, InputConfig, FilterConfig, MapConfig, ReduceConfig, JobConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelineConfig, InputConfig, FilterConfig, MapConfig, ReduceConfig, JobConfig } from '@plusplusoneplusplus/forge';
 
 export interface DAGHoverTooltipProps {
     phase: string;

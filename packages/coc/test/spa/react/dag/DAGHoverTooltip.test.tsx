@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DAGHoverTooltip } from '../../../../src/server/spa/client/react/processes/dag/DAGHoverTooltip';
-import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelineConfig } from '@plusplusoneplusplus/forge';
 
 function makeConfig(overrides: Partial<PipelineConfig> = {}): PipelineConfig {
     return {

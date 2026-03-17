@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { UsageTracker } from '../src/usage-tracker';
 import type { PhaseUsage, UsageReport, TrackedPhase } from '../src/usage-tracker';
-import type { TokenUsage } from '@plusplusoneplusplus/pipeline-core';
+import type { TokenUsage } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers

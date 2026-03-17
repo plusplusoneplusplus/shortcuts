@@ -11,8 +11,8 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import { isWithinDirectory } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import type { Route } from './types';
 import {
     createRouter,

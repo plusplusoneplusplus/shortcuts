@@ -51,7 +51,7 @@ const mockStashChanges = vi.fn();
 const mockPopStash = vi.fn();
 const mockRebaseAutosquash = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,

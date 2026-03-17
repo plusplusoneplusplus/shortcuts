@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { renderMarkdownToHtml, reconstructTableMarkdown } from '../../../../src/server/spa/client/markdown-renderer';
-import type { ParsedTable } from '@plusplusoneplusplus/pipeline-core/editor/parsing';
+import type { ParsedTable } from '@plusplusoneplusplus/forge/editor/parsing';
 
 // ---------------------------------------------------------------------------
 // Basic table rendering

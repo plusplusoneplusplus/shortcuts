@@ -31,7 +31,7 @@ import {
     PromptItem,
     PipelineConfig,
     ConcurrencyLimiter
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
 import { createAIInvoker, getAIModelSetting } from '../../ai-service';

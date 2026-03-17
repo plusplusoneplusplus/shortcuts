@@ -12,11 +12,11 @@ export {
     GitCommitRangeFile,
     GitRangeConfig,
     BranchStatus,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // VS Code-specific types (not in pipeline-core)
 import * as vscode from 'vscode';
-import { GitChangeStatus, GitChangeStage, GitChangeCounts, GitCommentCounts } from '@plusplusoneplusplus/pipeline-core';
+import { GitChangeStatus, GitChangeStage, GitChangeCounts, GitCommentCounts } from '@plusplusoneplusplus/forge';
 
 /**
  * Represents a single git change (modified/added/deleted file).

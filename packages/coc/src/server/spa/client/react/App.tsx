@@ -20,7 +20,7 @@ import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
 import { ToastContainer, useToast } from './shared';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';

@@ -8,8 +8,8 @@ import type { EnrichedProbeResult } from '../../src/theme/theme-probe';
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => ({

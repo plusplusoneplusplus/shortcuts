@@ -20,10 +20,10 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
-| **pipeline-core** | `packages/pipeline-core/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session-per-request), DAG workflow engine (executeWorkflow, compileToWorkflow), task queue, runtime policies, process store, git CLI, utilities |
+| **forge** | `packages/forge/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session-per-request), DAG workflow engine (executeWorkflow, compileToWorkflow), task queue, runtime policies, process store, git CLI, utilities |
 | **coc-server** | `packages/coc-server/` | HTTP/WebSocket server: REST API, SSE streaming, SPA dashboard, wiki serving, process store at `~/.coc/` |
 
-**Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `src/shortcuts/`. Example: `pipeline-core/src/ai/` = pure AI SDK; `src/shortcuts/ai-service/` = VS Code UI wrapper.
+**Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `src/shortcuts/ai-service/` = VS Code UI wrapper.
 
 ## Build & Test
 
@@ -44,7 +44,7 @@ Entry point: `src/extension.ts`. Feature modules under `src/shortcuts/`:
 - **yaml-pipeline** — Workflows management UI. Workflows are directories with `pipeline.yaml` under `.vscode/workflows/`.
 - **tasks-viewer** — Hierarchical task management in `.vscode/tasks/`. Recursive scanning, document grouping by suffix (plan/spec/test/notes/todo/design/impl/review/checklist/requirements/analysis).
 - **ai-service** — VS Code AI wrapper: `AIProcessManager` (Memento persistence), `AIQueueService`, `CopilotCLIInvoker`. Working dir defaults to `{workspace}/src` if exists.
-- **git** — VS Code git layer wrapping `pipeline-core/src/git/`.
+- **git** — VS Code git layer wrapping `forge/src/git/`.
 - **skills** — Install skills from GitHub repos or local dirs to `.github/skills`.
 - **shared** — Base classes: `BaseTreeDataProvider`, `FilterableTreeDataProvider`, icon/filter/error utilities.
 
@@ -54,7 +54,7 @@ Entry point: `src/extension.ts`. Feature modules under `src/shortcuts/`:
 
 ## CoC CLI (`packages/coc/`)
 
-Standalone CLI for YAML AI workflows. Consumes `pipeline-core` and `coc-server`.
+Standalone CLI for YAML AI workflows. Consumes `forge` and `coc-server`.
 
 **Commands:** `coc run <path>` (execute workflow), `coc validate <path>`, `coc list [dir]`, `coc serve` (AI dashboard + wiki serving), `coc wipe-data`.
 
@@ -70,7 +70,7 @@ Standalone CLI for YAML AI workflows. Consumes `pipeline-core` and `coc-server`.
 
 ## Deep Wiki (`packages/deep-wiki/`)
 
-CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `pipeline-core`.
+CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `forge`.
 
 **Commands:** `deep-wiki seeds <repo>` (theme seeds), `deep-wiki discover <repo>` (Phase 1 only), `deep-wiki generate <repo>` (full pipeline), `deep-wiki theme <repo> [name]` (cross-cutting theme articles), `deep-wiki init` (template config).
 
@@ -92,11 +92,11 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `pi
 
 **Testing:** 64 Vitest test files covering all phases, theme module, cache, commands, rendering.
 
-## pipeline-core (`packages/pipeline-core/`)
+## forge (`packages/forge/`)
 
-Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/pipeline-core`.
+Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/forge`.
 
-**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Pipeline types (YAML config types, CSV reader, template engine, filters), Process store (`FileProcessStore` — JSON persistence, atomic writes, 500-process retention), Git CLI (`@plusplusoneplusplus/pipeline-core/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
+**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Pipeline types (YAML config types, CSV reader, template engine, filters), Process store (`FileProcessStore` — JSON persistence, atomic writes, 500-process retention), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
 
 **Workflow execution:** `compileToWorkflow(yamlContent)` converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig`, then `executeWorkflow(config, options)` runs the DAG. Use `flattenWorkflowResult(result)` for flat display output.
 
@@ -114,13 +114,13 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplus
 
 **Testing:** 7+ Vitest test files.
 
-## Memory System (`packages/pipeline-core/src/memory/`)
+## Memory System (`packages/forge/src/memory/`)
 
 Opt-in, two-level persistence layer that lets AI pipelines learn from past sessions. After each AI call the AI writes `write_memory` tool calls; those facts are periodically consolidated by an AI aggregation step into `consolidated.md`, which is injected into subsequent prompts.
 
 **Storage layout:** `~/.coc/memory/system/` (cross-repo), `~/.coc/memory/repos/<16-char-sha256>/` (per-repo), and `~/.coc/memory/git-remotes/<16-char-sha256>/` (per-git-remote), each with `raw/*.md`, `consolidated.md`, `index.json`. `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`.
 
-**Key symbols in `pipeline-core`:**
+**Key symbols in `forge`:**
 
 | Symbol | Role |
 |--------|------|
@@ -135,7 +135,7 @@ Opt-in, two-level persistence layer that lets AI pipelines learn from past sessi
 
 **Integration:** Features opt in by wrapping AI calls with `withMemory()`. Wiki Ask/Explore handlers in coc-server combine TF-IDF context + memory context. Config precedence: CLI flag > pipeline YAML `memory:` field > `~/.coc/config.yaml` > default (disabled).
 
-**Implementation status:** Core pipeline-core modules, server routes, and dashboard UI are complete. CLI `coc memory` subcommands and pipeline YAML `memory:` wiring are not yet implemented.
+**Implementation status:** Core forge modules, server routes, and dashboard UI are complete. CLI `coc memory` subcommands and pipeline YAML `memory:` wiring are not yet implemented.
 
 ## Development Notes
 

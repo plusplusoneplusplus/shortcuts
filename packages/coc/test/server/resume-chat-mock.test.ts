@@ -27,8 +27,8 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 
 const sdkMocks = createMockSDKService();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
@@ -36,7 +36,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
 });
 
 import { createExecutionServer } from '../../src/server/index';
-import type { AIProcess, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, ConversationTurn } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { BranchStatus } from '@plusplusoneplusplus/pipeline-core';
+import { BranchStatus } from '@plusplusoneplusplus/forge';
 
-export type { BranchStatus } from '@plusplusoneplusplus/pipeline-core';
+export type { BranchStatus } from '@plusplusoneplusplus/forge';
 
 /**
  * Tree item representing the current branch at the top of the Git view

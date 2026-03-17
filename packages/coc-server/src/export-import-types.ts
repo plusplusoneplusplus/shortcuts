@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 
 // Temporary forward-declarations for types still in coc package.
 // These will be replaced with proper imports once dependencies are extracted.

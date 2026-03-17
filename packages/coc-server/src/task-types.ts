@@ -11,7 +11,7 @@
  * expressed as `type: 'chat'` with the appropriate mode and context.
  */
 
-import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Target Type

@@ -8,15 +8,15 @@ import { ProviderFactory, ProviderType } from '../src/providers/provider-factory
 import type { ProvidersFileConfig } from '../src/providers/providers-config';
 
 // Mock execAsync from pipeline-core for az-cli tests
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         execAsync: vi.fn(),
     };
 });
 
-import { execAsync } from '@plusplusoneplusplus/pipeline-core';
+import { execAsync } from '@plusplusoneplusplus/forge';
 
 // ── detectProviderType ────────────────────────────────────────────────────────
 

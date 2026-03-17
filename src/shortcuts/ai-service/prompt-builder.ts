@@ -13,11 +13,11 @@ import {
     substitutePromptVariables,
     usesTemplateVariables as pureUsesTemplateVariables,
     getAvailableVariables as pureGetAvailableVariables
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // Re-export pure functions and types from pipeline-core
-export { PromptContext } from '@plusplusoneplusplus/pipeline-core';
-export { usesTemplateVariables, getAvailableVariables } from '@plusplusoneplusplus/pipeline-core';
+export { PromptContext } from '@plusplusoneplusplus/forge';
+export { usesTemplateVariables, getAvailableVariables } from '@plusplusoneplusplus/forge';
 
 /**
  * Build a prompt from a command and context

@@ -17,7 +17,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 

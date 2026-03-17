@@ -16,8 +16,8 @@ import {
     QueueExecutor,
     TaskQueueManager,
     getCopilotSDKService,
-} from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, QueueChangeEvent, CreateTaskInput, QueuedTask, QueueStats, Attachment } from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
+import type { ProcessStore, QueueChangeEvent, CreateTaskInput, QueuedTask, QueueStats, Attachment } from '@plusplusoneplusplus/forge';
 import { applyFollowUpToTask } from '@plusplusoneplusplus/coc-server';
 import {
     QueueExecutorBridgeOptions,

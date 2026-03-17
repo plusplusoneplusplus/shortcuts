@@ -11,5 +11,5 @@ export {
     calculateColumnIndices,
     createPlainToHtmlMapping,
     getHighlightColumnsForLine
-} from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+} from '@plusplusoneplusplus/forge/editor/rendering';
 

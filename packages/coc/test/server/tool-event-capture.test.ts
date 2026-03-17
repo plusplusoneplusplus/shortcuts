@@ -13,12 +13,12 @@ import type {
     ToolCall,
     ToolCallStatus,
     ConversationTurn,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import {
     TaskQueueManager,
     createQueueExecutor,
-} from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
+import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -30,8 +30,8 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 const sdkMocks = createMockSDKService();
 const { mockSendMessage, mockIsAvailable } = sdkMocks;
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,

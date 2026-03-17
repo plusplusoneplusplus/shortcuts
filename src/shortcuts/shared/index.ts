@@ -64,7 +64,7 @@ export {
     // AI response parser
     extractJSON,
     parseAIResponse
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // VS Code-specific utilities (not in pipeline-core)

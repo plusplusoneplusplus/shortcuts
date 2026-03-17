@@ -9,7 +9,7 @@
  */
 
 // Re-export anchor/selection types from pipeline-core
-export type { CommentSelection, CommentAnchor } from '@plusplusoneplusplus/pipeline-core/editor/types';
+export type { CommentSelection, CommentAnchor } from '@plusplusoneplusplus/forge/editor/types';
 
 // ============================================================================
 // Task Comment Types
@@ -60,7 +60,7 @@ export interface TaskComment {
     /** Identifier of the task this comment belongs to */
     taskId: string;
     /** Selection range in the file */
-    selection: import('@plusplusoneplusplus/pipeline-core/editor/types').CommentSelection;
+    selection: import('@plusplusoneplusplus/forge/editor/types').CommentSelection;
     /** The actual selected text */
     selectedText: string;
     /** User's comment content */
@@ -76,7 +76,7 @@ export interface TaskComment {
     /** Optional comment category */
     category?: TaskCommentCategory;
     /** Optional anchor for robust location tracking after content changes */
-    anchor?: import('@plusplusoneplusplus/pipeline-core/editor/types').CommentAnchor;
+    anchor?: import('@plusplusoneplusplus/forge/editor/types').CommentAnchor;
     /** Threaded replies to this comment */
     replies?: TaskCommentReply[];
     /** AI-generated clarification response */

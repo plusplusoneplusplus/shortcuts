@@ -9,8 +9,8 @@
  */
 
 import * as http from 'http';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
-import { FileToolCallCacheStore, ToolCallCacheAggregator, resolveToolCallCacheOptions } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
+import { FileToolCallCacheStore, ToolCallCacheAggregator, resolveToolCallCacheOptions } from '@plusplusoneplusplus/forge';
 import { sendJson, send500 } from '../router';
 import { readMemoryConfig } from './memory-config-handler';
 

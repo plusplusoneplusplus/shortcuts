@@ -12,7 +12,7 @@ import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard, splitMarkdownSections } from '../utils/format';
 import { linkifyFilePaths } from '../shared/file-path-utils';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
 import { groupConsecutiveToolChunks } from './toolGroupUtils';
 import { ToolCallGroupView } from './ToolCallGroupView';

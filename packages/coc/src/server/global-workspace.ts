@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 
 export const GLOBAL_WORKSPACE_ID = 'global-workspace-00';
 export const GLOBAL_WORKSPACE_NAME = 'Global';

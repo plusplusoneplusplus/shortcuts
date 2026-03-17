@@ -18,7 +18,7 @@ import {
     // Types
     type CodeBlock,
     type ParsedTable,
-} from '@plusplusoneplusplus/pipeline-core/editor/parsing';
+} from '@plusplusoneplusplus/forge/editor/parsing';
 
 import {
     // Line-level rendering
@@ -27,9 +27,9 @@ import {
     // Comment highlight helpers
     getHighlightColumnsForLine,
     applyCommentHighlightToRange,
-} from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+} from '@plusplusoneplusplus/forge/editor/rendering';
 
-import type { CommentSelection } from '@plusplusoneplusplus/pipeline-core/editor/types';
+import type { CommentSelection } from '@plusplusoneplusplus/forge/editor/types';
 
 // highlight.js is loaded via CDN; declared globally in the HTML template.
 declare const hljs: {

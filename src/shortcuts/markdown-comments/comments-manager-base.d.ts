@@ -5,7 +5,7 @@
  * This module is free of VS Code dependencies — all platform-specific
  * behaviour is injected via constructor parameters (FileWatcherFactory, Logger).
  */
-import { Logger } from '@plusplusoneplusplus/pipeline-core';
+import { Logger } from '@plusplusoneplusplus/forge';
 import { BaseAnchor, BaseComment, BaseCommentEvent, BaseCommentsConfig, BaseCommentsSettings, BaseSelection } from './base-types';
 /** Matches the `vscode.Disposable` interface structurally. */
 export interface Disposable {

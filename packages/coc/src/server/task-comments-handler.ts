@@ -25,10 +25,10 @@ import {
     type CreateTaskInput,
     batchRelocateAnchors,
     needsRelocationCheck,
-} from '@plusplusoneplusplus/pipeline-core';
-import type { BaseAnchorData } from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
+import type { BaseAnchorData } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { resolveTaskRoot } from './task-root-resolver';
 
 // ============================================================================

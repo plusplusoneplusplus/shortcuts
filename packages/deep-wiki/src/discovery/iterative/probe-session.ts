@@ -10,7 +10,7 @@
 import {
     getCopilotSDKService,
     type SendMessageOptions,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type { ThemeSeed } from '../../types';
 import type { ThemeProbeResult } from './types';
 import { buildProbePrompt } from './probe-prompts';

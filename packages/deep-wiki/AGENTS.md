@@ -277,7 +277,7 @@ interface GeneratedArticle {
 
 ## Dependencies
 
-- `@plusplusoneplusplus/pipeline-core` - AI SDK service, session management, `extractJSON` utility
+- `@plusplusoneplusplus/forge` - AI SDK service, session management, `extractJSON` utility
 - `commander` - CLI argument parsing
 - `js-yaml` - YAML parsing (for project config detection)
 
@@ -299,6 +299,6 @@ Run with `npm run test:run` in `packages/deep-wiki/` directory.
 
 ## See Also
 
-- `packages/pipeline-core/AGENTS.md` - AI SDK and pipeline engine
+- `packages/forge/AGENTS.md` - AI SDK and pipeline engine
 - `packages/coc/AGENTS.md` - CoC CLI (sibling package)
 - `packages/coc-server/AGENTS.md` - Server that hosts wiki serving (`coc wiki serve`)

@@ -5,7 +5,7 @@
  */
 
 import type { GenerateCommandOptions, ComponentGraph, ComponentAnalysis } from '../../types';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import { resolvePhaseModel, resolvePhaseTimeout, resolvePhaseConcurrency, resolvePhaseDepth } from '../../config-loader';
 import { analyzeComponents, parseAnalysisResponse } from '../../analysis';
 import { createAnalysisInvoker } from '../../ai-invoker';

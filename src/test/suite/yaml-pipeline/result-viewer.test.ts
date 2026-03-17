@@ -25,7 +25,7 @@ import {
     getItemDetailContent,
     getReduceResultSection
 } from '../../../shortcuts/yaml-pipeline/ui/result-viewer-content';
-import { PromptMapResult, WorkflowExecutionStats } from '@plusplusoneplusplus/pipeline-core';
+import { PromptMapResult, WorkflowExecutionStats } from '@plusplusoneplusplus/forge';
 
 suite('Pipeline Result Viewer Tests', () => {
     // Sample execution stats

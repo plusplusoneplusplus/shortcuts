@@ -1,7 +1,7 @@
 /**
  * Vitest global setup — Safety net that prevents real Copilot SDK calls in tests.
  *
- * Auto-mocks `getCopilotSDKService` from `@plusplusoneplusplus/pipeline-core`
+ * Auto-mocks `getCopilotSDKService` from `@plusplusoneplusplus/forge`
  * to return a stub that **throws** if any method is called. Tests that need AI
  * should inject a mock `aiService` via `createExecutionServer({ aiService })`.
  */
@@ -11,8 +11,8 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 
 expect.extend(matchers);
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const original = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const original = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...original,
         getCopilotSDKService: () => ({

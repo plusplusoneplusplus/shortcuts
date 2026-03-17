@@ -27,7 +27,7 @@ import {
     getCopilotSDKService,
     approveAllPermissions,
     AgentMode,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import {
     FollowPromptPayload,
     AIClarificationPayload,

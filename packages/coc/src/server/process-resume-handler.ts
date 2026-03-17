@@ -8,7 +8,7 @@
 import { spawn, type SpawnOptions } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendError, sendJSON, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 

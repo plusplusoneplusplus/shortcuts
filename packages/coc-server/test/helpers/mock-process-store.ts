@@ -7,7 +7,7 @@
  */
 
 import { vi } from 'vitest';
-import type { ProcessStore, AIProcess, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/forge';
 
 // ---------------------------------------------------------------------------
 // Interfaces

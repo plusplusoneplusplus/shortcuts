@@ -20,7 +20,7 @@ describe('coc-server package scaffold', () => {
         const pkg = JSON.parse(
             fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf-8')
         );
-        expect(pkg.dependencies).toHaveProperty('@plusplusoneplusplus/pipeline-core');
+        expect(pkg.dependencies).toHaveProperty('@plusplusoneplusplus/forge');
         expect(pkg.dependencies).toHaveProperty('ws');
         expect(pkg.dependencies).toHaveProperty('js-yaml');
     });

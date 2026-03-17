@@ -9,7 +9,7 @@
  */
 
 // Re-export diff selection/context types from pipeline-core
-export type { DiffCommentSelection, DiffCommentContext } from '@plusplusoneplusplus/pipeline-core/editor/types';
+export type { DiffCommentSelection, DiffCommentContext } from '@plusplusoneplusplus/forge/editor/types';
 
 // ============================================================================
 // Diff Comment Types
@@ -40,9 +40,9 @@ export interface DiffComment {
     /** Unique identifier (UUID) */
     id: string;
     /** Identifies the diff (repository, file, and ref range) this comment belongs to */
-    context: import('@plusplusoneplusplus/pipeline-core/editor/types').DiffCommentContext;
+    context: import('@plusplusoneplusplus/forge/editor/types').DiffCommentContext;
     /** Selection range within the rendered diff */
-    selection: import('@plusplusoneplusplus/pipeline-core/editor/types').DiffCommentSelection;
+    selection: import('@plusplusoneplusplus/forge/editor/types').DiffCommentSelection;
     /** The actual selected text */
     selectedText: string;
     /** User's comment content */
@@ -58,7 +58,7 @@ export interface DiffComment {
     /** Optional comment category */
     category?: DiffCommentCategory;
     /** Optional anchor for robust location tracking after diff changes */
-    anchor?: import('@plusplusoneplusplus/pipeline-core/editor/types').CommentAnchor;
+    anchor?: import('@plusplusoneplusplus/forge/editor/types').CommentAnchor;
     /** Threaded replies to this comment */
     replies?: DiffCommentReply[];
     /** AI-generated clarification response */

@@ -81,7 +81,7 @@ suite('Follow Prompt Dialog - Type Definitions', () => {
 suite('Follow Prompt Dialog - AICommandMode', () => {
     test('AICommandMode should include background mode', () => {
         // Import from pipeline-core
-        const { AICommandMode } = require('@plusplusoneplusplus/pipeline-core');
+        const { AICommandMode } = require('@plusplusoneplusplus/forge');
         
         // Type check via TS
         const modes: Array<'comment' | 'interactive' | 'background'> = [

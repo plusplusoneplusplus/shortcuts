@@ -1484,7 +1484,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('persisted wikis survive server restart', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         // Start first server, register a wiki
@@ -1525,7 +1525,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('DELETE removes wiki from both manager and store', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         const wikiDir = makeTempWikiDir();
@@ -1553,7 +1553,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('PATCH updates name and color in the store', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         const wikiDir = makeTempWikiDir();
@@ -1589,7 +1589,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('PATCH updates name in the API list response', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         const wikiDir = makeTempWikiDir();
@@ -1619,7 +1619,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('PATCH color updates in the API list response', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         const wikiDir = makeTempWikiDir();
@@ -1650,7 +1650,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('PATCH succeeds for store-only wikis (not loaded in manager)', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         // Register a wiki directly in the store (no component-graph.json)
@@ -1687,7 +1687,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('admin config works for store-only pending wikis', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         const pendingDir = path.join(dataDir, 'wikis', 'store-only-admin');
@@ -1731,7 +1731,7 @@ describe('Wiki Store Persistence', () => {
     });
 
     it('GET /api/wikis merges manager and store entries', async () => {
-        const { FileProcessStore } = await import('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
         const store = new FileProcessStore({ dataDir });
 
         // Pre-populate store with a wiki that has no actual data (pending generation)

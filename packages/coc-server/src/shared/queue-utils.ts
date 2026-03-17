@@ -3,7 +3,7 @@
  * No VS Code dependencies — uses only Node.js built-in modules.
  */
 
-import type { TaskQueueManager, Attachment } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskQueueManager, Attachment } from '@plusplusoneplusplus/forge';
 
 /**
  * Truncate a display-name candidate to at most `max` characters.

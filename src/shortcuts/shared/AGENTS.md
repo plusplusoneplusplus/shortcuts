@@ -2,11 +2,11 @@
 
 This module contains shared utilities used by multiple features across the extension. It reduces code duplication and ensures consistent behavior.
 
-**Note (2026-01):** Some utilities have been moved to `pipeline-core` package:
-- File utilities (file-utils, glob-utils, exec-utils) → `packages/pipeline-core/src/utils/`
-- HTTP utilities → `packages/pipeline-core/src/utils/http-utils.ts`
-- AI response parser → `packages/pipeline-core/src/utils/ai-response-parser.ts`
-- Text matching → `packages/pipeline-core/src/utils/text-matching.ts`
+**Note (2026-01):** Some utilities have been moved to `forge` package:
+- File utilities (file-utils, glob-utils, exec-utils) → `packages/forge/src/utils/`
+- HTTP utilities → `packages/forge/src/utils/http-utils.ts`
+- AI response parser → `packages/forge/src/utils/ai-response-parser.ts`
+- Text matching → `packages/forge/src/utils/text-matching.ts`
 
 The VS Code extension imports these from the core package. This module retains VS Code-specific utilities (tree providers, webview, logging with OutputChannel).
 
@@ -852,7 +852,7 @@ shared/
 ├── comments-tree-provider-base.ts    # Tree provider base for comments
 ├── prompt-generator-base.ts          # Prompt generator base
 ├── ai-clarification-handler-base.ts  # AI handler base
-├── ai-timeouts.ts                    # Re-exports timeout constants from pipeline-core
+├── ai-timeouts.ts                    # Re-exports timeout constants from forge
 ├── predefined-comment-registry.ts    # Singleton registry for predefined comments
 ├── predefined-comment-types.ts       # Types and defaults for predefined comments
 ├── prompt-files-utils.ts             # Utilities for VS Code Copilot .prompt.md files
@@ -881,8 +881,8 @@ shared/
 
 ## See Also
 
-- `packages/pipeline-core/src/utils/` - Core utilities (pure Node.js)
-- `packages/pipeline-core/src/logger.ts` - Pluggable logger abstraction
+- `packages/forge/src/utils/` - Core utilities (pure Node.js)
+- `packages/forge/src/logger.ts` - Pluggable logger abstraction
 - `src/shortcuts/markdown-comments/AGENTS.md` - Uses shared anchor/prompt utilities
 - `src/shortcuts/git-diff-comments/AGENTS.md` - Uses shared anchor/prompt utilities
 - `src/shortcuts/ai-service/AGENTS.md` - Uses shared logging utilities

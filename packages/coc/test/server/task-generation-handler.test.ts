@@ -20,8 +20,8 @@ import * as path from 'path';
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => ({
@@ -32,7 +32,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
 });
 
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 

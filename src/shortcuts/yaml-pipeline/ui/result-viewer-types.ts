@@ -12,7 +12,7 @@ import {
     PromptMapResult,
     PromptItem,
     PipelineConfig
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 /**
  * Retry state for tracking retry operations

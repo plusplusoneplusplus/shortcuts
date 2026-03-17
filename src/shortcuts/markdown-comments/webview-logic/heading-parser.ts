@@ -13,4 +13,4 @@ export {
     getHeadingAnchorId,
     getHeadingLevel,
     parseHeadings
-} from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+} from '@plusplusoneplusplus/forge/editor/rendering';

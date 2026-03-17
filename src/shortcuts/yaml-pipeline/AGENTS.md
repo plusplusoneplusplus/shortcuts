@@ -3,10 +3,10 @@
 This module provides a YAML-based configuration layer on top of the map-reduce framework. It enables easy configuration of AI MapReduce workflows via YAML files.
 
 **Package Structure (2026-01):**
-- `pipeline-core` - Core pipeline engine (executor, CSV reader, template engine, filters, resolvers)
+- `forge` - Core pipeline engine (executor, CSV reader, template engine, filters, resolvers)
 - `src/shortcuts/yaml-pipeline/` - VS Code UI layer (PipelineManager, tree provider, result viewer)
 
-The core execution functionality has been extracted to `packages/pipeline-core/src/pipeline/` for use in CLI tools and other Node.js environments.
+The core execution functionality has been extracted to `packages/forge/src/pipeline/` for use in CLI tools and other Node.js environments.
 
 ## Pipeline Package Structure
 
@@ -1411,9 +1411,9 @@ If you have existing flat `.yaml` files in `.vscode/workflows/`:
 
 ## See Also
 
-- `packages/pipeline-core/AGENTS.md` - Core pipeline engine documentation (pure Node.js)
-- `packages/pipeline-core/src/pipeline/` - Core pipeline engine implementation
-- `packages/pipeline-core/test/pipeline/` - Core tests (Vitest)
+- `packages/forge/AGENTS.md` - Core pipeline engine documentation (pure Node.js)
+- `packages/forge/src/pipeline/` - Core pipeline engine implementation
+- `packages/forge/test/pipeline/` - Core tests (Vitest)
 - `docs/designs/yaml-pipeline-framework.md` - Design documentation
-- `docs/designs/pipeline-core-extraction.md` - Package extraction design
+- `docs/designs/forge-extraction.md` - Package extraction design
 - `src/shortcuts/code-review/AGENTS.md` - Example pipeline usage

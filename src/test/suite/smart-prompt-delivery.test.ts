@@ -14,7 +14,7 @@ import {
     buildCliCommand,
     PROMPT_LENGTH_THRESHOLD,
     PROBLEMATIC_CHARS_PATTERN
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // shouldUseFileDelivery Tests

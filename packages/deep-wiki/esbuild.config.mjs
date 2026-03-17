@@ -1,7 +1,7 @@
 /**
  * esbuild configuration for bundling deep-wiki CLI for npm publishing.
  *
- * Bundles @plusplusoneplusplus/pipeline-core (workspace-only, not on npm) into
+ * Bundles @plusplusoneplusplus/forge (workspace-only, not on npm) into
  * the output. External dependencies that are already published on npm remain
  * external so they are resolved from the consumer's node_modules at runtime.
  */

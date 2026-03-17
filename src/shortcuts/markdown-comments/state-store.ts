@@ -9,8 +9,8 @@
 import * as vscode from 'vscode';
 
 // Re-export the shared interface from pipeline-core
-export type { StateStore } from '@plusplusoneplusplus/pipeline-core';
-import type { StateStore } from '@plusplusoneplusplus/pipeline-core';
+export type { StateStore } from '@plusplusoneplusplus/forge';
+import type { StateStore } from '@plusplusoneplusplus/forge';
 
 /** Wraps VS Code's Memento API (workspaceState) as a StateStore. */
 export class VscodeStateStore implements StateStore {

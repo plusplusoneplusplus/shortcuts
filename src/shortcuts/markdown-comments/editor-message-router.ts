@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCopilotSDKService, approveAllPermissions } from '@plusplusoneplusplus/pipeline-core';
+import { getCopilotSDKService, approveAllPermissions } from '@plusplusoneplusplus/forge';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import {
     getAvailableModels,

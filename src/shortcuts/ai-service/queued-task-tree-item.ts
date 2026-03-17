@@ -5,7 +5,7 @@
  */
 
 import * as vscode from 'vscode';
-import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/pipeline-core';
+import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/forge';
 
 /**
  * Tree item representing a queued task

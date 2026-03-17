@@ -8,7 +8,7 @@
  *   `file-path-preview.ts`).
  */
 
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 /** Shorten common prefixes for display. */
 export function shortenFilePath(p: string): string {

@@ -26,8 +26,8 @@ const mockServiceCapture = {
 // Spy to track ToolCallCapture constructor calls
 const mockCaptureConstructor = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     const RealCapture = actual.ToolCallCapture;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpyToolCallCapture = class extends RealCapture {

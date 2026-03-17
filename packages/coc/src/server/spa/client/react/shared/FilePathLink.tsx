@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { shortenFilePath } from './file-path-utils';
 
 export interface FilePathLinkProps {

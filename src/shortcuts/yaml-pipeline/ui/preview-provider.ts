@@ -29,7 +29,7 @@ import {
     generateInputItems,
     toGeneratedItems,
     createEmptyItem
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { PipelineInfo, ValidationResult, PipelineSource } from './types';
 import { PipelineManager } from './pipeline-manager';
 import { PipelineItem } from './pipeline-item';

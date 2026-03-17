@@ -3,7 +3,7 @@
 This module provides a generic, domain-agnostic service for tracking AI processes. It is designed to be used by any feature that needs to invoke AI tools and track their execution.
 
 **Major Updates (2026-01):**
-- **Pipeline Core Extraction:** Core AI functionality (CopilotSDKService, CLI utilities) moved to `pipeline-core` package
+- **Pipeline Core Extraction:** Core AI functionality (CopilotSDKService, CLI utilities) moved to `forge` package
 - Added GitHub Copilot SDK support as primary AI backend
 - Created unified AI invoker factory with automatic SDK/CLI fallback
 - Eliminated ~450 lines of duplicated backend selection code
@@ -11,7 +11,7 @@ This module provides a generic, domain-agnostic service for tracking AI processe
 - **Interactive Sessions:** Management of interactive CLI sessions in external terminals
 
 **Package Structure:**
-- `pipeline-core` - Pure Node.js core (CopilotSDKService, CLI utils, TaskQueueManager)
+- `forge` - Pure Node.js core (CopilotSDKService, CLI utils, TaskQueueManager)
 - `src/shortcuts/ai-service/` - VS Code integration layer (AIProcessManager, tree provider, queue service, commands)
 
 ## Architecture Overview
@@ -42,7 +42,7 @@ This module provides a generic, domain-agnostic service for tracking AI processe
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    pipeline-core Package                        │
+│                    forge Package                        │
 │  (TaskQueueManager, QueueExecutor, CopilotSDKService, etc.)     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -64,7 +64,7 @@ This section lists all files in the `ai-service` module and their responsibiliti
 - **copilot-cli-invoker.ts** - CLI invocation and config helpers. Handles GitHub Copilot CLI execution, config file management, and clipboard fallback.
 
 ### Task Queue System
-- **ai-queue-service.ts** - VS Code adapter for pipeline-core's TaskQueueManager. Wraps TaskQueueManager and QueueExecutor, integrates with AIProcessManager for tracking, provides VS Code events and settings integration.
+- **ai-queue-service.ts** - VS Code adapter for forge's TaskQueueManager. Wraps TaskQueueManager and QueueExecutor, integrates with AIProcessManager for tracking, provides VS Code events and settings integration.
 
 - **ai-queue-commands.ts** - Queue management commands (pause, resume, clear, cancel, reorder). Registers VS Code commands for queue control: `shortcuts.queue.pauseQueue`, `shortcuts.queue.resumeQueue`, `shortcuts.queue.clearQueue`, `shortcuts.queue.cancelTask`, `shortcuts.queue.moveToTop`, `shortcuts.queue.moveUp`, `shortcuts.queue.moveDown`.
 
@@ -84,18 +84,18 @@ This section lists all files in the `ai-service` module and their responsibiliti
 
 - **ai-command-registry.ts** - Singleton registry for configurable AI commands. Manages dynamic AI commands that can be configured via settings, supports command templates and parameter substitution.
 
-- **ai-command-types.ts** - Re-exports from pipeline-core. Type definitions for AI commands shared between VS Code extension and pipeline-core.
+- **ai-command-types.ts** - Re-exports from forge. Type definitions for AI commands shared between VS Code extension and forge.
 
 ### Utilities
 - **prompt-builder.ts** - Prompt building with template variable substitution. Builds prompts from templates with variable replacement (e.g., `{{filePath}}`, `{{selectedText}}`).
 
-- **external-terminal-launcher.ts** - Re-export from pipeline-core. Launches external terminals for interactive CLI sessions, supports multiple terminal types (Terminal.app, iTerm, Windows Terminal, etc.).
+- **external-terminal-launcher.ts** - Re-export from forge. Launches external terminals for interactive CLI sessions, supports multiple terminal types (Terminal.app, iTerm, Windows Terminal, etc.).
 
-- **window-focus-service.ts** - Re-export from pipeline-core. Service for managing window focus when launching external terminals.
+- **window-focus-service.ts** - Re-export from forge. Service for managing window focus when launching external terminals.
 
-- **ai-service-logger.ts** - Backward compat re-exports (deprecated). Legacy logger exports for backward compatibility, new code should use pipeline-core logger.
+- **ai-service-logger.ts** - Backward compat re-exports (deprecated). Legacy logger exports for backward compatibility, new code should use forge logger.
 
-- **types.ts** - Re-exports + VS Code-specific types. Type definitions for the module, re-exports from pipeline-core, and VS Code-specific extensions.
+- **types.ts** - Re-exports + VS Code-specific types. Type definitions for the module, re-exports from forge, and VS Code-specific extensions.
 
 ### Testing & Exports
 - **mock-ai-process-manager.ts** - Mock for testing. Mock implementation of AIProcessManager for unit tests.
@@ -109,11 +109,11 @@ This section lists all files in the `ai-service` module and their responsibiliti
 
 ## Task Queue System
 
-The task queue system provides priority-based queuing and execution of AI tasks. It wraps `pipeline-core`'s `TaskQueueManager` and `QueueExecutor` with VS Code integration.
+The task queue system provides priority-based queuing and execution of AI tasks. It wraps `forge`'s `TaskQueueManager` and `QueueExecutor` with VS Code integration.
 
 ### Overview
 
-The `AIQueueService` wraps `pipeline-core`'s `TaskQueueManager` and `QueueExecutor` to provide:
+The `AIQueueService` wraps `forge`'s `TaskQueueManager` and `QueueExecutor` to provide:
 - Priority-based task ordering (high, normal, low)
 - Integration with `AIProcessManager` for process tracking
 - VS Code event emitters for queue changes
@@ -847,8 +847,8 @@ The legacy methods are still available but marked as `@deprecated`.
 
 ## See Also
 
-- `packages/pipeline-core/src/ai/` - Core AI service (CopilotSDKService, CLI utils)
-- `packages/pipeline-core/src/queue/` - Task queue core (TaskQueueManager, QueueExecutor)
+- `packages/forge/src/ai/` - Core AI service (CopilotSDKService, CLI utils)
+- `packages/forge/src/queue/` - Task queue core (TaskQueueManager, QueueExecutor)
 - `src/shortcuts/code-review/process-adapter.ts` - Reference implementation of the adapter pattern
 - `src/shortcuts/map-reduce/` - Map-reduce framework for parallel AI workflows
 - `src/shortcuts/ai-service/ai-invoker-factory.ts` - Unified AI invoker factory (2026-01)

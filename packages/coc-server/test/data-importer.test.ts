@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import { importData } from '../src/data-importer';
 import { DataWiper } from '../src/data-wiper';
 import { EXPORT_SCHEMA_VERSION, type CoCExportPayload } from '../src/export-import-types';

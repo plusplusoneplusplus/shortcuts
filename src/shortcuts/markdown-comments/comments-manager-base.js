@@ -43,8 +43,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CommentsManagerBase = exports.TypedEventEmitter = void 0;
 const events_1 = require("events");
 const path = __importStar(require("path"));
-const pipeline_core_1 = require("@plusplusoneplusplus/pipeline-core");
-const pipeline_core_2 = require("@plusplusoneplusplus/pipeline-core");
+const pipeline_core_1 = require("@plusplusoneplusplus/forge");
+const pipeline_core_2 = require("@plusplusoneplusplus/forge");
 /**
  * Minimal typed event emitter that is a drop-in replacement for
  * `vscode.EventEmitter<T>`.  Backed by Node.js `EventEmitter`.

@@ -9,8 +9,8 @@
  */
 
 import pino from 'pino';
-import { createPinoAdapter } from '@plusplusoneplusplus/pipeline-core';
-import type { Logger } from '@plusplusoneplusplus/pipeline-core';
+import { createPinoAdapter } from '@plusplusoneplusplus/forge';
+import type { Logger } from '@plusplusoneplusplus/forge';
 
 export { createPinoAdapter };
 

@@ -11,7 +11,7 @@ export {
     FollowPromptPayload,
     isFollowPromptPayload,
     buildFollowPromptText,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 /**
  * Payload for AI clarification tasks (explain/go-deeper on selected text).

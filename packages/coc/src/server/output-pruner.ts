@@ -11,8 +11,8 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
-import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
-import type { StoredProcessEntry, ProcessChangeCallback } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
+import type { StoredProcessEntry, ProcessChangeCallback } from '@plusplusoneplusplus/forge';
 
 const OUTPUTS_SUBDIR = 'outputs';
 

@@ -9,7 +9,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import type { ComponentGraph } from '../types';
 import type { ConsolidationOptions, ConsolidationResult } from './types';
 import { consolidateByDirectory } from './rule-based-consolidator';

@@ -17,7 +17,7 @@ import {
     FeatureContext
 } from './types';
 import { getAvailableModels, getLastUsedAIModel, saveLastUsedAIModel, getLastUsedDepth, saveLastUsedDepth, getLastUsedLocation, saveLastUsedLocation } from '../ai-service/ai-config-helpers';
-import { skillExists } from '@plusplusoneplusplus/pipeline-core';
+import { skillExists } from '@plusplusoneplusplus/forge';
 import { getSharedDialogCSS } from '../shared/webview/dialog-styles';
 import { AUTO_FOLDER_SENTINEL } from './types';
 

@@ -20,5 +20,5 @@ export {
     sortCommentsByLine,
     updateCommentStatus,
     updateCommentText
-} from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+} from '@plusplusoneplusplus/forge/editor/rendering';
 

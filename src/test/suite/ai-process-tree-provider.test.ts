@@ -716,7 +716,7 @@ suite('AI Process Tree Provider Tests', () => {
 // Import additional types for queue service tests
 import { QueuedTaskItem, QueuedTasksSectionItem } from '../../shortcuts/ai-service/queued-task-tree-item';
 import * as vscode from 'vscode';
-import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/pipeline-core';
+import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/forge';
 
 /**
  * Type guard to check if a tree item is a QueuedTasksSectionItem

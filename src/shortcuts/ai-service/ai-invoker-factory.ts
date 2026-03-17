@@ -15,7 +15,7 @@
 
 import * as vscode from 'vscode';
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
-import { getCopilotSDKService, AIInvocationResult, approveAllPermissions, Attachment } from '@plusplusoneplusplus/pipeline-core';
+import { getCopilotSDKService, AIInvocationResult, approveAllPermissions, Attachment } from '@plusplusoneplusplus/forge';
 import { getAIBackendSetting, getSDKLoadMcpConfigSetting, getSDKRequestTimeoutSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 import { IAIProcessManager } from './types';

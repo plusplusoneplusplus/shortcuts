@@ -7,7 +7,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ComponentGraph, ComponentAnalysis, GeneratedArticle } from '../../types';
-import { extractJSON, type AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import { extractJSON, type AIInvoker } from '@plusplusoneplusplus/forge';
 import { resolvePhaseModel, resolvePhaseTimeout, resolvePhaseConcurrency, resolvePhaseDepth } from '../../config-loader';
 import {
     generateArticles,

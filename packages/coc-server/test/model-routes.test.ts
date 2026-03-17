@@ -8,7 +8,7 @@ import { createRouter } from '../src/shared/router';
 import { registerModelRoutes } from '../src/models/model-routes';
 import type { ModelStore } from '../src/models/model-routes';
 import type { Route } from '../src/types';
-import type { ModelInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { ModelInfo } from '@plusplusoneplusplus/forge';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

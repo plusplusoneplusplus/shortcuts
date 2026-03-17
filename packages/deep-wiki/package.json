@@ -16,7 +16,7 @@
   },
   "license": "MIT",
   "scripts": {
-    "prebuild": "cd ../pipeline-core && npm run build",
+    "prebuild": "cd ../forge && npm run build",
     "build": "tsc && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
     "build:bundle": "node esbuild.config.mjs",
     "prepublishOnly": "npm run build:bundle && npm run test:run",
@@ -34,7 +34,7 @@
     "pino-pretty": "^11.x"
   },
   "devDependencies": {
-    "@plusplusoneplusplus/pipeline-core": "1.0.0",
+    "@plusplusoneplusplus/forge": "1.0.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.21.5",

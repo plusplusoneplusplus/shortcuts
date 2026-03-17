@@ -10,7 +10,7 @@ import { useRecentSkills } from '../hooks/useRecentSkills';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
-import { toNativePath } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toNativePath } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 interface SkillItem {
     name: string;

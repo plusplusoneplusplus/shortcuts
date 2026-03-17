@@ -15,7 +15,7 @@ import { GitCommitItem } from './git-commit-item';
 import { GitCommitRangeItem } from './git-commit-range-item';
 import { GitLogService } from './git-log-service';
 import { GitRangeFileItem } from './git-range-file-item';
-import { GitRangeService } from '@plusplusoneplusplus/pipeline-core';
+import { GitRangeService } from '@plusplusoneplusplus/forge';
 import { GitService } from './git-service';
 import { LoadMoreItem } from './load-more-item';
 import { LookedUpCommitItem } from './looked-up-commit-item';

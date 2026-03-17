@@ -6,7 +6,7 @@
  * questions; the handler is a passthrough that returns the suggestions as-is.
  */
 
-import { defineTool } from '@plusplusoneplusplus/pipeline-core';
+import { defineTool } from '@plusplusoneplusplus/forge';
 
 export interface FollowUpSuggestion {
     suggestions: string[];

@@ -11,8 +11,8 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { TaskQueueManager, type TaskQueueManagerOptions } from '@plusplusoneplusplus/pipeline-core';
-import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager, type TaskQueueManagerOptions } from '@plusplusoneplusplus/forge';
+import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import {
     sanitizeTaskForPersistence,
     QueuePersistence,
@@ -26,15 +26,15 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 
 const sdkMocks = createMockSDKService();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
     };
 });
 
-import { RepoQueueRegistry } from '@plusplusoneplusplus/pipeline-core';
+import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from '../../src/server/multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from '../../src/server/multi-repo-queue-persistence';
 

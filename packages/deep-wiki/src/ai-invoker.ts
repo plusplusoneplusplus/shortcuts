@@ -10,13 +10,13 @@
 
 import {
     getCopilotSDKService,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     AIInvoker,
     AIInvokerOptions,
     AIInvokerResult,
     SendMessageOptions,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { resolveWorkingDirectory } from './utils/resolve-working-directory';
 
 // ============================================================================

@@ -37,8 +37,8 @@ import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
 import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
-import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
+import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
@@ -54,7 +54,7 @@ import { StaleTaskDetector } from './stale-task-detector';
 import { TaskWatcher } from './task-watcher';
 import { resolveConfig } from '../config';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
-import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/pipeline-core';
+import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createCLIAIInvoker } from '../ai-invoker';
 
 // ============================================================================
@@ -626,7 +626,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
 // Re-exports
 export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from '@plusplusoneplusplus/coc-server';
-export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+export type { ProcessStore } from '@plusplusoneplusplus/forge';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from '@plusplusoneplusplus/coc-server';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from '@plusplusoneplusplus/coc-server';
 export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';

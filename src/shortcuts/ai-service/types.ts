@@ -4,7 +4,7 @@
  * Types and interfaces for the AI service module.
  * 
  * Core types (AIBackendType, AIModel, AIProcess, etc.) are provided by
- * @plusplusoneplusplus/pipeline-core and re-exported here for convenience.
+ * @plusplusoneplusplus/forge and re-exported here for convenience.
  * 
  * This file contains only VS Code-specific types that cannot be moved to
  * pipeline-core (primarily IAIProcessManager which uses vscode.Event).
@@ -62,7 +62,7 @@ export {
     ExternalTerminalLaunchResult,
     // Process check result (from process monitor)
     ProcessCheckResult
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // Import types we need for local use
 import type {
@@ -77,7 +77,7 @@ import type {
     CodeReviewGroupMetadata,
     DiscoveryProcessMetadata,
     InteractiveSession as PipelineInteractiveSession
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Interactive Session Event Types (VS Code-specific)

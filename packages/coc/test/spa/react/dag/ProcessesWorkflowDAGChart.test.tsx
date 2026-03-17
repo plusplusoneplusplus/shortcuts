@@ -9,7 +9,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { WorkflowDAGChart } from '../../../../src/server/spa/client/react/processes/dag/WorkflowDAGChart';
 import type { DAGChartData } from '../../../../src/server/spa/client/react/processes/dag/types';
 import type { PhaseDetail } from '../../../../src/server/spa/client/react/processes/dag/WorkflowPhasePopover';
-import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelineConfig } from '@plusplusoneplusplus/forge';
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),

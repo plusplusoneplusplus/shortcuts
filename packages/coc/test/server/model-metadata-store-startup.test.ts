@@ -10,8 +10,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // Mock modelMetadataStore before importing the server
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         modelMetadataStore: {
@@ -21,7 +21,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
 });
 
 import { createExecutionServer } from '../../src/server/index';
-import { modelMetadataStore } from '@plusplusoneplusplus/pipeline-core';
+import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 
 const mockInitialize = modelMetadataStore.initialize as ReturnType<typeof vi.fn>;
 

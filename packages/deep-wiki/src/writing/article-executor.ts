@@ -12,11 +12,11 @@
 import {
     ConcurrencyLimiter,
     substituteVariables,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     AIInvoker,
     PromptItem,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     ComponentGraph,
     ComponentAnalysis,

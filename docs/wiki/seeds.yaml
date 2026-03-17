@@ -451,7 +451,7 @@ themes:
       dependencies, enabling reuse in CLI tools.
     hints:
       - pipeline-core
-      - packages/pipeline-core
+      - packages/forge
       - pure Node.js
       - no VS Code
       - TaskQueueManager

@@ -8,9 +8,9 @@
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  *
- * NOTE: Core pipeline functionality is provided by the @plusplusoneplusplus/pipeline-core package.
+ * NOTE: Core pipeline functionality is provided by the @plusplusoneplusplus/forge package.
  * This module exports VS Code-specific UI components only.
- * Import core types directly from '@plusplusoneplusplus/pipeline-core'.
+ * Import core types directly from '@plusplusoneplusplus/forge'.
  */
 
 // UI Components for Pipelines Viewer

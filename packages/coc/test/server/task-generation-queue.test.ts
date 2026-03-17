@@ -26,8 +26,8 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 const sdkMocks = createMockSDKService();
 const { mockSendMessage, mockIsAvailable } = sdkMocks;
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,
@@ -41,10 +41,10 @@ import {
 import type {
     ChatPayload,
 } from '@plusplusoneplusplus/coc-server';
-import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
+import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
 import { createExecutionServer } from '../../src/server/index';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================

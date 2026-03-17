@@ -52,7 +52,7 @@ Persistent memory that lets AI interactions learn from past executions. Stores o
 
 **Simple — `withMemory()` wrapper** (single AI call):
 ```typescript
-import { withMemory, FileMemoryStore } from 'pipeline-core';
+import { withMemory, FileMemoryStore } from 'forge';
 
 const store = new FileMemoryStore({ baseDir: '~/.coc/memory' });
 const result = await withMemory(innerInvoker, prompt, {
@@ -62,7 +62,7 @@ const result = await withMemory(innerInvoker, prompt, {
 
 **Complex — direct service calls** (multi-step like pipeline map-reduce or wiki):
 ```typescript
-import { MemoryRetriever, createWriteMemoryTool, MemoryAggregator } from 'pipeline-core';
+import { MemoryRetriever, createWriteMemoryTool, MemoryAggregator } from 'forge';
 
 const retriever = new MemoryRetriever(store);
 const context = await retriever.retrieve({ repoHash, level: 'repo' });
@@ -96,6 +96,6 @@ Paths use `path.join()`/`path.resolve()`. Shell escaping handles platform differ
 ## See Also
 
 - `docs/designs/coc-memory.md` — Memory system design doc
-- `docs/designs/pipeline-core-extraction.md` — Package extraction design
+- `docs/designs/forge-extraction.md` — Package extraction design
 - `src/shortcuts/ai-service/AGENTS.md` — VS Code AI service wrapper
 - `src/shortcuts/yaml-pipeline/AGENTS.md` — VS Code workflow UI

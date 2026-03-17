@@ -21,4 +21,4 @@ export {
     isCursorInRange,
     restoreCursorAfterContentChange,
     validateCursorPosition
-} from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+} from '@plusplusoneplusplus/forge/editor/rendering';

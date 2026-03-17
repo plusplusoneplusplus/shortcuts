@@ -10,7 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Types

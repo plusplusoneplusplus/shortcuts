@@ -8,7 +8,7 @@
 import { useMemo } from 'react';
 import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 /** Normalise a file path: backslash → slash, strip trailing slash. */
 function normalizePath(p: string): string {

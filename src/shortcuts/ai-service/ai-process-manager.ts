@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
-import { getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import { getCopilotSDKService } from '@plusplusoneplusplus/forge';
 import { ServerClient } from './server-client';
 import { getWorkspaceInfo } from './workspace-identity';
 import {

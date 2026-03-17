@@ -6,7 +6,7 @@
  * by any feature in the extension.
  *
  * Core AI functionality (CopilotSDKService, CLI utilities) is
- * provided by the @plusplusoneplusplus/pipeline-core package.
+ * provided by the @plusplusoneplusplus/forge package.
  * Import those directly from pipeline-core.
  */
 
@@ -119,7 +119,7 @@ export {
     serializeCommands,
     SerializedAICommand,
     SerializedAIMenuConfig
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 export { AICommandRegistry, getAICommandRegistry } from './ai-command-registry';
 
@@ -135,7 +135,7 @@ export {
     ExternalTerminalLauncher,
     getExternalTerminalLauncher,
     resetExternalTerminalLauncher
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // Export interactive session manager
 export {
@@ -161,7 +161,7 @@ export {
     resetWindowFocusService,
     WindowFocusResult,
     WindowFocusService
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // Export AI config helpers (VS Code-specific)
 export {
@@ -183,7 +183,7 @@ export {
 } from './ai-invoker-factory';
 
 // Re-export Attachment type from pipeline-core for convenience
-export type { Attachment } from '@plusplusoneplusplus/pipeline-core';
+export type { Attachment } from '@plusplusoneplusplus/forge';
 
 // Export AI Queue Service
 export {

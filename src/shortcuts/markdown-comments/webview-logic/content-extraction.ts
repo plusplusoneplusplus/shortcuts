@@ -29,4 +29,4 @@ export {
     processNode,
     processTextNode,
     shouldSkipElement
-} from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+} from '@plusplusoneplusplus/forge/editor/rendering';

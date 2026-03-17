@@ -12,7 +12,7 @@ import {
     getCopilotSDKService,
     type SendMessageOptions,
     type TokenUsage,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type { DiscoveryOptions, ComponentGraph } from '../types';
 import { buildDiscoveryPrompt } from './prompts';
 import { parseComponentGraphResponse } from './response-parser';

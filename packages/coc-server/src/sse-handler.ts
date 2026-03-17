@@ -10,8 +10,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
-import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
+import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from './server-logger';
 
 // ============================================================================

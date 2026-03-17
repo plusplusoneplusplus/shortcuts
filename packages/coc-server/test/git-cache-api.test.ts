@@ -32,7 +32,7 @@ vi.mock('child_process', () => ({
 const mockDetectCommitRange = vi.fn();
 const mockGetBranchStatus = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<any>();
     return {
         ...actual,

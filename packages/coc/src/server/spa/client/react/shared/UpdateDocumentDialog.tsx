@@ -9,7 +9,7 @@ import { usePreferences } from '../hooks/usePreferences';
 import { useApp } from '../context/AppContext';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 export interface UpdateDocumentDialogProps {
     wsId: string;

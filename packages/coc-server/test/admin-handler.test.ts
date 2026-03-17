@@ -32,7 +32,7 @@ import {
 import { DataWiper } from '../src/data-wiper';
 import { EXPORT_SCHEMA_VERSION } from '../src/export-import-types';
 import type { Route } from '../src/types';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers

@@ -5,7 +5,7 @@
 
 // normalizeRemoteUrl is the single source of truth in pipeline-core.
 // Imported here so the SPA can reuse the same canonical implementation.
-import { normalizeRemoteUrl } from '@plusplusoneplusplus/pipeline-core/git/normalize-url';
+import { normalizeRemoteUrl } from '@plusplusoneplusplus/forge/git/normalize-url';
 export { normalizeRemoteUrl };
 
 export interface WorkflowInfo {

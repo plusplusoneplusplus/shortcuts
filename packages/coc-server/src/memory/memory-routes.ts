@@ -25,14 +25,14 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as url from 'url';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import {
     FileMemoryStore as PipelineMemoryStore,
     type MemoryLevel,
     FileToolCallCacheStore,
     resolveToolCallCacheOptions,
     type ToolCallCacheLevel,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';

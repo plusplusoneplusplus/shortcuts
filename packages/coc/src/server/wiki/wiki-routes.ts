@@ -15,7 +15,7 @@ import { sendJson as sendJsonImpl, send404 as send404Impl, send500 as send500Imp
 import { WikiManager } from '@plusplusoneplusplus/coc-server';
 import type { WikiRouteHelpers } from '@plusplusoneplusplus/coc-server';
 import type { AskAIFunction } from '@plusplusoneplusplus/coc-server';
-import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/forge';
 import { handleWikiAskRequest } from './ask-handler';
 import { handleWikiExploreRequest } from './explore-handler';
 import { handleGetSeeds, handlePutSeeds, handleGetConfig, handlePutConfig, handleGenerateSeeds } from './admin-handlers';

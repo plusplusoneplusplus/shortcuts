@@ -1,4 +1,4 @@
-import type { PermissionRequest, PermissionRequestResult } from '@plusplusoneplusplus/pipeline-core';
+import type { PermissionRequest, PermissionRequestResult } from '@plusplusoneplusplus/forge';
 
 /**
  * Read-only permission handler for AI sessions.

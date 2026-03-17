@@ -20,7 +20,7 @@ import {
     PromptContext,
     VALID_MODELS
 } from '../ai-service';
-import { escapeShellArg } from '@plusplusoneplusplus/pipeline-core';
+import { escapeShellArg } from '@plusplusoneplusplus/forge';
 import {
     getCommentType as baseGetCommentType,
     getResponseLabel as baseGetResponseLabel,

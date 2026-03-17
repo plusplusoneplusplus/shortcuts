@@ -7,7 +7,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ComponentGraph } from '../../types';
-import type { TokenUsage } from '@plusplusoneplusplus/pipeline-core';
+import type { TokenUsage } from '@plusplusoneplusplus/forge';
 import { resolvePhaseModel, resolvePhaseTimeout, resolvePhaseConcurrency } from '../../config-loader';
 import { discoverComponentGraph, runIterativeDiscovery } from '../../discovery';
 import { generateThemeSeeds, parseSeedFile } from '../../seeds';

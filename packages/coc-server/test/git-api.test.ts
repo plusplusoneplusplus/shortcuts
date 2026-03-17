@@ -40,7 +40,7 @@ const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
 const mockGetCurrentBranch = vi.fn();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,

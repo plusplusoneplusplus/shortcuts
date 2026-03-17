@@ -24,7 +24,7 @@ import {
     DEBOUNCE_MS,
     MAX_PERSISTED_HISTORY_DEFAULT,
 } from '@plusplusoneplusplus/coc-server';
-import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // MultiRepoQueuePersistence
@@ -270,7 +270,7 @@ export class MultiRepoQueuePersistence {
      * Get the TaskQueueManager for a given rootPath by accessing the
      * registry through the bridge's getOrCreateBridge().
      */
-    private getQueueManager(rootPath: string): import('@plusplusoneplusplus/pipeline-core').TaskQueueManager | undefined {
+    private getQueueManager(rootPath: string): import('@plusplusoneplusplus/forge').TaskQueueManager | undefined {
         return this.bridge.registry.getQueueForRepo(rootPath);
     }
 }

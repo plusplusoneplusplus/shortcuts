@@ -9,7 +9,7 @@
     "url": "https://github.com/plusplusoneplusplus/shortcuts.git"
   },
   "workspaces": [
-    "packages/pipeline-core",
+    "packages/forge",
     "packages/coc",
     "packages/coc-server",
     "packages/deep-wiki"
@@ -4031,10 +4031,10 @@
     "validate:models": "node scripts/validate-model-registry.js",
     "test": "npm run test:extension && npm run test:packages",
     "test:extension": "node ./out/test/runTest.js",
-    "test:packages": "npm run test:run -w packages/pipeline-core && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
+    "test:packages": "npm run test:run -w packages/forge && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
     "test:all": "npm run test",
-    "build:packages": "npm run build -w packages/pipeline-core && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
-    "coc:link": "cd packages/pipeline-core && npm run build && npm link && cd ../coc-server && npm run build && npm link && cd ../coc && npm run build && npm link",
+    "build:packages": "npm run build -w packages/forge && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
+    "coc:link": "cd packages/forge && npm run build && npm link && cd ../coc-server && npm run build && npm link && cd ../coc && npm run build && npm link",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "vsce:package": "vsce package",
     "vsce:publish": "vsce publish"
@@ -4060,7 +4060,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
-    "@plusplusoneplusplus/pipeline-core": "file:packages/pipeline-core",
+    "@plusplusoneplusplus/forge": "file:packages/forge",
     "@github/copilot-sdk": "^0.1.29",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0"

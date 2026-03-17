@@ -11,7 +11,7 @@ import { createRouter } from '../src/shared/router';
 import { registerMemoryRoutes } from '../src/memory/memory-routes';
 import type { MemoryRouteOptions } from '../src/memory/memory-routes';
 import type { Route } from '../src/types';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import { writeMemoryConfig, DEFAULT_MEMORY_CONFIG } from '../src/memory/memory-config-handler';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

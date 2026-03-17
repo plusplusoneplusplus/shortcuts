@@ -5,7 +5,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 ## Recent Refactoring (2026-01)
 
 **Pipeline Core Package Extraction** - Extracted pipeline execution engine into standalone package:
-- New package: `pipeline-core` in `packages/pipeline-core/`
+- New package: `forge` in `packages/forge/`
 - Pure Node.js (no VS Code dependencies), usable in CLI tools
 - Modules: logger, utils, ai (SDK service, session-per-request), map-reduce, workflow, pipeline, memory, templates, ado, skills
 - Monorepo with npm workspaces
@@ -15,7 +15,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 - New package: `deep-wiki` in `packages/deep-wiki/`
 - CLI tool that auto-generates wiki documentation for any codebase
 - 6-phase pipeline: Seeds → Discovery → Consolidation → Analysis → Writing → Website
-- Uses pipeline-core for AI SDK
+- Uses forge for AI SDK
 
 **Tree Data Provider Base Classes** - Eliminated code duplication across tree data providers:
 - Created 5 new shared modules: `base-tree-data-provider`, `filterable-tree-data-provider`, `tree-filter-utils`, `tree-icon-utils`, `tree-error-handler`
@@ -26,7 +26,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 
 | Module | Description |
 |--------|-------------|
-| **ai-service** | Generic AI process tracking, VS Code integration (core in `pipeline-core`) |
+| **ai-service** | Generic AI process tracking, VS Code integration (core in `forge`) |
 | **code-review** | Review Git diffs against custom coding rules |
 | **debug-panel** | Debug tree view for development/testing |
 | **discovery** | AI-powered feature discovery and file organization |
@@ -39,13 +39,13 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 | **sync** | Cloud synchronization via VSCode Settings Sync |
 | **tasks-viewer** | Markdown task list management |
 | **skills** | Skill installation from GitHub repos, local dirs, or bundled sources |
-| **yaml-pipeline** | Workflows UI layer (core in `pipeline-core`) |
+| **yaml-pipeline** | Workflows UI layer (core in `forge`) |
 
 ## Module Dependencies
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│              pipeline-core (npm package)          │
+│              forge (npm package)          │
 │  (logger, utils, ai/copilot-sdk, map-reduce core, pipeline)     │
 └─────────────────────────────────────────────────────────────────┘
         ▲           ▲           ▲           ▲
@@ -88,13 +88,13 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 ## Dependency Summary
 
 ### Core Infrastructure
-- **pipeline-core** → Pure Node.js package with AI/pipeline execution engine
+- **forge** → Pure Node.js package with AI/pipeline execution engine
 - **shared** → Used by almost all modules for logging, utilities, base classes
 
 ### AI Processing Stack
-- **ai-service** → VS Code integration layer, uses pipeline-core for SDK/CLI
-- **yaml-pipeline** → VS Code UI layer, uses pipeline-core for execution (Workflows view)
-- **code-review** → Uses pipeline-core map-reduce for parallel rule checking
+- **ai-service** → VS Code integration layer, uses forge for SDK/CLI
+- **yaml-pipeline** → VS Code UI layer, uses forge for execution (Workflows view)
+- **code-review** → Uses forge map-reduce for parallel rule checking
 
 ### Commenting Features
 - **markdown-comments** → Uses shared for anchoring and prompts

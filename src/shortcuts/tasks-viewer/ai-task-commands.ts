@@ -20,7 +20,7 @@ import { AITaskDialogService } from './ai-task-dialog';
 import { createAIInvoker, IAIProcessManager, Attachment } from '../ai-service';
 import { getAIBackendSetting } from '../ai-service/ai-config-helpers';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
-import { skillExists, toForwardSlashes } from '@plusplusoneplusplus/pipeline-core';
+import { skillExists, toForwardSlashes } from '@plusplusoneplusplus/forge';
 
 const logger = getExtensionLogger();
 

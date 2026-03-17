@@ -37,7 +37,7 @@ import {
     QueueJobMode,
 } from '../../shortcuts/ai-service/queue-job-dialog';
 import { QueueJobDialogService } from '../../shortcuts/ai-service/queue-job-dialog-service';
-import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/pipeline-core';
+import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers

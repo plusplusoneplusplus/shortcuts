@@ -38,7 +38,7 @@ import {
     ImageBlobStore,
     applyFollowUpToTask,
 } from '@plusplusoneplusplus/coc-server';
-import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, TimelineItem, Tool, ToolEvent } from '@plusplusoneplusplus/forge';
 import {
     approveAllPermissions,
     loadInstructions,
@@ -75,9 +75,9 @@ import {
     ToolCallCapture,
     DEFAULT_SKILLS_SETTINGS,
     modelMetadataStore,
-} from '@plusplusoneplusplus/pipeline-core';
-import { replicateCommit } from '@plusplusoneplusplus/pipeline-core/templates';
-import type { ReplicateResult, ReplicateProgressCallback } from '@plusplusoneplusplus/pipeline-core/templates';
+} from '@plusplusoneplusplus/forge';
+import { replicateCommit } from '@plusplusoneplusplus/forge/templates';
+import type { ReplicateResult, ReplicateProgressCallback } from '@plusplusoneplusplus/forge/templates';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';

@@ -10,7 +10,7 @@
 
 import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
-import type { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
 import { getErrorMessage } from '@plusplusoneplusplus/coc-server';
 import { SchedulePersistence } from './schedule-persistence';

@@ -13,7 +13,7 @@ import {
     SerializedAICommand,
     SerializedAIMenuConfig,
     DEFAULT_PROMPTS
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 /**
  * Singleton registry for AI commands

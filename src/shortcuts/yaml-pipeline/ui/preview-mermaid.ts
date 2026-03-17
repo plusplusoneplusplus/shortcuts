@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { CSVParseResult, isCSVSource, PromptItem } from '@plusplusoneplusplus/pipeline-core';
+import { CSVParseResult, isCSVSource, PromptItem } from '@plusplusoneplusplus/forge';
 import { ResourceFileInfo } from './types';
 
 /**

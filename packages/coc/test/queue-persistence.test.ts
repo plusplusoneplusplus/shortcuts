@@ -8,8 +8,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
-import type { QueuedTask, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { QueuedTask, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { QueuePersistence } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================

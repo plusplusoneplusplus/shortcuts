@@ -17,7 +17,7 @@ import {
     ProcessTracker,
     Rule,
     RuleReviewResult
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import {
     CodeReviewMetadata,
     ReviewFinding,

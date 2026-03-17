@@ -12,7 +12,7 @@ import { ConversationTurnBubble } from '../ConversationTurnBubble';
 import { formatDuration, statusIcon, statusLabel } from '../../utils/format';
 import { getProcessWorkspaceId } from '../../utils/workspace';
 import type { ClientConversationTurn } from '../../types/dashboard';
-import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
+import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
 export interface ItemConversationPanelProps {
     processId: string;

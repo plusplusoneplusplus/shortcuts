@@ -1,7 +1,7 @@
 /**
  * Window Focus Service
  *
- * Re-exports from @plusplusoneplusplus/pipeline-core for backward compatibility.
+ * Re-exports from @plusplusoneplusplus/forge for backward compatibility.
  * The actual implementation has been moved to the pipeline-core package.
  */
 
@@ -10,4 +10,4 @@ export {
     getWindowFocusService,
     resetWindowFocusService,
     WindowFocusResult
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';

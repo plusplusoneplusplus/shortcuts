@@ -3,7 +3,7 @@ import { getApiBase } from '../utils/config';
 import { clearDraft } from './useDraftStore';
 import type { ClientConversationTurn } from '../types/dashboard';
 import type { QueuedMessage } from '../utils/chatUtils';
-import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core';
+import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;

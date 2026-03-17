@@ -10,7 +10,7 @@
 
 import * as crypto from 'crypto';
 import * as url from 'url';
-import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from './api-handler';
 import { handleAPIError, invalidJSON, badRequest, forbidden } from './errors';
 import type { Route } from './types';

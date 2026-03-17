@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelinePhaseStatus } from '@plusplusoneplusplus/forge';
 import type { DAGChartData } from '../processes/dag/types';
 import { buildDAGDataFromLive } from '../processes/dag/buildDAGData';
 

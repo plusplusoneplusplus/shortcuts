@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { PipelineConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelineConfig } from '@plusplusoneplusplus/forge';
 import type { DAGChartData } from './types';
 import { DAGNode } from './DAGNode';
 import { DAGEdge } from './DAGEdge';

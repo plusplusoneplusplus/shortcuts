@@ -3,10 +3,10 @@ import { safeExists } from '../shared';
 import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder, DiscoverySettings, DiscoveryDefaultScope, TaskStatus } from './types';
 import { RELATED_ITEMS_FILENAME } from './related-items-loader';
 import { RelatedItem } from './types';
-import { TaskManager as CoreTaskManager } from '@plusplusoneplusplus/pipeline-core';
+import { TaskManager as CoreTaskManager } from '@plusplusoneplusplus/forge';
 
 // Re-export updateTaskStatus from the core package
-export { updateTaskStatus } from '@plusplusoneplusplus/pipeline-core';
+export { updateTaskStatus } from '@plusplusoneplusplus/forge';
 
 /**
  * Thin VS Code adapter around the shared CoreTaskManager.

@@ -21,7 +21,7 @@ vi.mock('fs', async (importOriginal) => {
     };
 });
 
-import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
+import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../src/server/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
@@ -32,8 +32,8 @@ import { createMockProcessStore, createCompletedProcessWithSession } from '../he
 
 const sdkMocks = createMockSDKService();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,

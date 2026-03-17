@@ -9,7 +9,7 @@
  */
 
 import type { AnalysisOptions, AnalysisResult, ComponentAnalysis } from '../types';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import type { AnalysisProgress, AnalysisItemCompleteCallback } from './analysis-executor';
 import { runAnalysisExecutor } from './analysis-executor';
 

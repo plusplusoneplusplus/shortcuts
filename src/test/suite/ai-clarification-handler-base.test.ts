@@ -22,7 +22,7 @@ import {
     AIInvocationResult,
     getCopilotSDKService,
     resetCopilotSDKService
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import {
     getAIBackendSetting,
     getAIToolSetting

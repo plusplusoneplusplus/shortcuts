@@ -18,10 +18,10 @@ import * as path from 'path';
 import { WebSocket } from 'ws';
 import { createExecutionServer } from '../../src/server/index';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { ProcessSummary, ServerMessage } from '@plusplusoneplusplus/coc-server';
-import type { AIProcess } from '@plusplusoneplusplus/pipeline-core';
+import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 
 // ============================================================================

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as childProcess from 'child_process';
-import type { WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
 
 export interface RepoTreeServiceOptions {

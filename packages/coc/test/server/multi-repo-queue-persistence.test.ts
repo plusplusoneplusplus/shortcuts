@@ -14,8 +14,8 @@ import * as path from 'path';
 import {
     RepoQueueRegistry,
     TaskQueueManager,
-} from '@plusplusoneplusplus/pipeline-core';
-import type { QueuedTask } from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
+import type { QueuedTask } from '@plusplusoneplusplus/forge';
 
 // SDK mock — needed because createQueueExecutorBridge → CLITaskExecutor → getCopilotSDKService
 import { createMockSDKService } from '../helpers/mock-sdk-service';
@@ -24,8 +24,8 @@ import { getRepoQueueFilePath } from '@plusplusoneplusplus/coc-server';
 
 const sdkMocks = createMockSDKService();
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         getCopilotSDKService: () => sdkMocks.service,

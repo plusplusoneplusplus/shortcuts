@@ -24,7 +24,7 @@ import type { TaskComment, TaskCommentCategory, CommentSelection } from '../../t
 import {
     createAnchorData,
     DEFAULT_ANCHOR_MATCH_CONFIG,
-} from '@plusplusoneplusplus/pipeline-core/editor/anchor';
+} from '@plusplusoneplusplus/forge/editor/anchor';
 import { DASHBOARD_AI_COMMANDS } from './ai-commands';
 import { extractDocumentContext } from '../utils/document-context';
 import { getApiBase } from '../utils/config';
@@ -33,7 +33,7 @@ import { selectionToSourcePosition } from '../utils/selection-position';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { getLanguageFromFileName } from '../repos/useSyntaxHighlight';
 import { useApp } from '../context/AppContext';
-import { toForwardSlashes } from '@plusplusoneplusplus/pipeline-core/utils/path-utils';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 

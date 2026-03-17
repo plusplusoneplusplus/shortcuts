@@ -13,7 +13,7 @@ import {
     deserializeProcess,
     AIProcessItem
 } from '../../shortcuts/ai-service';
-import { buildCliCommand } from '@plusplusoneplusplus/pipeline-core';
+import { buildCliCommand } from '@plusplusoneplusplus/forge';
 
 suite('AI Session Resume', () => {
     suite('SerializedAIProcess Session Fields', () => {

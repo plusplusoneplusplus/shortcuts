@@ -8,7 +8,7 @@
  */
 
 import type * as http from 'http';
-import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/forge';
 export type { Route } from './shared/router';
 
 /** Options for the `coc serve` CLI command. */

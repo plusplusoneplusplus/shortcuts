@@ -79,7 +79,7 @@ test.describe('Admin token — expiry', () => {
     test('token is rejected with 403 after TTL expires', async () => {
         // Create a dedicated short-TTL server (200 ms) outside the shared fixture
         const { createExecutionServer } = require('../../dist/server/index');
-        const { FileProcessStore } = require('@plusplusoneplusplus/pipeline-core');
+        const { FileProcessStore } = require('@plusplusoneplusplus/forge');
 
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-token-ttl-'));
         const store = new FileProcessStore({ dataDir: tmpDir });

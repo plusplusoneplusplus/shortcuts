@@ -20,7 +20,7 @@ import {
     SendMessageOptions,
     SDKInvocationResult,
     AIBackendType
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import {
     getAIBackendSetting
 } from '../../shortcuts/ai-service';

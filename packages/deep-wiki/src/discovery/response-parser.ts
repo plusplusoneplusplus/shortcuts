@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
+import { extractJSON } from '@plusplusoneplusplus/forge';
 import { parseStringArray } from '../utils/parse-string-array';
 import type { ComponentGraph, ComponentInfo, ProjectInfo, CategoryInfo, TopLevelDomain, StructuralScanResult } from '../types';
 import {

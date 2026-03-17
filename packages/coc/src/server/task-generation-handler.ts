@@ -15,7 +15,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ServerResponse } from 'http';
-import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '@plusplusoneplusplus/coc-server';
 import {
     buildCreateTaskPrompt,
@@ -31,8 +31,8 @@ import {
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
     AUTO_FOLDER_SENTINEL,
-} from '@plusplusoneplusplus/pipeline-core';
-import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
+import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';

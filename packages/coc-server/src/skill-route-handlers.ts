@@ -17,7 +17,7 @@ import {
     getBundledSkills,
     installBundledSkills,
     isWithinDirectory,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { sendJSON } from './api-handler';
 import { handleAPIError, notFound, badRequest, internalError } from './errors';
 import { parseBodyOrReject } from './shared/handler-utils';

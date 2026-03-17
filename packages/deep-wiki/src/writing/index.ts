@@ -8,7 +8,7 @@
  */
 
 import type { WritingOptions, WikiOutput } from '../types';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import type { ArticleProgress, ArticleItemCompleteCallback } from './article-executor';
 import { runArticleExecutor } from './article-executor';
 

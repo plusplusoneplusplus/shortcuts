@@ -12,14 +12,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as http from 'http';
 import { registerStatsRoutes } from '../../src/server/stats-handler';
 import type { Route } from '@plusplusoneplusplus/coc-server';
-import type { ProcessStore, AIProcess, TokenUsageStatsResponse } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, TokenUsageStatsResponse } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Mocks
 // ============================================================================
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         aggregateTokenUsageStats: vi.fn(),
@@ -113,7 +113,7 @@ describe('registerStatsRoutes — GET /api/stats/token-usage', () => {
 
     beforeEach(async () => {
         vi.clearAllMocks();
-        const mod = await import('@plusplusoneplusplus/pipeline-core');
+        const mod = await import('@plusplusoneplusplus/forge');
         aggregateTokenUsageStats = mod.aggregateTokenUsageStats as ReturnType<typeof vi.fn>;
     });
 

@@ -19,7 +19,7 @@ import {
 import type {
     RunWorkflowPayload,
 } from '../src/task-types';
-import type { MCPServerConfig } from '@plusplusoneplusplus/pipeline-core';
+import type { MCPServerConfig } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // isChatPayload

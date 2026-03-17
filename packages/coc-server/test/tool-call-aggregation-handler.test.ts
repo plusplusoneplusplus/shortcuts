@@ -9,7 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { handleAggregateToolCalls } from '../src/memory/tool-call-aggregation-handler';
 import { writeMemoryConfig, DEFAULT_MEMORY_CONFIG } from '../src/memory/memory-config-handler';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 
 // ── MockResponse helper ───────────────────────────────────────────────────────
 

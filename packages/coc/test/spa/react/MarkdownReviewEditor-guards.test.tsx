@@ -39,7 +39,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/useMarkdownPreview', () => (
 }));
 
 /* ── Mock anchor creation ── */
-vi.mock('@plusplusoneplusplus/pipeline-core/editor/anchor', () => ({
+vi.mock('@plusplusoneplusplus/forge/editor/anchor', () => ({
     createAnchorData: vi.fn(),
     DEFAULT_ANCHOR_MATCH_CONFIG: {},
 }));

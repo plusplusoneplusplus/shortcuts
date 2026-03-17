@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createRequestHandler } from '@plusplusoneplusplus/coc-server';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getClientBundle } from './spa-test-helpers';
 
 // ============================================================================

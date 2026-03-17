@@ -10,7 +10,7 @@ import * as os from 'os';
 import { registerGlobalSkillRoutes } from '../src/global-skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../src/types';
-import type { WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Test Helpers

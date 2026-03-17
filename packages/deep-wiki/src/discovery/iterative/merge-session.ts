@@ -10,7 +10,7 @@
 import {
     getCopilotSDKService,
     type SendMessageOptions,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type { ComponentGraph, ComponentInfo, CategoryInfo } from '../../types';
 import type { ThemeProbeResult, MergeResult } from './types';
 import { normalizeComponentId, isValidComponentId } from '../../schemas';

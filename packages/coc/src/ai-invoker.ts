@@ -16,7 +16,7 @@ import {
     FileToolCallCacheStore,
     resolveToolCallCacheOptions,
     TASK_FILTER,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     AIInvoker,
     AIInvokerOptions,
@@ -24,7 +24,7 @@ import type {
     MCPServerConfig,
     SendMessageOptions,
     Tool,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Types

@@ -11,4 +11,4 @@ export {
     mergeRelatedItems,
     getRelatedItemsPath,
     categorizeItem,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';

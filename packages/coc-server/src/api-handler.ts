@@ -14,9 +14,9 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, CreateTaskInput } from '@plusplusoneplusplus/pipeline-core';
-import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig, detectRemoteUrl, GitOpsStore } from '@plusplusoneplusplus/pipeline-core';
-import type { Attachment, GitOpJob } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn, CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, GitRangeService, BranchService, WorkingTreeService, loadDefaultMcpConfig, detectRemoteUrl, GitOpsStore } from '@plusplusoneplusplus/forge';
+import type { Attachment, GitOpJob } from '@plusplusoneplusplus/forge';
 import type { Route } from './types';
 import { handleProcessStream, emitMessageQueued } from './sse-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, conflict, APIError } from './errors';
@@ -2111,10 +2111,10 @@ export function readGitFileAtCommit(hash: string, filePath: string, cwd: string)
 /**
  * Detect the primary git remote URL for a workspace directory.
  * Returns undefined if not a git repo or no remotes configured.
- * @deprecated Use `detectRemoteUrl` imported from `@plusplusoneplusplus/pipeline-core`.
+ * @deprecated Use `detectRemoteUrl` imported from `@plusplusoneplusplus/forge`.
  *             Re-exported here for backward compatibility with existing callers.
  */
-export { detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/pipeline-core';
+export { detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
 
 /** Discover pipeline packages in a directory. Each subdirectory with a pipeline.yaml is a package. */
 export function discoverPipelines(pipelinesDir: string): Array<{ name: string; path: string }> {

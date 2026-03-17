@@ -21,7 +21,7 @@ import {
     cyan,
 } from '../logger';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
-import { FileProcessStore, setLogger } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore, setLogger } from '@plusplusoneplusplus/forge';
 import { resolveLoggingConfig, loadConfigFile } from '../config';
 import { setServerLogger } from '@plusplusoneplusplus/coc-server';
 import type { ServeCommandOptions } from '@plusplusoneplusplus/coc-server';

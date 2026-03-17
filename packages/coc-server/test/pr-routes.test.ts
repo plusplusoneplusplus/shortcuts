@@ -10,8 +10,8 @@ import * as path from 'path';
 import { createRouter } from '../src/shared/router';
 import { registerPrRoutes } from '../src/repos/pr-routes';
 import type { Route } from '../src/types';
-import type { IPullRequestsService } from '@plusplusoneplusplus/pipeline-core';
-import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/pipeline-core';
+import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
+import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 

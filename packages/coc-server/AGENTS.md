@@ -91,7 +91,7 @@ The package exports from `src/index.ts`:
 
 ## Dependencies
 
-- `@plusplusoneplusplus/pipeline-core` — ProcessStore, CopilotSDKService, TaskQueueManager, defineTool
+- `@plusplusoneplusplus/forge` — ProcessStore, CopilotSDKService, TaskQueueManager, defineTool
 - `ws` — WebSocket server
 - `pino` — Structured JSON logger (injected via `server-logger.ts`)
 - `js-yaml` — YAML config parsing
@@ -104,6 +104,6 @@ Run with `npm run test:run` in `packages/coc-server/`.
 
 ## See Also
 
-- `packages/pipeline-core/AGENTS.md` — AI SDK and process storage
+- `packages/forge/AGENTS.md` — AI SDK and process storage
 - `packages/coc/AGENTS.md` — CoC CLI (consumes this package)
 - `packages/deep-wiki/AGENTS.md` — Wiki generator (wiki served by this package)

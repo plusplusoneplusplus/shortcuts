@@ -21,7 +21,7 @@ const STREAM_DESTROYED_PATTERNS = [
     'ECONNRESET',
 ];
 
-vi.mock('@plusplusoneplusplus/pipeline-core', () => ({
+vi.mock('@plusplusoneplusplus/forge', () => ({
     getCopilotSDKService: () => ({
         sendMessage: mockSendMessage,
         isAvailable: mockIsAvailable,

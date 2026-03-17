@@ -12,7 +12,7 @@ import {
 } from '../src/output-formatter';
 import type { OutputFormat } from '../src/output-formatter';
 import { setColorEnabled } from '../src/logger';
-import type { FlatWorkflowResult } from '@plusplusoneplusplus/pipeline-core';
+import type { FlatWorkflowResult } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Test Helpers

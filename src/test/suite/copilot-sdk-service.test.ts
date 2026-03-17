@@ -21,7 +21,7 @@ import {
     SDKInvocationResult,
     SendMessageOptions,
     DEFAULT_MODEL_ID
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import {
     getAIBackendSetting,
     getSDKSessionTimeoutSetting

@@ -19,14 +19,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
-import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/pipeline-core';
+import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge';
 import {
     DEFAULT_AI_COMMANDS,
     type AICommand,
     buildPromptFromContext,
     type PromptContext,
-} from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 
 // ============================================================================

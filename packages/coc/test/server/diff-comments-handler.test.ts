@@ -17,8 +17,8 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { DiffCommentsManager } from '../../src/server/diff-comments-handler';
-import type { DiffCommentContext } from '@plusplusoneplusplus/pipeline-core';
-import type { DiffComment } from '@plusplusoneplusplus/pipeline-core';
+import type { DiffCommentContext } from '@plusplusoneplusplus/forge';
+import type { DiffComment } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // HTTP Helpers

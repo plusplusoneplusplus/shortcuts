@@ -15,8 +15,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
-import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/forge';
 import { ImageBlobStore } from './image-blob-store';
 
 // ============================================================================

@@ -28,7 +28,7 @@ import {
     ProcessTracker,
     PromptItem,
     SessionMetadata
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { PipelineInfo } from './types';
 
 /**

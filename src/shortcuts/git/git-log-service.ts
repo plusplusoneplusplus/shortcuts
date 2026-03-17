@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { GitLogService as CoreGitLogService } from '@plusplusoneplusplus/pipeline-core';
+import { GitLogService as CoreGitLogService } from '@plusplusoneplusplus/forge';
 import { getExtensionLogger, LogCategory } from '../shared';
 import { GitCommit, GitCommitFile, CommitLoadOptions, CommitLoadResult } from './types';
 

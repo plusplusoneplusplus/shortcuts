@@ -12,7 +12,7 @@ import {
     getCopilotSDKService,
     CopilotSDKService,
     type SendMessageOptions,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type { SeedsCommandOptions, ThemeSeed } from '../types';
 import { buildSeedsPrompt } from './prompts';
 import { parseSeedsResponse } from './response-parser';

@@ -409,13 +409,13 @@ interface ReviewFinding {
 | File | Purpose |
 |------|---------|
 | `code-review-service.ts` | Core service: config, rule loading from `.github/cr-rules/*.md`, prompt building, diff stats |
-| `code-review-commands.ts` | VS Code commands: review commit/pending/staged/range; orchestrates multi-rule review via pipeline-core map-reduce |
+| `code-review-commands.ts` | VS Code commands: review commit/pending/staged/range; orchestrates multi-rule review via forge map-reduce |
 | `code-review-viewer.ts` | Webview panel: displays CodeReviewResults, severity filtering, interactive fix selection, apply fixes |
 | `fix-applier.ts` | Applies AI-suggested fixes: preview changes, bottom-to-top editing to maintain line numbers |
 | `front-matter-parser.ts` | Parse YAML front matter from rule markdown files (extracts model, metadata) |
 | `response-parser.ts` | Parse AI responses into structured CodeReviewResult; aggregate results; format as markdown |
 | `process-adapter.ts` | Adapter between code-review and generic IAIProcessManager; creates ProcessTracker for map-reduce |
-| `concurrency-limiter.ts` | Re-exports ConcurrencyLimiter from pipeline-core |
+| `concurrency-limiter.ts` | Re-exports ConcurrencyLimiter from forge |
 | `types.ts` | All types: config, rules, findings, review results, prompt templates, severity levels |
 | `index.ts` | Module exports |
 
@@ -424,5 +424,5 @@ interface ReviewFinding {
 ## See Also
 
 - `src/shortcuts/ai-service/AGENTS.md` - AI process tracking
-- `packages/pipeline-core/AGENTS.md` - Map-reduce framework for parallel execution
+- `packages/forge/AGENTS.md` - Map-reduce framework for parallel execution
 - `.github/cr-rules/` - Example rule files in this repository

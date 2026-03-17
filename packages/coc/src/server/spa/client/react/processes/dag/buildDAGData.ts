@@ -1,5 +1,5 @@
 import type { DAGChartData, DAGNodeData, DAGNodeState } from './types';
-import type { PipelinePhaseStatus } from '@plusplusoneplusplus/pipeline-core';
+import type { PipelinePhaseStatus } from '@plusplusoneplusplus/forge';
 import type { LivePhaseEntry, LiveProgress } from '../../hooks/useWorkflowPhase';
 
 const knownPhaseLabels: Record<string, string> = {

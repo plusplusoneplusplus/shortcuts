@@ -5,7 +5,7 @@ import {
     AIInvokerFactoryOptions,
     AIInvokerResult
 } from '../../shortcuts/ai-service/ai-invoker-factory';
-import { Attachment } from '@plusplusoneplusplus/pipeline-core';
+import { Attachment } from '@plusplusoneplusplus/forge';
 import {
     MockAIProcessManager,
     createMockAIProcessManager

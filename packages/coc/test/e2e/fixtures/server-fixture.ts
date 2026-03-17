@@ -47,7 +47,7 @@ export function safeRmSync(dir: string, maxRetries = 5): void {
 
 // Import from compiled dist — Playwright doesn't transpile source TS
 const { createExecutionServer, resolveTaskRoot } = require('../../../dist/server/index');
-const { FileProcessStore } = require('@plusplusoneplusplus/pipeline-core');
+const { FileProcessStore } = require('@plusplusoneplusplus/forge');
 
 type ExecutionServer = Awaited<ReturnType<typeof createExecutionServer>>;
 

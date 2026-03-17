@@ -10,8 +10,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
-import { FileProcessStore } from '@plusplusoneplusplus/pipeline-core';
-import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/pipeline-core';
+import { FileProcessStore } from '@plusplusoneplusplus/forge';
+import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/forge';
 import { OutputPruner } from '../../src/server/output-pruner';
 import { OutputFileManager } from '../../src/server/output-file-manager';
 

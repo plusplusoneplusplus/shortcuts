@@ -13,7 +13,7 @@ import { getErrorMessage } from './utils/error-utils';
 import { setColorEnabled, printInfo } from './logger';
 import { loadConfig, mergeConfigWithCLI, discoverConfigFile } from './config-loader';
 import { createDeepWikiPinoLogger, pinoAdapterForPipelineCore } from './pino-setup';
-import { setLogger } from '@plusplusoneplusplus/pipeline-core';
+import { setLogger } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Exit Codes

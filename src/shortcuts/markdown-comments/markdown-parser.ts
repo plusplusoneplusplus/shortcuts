@@ -40,7 +40,7 @@ export {
     parseTable,
     // Utilities
     getLanguageDisplayName,
-} from '@plusplusoneplusplus/pipeline-core/editor/parsing';
+} from '@plusplusoneplusplus/forge/editor/parsing';
 
 // generateAnchorId and escapeHtml re-exported from rendering module
-export { generateAnchorId, escapeHtml } from '@plusplusoneplusplus/pipeline-core/editor/rendering';
+export { generateAnchorId, escapeHtml } from '@plusplusoneplusplus/forge/editor/rendering';

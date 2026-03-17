@@ -5,7 +5,7 @@
  * Validates that:
  * - esbuild config exists and defines correct externals
  * - package.json has proper publishing fields
- * - pipeline-core is bundled (not external)
+ * - forge is bundled (not external)
  * - external deps are NOT bundled
  * - bundle output has correct shebang and is executable
  */
@@ -49,12 +49,12 @@ describe('Bundle Configuration', () => {
             expect(configContent).toContain('js-yaml');
         });
 
-        it('should NOT mark @plusplusoneplusplus/pipeline-core as external', () => {
+        it('should NOT mark @plusplusoneplusplus/forge as external', () => {
             // Extract the EXTERNAL_DEPS array from the config
             const externalMatch = configContent.match(/EXTERNAL_DEPS\s*=\s*\[([\s\S]*?)\]/);
             expect(externalMatch).toBeTruthy();
             const externalBlock = externalMatch![1];
-            expect(externalBlock).not.toContain('@plusplusoneplusplus/pipeline-core');
+            expect(externalBlock).not.toContain('@plusplusoneplusplus/forge');
         });
 
         it('should target node18', () => {
@@ -157,14 +157,14 @@ describe('Bundle Configuration', () => {
             expect(deps['js-yaml']).toBeTruthy();
         });
 
-        it('should NOT have @plusplusoneplusplus/pipeline-core as runtime dependency', () => {
+        it('should NOT have @plusplusoneplusplus/forge as runtime dependency', () => {
             const deps = pkg.dependencies as Record<string, string>;
-            expect(deps['@plusplusoneplusplus/pipeline-core']).toBeUndefined();
+            expect(deps['@plusplusoneplusplus/forge']).toBeUndefined();
         });
 
-        it('should have @plusplusoneplusplus/pipeline-core as devDependency', () => {
+        it('should have @plusplusoneplusplus/forge as devDependency', () => {
             const devDeps = pkg.devDependencies as Record<string, string>;
-            expect(devDeps['@plusplusoneplusplus/pipeline-core']).toBeTruthy();
+            expect(devDeps['@plusplusoneplusplus/forge']).toBeTruthy();
         });
 
         it('should have esbuild as devDependency', () => {
@@ -213,18 +213,18 @@ describe('Bundle Configuration', () => {
             expect(lines[1]).not.toMatch(/^#!/);
         });
 
-        it('should contain bundled pipeline-core code (extractJSON)', () => {
+        it('should contain bundled forge code (extractJSON)', () => {
             // extractJSON is a function from pipeline-core that should be inlined
             expect(bundleContent).toContain('extractJSON');
         });
 
-        it('should contain bundled pipeline-core code (CopilotSDKService)', () => {
+        it('should contain bundled forge code (CopilotSDKService)', () => {
             expect(bundleContent).toContain('CopilotSDKService');
         });
 
-        it('should NOT contain a require for @plusplusoneplusplus/pipeline-core', () => {
+        it('should NOT contain a require for @plusplusoneplusplus/forge', () => {
             expect(bundleContent).not.toMatch(
-                /require\(["']@plusplusoneplusplus\/pipeline-core["']\)/
+                /require\(["']@plusplusoneplusplus\/forge["']\)/
             );
         });
 
@@ -242,7 +242,7 @@ describe('Bundle Configuration', () => {
             expect(sizeMB).toBeLessThan(2);
         });
 
-        it('should be a non-trivial size (> 100KB — pipeline-core is bundled)', () => {
+        it('should be a non-trivial size (> 100KB — forge is bundled)', () => {
             const stats = fs.statSync(BUNDLE_PATH);
             const sizeKB = stats.size / 1024;
             expect(sizeKB).toBeGreaterThan(100);
@@ -299,33 +299,33 @@ describe('Bundle Configuration', () => {
 
     describe('dependency chain', () => {
         let pkg: Record<string, unknown>;
-        let pipelineCorePkg: Record<string, unknown>;
+        let forgePkg: Record<string, unknown>;
 
         beforeAll(() => {
             pkg = JSON.parse(fs.readFileSync(PKG_JSON_PATH, 'utf8'));
-            pipelineCorePkg = JSON.parse(
+            forgePkg = JSON.parse(
                 fs.readFileSync(
-                    path.join(PKG_ROOT, '..', 'pipeline-core', 'package.json'),
+                    path.join(PKG_ROOT, '..', 'forge', 'package.json'),
                     'utf8'
                 )
             );
         });
 
-        it('pipeline-core @github/copilot-sdk version should match deep-wiki', () => {
-            const coreDeps = pipelineCorePkg.dependencies as Record<string, string>;
+        it('forge @github/copilot-sdk version should match deep-wiki', () => {
+            const coreDeps = forgePkg.dependencies as Record<string, string>;
             const deepDeps = pkg.dependencies as Record<string, string>;
             expect(deepDeps['@github/copilot-sdk']).toBe(coreDeps['@github/copilot-sdk']);
         });
 
-        it('all pipeline-core runtime deps should be covered by deep-wiki deps or bundle', () => {
-            const coreDeps = pipelineCorePkg.dependencies as Record<string, string>;
+        it('all forge runtime deps should be covered by deep-wiki deps or bundle', () => {
+            const coreDeps = forgePkg.dependencies as Record<string, string>;
             const deepDeps = pkg.dependencies as Record<string, string>;
 
             for (const dep of Object.keys(coreDeps)) {
-                // Each pipeline-core dep should either:
+                // Each forge dep should either:
                 // 1. Be in deep-wiki's runtime deps (external)
-                // 2. Be pipeline-core itself (bundled, not on npm)
-                if (dep === '@plusplusoneplusplus/pipeline-core') {
+                // 2. Be forge itself (bundled, not on npm)
+                if (dep === '@plusplusoneplusplus/forge') {
                     continue;
                 }
                 expect(deepDeps[dep]).toBeTruthy();

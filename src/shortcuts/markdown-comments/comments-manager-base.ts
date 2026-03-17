@@ -8,8 +8,8 @@
 
 import { EventEmitter } from 'events';
 import * as path from 'path';
-import { ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '@plusplusoneplusplus/pipeline-core';
-import { Logger, consoleLogger } from '@plusplusoneplusplus/pipeline-core';
+import { ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '@plusplusoneplusplus/forge';
+import { Logger, consoleLogger } from '@plusplusoneplusplus/forge';
 import {
     BaseAnchor,
     BaseComment,

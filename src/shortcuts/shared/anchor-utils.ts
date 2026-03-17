@@ -17,13 +17,13 @@ export {
     offsetToLineColumn,
     scoreMatch,
     splitIntoLines
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 
 // Anchor types
 export {
     BaseAnchorData,
     AnchorRelocationResult as AnchorRelocationResultBase,
-} from '@plusplusoneplusplus/pipeline-core/editor/anchor-types';
+} from '@plusplusoneplusplus/forge/editor/anchor-types';
 
 // Anchor functions
 export {
@@ -32,5 +32,5 @@ export {
     relocateAnchorPosition,
     needsRelocationCheck,
     batchRelocateAnchors
-} from '@plusplusoneplusplus/pipeline-core/editor/anchor';
+} from '@plusplusoneplusplus/forge/editor/anchor';
 

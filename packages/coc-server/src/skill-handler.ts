@@ -10,12 +10,12 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import {
     getBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
     isWithinDirectory,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import { sendJSON } from './api-handler';
 import { handleAPIError, notFound, badRequest } from './errors';
 import { resolveWorkspaceOrFail } from './shared/handler-utils';

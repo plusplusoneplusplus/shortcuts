@@ -16,7 +16,7 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 // Mock git services to avoid actual git CLI calls
 // ============================================================================
 
-vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal() as any;
     return {
         ...actual,

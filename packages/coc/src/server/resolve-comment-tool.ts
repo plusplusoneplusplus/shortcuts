@@ -9,7 +9,7 @@
  * avoiding cross-request contamination.
  */
 
-import { defineTool } from '@plusplusoneplusplus/pipeline-core';
+import { defineTool } from '@plusplusoneplusplus/forge';
 
 interface ResolveCommentArgs {
     commentId: string;

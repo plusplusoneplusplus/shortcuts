@@ -1,4 +1,4 @@
-import { findSkills as coreFindSkills } from '@plusplusoneplusplus/pipeline-core';
+import { findSkills as coreFindSkills } from '@plusplusoneplusplus/forge';
 import { getWorkspaceRoot } from './workspace-utils';
 
 /**

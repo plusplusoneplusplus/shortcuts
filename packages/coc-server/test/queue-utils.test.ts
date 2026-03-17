@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName, applyFollowUpToTask } from '../src/shared/queue-utils';
 
 // ============================================================================

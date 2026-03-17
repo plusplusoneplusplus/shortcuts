@@ -9,8 +9,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/pipeline-core';
-import { getActiveModels } from '@plusplusoneplusplus/pipeline-core';
+import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/forge';
+import { getActiveModels } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody, ImageBlobStore, truncateDisplayName } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';

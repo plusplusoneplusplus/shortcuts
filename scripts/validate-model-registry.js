@@ -4,7 +4,7 @@
  * Build-time validation script for AI model references.
  *
  * Validates that model enum values in package.json match the central model
- * registry defined in packages/pipeline-core/src/ai/model-registry.ts.
+ * registry defined in packages/forge/src/ai/model-registry.ts.
  *
  * Usage:
  *   node scripts/validate-model-registry.js
@@ -205,7 +205,7 @@ function validate() {
         }
         console.log();
         console.log('Validation FAILED. Please ensure package.json model enums match the registry.');
-        console.log('Registry location: packages/pipeline-core/src/ai/model-registry.ts');
+        console.log('Registry location: packages/forge/src/ai/model-registry.ts');
         process.exit(1);
     }
 

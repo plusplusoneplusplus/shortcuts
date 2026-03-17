@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TokenUsage } from '@plusplusoneplusplus/pipeline-core';
+import type { TokenUsage } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Types

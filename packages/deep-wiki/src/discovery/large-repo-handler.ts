@@ -10,7 +10,7 @@
 import {
     getCopilotSDKService,
     type SendMessageOptions,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     DiscoveryOptions,
     ComponentGraph,

@@ -7,13 +7,13 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { IPullRequestsService } from '@plusplusoneplusplus/pipeline-core';
+import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import {
     ProviderType,
     createGitHubPullRequestsAdapter,
     createAdoPullRequestsAdapter,
     execAsync,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type { ProvidersFileConfig } from './providers-config';
 
 export { ProviderType };

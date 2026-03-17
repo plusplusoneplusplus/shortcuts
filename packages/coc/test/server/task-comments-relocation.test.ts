@@ -15,7 +15,7 @@ import { createExecutionServer } from '../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { TaskCommentsManager } from '../../src/server/task-comments-handler';
 import type { TaskComment, CommentsStorage, CommentAnchor } from '../../src/server/task-comments-handler';
-import { createAnchorData, needsRelocationCheck } from '@plusplusoneplusplus/pipeline-core';
+import { createAnchorData, needsRelocationCheck } from '@plusplusoneplusplus/forge';
 import { resolveTaskRoot } from '../../src/server/task-root-resolver';
 
 // ============================================================================

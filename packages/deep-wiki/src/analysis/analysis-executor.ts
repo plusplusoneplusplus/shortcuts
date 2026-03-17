@@ -14,11 +14,11 @@ import {
     substituteVariables,
     getLogger,
     LogCategory,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type {
     AIInvoker,
     PromptItem,
-} from '@plusplusoneplusplus/pipeline-core';
+} from '@plusplusoneplusplus/forge';
 import type { ComponentInfo, ComponentGraph, ComponentAnalysis } from '../types';
 import { buildAnalysisPromptTemplate, getAnalysisOutputFields } from './prompts';
 import { parseAnalysisResponse } from './response-parser';

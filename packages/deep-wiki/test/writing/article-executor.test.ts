@@ -13,7 +13,7 @@ import {
     generateStaticIndexPages,
 } from '../../src/writing/article-executor';
 import type { ComponentGraph, ComponentAnalysis } from '../../src/types';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Test Data

@@ -7,7 +7,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ComponentGraph } from '../../types';
-import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import { resolvePhaseModel, resolvePhaseTimeout } from '../../config-loader';
 import { consolidateComponents } from '../../consolidation';
 import { createConsolidationInvoker } from '../../ai-invoker';
