@@ -432,8 +432,8 @@ describe('ActivityListPane: shared list component', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('Completed Tasks');
     });
 
-    it('supports filter pills', () => {
-        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="queue-filter-pills"');
+    it('supports filter dropdown', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="queue-filter-dropdown"');
     });
 
     it('supports pause/resume', () => {

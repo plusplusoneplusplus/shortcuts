@@ -729,34 +729,49 @@ describe('ActivityListPane: filter dropdown rework', () => {
         });
     });
 
-    describe('toggle pills UI', () => {
-        it('renders queue-filter-pills instead of queue-filter-dropdown', () => {
-            expect(source).toContain('data-testid="queue-filter-pills"');
-            expect(source).not.toContain('data-testid="queue-filter-dropdown"');
+    describe('filter dropdown UI', () => {
+        it('renders filter dropdown instead of pill row', () => {
+            expect(source).toContain('data-testid="queue-filter-dropdown"');
+            expect(source).not.toContain('data-testid="queue-filter-pills"');
         });
 
-        it('renders a Reset button when filters are excluded', () => {
-            expect(source).toContain('data-testid="queue-filter-reset"');
+        it('does not render legacy queue-filter-reset button', () => {
+            expect(source).not.toContain('data-testid="queue-filter-reset"');
         });
 
-        it('pills skip the synthetic all entry', () => {
-            // Pills are rendered from availableFilters filtered to skip 'all'
-            expect(source).toContain("availableFilters.filter(opt => opt.value !== 'all')");
+        it('uses FilterDropdown component', () => {
+            expect(source).toContain('<FilterDropdown');
         });
 
-        it('clicking a pill toggles its value in excludedTypes', () => {
-            expect(source).toContain('setExcludedTypes(prev => {');
+        it('imports FilterDropdown from shared', () => {
+            expect(source).toContain('FilterDropdown');
+            expect(source).toContain("from '../shared'");
         });
 
-        it('Reset button clears excludedTypes', () => {
-            const resetBtn = source.substring(
-                source.indexOf('queue-filter-reset'),
-                source.indexOf('queue-filter-reset') + 300,
+        it('passes availableFilters as items to FilterDropdown', () => {
+            expect(source).toContain('items={availableFilters}');
+        });
+
+        it('passes excludedTypes as excludedValues to FilterDropdown', () => {
+            expect(source).toContain('excludedValues={excludedTypes}');
+        });
+
+        it('passes setExcludedTypes as onChange to FilterDropdown', () => {
+            expect(source).toContain('onChange={setExcludedTypes}');
+        });
+
+        it('availableFilters uses FilterItem type', () => {
+            expect(source).toContain('FilterItem');
+        });
+
+        it('availableFilters nests chat mode children under chat parent', () => {
+            const fn = source.substring(
+                source.indexOf('availableFilters = useMemo'),
+                source.indexOf('availableFilters = useMemo') + 600,
             );
-            expect(source.substring(
-                source.indexOf('queue-filter-reset') - 300,
-                source.indexOf('queue-filter-reset') + 10,
-            )).toContain('setExcludedTypes(new Set())');
+            expect(fn).toContain('children');
+            expect(fn).toContain("type === 'chat'");
+            expect(fn).toContain('CHAT_MODE_LABELS');
         });
     });
 
@@ -843,5 +858,14 @@ describe('taskMatchesFilter: exclusion logic', () => {
         const chatNoMode = { type: 'chat', payload: {} };
         const excluded = new Set(['chat']);
         expect(taskMatchesFilter(chatNoMode, excluded)).toBe(false);
+    });
+
+    it('excludes chat tasks with mode when parent chat type is excluded (regression: parent covers all)', () => {
+        // When parent 'chat' is excluded via the dropdown, all chat tasks must be hidden
+        // regardless of mode — this prevents tasks slipping through the parent filter.
+        const excluded = new Set(['chat']);
+        expect(taskMatchesFilter(chatAsk, excluded)).toBe(false);
+        expect(taskMatchesFilter(chatPlan, excluded)).toBe(false);
+        expect(taskMatchesFilter(chatAutopilot, excluded)).toBe(false);
     });
 });

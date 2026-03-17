@@ -7,7 +7,8 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Badge, Card, Button, cn } from '../shared';
+import { Badge, Card, Button, cn, FilterDropdown } from '../shared';
+import type { FilterItem } from '../shared';
 import { getApiBase } from '../utils/config';
 import { formatDuration, formatRelativeTime } from '../utils/format';
 import { useQueueDragDrop } from '../hooks/useQueueDragDrop';
@@ -32,12 +33,12 @@ const CHAT_MODE_LABELS: Record<string, string> = {
 
 export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
     if (excludedTypes.size === 0) return true;
-    // For chat tasks, check mode-based exclusion first
+    // Parent 'chat' exclusion hides all chat tasks (including those with modes)
     if (task.type === 'chat') {
+        if (excludedTypes.has('chat')) return false;
         const mode = task.payload?.mode as string | undefined;
         if (mode) return !excludedTypes.has(mode);
-        // No mode: fall back to type-based check
-        return !excludedTypes.has(task.type);
+        return true;
     }
     return !excludedTypes.has(task.type);
 }
@@ -177,16 +178,20 @@ export function ActivityListPane({
         [running, queued, history],
     );
     const availableFilters = useMemo(() => {
-        const opts: { value: string; label: string }[] = [{ value: 'all', label: 'All' }];
         const types = new Set(allTasks.map((t: any) => t.type as string));
+        const opts: FilterItem[] = [];
         for (const [type, label] of Object.entries(TASK_TYPE_LABELS)) {
-            if (types.has(type)) opts.push({ value: type, label });
-        }
-        // Add mode-based sub-filters for chat tasks
-        const chatTasks = allTasks.filter((t: any) => t.type === 'chat');
-        const modes = new Set(chatTasks.map((t: any) => t.payload?.mode as string).filter(Boolean));
-        for (const [mode, label] of Object.entries(CHAT_MODE_LABELS)) {
-            if (modes.has(mode)) opts.push({ value: mode, label: `Chat: ${label}` });
+            if (!types.has(type)) continue;
+            if (type === 'chat') {
+                const chatTasks = allTasks.filter((t: any) => t.type === 'chat');
+                const modes = new Set(chatTasks.map((t: any) => t.payload?.mode as string).filter(Boolean));
+                const children = Object.entries(CHAT_MODE_LABELS)
+                    .filter(([mode]) => modes.has(mode))
+                    .map(([mode, modeLabel]) => ({ value: mode, label: modeLabel }));
+                opts.push({ value: type, label, ...(children.length > 0 && { children }) });
+            } else {
+                opts.push({ value: type, label });
+            }
         }
         return opts;
     }, [allTasks]);
@@ -496,32 +501,13 @@ export function ActivityListPane({
                 )}
                 <div className={cn('flex items-center gap-2 mb-3')}>
                     {isPaused && <Badge status="warning">Paused</Badge>}
-                    {availableFilters.length >= 2 && (
-                        <div className="flex items-center gap-1 flex-wrap" data-testid="queue-filter-pills">
-                            {availableFilters.filter(opt => opt.value !== 'all').map(opt => (
-                                <button
-                                    key={opt.value}
-                                    onClick={() => setExcludedTypes(prev => {
-                                        const next = new Set(prev);
-                                        next.has(opt.value) ? next.delete(opt.value) : next.add(opt.value);
-                                        return next;
-                                    })}
-                                    className={cn(
-                                        'text-xs rounded-full px-2 py-0.5 border transition-colors',
-                                        excludedTypes.has(opt.value)
-                                            ? 'border-[#e0e0e0] dark:border-[#474749] text-[#999] dark:text-[#666] line-through'
-                                            : 'border-[#0078d4] dark:border-[#3794ff] text-[#0078d4] dark:text-[#3794ff] bg-[#0078d4]/10 dark:bg-[#3794ff]/10',
-                                    )}
-                                >{opt.label}</button>
-                            ))}
-                            {excludedTypes.size > 0 && (
-                                <button
-                                    onClick={() => setExcludedTypes(new Set())}
-                                    data-testid="queue-filter-reset"
-                                    className="text-xs rounded-full px-2 py-0.5 border border-[#e0e0e0] dark:border-[#474749] text-[#666] dark:text-[#999] hover:text-[#cc0000]"
-                                >✕</button>
-                            )}
-                        </div>
+                    {availableFilters.length >= 1 && (
+                        <FilterDropdown
+                            items={availableFilters}
+                            excludedValues={excludedTypes}
+                            onChange={setExcludedTypes}
+                            data-testid="queue-filter-dropdown"
+                        />
                     )}
                     <div className="flex-1" />
                     <Button
