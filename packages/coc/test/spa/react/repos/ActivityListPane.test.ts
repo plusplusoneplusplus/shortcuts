@@ -260,32 +260,32 @@ describe('ActivityListPane pinned chats', () => {
         it('running context menu includes Pin to top option', () => {
             // The running taskStatus branch must also check pinnedChatIds and offer Pin/Unpin
             const runningBlock = source.substring(
-                source.indexOf("taskStatus === 'running'"),
-                source.indexOf("taskStatus === 'completed'"),
+                source.indexOf("if (taskStatus === 'running')"),
+                source.indexOf("if (taskStatus === 'completed')"),
             );
             expect(runningBlock).toContain("'Pin to top'");
         });
 
         it('running context menu includes Unpin option', () => {
             const runningBlock = source.substring(
-                source.indexOf("taskStatus === 'running'"),
-                source.indexOf("taskStatus === 'completed'"),
+                source.indexOf("if (taskStatus === 'running')"),
+                source.indexOf("if (taskStatus === 'completed')"),
             );
             expect(runningBlock).toContain("'Unpin'");
         });
 
         it('running context menu calls onPinChat for running task', () => {
             const runningBlock = source.substring(
-                source.indexOf("taskStatus === 'running'"),
-                source.indexOf("taskStatus === 'completed'"),
+                source.indexOf("if (taskStatus === 'running')"),
+                source.indexOf("if (taskStatus === 'completed')"),
             );
             expect(runningBlock).toContain('onPinChat(taskId)');
         });
 
         it('running context menu calls onUnpinChat for running task', () => {
             const runningBlock = source.substring(
-                source.indexOf("taskStatus === 'running'"),
-                source.indexOf("taskStatus === 'completed'"),
+                source.indexOf("if (taskStatus === 'running')"),
+                source.indexOf("if (taskStatus === 'completed')"),
             );
             expect(runningBlock).toContain('onUnpinChat(taskId)');
         });
@@ -316,6 +316,168 @@ describe('ActivityListPane pinned chats', () => {
 
         it('pinned section count includes pinnedRunningCount', () => {
             expect(source).toContain('filteredPinned.length + pinnedRunningCount');
+        });
+    });
+
+    describe('multi-select and bulk context menu', () => {
+        it('declares selectedHistoryIds state', () => {
+            expect(source).toContain('selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>');
+        });
+
+        it('declares anchorHistoryId state', () => {
+            expect(source).toContain('anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null)');
+        });
+
+        it('contextMenu state type includes bulkIds', () => {
+            expect(source).toContain('bulkIds?: string[]');
+        });
+
+        it('defines handleHistoryItemClick callback', () => {
+            expect(source).toContain('handleHistoryItemClick');
+        });
+
+        it('handleHistoryItemClick handles shift+click range select', () => {
+            const handler = source.substring(
+                source.indexOf('handleHistoryItemClick'),
+                source.indexOf('handleHistoryItemClick') + 600,
+            );
+            expect(handler).toContain('e.shiftKey');
+            expect(handler).toContain('anchorHistoryId');
+        });
+
+        it('handleHistoryItemClick handles ctrl/cmd+click toggle', () => {
+            const handler = source.substring(
+                source.indexOf('handleHistoryItemClick'),
+                source.indexOf('handleHistoryItemClick') + 800,
+            );
+            expect(handler).toContain('e.ctrlKey || e.metaKey');
+        });
+
+        it('handleHistoryItemClick clears selection on plain click', () => {
+            const handler = source.substring(
+                source.indexOf('handleHistoryItemClick'),
+                source.indexOf('handleHistoryItemClick') + 1200,
+            );
+            expect(handler).toContain('setSelectedHistoryIds(new Set())');
+        });
+
+        it('handleTaskContextMenu detects bulk mode when >= 2 items selected and right-clicked item is in selection', () => {
+            const handler = source.substring(
+                source.indexOf('handleTaskContextMenu'),
+                source.indexOf('handleTaskContextMenu') + 500,
+            );
+            expect(handler).toContain('selectedHistoryIds.size >= 2');
+            expect(handler).toContain('selectedHistoryIds.has(taskId)');
+            expect(handler).toContain('bulkIds');
+        });
+
+        it('bulk context menu branch checks for bulkIds', () => {
+            expect(source).toContain('contextMenu.bulkIds');
+        });
+
+        it('bulk context menu shows count header', () => {
+            expect(source).toContain('`${ids.length} tasks selected`');
+        });
+
+        it('bulk context menu shows Mark as Read when any unseen', () => {
+            const bulkBlock = source.substring(
+                source.indexOf('contextMenu.bulkIds'),
+                source.indexOf('contextMenu.bulkIds') + 1500,
+            );
+            expect(bulkBlock).toContain("'Mark as Read'");
+            expect(bulkBlock).toContain('anyUnseen');
+        });
+
+        it('bulk context menu shows Mark as Unread when any seen', () => {
+            const bulkBlock = source.substring(
+                source.indexOf('contextMenu.bulkIds'),
+                source.indexOf('contextMenu.bulkIds') + 2500,
+            );
+            expect(bulkBlock).toContain("'Mark as Unread'");
+            expect(bulkBlock).toContain('anySeen');
+        });
+
+        it('bulk context menu shows Pin to top when any unpinned', () => {
+            const bulkBlock = source.substring(
+                source.indexOf('contextMenu.bulkIds'),
+                source.indexOf('contextMenu.bulkIds') + 2500,
+            );
+            expect(bulkBlock).toContain("'Pin to top'");
+            expect(bulkBlock).toContain('anyUnpinned');
+        });
+
+        it('bulk context menu shows Unpin when any pinned', () => {
+            const bulkBlock = source.substring(
+                source.indexOf('contextMenu.bulkIds'),
+                source.indexOf('contextMenu.bulkIds') + 2500,
+            );
+            expect(bulkBlock).toContain("'Unpin'");
+            expect(bulkBlock).toContain('anyPinned');
+        });
+
+        it('bulk context menu shows Archive when any unarchived', () => {
+            const bulkBlock = source.substring(
+                source.indexOf('contextMenu.bulkIds'),
+                source.indexOf('contextMenu.bulkIds') + 2500,
+            );
+            expect(bulkBlock).toContain("'Archive'");
+            expect(bulkBlock).toContain('anyUnarchived');
+        });
+
+        it('bulk context menu shows Unarchive when any archived', () => {
+            const bulkBlock = source.substring(
+                source.indexOf('contextMenu.bulkIds'),
+                source.indexOf('contextMenu.bulkIds') + 2500,
+            );
+            expect(bulkBlock).toContain("'Unarchive'");
+            expect(bulkBlock).toContain('anyArchived');
+        });
+
+        it('bulk delete shows count in label', () => {
+            expect(source).toContain('`Delete ${ids.length} chats…`');
+        });
+
+        it('selection count pill appears when >= 2 items selected', () => {
+            expect(source).toContain('data-testid="selection-count-pill"');
+            expect(source).toContain('selectedHistoryIds.size >= 2');
+        });
+
+        it('selection clear button dismisses selection', () => {
+            expect(source).toContain('data-testid="selection-clear-btn"');
+        });
+
+        it('selected cards show checkbox glyph', () => {
+            expect(source).toContain('data-testid="selection-checkbox"');
+            expect(source).toContain('isHistorySelected');
+        });
+
+        it('selected cards apply blue tint background', () => {
+            expect(source).toContain('bg-[#0078d4]/10 dark:bg-[#3794ff]/10');
+        });
+
+        it('selected cards apply outline instead of ring', () => {
+            expect(source).toContain('outline outline-1 outline-[#0078d4]/40');
+        });
+
+        it('Escape key clears selection', () => {
+            const escBlock = source.substring(
+                source.indexOf("e.key === 'Escape' && selectedHistoryIds"),
+                source.indexOf("e.key === 'Escape' && selectedHistoryIds") + 200,
+            );
+            expect(escBlock).toContain('setSelectedHistoryIds(new Set())');
+            expect(escBlock).toContain('setAnchorHistoryId(null)');
+        });
+
+        it('useEffect cleans stale selected ids when filtered list changes', () => {
+            expect(source).toContain('Clean up stale selection');
+        });
+
+        it('data-selected attribute added to completed cards', () => {
+            expect(source).toContain('data-selected={isHistorySelected || undefined}');
+        });
+
+        it('deleteChatDirect helper defined for bulk delete', () => {
+            expect(source).toContain('deleteChatDirect');
         });
     });
 

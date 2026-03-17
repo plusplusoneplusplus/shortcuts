@@ -138,8 +138,10 @@ export function ActivityListPane({
     const [searchQuery, setSearchQuery] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed' } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: string; taskStatus: 'running' | 'queued' | 'completed'; bulkIds?: string[] } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
+    const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
+    const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
 
     useEffect(() => {
         setFilterType('all');
@@ -157,6 +159,10 @@ export function ActivityListPane({
             if (e.key === 'Escape' && searchVisible) {
                 setSearchQuery('');
                 setSearchVisible(false);
+            }
+            if (e.key === 'Escape' && selectedHistoryIds.size > 0) {
+                setSelectedHistoryIds(new Set());
+                setAnchorHistoryId(null);
             }
         };
         document.addEventListener('keydown', handler);
@@ -239,12 +245,16 @@ export function ActivityListPane({
         fetchQueue();
     };
 
-    const handleDeleteChat = async (taskId: string) => {
-        if (!confirm('Delete this chat? This cannot be undone.')) return;
+    const deleteChatDirect = async (taskId: string) => {
         const res = await fetch(getApiBase() + '/queue/history/' + encodeURIComponent(taskId), { method: 'DELETE' });
         if (res.ok) {
             fetchQueue();
         }
+    };
+
+    const handleDeleteChat = async (taskId: string) => {
+        if (!confirm('Delete this chat? This cannot be undone.')) return;
+        await deleteChatDirect(taskId);
     };
 
     const handleMoveUp = async (taskId: string) => {
@@ -306,18 +316,99 @@ export function ActivityListPane({
     const activeDropTargetIndex = dropTargetIndex ?? touchDrag.dropTargetIndex;
     const activeDropPosition = dropPosition || touchDrag.dropPosition;
 
+    // Clean up stale selection when the filtered list changes
+    useEffect(() => {
+        if (selectedHistoryIds.size === 0) return;
+        const allHistoryIds = new Set([...filteredUnpinned.map((t: any) => t.id), ...filteredPinned.map((t: any) => t.id)]);
+        const cleaned = new Set([...selectedHistoryIds].filter(id => allHistoryIds.has(id)));
+        if (cleaned.size !== selectedHistoryIds.size) {
+            setSelectedHistoryIds(cleaned);
+        }
+    }, [filteredUnpinned, filteredPinned]);
+
+    const handleHistoryItemClick = useCallback(
+        (e: React.MouseEvent, task: any, taskList: any[]) => {
+            const id = task.id as string;
+
+            if (e.shiftKey && anchorHistoryId) {
+                const ids = taskList.map((t: any) => t.id as string);
+                const aIdx = ids.indexOf(anchorHistoryId);
+                const bIdx = ids.indexOf(id);
+                if (aIdx !== -1 && bIdx !== -1) {
+                    const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
+                    setSelectedHistoryIds(new Set(ids.slice(lo, hi + 1)));
+                    return;
+                }
+            }
+
+            if (e.ctrlKey || e.metaKey) {
+                setSelectedHistoryIds(prev => {
+                    const next = new Set(prev);
+                    next.has(id) ? next.delete(id) : next.add(id);
+                    return next;
+                });
+                setAnchorHistoryId(id);
+                return;
+            }
+
+            // Plain click: clear multi-selection, open detail
+            setSelectedHistoryIds(new Set());
+            setAnchorHistoryId(id);
+            onSelectTask(id, task);
+        },
+        [anchorHistoryId, onSelectTask],
+    );
+
     const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued' | 'completed') => {
         if (e.shiftKey) return; // Allow native browser context menu on shift+right-click
         e.preventDefault();
         e.stopPropagation();
-        setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus });
-    }, []);
+
+        const bulkIds =
+            taskStatus === 'completed' &&
+            selectedHistoryIds.size >= 2 &&
+            selectedHistoryIds.has(taskId)
+                ? Array.from(selectedHistoryIds)
+                : undefined;
+
+        setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus, bulkIds });
+    }, [selectedHistoryIds]);
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
     const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
         if (!contextMenu) return [];
         const { taskId, taskStatus } = contextMenu;
+
+        // Bulk context menu for multi-selected completed tasks
+        if (contextMenu.bulkIds) {
+            const ids = contextMenu.bulkIds;
+            const anyUnseen   = ids.some(id => unseenTaskIds?.has(id));
+            const anySeen     = ids.some(id => !unseenTaskIds?.has(id));
+            const anyPinned   = ids.some(id => pinnedChatIds?.has(id));
+            const anyUnpinned = ids.some(id => !pinnedChatIds?.has(id));
+            const anyArchived   = ids.some(id => archivedChatIds?.has(id));
+            const anyUnarchived = ids.some(id => !archivedChatIds?.has(id));
+            return [
+                { label: `${ids.length} tasks selected`, icon: '', disabled: true, onClick: () => {} },
+                { label: '', icon: '', separator: true, onClick: () => {} },
+                ...(anyUnseen && onMarkRead    ? [{ label: 'Mark as Read',   icon: '✓', onClick: () => { ids.forEach(id => onMarkRead!(id));   closeContextMenu(); } }] : []),
+                ...(anySeen && onMarkUnread    ? [{ label: 'Mark as Unread', icon: '●', onClick: () => { ids.forEach(id => onMarkUnread!(id)); closeContextMenu(); } }] : []),
+                ...(anyPinned && onUnpinChat   ? [{ label: 'Unpin',          icon: '📌', onClick: () => { ids.forEach(id => onUnpinChat!(id)); closeContextMenu(); } }] : []),
+                ...(anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
+                ...(anyUnarchived && onArchiveChat   ? [{ label: 'Archive',   icon: '📦', onClick: () => { ids.forEach(id => onArchiveChat!(id));   closeContextMenu(); } }] : []),
+                ...(anyArchived  && onUnarchiveChat  ? [{ label: 'Unarchive', icon: '📤', onClick: () => { ids.forEach(id => onUnarchiveChat!(id)); closeContextMenu(); } }] : []),
+                { label: '', icon: '', separator: true, onClick: () => {} },
+                { label: `Delete ${ids.length} chats…`, icon: '🗑', onClick: () => {
+                    if (confirm(`Delete ${ids.length} chats? This cannot be undone.`)) {
+                        ids.forEach(id => deleteChatDirect(id));
+                        setSelectedHistoryIds(new Set());
+                    }
+                    closeContextMenu();
+                }},
+            ];
+        }
+
         if (taskStatus === 'running') {
             const isPinned = pinnedChatIds?.has(taskId) ?? false;
             return [
@@ -354,7 +445,7 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat]);
+    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, closeContextMenu, deleteChatDirect]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -584,21 +675,26 @@ export function ActivityListPane({
                                 {filteredPinned.map(task => {
                                     const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                     const hasPinnedDraft = !!getDraft(task.id);
+                                    const isHistorySelected = selectedHistoryIds.has(task.id);
                                     return (
                                         <Card
                                             key={task.id}
                                             className={cn(
                                                 "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
-                                                selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                                isHistorySelected
+                                                    ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
+                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                             )}
-                                            onClick={() => onSelectTask(task.id, task)}
+                                            onClick={e => handleHistoryItemClick(e, task, filteredPinned)}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
                                             data-task-id={task.id}
                                             data-pinned="true"
                                             data-unseen={isUnseen || undefined}
+                                            data-selected={isHistorySelected || undefined}
                                         >
                                             <div className="flex items-center justify-between gap-1.5 text-xs">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
+                                                    {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
                                                     <span className="shrink-0">
                                                         {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
@@ -631,7 +727,7 @@ export function ActivityListPane({
                         <div className="flex flex-wrap items-center gap-1.5">
                             <button
                                 className="flex items-center gap-1 min-w-0 text-[11px] uppercase text-[#848484] dark:text-[#a0a0a0] font-medium hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors"
-                                onClick={() => setShowHistory(!showHistory)}
+                                onClick={() => { setShowHistory(!showHistory); setSelectedHistoryIds(new Set()); setAnchorHistoryId(null); }}
                             >
                                 {showHistory ? '▼' : '▶'} Completed Tasks ({filteredUnpinned.length})
                                 {unseenTaskIds && (() => {
@@ -650,26 +746,37 @@ export function ActivityListPane({
                                     Mark all read
                                 </button>
                             )}
+                            {selectedHistoryIds.size >= 2 && (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-[#0078d4]/15 text-[#0078d4] dark:bg-[#3794ff]/15 dark:text-[#3794ff] px-2 py-0.5 rounded-full" data-testid="selection-count-pill">
+                                    {selectedHistoryIds.size} selected
+                                    <button className="leading-none hover:text-red-500" onClick={() => { setSelectedHistoryIds(new Set()); setAnchorHistoryId(null); }} data-testid="selection-clear-btn">✕</button>
+                                </span>
+                            )}
                         </div>
                         {showHistory && (
                             <div className="flex flex-col gap-1 mt-1">
                                 {filteredUnpinned.map(task => {
                                     const isUnseen = unseenTaskIds?.has(task.id) ?? false;
                                     const hasUnpinnedDraft = !!getDraft(task.id);
+                                    const isHistorySelected = selectedHistoryIds.has(task.id);
                                     return (
                                         <Card
                                             key={task.id}
                                             className={cn(
                                                 "p-2 cursor-pointer",
-                                                selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                                isHistorySelected
+                                                    ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
+                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                             )}
-                                            onClick={() => onSelectTask(task.id, task)}
+                                            onClick={e => handleHistoryItemClick(e, task, filteredUnpinned)}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
                                             data-task-id={task.id}
                                             data-unseen={isUnseen || undefined}
+                                            data-selected={isHistorySelected || undefined}
                                         >
                                             <div className="flex items-center justify-between gap-1.5 text-xs">
                                                 <span className="flex items-center gap-1 min-w-0 truncate">
+                                                    {isHistorySelected && <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff] text-[10px]" data-testid="selection-checkbox">☑</span>}
                                                     {isUnseen && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />}
                                                     <span className="shrink-0">
                                                         {getTaskTypeIcon(task)}{task.status === 'completed' ? ' ✅' : task.status === 'failed' ? ' ❌' : task.status === 'cancelled' ? ' 🚫' : ''}
