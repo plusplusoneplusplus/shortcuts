@@ -11,6 +11,9 @@
 // Re-export diff selection/context types from pipeline-core
 export type { DiffCommentSelection, DiffCommentContext } from '@plusplusoneplusplus/forge/editor/types';
 
+import type { CommentCategory } from './comment-constants';
+import { ALL_COMMENT_CATEGORIES, COMMENT_CATEGORY_REGEX } from './comment-constants';
+
 // ============================================================================
 // Diff Comment Types
 // ============================================================================
@@ -19,16 +22,16 @@ export type { DiffCommentSelection, DiffCommentContext } from '@plusplusoneplusp
 export type DiffCommentStatus = 'open' | 'resolved' | 'orphaned';
 
 /** Comment categories. */
-export type DiffCommentCategory = 'bug' | 'question' | 'suggestion' | 'praise' | 'nitpick' | 'general';
+export type DiffCommentCategory = CommentCategory;
 
-export const ALL_DIFF_CATEGORIES: DiffCommentCategory[] = ['bug', 'question', 'suggestion', 'praise', 'nitpick', 'general'];
+export const ALL_DIFF_CATEGORIES: DiffCommentCategory[] = [...ALL_COMMENT_CATEGORIES];
 
 /** Get category from a DiffComment (field first, then text prefix fallback). */
 export function getDiffCommentCategory(comment: DiffComment): DiffCommentCategory {
     if (comment.category && ALL_DIFF_CATEGORIES.includes(comment.category)) {
         return comment.category;
     }
-    const match = comment.comment.match(/^\[(bug|question|suggestion|praise|nitpick|general)\]\s*/i);
+    const match = comment.comment.match(COMMENT_CATEGORY_REGEX);
     if (match) return match[1].toLowerCase() as DiffCommentCategory;
     return 'general';
 }

@@ -11,6 +11,9 @@
 // Re-export anchor/selection types from pipeline-core
 export type { CommentSelection, CommentAnchor } from '@plusplusoneplusplus/forge/editor/types';
 
+import type { CommentCategory } from './comment-constants';
+import { ALL_COMMENT_CATEGORIES, COMMENT_CATEGORY_REGEX } from './comment-constants';
+
 // ============================================================================
 // Task Comment Types
 // ============================================================================
@@ -19,7 +22,7 @@ export type { CommentSelection, CommentAnchor } from '@plusplusoneplusplus/forge
 export type TaskCommentStatus = 'open' | 'resolved';
 
 /** Comment categories. */
-export type TaskCommentCategory = 'bug' | 'question' | 'suggestion' | 'praise' | 'nitpick' | 'general';
+export type TaskCommentCategory = CommentCategory;
 
 // ============================================================================
 // Category Constants
@@ -39,14 +42,14 @@ export const CATEGORY_INFO: Record<TaskCommentCategory, CategoryInfo> = {
     general:    { label: 'General',    icon: '💬' },
 };
 
-export const ALL_CATEGORIES: TaskCommentCategory[] = ['bug', 'question', 'suggestion', 'praise', 'nitpick', 'general'];
+export const ALL_CATEGORIES: TaskCommentCategory[] = [...ALL_COMMENT_CATEGORIES];
 
 /** Get category from a TaskComment (field first, then text prefix fallback). */
 export function getCommentCategory(comment: TaskComment): TaskCommentCategory {
     if (comment.category && ALL_CATEGORIES.includes(comment.category)) {
         return comment.category;
     }
-    const match = comment.comment.match(/^\[(bug|question|suggestion|praise|nitpick|general)\]\s*/i);
+    const match = comment.comment.match(COMMENT_CATEGORY_REGEX);
     if (match) return match[1].toLowerCase() as TaskCommentCategory;
     return 'general';
 }
