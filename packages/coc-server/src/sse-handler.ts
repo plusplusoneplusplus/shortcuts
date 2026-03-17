@@ -81,8 +81,12 @@ export async function handleProcessStream(
     processId: string,
     store: ProcessStore
 ): Promise<void> {
+    // Parse workspaceId hint from the query string for direct-path lookup
+    const parsed = new URL(req.url ?? '/', 'http://x');
+    const wsId = parsed.searchParams.get('workspace') ?? undefined;
+
     // 1. Look up the process — 404 if not found
-    let process = await store.getProcess(processId);
+    let process = await store.getProcess(processId, wsId);
     if (!process) {
         getServerLogger().warn({ processId }, 'SSE: process not found');
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -103,7 +107,7 @@ export async function handleProcessStream(
     // 3. For running processes, flush buffered content before replay
     if ((process.status === 'running') && store.requestFlush) {
         await store.requestFlush(processId);
-        const refreshed = await store.getProcess(processId);
+        const refreshed = await store.getProcess(processId, wsId);
         if (refreshed) { process = refreshed; }
     }
 

@@ -422,7 +422,7 @@ export class CLITaskExecutor implements TaskExecutor {
             this.timelineBuffers.delete(processId);
 
             // Build final conversation turns (re-read from store to include any flushed streaming data)
-            const currentProcess = await this.store.getProcess(processId);
+            const currentProcess = await this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined);
             const existingTurns = currentProcess?.conversationTurns || initialTurns;
 
             // Replace or append the assistant turn with the final complete response
@@ -445,7 +445,7 @@ export class CLITaskExecutor implements TaskExecutor {
             let combinedTurns = finalTurns;
             if (resumedFrom && typeof resumedFrom === 'string') {
                 try {
-                    const oldProcess = await this.store.getProcess(resumedFrom);
+                    const oldProcess = await this.store.getProcess(resumedFrom, (task.payload as any)?.workspaceId as string | undefined);
                     if (oldProcess?.conversationTurns?.length) {
                         const historicalTurns: ConversationTurn[] = oldProcess.conversationTurns.map((t, i) => ({
                             ...t,
@@ -466,7 +466,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
             // Update process as completed — now includes session + conversation data
             try {
-                const currentProc = await this.store.getProcess(processId);
+                const currentProc = await this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined);
                 if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
                     await this.store.updateProcess(processId, {
                         status: 'completed',
@@ -498,7 +498,7 @@ export class CLITaskExecutor implements TaskExecutor {
             this.throttleState.delete(processId);
             this.timelineBuffers.delete(processId);
             try {
-                const currentProcess = await this.store.getProcess(processId);
+                const currentProcess = await this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined);
                 const existingTurns = currentProcess?.conversationTurns || initialTurns;
                 if (!TERMINAL_STATUSES.has(currentProcess?.status ?? '')) {
                     await this.store.updateProcess(processId, {
@@ -743,7 +743,7 @@ export class CLITaskExecutor implements TaskExecutor {
             }
 
             // Append or replace the assistant turn in conversationTurns
-            const refreshed = await this.store.getProcess(processId);
+            const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
             const turns = refreshed?.conversationTurns || [];
 
             // Remove any in-progress streaming assistant turn (will be replaced with final)
@@ -817,7 +817,7 @@ export class CLITaskExecutor implements TaskExecutor {
             // Clean up throttle state
             this.throttleState.delete(processId);
             this.timelineBuffers.delete(processId);
-            const refreshed = await this.store.getProcess(processId);
+            const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
             const turns = refreshed?.conversationTurns || [];
             // Remove any in-progress streaming assistant turn
             const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
@@ -1433,7 +1433,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 fullPrompt: aiPrompt,
                 promptPreview: enrichedPreview,
             });
-            const existing = await this.store.getProcess(processId);
+            const existing = await this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined);
             if (existing?.conversationTurns?.[0]) {
                 existing.conversationTurns[0].content = aiPrompt;
                 await this.store.updateProcess(processId, {
@@ -1573,7 +1573,7 @@ export class CLITaskExecutor implements TaskExecutor {
         }
 
         // Persist execution stats and pipeline config into metadata so WorkflowDetailView can render the DAG
-        this.store.getProcess(processId).then(current => {
+        this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined).then(current => {
             return this.store.updateProcess(processId, {
                 metadata: {
                     type: current?.metadata?.type ?? task.type,

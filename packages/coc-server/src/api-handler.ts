@@ -1711,9 +1711,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     routes.push({
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)\/output$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const process = await store.getProcess(id);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const process = await store.getProcess(id, wsId);
             if (!process) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -1768,11 +1769,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         pattern: /^\/api\/processes\/([^/]+)$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const process = await store.getProcess(id);
+            const filter = parseQueryParams(req.url || '/');
+            const process = await store.getProcess(id, filter.workspaceId);
             if (!process) {
                 return handleAPIError(res, notFound('Process'));
             }
-            const filter = parseQueryParams(req.url || '/');
             const result = filter.exclude ? stripExcludedFields(process, filter.exclude) : process;
             sendJSON(res, 200, { process: result });
         },
@@ -1784,7 +1785,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         pattern: /^\/api\/processes\/([^/]+)$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const existing = await store.getProcess(id);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const existing = await store.getProcess(id, wsId);
             if (!existing) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -1803,7 +1805,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
 
             await store.updateProcess(id, updates);
-            const updated = await store.getProcess(id);
+            const updated = await store.getProcess(id, wsId);
             sendJSON(res, 200, { process: updated });
         },
     });
@@ -1812,9 +1814,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     routes.push({
         method: 'DELETE',
         pattern: /^\/api\/processes\/([^/]+)$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const existing = await store.getProcess(id);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const existing = await store.getProcess(id, wsId);
             if (!existing) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -1828,9 +1831,10 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
     routes.push({
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/cancel$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const existing = await store.getProcess(id);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const existing = await store.getProcess(id, wsId);
             if (!existing) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -1849,7 +1853,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             process.stderr.write(`[Process] cancel id=${id} prevStatus=${existing.status}\n`);
 
-            const updated = await store.getProcess(id);
+            const updated = await store.getProcess(id, wsId);
             sendJSON(res, 200, { process: updated });
         },
     });
@@ -1860,7 +1864,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
         pattern: /^\/api\/processes\/([^/]+)\/message$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const process = await store.getProcess(id);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const process = await store.getProcess(id, wsId);
             if (!process) {
                 return handleAPIError(res, notFound('Process'));
             }

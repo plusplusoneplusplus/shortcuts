@@ -281,7 +281,7 @@ async function enrichChatTasks(
     for (const task of tasks) {
         if (task.type !== 'chat' || !task.processId) continue;
         try {
-            const process = await store.getProcess(task.processId as string);
+            const process = await store.getProcess(task.processId as string, (task as any).payload?.workspaceId as string | undefined);
             if (!process) continue;
             const turns = process.conversationTurns ?? [];
             const firstUserTurn = turns.find(t => t.role === 'user');
@@ -1274,7 +1274,8 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             resumeInProgress.add(pid);
 
             try {
-                const proc = await store.getProcess(pid);
+                const wsId = (task.payload as any)?.workspaceId as string | undefined;
+                const proc = await store.getProcess(pid, wsId);
                 if (!proc) {
                     return sendError(res, 404, 'Process not found');
                 }

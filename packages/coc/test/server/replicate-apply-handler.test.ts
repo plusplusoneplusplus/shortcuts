@@ -101,6 +101,7 @@ describe('Replicate Apply Handler', () => {
     async function addCompletedProcess(
         processId: string,
         result: unknown,
+        wsId?: string,
     ): Promise<void> {
         await store.addProcess({
             id: processId,
@@ -112,10 +113,11 @@ describe('Replicate Apply Handler', () => {
             conversationTurns: [],
             startTime: new Date(),
             timeline: [],
+            metadata: wsId ? { type: 'queue-replicate-template', workspaceId: wsId } : undefined,
         } as any);
     }
 
-    async function addRunningProcess(processId: string): Promise<void> {
+    async function addRunningProcess(processId: string, wsId?: string): Promise<void> {
         await store.addProcess({
             id: processId,
             type: 'queue-replicate-template',
@@ -125,6 +127,7 @@ describe('Replicate Apply Handler', () => {
             conversationTurns: [],
             startTime: new Date(),
             timeline: [],
+            metadata: wsId ? { type: 'queue-replicate-template', workspaceId: wsId } : undefined,
         } as any);
     }
 
@@ -148,7 +151,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -190,7 +193,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -218,7 +221,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -246,7 +249,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const url = `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`;
 
@@ -274,7 +277,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -318,7 +321,7 @@ describe('Replicate Apply Handler', () => {
         const wsId = await registerWorkspace(srv, workspaceDir);
         const processId = 'proc-running';
 
-        await addRunningProcess(processId);
+        await addRunningProcess(processId, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -335,7 +338,7 @@ describe('Replicate Apply Handler', () => {
 
         await addCompletedProcess(processId, {
             response: 'AI response text only',
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -358,7 +361,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -382,7 +385,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,
@@ -419,7 +422,7 @@ describe('Replicate Apply Handler', () => {
                 commitHash: 'abc123',
                 templateName: 'test-template',
             },
-        });
+        }, wsId);
 
         const res = await postJSON(
             `${srv.url}/api/workspaces/${wsId}/replicate/${processId}/apply`,

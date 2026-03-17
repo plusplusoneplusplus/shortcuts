@@ -69,7 +69,7 @@ export function registerReplicateApplyRoutes(
             const repoRoot = ws.rootPath;
 
             // 2. Load the completed process
-            const processRecord = await store.getProcess(processId);
+            const processRecord = await store.getProcess(processId, workspaceId);
             if (!processRecord) {
                 return sendError(res, 404, 'Process not found');
             }
