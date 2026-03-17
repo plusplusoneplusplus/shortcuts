@@ -25,17 +25,17 @@ export interface UseSkillTemplatesResult {
 }
 
 export function useSkillTemplates(wsId?: string): UseSkillTemplatesResult {
+    const prefsUrl = wsId
+        ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
+        : getApiBase() + '/preferences';
     const [templates, setTemplates] = useState<SkillTemplate[]>([]);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
-        const url = wsId
-            ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
-            : getApiBase() + '/preferences';
         (async () => {
             try {
-                const res = await fetch(url);
+                const res = await fetch(prefsUrl);
                 if (!res.ok) return;
                 const prefs = await res.json();
                 if (!cancelled && Array.isArray(prefs.skillTemplates)) {
@@ -51,10 +51,7 @@ export function useSkillTemplates(wsId?: string): UseSkillTemplatesResult {
     }, [wsId]);
 
     const persist = useCallback((updated: SkillTemplate[]) => {
-        const url = wsId
-            ? getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/preferences'
-            : getApiBase() + '/preferences';
-        fetch(url, {
+        fetch(prefsUrl, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ skillTemplates: updated }),
