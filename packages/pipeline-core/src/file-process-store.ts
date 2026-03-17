@@ -151,7 +151,7 @@ export class FileProcessStore implements ProcessStore {
                 const entry = await this.readProcessFile(filter.workspaceId, ie.id);
                 if (entry) { processes.push(deserializeProcess(entry.process)); }
             }
-            return processes;
+            return this.applyExclude(processes, filter?.exclude);
         }
 
         // Aggregate across all workspace subdirs
@@ -166,7 +166,7 @@ export class FileProcessStore implements ProcessStore {
             const entry = await this.readProcessFile(ie.workspaceId, ie.id);
             if (entry) { processes.push(deserializeProcess(entry.process)); }
         }
-        return processes;
+        return this.applyExclude(processes, filter?.exclude);
     }
 
     async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {
@@ -214,6 +214,45 @@ export class FileProcessStore implements ProcessStore {
             entries = entries.filter(e => new Date(e.startTime).getTime() >= sinceTime);
         }
         return entries;
+    }
+
+    /** Strip fields specified by `exclude` from loaded process objects. */
+    private applyExclude(processes: AIProcess[], exclude?: string[]): AIProcess[] {
+        if (!exclude || exclude.length === 0) { return processes; }
+        const stripConversation = exclude.includes('conversation');
+        const stripToolCalls = exclude.includes('toolCalls');
+        if (!stripConversation && !stripToolCalls) { return processes; }
+        return processes.map(p => {
+            if (stripConversation) {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { conversationTurns, fullPrompt, result, ...rest } = p;
+                return rest as AIProcess;
+            }
+            if (stripToolCalls && p.conversationTurns) {
+                return {
+                    ...p,
+                    conversationTurns: p.conversationTurns.map(turn => {
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        const { toolCalls, ...rest } = turn;
+                        return rest;
+                    }),
+                };
+            }
+            return p;
+        });
+    }
+
+    /** Returns true when filter contains any field that narrows which processes match (beyond workspaceId). */
+    private hasContentFilters(filter?: ProcessFilter): boolean {
+        return !!(filter?.parentProcessId || filter?.status || filter?.type || filter?.since);
+    }
+
+    /** Atomically remove the given ids from _id-map.json. Must be called inside enqueueWrite. */
+    private async removeFromIdMap(ids: string[]): Promise<void> {
+        if (ids.length === 0) { return; }
+        const idMap = await this.readIdMap();
+        for (const id of ids) { delete idMap[id]; }
+        await this.writeIdMap(idMap);
     }
 
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
@@ -274,43 +313,66 @@ export class FileProcessStore implements ProcessStore {
     async clearProcesses(filter?: ProcessFilter): Promise<number> {
         let count = 0;
         await this.enqueueWrite(async () => {
+            const hasExtra = this.hasContentFilters(filter);
             const workspaceDirs = filter?.workspaceId
                 ? [filter.workspaceId]
                 : await this.listWorkspaceDirs();
 
             const deletedIds: string[] = [];
-            for (const wsId of workspaceDirs) {
-                const index = await this.readIndex(wsId);
-                const remaining: ProcessIndexEntry[] = [];
-                const toDelete: string[] = [];
 
-                for (const ie of index) {
-                    let match = true;
-                    // workspaceId is already handled by iterating the right workspaceDirs
-                    if (match && filter?.parentProcessId) {
-                        match = ie.parentProcessId === filter.parentProcessId;
-                    }
-                    if (match && filter?.status) {
-                        const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-                        match = statuses.includes(ie.status as AIProcessStatus);
-                    }
-                    if (match && filter?.type) { match = ie.type === filter.type; }
+            await Promise.all(workspaceDirs.map(async (wsId) => {
+                if (!hasExtra) {
+                    // Fast path: wipe entire workspace dir
+                    const index = await this.readIndex(wsId);
+                    const allIds = index.map(e => e.id);
+                    await Promise.all([
+                        ...allIds.map(id => this.deleteProcessFile(wsId, id)),
+                        fs.unlink(this.indexPathFor(wsId)).catch(() => {}),
+                    ]);
+                    try { await fs.rmdir(this.workspaceDirFor(wsId)); } catch { /* best effort */ }
+                    deletedIds.push(...allIds);
+                    count += allIds.length;
+                } else {
+                    // Filter-based path
+                    const index = await this.readIndex(wsId);
+                    const remaining: ProcessIndexEntry[] = [];
+                    const toDelete: string[] = [];
 
-                    if (match) { toDelete.push(ie.id); }
-                    else { remaining.push(ie); }
+                    for (const ie of index) {
+                        let match = true;
+                        if (match && filter?.parentProcessId) {
+                            match = ie.parentProcessId === filter.parentProcessId;
+                        }
+                        if (match && filter?.status) {
+                            const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+                            match = statuses.includes(ie.status as AIProcessStatus);
+                        }
+                        if (match && filter?.type) { match = ie.type === filter.type; }
+                        if (match && filter?.since) {
+                            match = new Date(ie.startTime).getTime() >= filter.since.getTime();
+                        }
+
+                        if (match) { toDelete.push(ie.id); }
+                        else { remaining.push(ie); }
+                    }
+
+                    await Promise.all(toDelete.map(id => this.deleteProcessFile(wsId, id)));
+
+                    // Remove workspace dir when it becomes empty (only in cross-workspace scan)
+                    if (remaining.length === 0 && !filter?.workspaceId) {
+                        await fs.unlink(this.indexPathFor(wsId)).catch(() => {});
+                        try { await fs.rmdir(this.workspaceDirFor(wsId)); } catch { /* best effort */ }
+                    } else {
+                        await this.writeIndex(wsId, remaining);
+                    }
+
+                    deletedIds.push(...toDelete);
+                    count += toDelete.length;
                 }
+            }));
 
-                await Promise.all(toDelete.map(id => this.deleteProcessFile(wsId, id)));
-                await this.writeIndex(wsId, remaining);
-                count += toDelete.length;
-                deletedIds.push(...toDelete);
-            }
-
-            // Update _id-map.json
             if (deletedIds.length > 0) {
-                const idMap = await this.readIdMap();
-                for (const id of deletedIds) { delete idMap[id]; }
-                await this.writeIdMap(idMap);
+                await this.removeFromIdMap(deletedIds);
             }
         });
         this.onProcessChange?.({ type: 'processes-cleared' });
@@ -449,10 +511,10 @@ export class FileProcessStore implements ProcessStore {
 
     async getStorageStats(): Promise<StorageStats> {
         // Use getProcessSummaries() instead of getAllProcesses() to avoid reading every process file
-        const [summaries, workspaces, wikis] = await Promise.all([
+        const [summaries, wikis, workspaceDirIds] = await Promise.all([
             this.getProcessSummaries(),
-            this.getWorkspaces(),
             this.getWikis(),
+            this.listWorkspaceDirs(),
         ]);
 
         // Stat meta files in parallel
@@ -470,7 +532,6 @@ export class FileProcessStore implements ProcessStore {
 
         // Sum file sizes in each workspace dir
         try {
-            const workspaceDirIds = await this.listWorkspaceDirs();
             for (const wsId of workspaceDirIds) {
                 const wsDir = this.workspaceDirFor(wsId);
                 try {
@@ -496,7 +557,7 @@ export class FileProcessStore implements ProcessStore {
 
         return {
             totalProcesses: summaries.total,
-            totalWorkspaces: workspaces.length,
+            totalWorkspaces: workspaceDirIds.length,
             totalWikis: wikis.length,
             storageSize,
         };
