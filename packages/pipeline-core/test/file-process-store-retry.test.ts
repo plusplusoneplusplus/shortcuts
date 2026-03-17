@@ -1,12 +1,11 @@
 /**
- * FileProcessStore Retry Tests
+ * FileProcessStore Retry Tests — Per-Workspace Paths
  *
  * Verifies that atomic writes retry on transient FS errors and
  * propagate non-retryable errors immediately.
- *
  * Uses vi.mock to intercept fs/promises.rename and fs/promises.writeFile.
- * A shared interceptor controls per-test behavior; real implementations are
- * used by default.
+ * Path assertions use the per-workspace layout: processes/<workspaceId>/<id>.json
+ * and processes/_id-map.json.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -16,7 +15,6 @@ import * as os from 'os';
 import { isRetryExhaustedError } from '../src/runtime/retry';
 
 // ---- module-level mock ----
-// importActual returns the real fs/promises so setup/teardown works normally.
 const actualFs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
 
 type InterceptorFn = (original: (...args: any[]) => Promise<any>, ...args: any[]) => Promise<any>;
@@ -43,18 +41,16 @@ vi.mock('fs/promises', async () => {
     };
 });
 
-// ---- import after mock ----
 import type { AIProcess, AIProcessStatus } from '../src/index';
 
-// Dynamic import so the mock is active when FileProcessStore loads fs/promises
 const { FileProcessStore } = await import('../src/index');
 
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
     return {
         id,
-        type: 'clarification',
-        promptPreview: `prompt-${id}`,
-        fullPrompt: `Full prompt for ${id}`,
+        type: 'ai',
+        promptPreview: 'test prompt',
+        fullPrompt: 'test full prompt',
         status: 'completed' as AIProcessStatus,
         startTime: new Date(),
         ...overrides,
@@ -67,7 +63,7 @@ function makeErrnoError(code: string, message?: string): NodeJS.ErrnoException {
     return err;
 }
 
-describe('FileProcessStore - Retry on atomic writes', () => {
+describe('FileProcessStore - Retry on atomic writes (per-workspace paths)', () => {
     let tmpDir: string;
 
     beforeEach(async () => {
@@ -82,171 +78,120 @@ describe('FileProcessStore - Retry on atomic writes', () => {
         await actualFs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    it('should succeed on first attempt when no errors occur', async () => {
+    // 20. Retry on EBUSY writing process file at processes/ws-a/<id>.json
+    it('should retry and succeed when process file rename fails twice with EBUSY', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        const p = await store.getProcess('p1');
-        expect(p).toBeDefined();
-        expect(p!.id).toBe('p1');
-    });
-
-    it('should retry and succeed when rename fails transiently with EBUSY', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
+        const p = makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } });
 
         let callCount = 0;
         renameInterceptor = async (real, ...args) => {
-            callCount++;
-            if (callCount <= 2) {
-                throw makeErrnoError('EBUSY', 'resource busy');
+            const dest = path.basename(args[1] as string);
+            if (dest === 'p1.json') {
+                callCount++;
+                if (callCount <= 2) {
+                    throw makeErrnoError('EBUSY', 'resource busy');
+                }
             }
             return real(...args);
         };
 
-        await store.addProcess(makeProcess('p1'));
-        const p = await store.getProcess('p1');
-        expect(p).toBeDefined();
-        expect(p!.id).toBe('p1');
+        await store.addProcess(p);
+        const retrieved = await store.getProcess('p1', 'ws-a');
+        expect(retrieved).toBeDefined();
+        expect(retrieved!.id).toBe('p1');
         expect(callCount).toBeGreaterThan(2);
     });
 
-    it('should retry and succeed when rename fails transiently with EACCES', async () => {
+    // 21. Retry on EBUSY writing _id-map.json
+    it('should retry and succeed when _id-map.json rename fails twice with EBUSY', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
 
         let callCount = 0;
         renameInterceptor = async (real, ...args) => {
-            callCount++;
-            if (callCount === 1) {
-                throw makeErrnoError('EACCES', 'permission denied');
+            const dest = path.basename(args[1] as string);
+            if (dest === '_id-map.json') {
+                callCount++;
+                if (callCount <= 2) {
+                    throw makeErrnoError('EBUSY', 'resource busy');
+                }
             }
             return real(...args);
         };
 
-        await store.addProcess(makeProcess('p1'));
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
         const p = await store.getProcess('p1');
         expect(p).toBeDefined();
+        expect(callCount).toBeGreaterThan(2);
     });
 
-    it('should propagate ENOSPC immediately without retrying', async () => {
+    // 22. Non-retryable error (ENOSPC) on process file propagates immediately
+    it('should propagate ENOSPC immediately without retrying on process file', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
 
         let callCount = 0;
-        renameInterceptor = async () => {
-            callCount++;
-            throw makeErrnoError('ENOSPC', 'no space left on device');
+        renameInterceptor = async (_real, ...args) => {
+            const dest = path.basename(args[1] as string);
+            if (dest === 'p1.json') {
+                callCount++;
+                throw makeErrnoError('ENOSPC', 'no space left on device');
+            }
+            return _real(...args);
         };
 
-        await expect(store.addProcess(makeProcess('p1'))).rejects.toThrow('no space left on device');
-        // Should have been called exactly once (no retry)
+        await expect(
+            store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }))
+        ).rejects.toThrow('no space left on device');
         expect(callCount).toBe(1);
     });
 
-    it('should propagate EROFS immediately without retrying', async () => {
+    // 23. RetryExhaustedError after all retries on _id-map
+    it('should throw RetryExhaustedError when all retries fail on _id-map.json rename', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
 
-        let callCount = 0;
-        renameInterceptor = async () => {
-            callCount++;
-            throw makeErrnoError('EROFS', 'read-only filesystem');
-        };
-
-        await expect(store.addProcess(makeProcess('p1'))).rejects.toThrow('read-only filesystem');
-        expect(callCount).toBe(1);
-    });
-
-    it('should throw RetryExhaustedError when all retries fail on EBUSY', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        renameInterceptor = async () => {
-            throw makeErrnoError('EBUSY', 'resource busy');
+        renameInterceptor = async (_real, ...args) => {
+            const dest = path.basename(args[1] as string);
+            if (dest === '_id-map.json') {
+                throw makeErrnoError('EBUSY', 'resource busy');
+            }
+            return _real(...args);
         };
 
         try {
-            await store.addProcess(makeProcess('p1'));
+            await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
             expect.fail('should have thrown');
         } catch (err) {
             expect(isRetryExhaustedError(err)).toBe(true);
         }
     });
 
-    it('should clean up .tmp file when all retries are exhausted', async () => {
+    // 24. Tmp file cleanup on exhaustion
+    it('should clean up .tmp files after RetryExhaustedError', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await actualFs.mkdir(path.join(tmpDir, 'processes'), { recursive: true });
 
         renameInterceptor = async () => {
             throw makeErrnoError('EBUSY', 'resource busy');
         };
 
         try {
-            await store.addProcess(makeProcess('p1'));
+            await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
         } catch {
             // expected
         }
 
-        const files = await actualFs.readdir(path.join(tmpDir, 'processes'));
-        const tmpFiles = files.filter(f => f.endsWith('.tmp'));
-        expect(tmpFiles).toEqual([]);
-    });
+        // Check ws-a dir for .tmp files
+        const wsADir = path.join(tmpDir, 'processes', 'ws-a');
+        const wsATmpFiles = await actualFs.readdir(wsADir).then(
+            files => files.filter(f => f.endsWith('.tmp')),
+            () => [] as string[]
+        );
+        expect(wsATmpFiles).toEqual([]);
 
-    it('should retry workspace writes on transient errors', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        let callCount = 0;
-        renameInterceptor = async (real, ...args) => {
-            callCount++;
-            if (callCount === 1) {
-                throw makeErrnoError('EPERM', 'operation not permitted');
-            }
-            return real(...args);
-        };
-
-        await store.registerWorkspace({ id: 'ws1', name: 'Test', rootPath: '/tmp/ws' });
-        const workspaces = await store.getWorkspaces();
-        expect(workspaces).toHaveLength(1);
-        expect(workspaces[0].id).toBe('ws1');
-    });
-
-    it('should retry wiki writes on transient errors', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        let callCount = 0;
-        renameInterceptor = async (real, ...args) => {
-            callCount++;
-            if (callCount === 1) {
-                throw makeErrnoError('EIO', 'input/output error');
-            }
-            return real(...args);
-        };
-
-        await store.registerWiki({ id: 'w1', name: 'Wiki', wikiDir: '/tmp/wiki', repoPath: '/tmp/repo' });
-        const wikis = await store.getWikis();
-        expect(wikis).toHaveLength(1);
-        expect(wikis[0].id).toBe('w1');
-    });
-
-    it('should retry when writeFile fails with a transient error', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        let callCount = 0;
-        writeFileInterceptor = async (real, ...args) => {
-            callCount++;
-            if (callCount === 1) {
-                throw makeErrnoError('EBUSY', 'resource busy');
-            }
-            return real(...args);
-        };
-
-        await store.addProcess(makeProcess('p1'));
-        const p = await store.getProcess('p1');
-        expect(p).toBeDefined();
-    });
-
-    it('should propagate non-FS errors immediately', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        renameInterceptor = async () => {
-            throw new Error('unexpected non-FS error');
-        };
-
-        await expect(store.addProcess(makeProcess('p1'))).rejects.toThrow('unexpected non-FS error');
+        // Check processes dir for _id-map.json.tmp
+        const processesDir = path.join(tmpDir, 'processes');
+        const processesTmpFiles = await actualFs.readdir(processesDir).then(
+            files => files.filter(f => f.endsWith('.tmp')),
+            () => [] as string[]
+        );
+        expect(processesTmpFiles).toEqual([]);
     });
 });

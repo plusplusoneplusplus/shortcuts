@@ -143,11 +143,21 @@ describe('ProcessStore (mock implementation)', () => {
                     processes.set(id, { ...existing, ...updates });
                 }
             },
-            async getProcess(id: string) {
+            async getProcess(id: string, workspaceId?: string) {
+                // With workspaceId hint: only return process if it matches workspace
+                if (workspaceId !== undefined) {
+                    const p = processes.get(id);
+                    if (!p) { return undefined; }
+                    const wsId = p.metadata?.workspaceId ?? '';
+                    return wsId === workspaceId ? p : undefined;
+                }
                 return processes.get(id);
             },
             async getAllProcesses(filter?: ProcessFilter) {
                 let result = Array.from(processes.values());
+                if (filter?.workspaceId) {
+                    result = result.filter(p => (p.metadata?.workspaceId ?? '') === filter.workspaceId);
+                }
                 if (filter?.status) {
                     const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
                     result = result.filter(p => statuses.includes(p.status));
@@ -173,7 +183,10 @@ describe('ProcessStore (mock implementation)', () => {
                 let count = 0;
                 for (const [id, process] of processes) {
                     let match = true;
-                    if (filter.status) {
+                    if (filter.workspaceId) {
+                        match = (process.metadata?.workspaceId ?? '') === filter.workspaceId;
+                    }
+                    if (match && filter.status) {
                         const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
                         match = statuses.includes(process.status);
                     }
@@ -275,6 +288,76 @@ describe('ProcessStore (mock implementation)', () => {
         await store.addProcess(makeProcess('p2', 'completed'));
         const count = await store.clearProcesses();
         expect(count).toBe(2);
+    });
+
+    // 29. getProcess(id, workspaceId?) signature accepted
+    it('should accept optional workspaceId in getProcess and return correct entry', async () => {
+        const store = createMockStore();
+        const process: AIProcess = {
+            id: 'x',
+            type: 'clarification',
+            promptPreview: 'p',
+            fullPrompt: 'fp',
+            status: 'completed',
+            startTime: new Date(),
+            metadata: { type: 'clarification', workspaceId: 'ws-a' },
+        };
+        await store.addProcess(process);
+
+        const found = await store.getProcess('x', 'ws-a');
+        expect(found).toBeDefined();
+        expect(found!.id).toBe('x');
+
+        // Wrong workspace hint returns undefined
+        const notFound = await store.getProcess('x', 'ws-b');
+        expect(notFound).toBeUndefined();
+    });
+
+    // 30. getAllProcesses with filter.workspaceId
+    it('should return only entries matching filter.workspaceId', async () => {
+        const store = createMockStore();
+        const makeWsProcess = (id: string, wsId: string): AIProcess => ({
+            id,
+            type: 'clarification',
+            promptPreview: 'p',
+            fullPrompt: 'fp',
+            status: 'completed',
+            startTime: new Date(),
+            metadata: { type: 'clarification', workspaceId: wsId },
+        });
+        await store.addProcess(makeWsProcess('a1', 'ws-a'));
+        await store.addProcess(makeWsProcess('a2', 'ws-a'));
+        await store.addProcess(makeWsProcess('b1', 'ws-b'));
+
+        const wsB = await store.getAllProcesses({ workspaceId: 'ws-b' });
+        expect(wsB).toHaveLength(1);
+        expect(wsB[0].id).toBe('b1');
+    });
+
+    // 31. clearProcesses with filter.workspaceId returns correct count
+    it('should clear only processes matching filter.workspaceId and return count', async () => {
+        const store = createMockStore();
+        const makeWsProcess = (id: string, wsId: string): AIProcess => ({
+            id,
+            type: 'clarification',
+            promptPreview: 'p',
+            fullPrompt: 'fp',
+            status: 'completed',
+            startTime: new Date(),
+            metadata: { type: 'clarification', workspaceId: wsId },
+        });
+        await store.addProcess(makeWsProcess('a1', 'ws-a'));
+        await store.addProcess(makeWsProcess('a2', 'ws-a'));
+        await store.addProcess(makeWsProcess('a3', 'ws-a'));
+        await store.addProcess(makeWsProcess('b1', 'ws-b'));
+        await store.addProcess(makeWsProcess('b2', 'ws-b'));
+
+        const count = await store.clearProcesses({ workspaceId: 'ws-a' });
+        expect(count).toBe(3);
+
+        const remaining = await store.getAllProcesses();
+        expect(remaining).toHaveLength(2);
+        expect(remaining.map(p => p.id).sort()).toEqual(['b1', 'b2']);
     });
 });
 

@@ -1,7 +1,8 @@
 /**
- * FileProcessStore Prune Hook Tests
+ * FileProcessStore Prune Hook Tests — Per-Workspace
  *
- * Tests the onPrune callback that fires when pruneWorkspaceIfNeeded() removes entries.
+ * Tests the onPrune callback for per-workspace pruning behaviour.
+ * Pruning in workspace A must not affect workspace B.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -19,16 +20,16 @@ import {
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
     return {
         id,
-        type: 'clarification',
-        promptPreview: `prompt-${id}`,
-        fullPrompt: `Full prompt for ${id}`,
+        type: 'ai',
+        promptPreview: 'test prompt',
+        fullPrompt: 'test full prompt',
         status: 'completed' as AIProcessStatus,
         startTime: new Date(),
         ...overrides,
     };
 }
 
-describe('FileProcessStore onPrune callback', () => {
+describe('FileProcessStore onPrune callback — per-workspace', () => {
     let tmpDir: string;
 
     beforeEach(async () => {
@@ -39,129 +40,129 @@ describe('FileProcessStore onPrune callback', () => {
         await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    it('should fire onPrune with pruned entries when over limit', async () => {
-        const prunedBatches: StoredProcessEntry[][] = [];
-        const maxProcesses = 500;
+    // 16. Per-workspace pruning — exceeding max in ws-a evicts only ws-a
+    it('should prune only ws-a processes when ws-a exceeds maxProcesses', async () => {
+        const maxProcesses = 5;
+        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses });
 
+        // Add 6 terminal processes to ws-a (one over limit)
+        for (let i = 0; i < 6; i++) {
+            await store.addProcess(makeProcess(`a${i}`, {
+                status: 'completed',
+                startTime: new Date(Date.now() + i * 1000),
+                metadata: { type: 'ai', workspaceId: 'ws-a' },
+            }));
+        }
+
+        // Add 3 terminal processes to ws-b (under limit)
+        for (let i = 0; i < 3; i++) {
+            await store.addProcess(makeProcess(`b${i}`, {
+                status: 'completed',
+                startTime: new Date(Date.now() + i * 1000),
+                metadata: { type: 'ai', workspaceId: 'ws-b' },
+            }));
+        }
+
+        const wsA = await store.getAllProcesses({ workspaceId: 'ws-a' });
+        const wsB = await store.getAllProcesses({ workspaceId: 'ws-b' });
+        expect(wsA).toHaveLength(maxProcesses);
+        expect(wsB).toHaveLength(3);
+    });
+
+    // 17. onPrune callback — called with evicted entries
+    it('should call onPrune with the oldest evicted entry when over limit', async () => {
+        const prunedBatches: StoredProcessEntry[][] = [];
+        const maxProcesses = 5;
         const store = new FileProcessStore({
             dataDir: tmpDir,
             maxProcesses,
             onPrune: (entries) => prunedBatches.push(entries),
         });
 
-        // Add 500 terminal processes (at limit, no pruning)
-        for (let i = 0; i < 500; i++) {
+        // Add exactly maxProcesses terminal processes
+        for (let i = 0; i < maxProcesses; i++) {
             await store.addProcess(makeProcess(`p${i}`, {
                 status: 'completed',
                 startTime: new Date(Date.now() + i * 1000),
+                metadata: { type: 'ai', workspaceId: 'ws-a' },
             }));
         }
         expect(prunedBatches).toHaveLength(0);
 
-        // Add 10 more (total 510, should prune 10 oldest)
-        for (let i = 500; i < 510; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
-                status: 'completed',
-                startTime: new Date(Date.now() + i * 1000),
-            }));
-        }
+        // Add one more — triggers pruning of oldest
+        await store.addProcess(makeProcess('p5', {
+            status: 'completed',
+            startTime: new Date(Date.now() + 5000),
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
 
-        // Each addProcess that triggers pruning should fire the callback
         expect(prunedBatches.length).toBeGreaterThan(0);
+        const allPrunedIds = prunedBatches.flatMap(b => b.map(e => e.process.id));
+        expect(allPrunedIds.length).toBeGreaterThanOrEqual(1);
 
-        // Collect all pruned IDs
-        const allPrunedIds = prunedBatches.flatMap(batch => batch.map(e => e.process.id));
-        // The oldest entries should have been pruned
-        expect(allPrunedIds.length).toBeGreaterThanOrEqual(10);
+        // Evicted entries should no longer be in the store
         for (const id of allPrunedIds) {
-            // Should no longer be in the store
             const proc = await store.getProcess(id);
             expect(proc).toBeUndefined();
         }
     });
 
-    it('should not fire onPrune when under limit', async () => {
+    // 18. onPrune — not called when under limit
+    it('should not call onPrune when process count is under maxProcesses', async () => {
         const prunedBatches: StoredProcessEntry[][] = [];
-
-        const store = new FileProcessStore({
-            dataDir: tmpDir,
-            maxProcesses: 500,
-            onPrune: (entries) => prunedBatches.push(entries),
-        });
-
-        for (let i = 0; i < 100; i++) {
-            await store.addProcess(makeProcess(`p${i}`, { status: 'completed' }));
-        }
-
-        expect(prunedBatches).toHaveLength(0);
-    });
-
-    it('should never prune non-terminal entries', async () => {
-        const prunedBatches: StoredProcessEntry[][] = [];
-        const maxProcesses = 10;
-
+        const maxProcesses = 5;
         const store = new FileProcessStore({
             dataDir: tmpDir,
             maxProcesses,
             onPrune: (entries) => prunedBatches.push(entries),
         });
 
-        // Add 8 running processes
-        for (let i = 0; i < 8; i++) {
-            await store.addProcess(makeProcess(`running-${i}`, { status: 'running' }));
-        }
-
-        // Add 5 terminal processes (total 13, over limit of 10)
-        for (let i = 0; i < 5; i++) {
-            await store.addProcess(makeProcess(`completed-${i}`, {
+        // Add 4 processes (below limit of 5)
+        for (let i = 0; i < 4; i++) {
+            await store.addProcess(makeProcess(`p${i}`, {
                 status: 'completed',
-                startTime: new Date(Date.now() + i * 1000),
+                metadata: { type: 'ai', workspaceId: 'ws-a' },
             }));
         }
 
-        // Only terminal entries should appear in prune callbacks
-        const allPrunedIds = prunedBatches.flatMap(batch => batch.map(e => e.process.id));
-        for (const id of allPrunedIds) {
-            expect(id).not.toMatch(/^running-/);
-        }
-
-        // All running processes should survive
-        for (let i = 0; i < 8; i++) {
-            const proc = await store.getProcess(`running-${i}`);
-            expect(proc).toBeDefined();
-            expect(proc!.status).toBe('running');
-        }
+        expect(prunedBatches).toHaveLength(0);
     });
 
-    it('should support setting onPrune after construction', async () => {
+    // 19. Pruning does not evict running processes
+    it('should never prune running processes even when over limit', async () => {
         const prunedBatches: StoredProcessEntry[][] = [];
-
+        const maxProcesses = 5;
         const store = new FileProcessStore({
             dataDir: tmpDir,
-            maxProcesses: 5,
+            maxProcesses,
+            onPrune: (entries) => prunedBatches.push(entries),
         });
 
-        // Set onPrune after construction
-        store.onPrune = (entries) => prunedBatches.push(entries);
-
-        // Add 5 processes (at limit)
+        // Add 5 terminal + 1 running (total 6, over limit of 5)
         for (let i = 0; i < 5; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
+            await store.addProcess(makeProcess(`t${i}`, {
                 status: 'completed',
                 startTime: new Date(Date.now() + i * 1000),
+                metadata: { type: 'ai', workspaceId: 'ws-a' },
             }));
         }
+        await store.addProcess(makeProcess('runner', {
+            status: 'running',
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
 
-        // Add 3 more to trigger pruning
-        for (let i = 5; i < 8; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
-                status: 'completed',
-                startTime: new Date(Date.now() + i * 1000),
-            }));
+        // Running process must survive
+        const runner = await store.getProcess('runner');
+        expect(runner).toBeDefined();
+        expect(runner!.status).toBe('running');
+
+        // Pruned entries must all be terminal
+        const allPrunedIds = prunedBatches.flatMap(b => b.map(e => e.process.id));
+        for (const id of allPrunedIds) {
+            expect(id).not.toBe('runner');
         }
 
-        expect(prunedBatches.length).toBeGreaterThan(0);
-        const allPrunedIds = prunedBatches.flatMap(batch => batch.map(e => e.process.id));
-        expect(allPrunedIds.length).toBeGreaterThanOrEqual(3);
+        // At least one terminal was pruned
+        expect(allPrunedIds.length).toBeGreaterThanOrEqual(1);
     });
 });

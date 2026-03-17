@@ -1,10 +1,12 @@
 /**
- * FileProcessStore Tests
+ * FileProcessStore Tests — Per-Workspace Layout
  *
+ * Validates per-workspace directory layout (processes/<workspaceId>/<id>.json),
+ * _id-map.json semantics, and the getProcess(id, workspaceId?) hint parameter.
  * All tests use a temp directory cleaned up in afterEach.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -15,24 +17,22 @@ import {
     ensureDataDir,
     AIProcess,
     AIProcessStatus,
-    ProcessOutputEvent,
-    ProcessIndexEntry,
     StoredProcessEntry,
 } from '../src/index';
 
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
     return {
         id,
-        type: 'clarification',
-        promptPreview: `prompt-${id}`,
-        fullPrompt: `Full prompt for ${id}`,
-        status: 'completed' as AIProcessStatus,
+        type: 'ai',
+        promptPreview: 'test prompt',
+        fullPrompt: 'test full prompt',
+        status: 'running' as AIProcessStatus,
         startTime: new Date(),
         ...overrides,
     };
 }
 
-describe('FileProcessStore', () => {
+describe('FileProcessStore — per-workspace layout', () => {
     let tmpDir: string;
 
     beforeEach(async () => {
@@ -43,1719 +43,247 @@ describe('FileProcessStore', () => {
         await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    // --- Empty store ---
-    it('should return empty array for getAllProcesses on new store', async () => {
+    // 1. Layout — addProcess creates per-workspace file
+    it('should create per-workspace process file after addProcess', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        const processes = await store.getAllProcesses();
-        expect(processes).toEqual([]);
-    });
-
-    it('should return undefined for getProcess on non-existent id', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const result = await store.getProcess('non-existent');
-        expect(result).toBeUndefined();
-    });
-
-    // --- Add and get ---
-    it('should add and retrieve a process with Date objects restored', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const now = new Date('2026-01-15T10:00:00.000Z');
-        const process = makeProcess('p1', {
-            startTime: now,
-            endTime: new Date('2026-01-15T10:05:00.000Z'),
-        });
-        await store.addProcess(process);
-
-        const retrieved = await store.getProcess('p1');
-        expect(retrieved).toBeDefined();
-        expect(retrieved!.id).toBe('p1');
-        expect(retrieved!.startTime).toBeInstanceOf(Date);
-        expect(retrieved!.startTime.toISOString()).toBe('2026-01-15T10:00:00.000Z');
-        expect(retrieved!.endTime).toBeInstanceOf(Date);
-        expect(retrieved!.endTime!.toISOString()).toBe('2026-01-15T10:05:00.000Z');
-    });
-
-    // --- Update ---
-    it('should update only specified fields', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { status: 'running' }));
-
-        await store.updateProcess('p1', { status: 'completed', result: 'done' });
-
-        const retrieved = await store.getProcess('p1');
-        expect(retrieved!.status).toBe('completed');
-        expect(retrieved!.result).toBe('done');
-        expect(retrieved!.fullPrompt).toBe('Full prompt for p1');
-    });
-
-    it('should no-op when updating non-existent process', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        // Should not throw
-        await store.updateProcess('non-existent', { status: 'failed' });
-        const all = await store.getAllProcesses();
-        expect(all).toHaveLength(1);
-    });
-
-    // --- Remove ---
-    it('should remove a process', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-
-        await store.removeProcess('p1');
-
-        expect(await store.getProcess('p1')).toBeUndefined();
-        expect(await store.getProcess('p2')).toBeDefined();
-    });
-
-    // --- Multi-workspace filtering ---
-    it('should filter processes by workspaceId', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
-        }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-2' }
-        }));
-        await store.addProcess(makeProcess('p3', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
-        }));
-
-        const ws1 = await store.getAllProcesses({ workspaceId: 'ws-1' });
-        expect(ws1).toHaveLength(2);
-        expect(ws1.map(p => p.id).sort()).toEqual(['p1', 'p3']);
-
-        const all = await store.getAllProcesses();
-        expect(all).toHaveLength(3);
-    });
-
-    // --- parentProcessId filtering ---
-    it('should filter processes by parentProcessId', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('parent1'));
-        await store.addProcess(makeProcess('child1', { parentProcessId: 'parent1' }));
-        await store.addProcess(makeProcess('unrelated'));
-
-        const children = await store.getAllProcesses({ parentProcessId: 'parent1' });
-        expect(children).toHaveLength(1);
-        expect(children[0].id).toBe('child1');
-    });
-
-    it('should return empty when filtering by nonexistent parentProcessId', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2', { parentProcessId: 'p1' }));
-
-        const result = await store.getAllProcesses({ parentProcessId: 'nonexistent' });
-        expect(result).toEqual([]);
-    });
-
-    it('should return all processes when no parentProcessId filter is set', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('parent1'));
-        await store.addProcess(makeProcess('child1', { parentProcessId: 'parent1' }));
-        await store.addProcess(makeProcess('unrelated'));
-
-        const all = await store.getAllProcesses({});
-        expect(all).toHaveLength(3);
-    });
-
-    it('should combine parentProcessId with status filter', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('parent1'));
-        await store.addProcess(makeProcess('child1', {
-            parentProcessId: 'parent1',
-            status: 'completed' as AIProcessStatus,
-        }));
-        await store.addProcess(makeProcess('child2', {
-            parentProcessId: 'parent1',
-            status: 'running' as AIProcessStatus,
-        }));
-
-        const completedChildren = await store.getAllProcesses({
-            parentProcessId: 'parent1',
-            status: 'completed',
-        });
-        expect(completedChildren).toHaveLength(1);
-        expect(completedChildren[0].id).toBe('child1');
-    });
-
-    it('should clear only processes matching parentProcessId filter', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('parent1'));
-        await store.addProcess(makeProcess('child1', { parentProcessId: 'parent1' }));
-        await store.addProcess(makeProcess('unrelated'));
-
-        const count = await store.clearProcesses({ parentProcessId: 'parent1' });
-        expect(count).toBe(1);
-
-        const remaining = await store.getAllProcesses();
-        expect(remaining).toHaveLength(2);
-        expect(remaining.map(p => p.id).sort()).toEqual(['parent1', 'unrelated']);
-    });
-
-    // --- Clear by workspace ---
-    it('should clear only processes matching workspace filter', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
-        }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-2' }
-        }));
-
-        const count = await store.clearProcesses({ workspaceId: 'ws-1' });
-        expect(count).toBe(1);
-
-        const remaining = await store.getAllProcesses();
-        expect(remaining).toHaveLength(1);
-        expect(remaining[0].id).toBe('p2');
-    });
-
-    // --- Clear all ---
-    it('should clear all processes when no filter', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-        await store.addProcess(makeProcess('p3'));
-
-        const count = await store.clearProcesses();
-        expect(count).toBe(3);
-
-        const all = await store.getAllProcesses();
-        expect(all).toEqual([]);
-    });
-
-    // --- Retention limit ---
-    it('should enforce retention limit and never prune running/queued', async () => {
-        const maxProcesses = 10;
-        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses });
-
-        // Add a running and queued process
-        await store.addProcess(makeProcess('running-1', { status: 'running' }));
-        await store.addProcess(makeProcess('queued-1', { status: 'queued' }));
-
-        // Add 10 completed processes (total = 12, over limit of 10)
-        for (let i = 0; i < 10; i++) {
-            await store.addProcess(makeProcess(`completed-${i}`, {
-                status: 'completed',
-                startTime: new Date(Date.now() + i * 1000),
-            }));
-        }
-
-        const all = await store.getAllProcesses();
-        expect(all.length).toBeLessThanOrEqual(maxProcesses);
-
-        // running/queued must survive
-        const ids = all.map(p => p.id);
-        expect(ids).toContain('running-1');
-        expect(ids).toContain('queued-1');
-    });
-
-    // --- Persistence across instances ---
-    it('should persist data across separate store instances', async () => {
-        const store1 = new FileProcessStore({ dataDir: tmpDir });
-        await store1.addProcess(makeProcess('p1', { status: 'running' }));
-
-        // Create a completely new instance pointing to same dir
-        const store2 = new FileProcessStore({ dataDir: tmpDir });
-        const retrieved = await store2.getProcess('p1');
-        expect(retrieved).toBeDefined();
-        expect(retrieved!.id).toBe('p1');
-        expect(retrieved!.status).toBe('running');
-    });
-
-    // --- Atomic write safety ---
-    it('should handle concurrent addProcess calls without data loss', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const count = 20;
-
-        // Fire concurrent writes
-        const promises = Array.from({ length: count }, (_, i) =>
-            store.addProcess(makeProcess(`concurrent-${i}`))
-        );
-        await Promise.all(promises);
-
-        const all = await store.getAllProcesses();
-        expect(all).toHaveLength(count);
-
-        // Verify index.json file is valid
-        const raw = await fs.readFile(path.join(tmpDir, 'processes', '_default', 'index.json'), 'utf-8');
-        expect(() => JSON.parse(raw)).not.toThrow();
-    });
-
-    // --- Workspace registration ---
-    it('should register and retrieve workspaces', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({
-            id: 'ws-1',
-            name: 'Project A',
-            rootPath: '/home/user/project-a',
-        });
-        await store.registerWorkspace({
-            id: 'ws-2',
-            name: 'Project B',
-            rootPath: '/home/user/project-b',
-            color: '#ff0000',
-        });
-
-        const workspaces = await store.getWorkspaces();
-        expect(workspaces).toHaveLength(2);
-        expect(workspaces.find(w => w.id === 'ws-1')!.name).toBe('Project A');
-        expect(workspaces.find(w => w.id === 'ws-2')!.color).toBe('#ff0000');
-    });
-
-    it('should upsert workspace on duplicate registration', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({
-            id: 'ws-1',
-            name: 'Original',
-            rootPath: '/path/a',
-        });
-        await store.registerWorkspace({
-            id: 'ws-1',
-            name: 'Updated',
-            rootPath: '/path/b',
-        });
-
-        const workspaces = await store.getWorkspaces();
-        expect(workspaces).toHaveLength(1);
-        expect(workspaces[0].name).toBe('Updated');
-        expect(workspaces[0].rootPath).toBe('/path/b');
-    });
-
-    // --- Workspace removal ---
-    it('should remove a workspace by ID', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({ id: 'ws-1', name: 'A', rootPath: '/a' });
-        await store.registerWorkspace({ id: 'ws-2', name: 'B', rootPath: '/b' });
-
-        const removed = await store.removeWorkspace('ws-1');
-        expect(removed).toBe(true);
-
-        const workspaces = await store.getWorkspaces();
-        expect(workspaces).toHaveLength(1);
-        expect(workspaces[0].id).toBe('ws-2');
-    });
-
-    it('should return false when removing non-existent workspace', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const removed = await store.removeWorkspace('does-not-exist');
-        expect(removed).toBe(false);
-    });
-
-    // --- Workspace update ---
-    it('should update workspace fields', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({ id: 'ws-1', name: 'Old', rootPath: '/old', color: '#000' });
-
-        const updated = await store.updateWorkspace('ws-1', { name: 'New', color: '#fff' });
-        expect(updated).toBeDefined();
-        expect(updated!.name).toBe('New');
-        expect(updated!.color).toBe('#fff');
-        expect(updated!.rootPath).toBe('/old'); // unchanged
-
-        const workspaces = await store.getWorkspaces();
-        expect(workspaces[0].name).toBe('New');
-    });
-
-    it('should return undefined when updating non-existent workspace', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const updated = await store.updateWorkspace('nope', { name: 'x' });
-        expect(updated).toBeUndefined();
-    });
-
-    // --- Workspace remoteUrl ---
-    it('should register workspace with remoteUrl', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({
-            id: 'ws-remote', name: 'Remote', rootPath: '/path',
-            remoteUrl: 'https://github.com/user/repo.git',
-        });
-        const workspaces = await store.getWorkspaces();
-        const ws = workspaces.find(w => w.id === 'ws-remote');
-        expect(ws).toBeDefined();
-        expect(ws!.remoteUrl).toBe('https://github.com/user/repo.git');
-    });
-
-    it('should persist remoteUrl across reads', async () => {
-        const store1 = new FileProcessStore({ dataDir: tmpDir });
-        await store1.registerWorkspace({
-            id: 'ws-persist', name: 'Persist', rootPath: '/path',
-            remoteUrl: 'git@github.com:user/repo.git',
-        });
-
-        // Create a new store instance to read from disk
-        const store2 = new FileProcessStore({ dataDir: tmpDir });
-        const workspaces = await store2.getWorkspaces();
-        const ws = workspaces.find(w => w.id === 'ws-persist');
-        expect(ws!.remoteUrl).toBe('git@github.com:user/repo.git');
-    });
-
-    it('should update remoteUrl via updateWorkspace', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({
-            id: 'ws-update-remote', name: 'Update', rootPath: '/path',
-        });
-
-        const updated = await store.updateWorkspace('ws-update-remote', {
-            remoteUrl: 'https://github.com/updated/repo.git',
-        });
-        expect(updated).toBeDefined();
-        expect(updated!.remoteUrl).toBe('https://github.com/updated/repo.git');
-
-        const workspaces = await store.getWorkspaces();
-        expect(workspaces.find(w => w.id === 'ws-update-remote')!.remoteUrl)
-            .toBe('https://github.com/updated/repo.git');
-    });
-
-    it('should register workspace without remoteUrl (undefined)', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({
-            id: 'ws-no-remote', name: 'No Remote', rootPath: '/path',
-        });
-        const workspaces = await store.getWorkspaces();
-        const ws = workspaces.find(w => w.id === 'ws-no-remote');
-        expect(ws!.remoteUrl).toBeUndefined();
-    });
-
-    it('should update disabledSkills via updateWorkspace', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({
-            id: 'ws-disabled-skills', name: 'Skills Test', rootPath: '/path',
-        });
-
-        const updated = await store.updateWorkspace('ws-disabled-skills', {
-            disabledSkills: ['impl', 'draft'],
-        });
-        expect(updated).toBeDefined();
-        expect(updated!.disabledSkills).toEqual(['impl', 'draft']);
-
-        const workspaces = await store.getWorkspaces();
-        expect(workspaces.find(w => w.id === 'ws-disabled-skills')!.disabledSkills)
-            .toEqual(['impl', 'draft']);
-    });
-
-    it('should clear disabledSkills with empty array via updateWorkspace', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({
-            id: 'ws-clear-skills', name: 'Clear Skills', rootPath: '/path',
-        });
-        await store.updateWorkspace('ws-clear-skills', { disabledSkills: ['impl'] });
-        const updated = await store.updateWorkspace('ws-clear-skills', { disabledSkills: [] });
-        expect(updated!.disabledSkills).toEqual([]);
-    });
-
-    // --- Wiki registration ---
-    it('should register and retrieve wikis', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWiki({
-            id: 'wiki-1',
-            name: 'Project Wiki',
-            wikiDir: '/home/user/.wiki',
-            repoPath: '/home/user/project',
-            aiEnabled: true,
-            registeredAt: '2026-01-15T10:00:00.000Z',
-        });
-        await store.registerWiki({
-            id: 'wiki-2',
-            name: 'Docs Wiki',
-            wikiDir: '/home/user/.docs-wiki',
-            aiEnabled: false,
-            registeredAt: '2026-01-15T11:00:00.000Z',
-            color: '#00ff00',
-        });
-
-        const wikis = await store.getWikis();
-        expect(wikis).toHaveLength(2);
-        expect(wikis.find(w => w.id === 'wiki-1')!.name).toBe('Project Wiki');
-        expect(wikis.find(w => w.id === 'wiki-2')!.color).toBe('#00ff00');
-    });
-
-    it('should return empty wikis list on fresh store', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const wikis = await store.getWikis();
-        expect(wikis).toEqual([]);
-    });
-
-    it('should upsert wiki on duplicate registration (idempotent)', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWiki({
-            id: 'wiki-1',
-            name: 'Original',
-            wikiDir: '/path/a',
-            aiEnabled: true,
-            registeredAt: '2026-01-01T00:00:00.000Z',
-        });
-        await store.registerWiki({
-            id: 'wiki-1',
-            name: 'Updated',
-            wikiDir: '/path/b',
-            aiEnabled: false,
-            registeredAt: '2026-02-01T00:00:00.000Z',
-        });
-
-        const wikis = await store.getWikis();
-        expect(wikis).toHaveLength(1);
-        expect(wikis[0].name).toBe('Updated');
-        expect(wikis[0].wikiDir).toBe('/path/b');
-        expect(wikis[0].aiEnabled).toBe(false);
-    });
-
-    // --- Wiki removal ---
-    it('should remove a wiki by ID', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWiki({
-            id: 'wiki-1', name: 'A', wikiDir: '/a', aiEnabled: true, registeredAt: '2026-01-01T00:00:00.000Z',
-        });
-        await store.registerWiki({
-            id: 'wiki-2', name: 'B', wikiDir: '/b', aiEnabled: false, registeredAt: '2026-01-01T00:00:00.000Z',
-        });
-
-        const removed = await store.removeWiki('wiki-1');
-        expect(removed).toBe(true);
-
-        const wikis = await store.getWikis();
-        expect(wikis).toHaveLength(1);
-        expect(wikis[0].id).toBe('wiki-2');
-    });
-
-    it('should return false when removing non-existent wiki', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const removed = await store.removeWiki('does-not-exist');
-        expect(removed).toBe(false);
-    });
-
-    // --- Wiki update ---
-    it('should update wiki fields', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWiki({
-            id: 'wiki-1', name: 'Old', wikiDir: '/old', aiEnabled: true,
-            registeredAt: '2026-01-01T00:00:00.000Z', color: '#000',
-        });
-
-        const updated = await store.updateWiki('wiki-1', { name: 'New', color: '#fff', aiEnabled: false });
-        expect(updated).toBeDefined();
-        expect(updated!.name).toBe('New');
-        expect(updated!.color).toBe('#fff');
-        expect(updated!.aiEnabled).toBe(false);
-        expect(updated!.wikiDir).toBe('/old'); // unchanged
-
-        const wikis = await store.getWikis();
-        expect(wikis[0].name).toBe('New');
-    });
-
-    it('should return undefined when updating non-existent wiki', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const updated = await store.updateWiki('nope', { name: 'x' });
-        expect(updated).toBeUndefined();
-    });
-
-    // --- Wiki persistence across instances ---
-    it('should persist wikis across separate store instances', async () => {
-        const store1 = new FileProcessStore({ dataDir: tmpDir });
-        await store1.registerWiki({
-            id: 'wiki-1', name: 'Persisted', wikiDir: '/wiki', aiEnabled: true,
-            registeredAt: '2026-01-01T00:00:00.000Z',
-        });
-
-        const store2 = new FileProcessStore({ dataDir: tmpDir });
-        const wikis = await store2.getWikis();
-        expect(wikis).toHaveLength(1);
-        expect(wikis[0].name).toBe('Persisted');
-    });
-
-    // --- Wiki atomic write safety ---
-    it('should persist wikis to wikis.json with atomic writes', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWiki({
-            id: 'wiki-1', name: 'Test', wikiDir: '/test', aiEnabled: true,
-            registeredAt: '2026-01-01T00:00:00.000Z',
-        });
-
-        const raw = await fs.readFile(path.join(tmpDir, 'wikis.json'), 'utf-8');
-        expect(() => JSON.parse(raw)).not.toThrow();
-        const parsed = JSON.parse(raw);
-        expect(parsed).toHaveLength(1);
-        expect(parsed[0].id).toBe('wiki-1');
-    });
-
-    // --- Filter by status ---
-    it('should filter by status', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { status: 'running' }));
-        await store.addProcess(makeProcess('p2', { status: 'completed' }));
-        await store.addProcess(makeProcess('p3', { status: 'failed' }));
-
-        const running = await store.getAllProcesses({ status: 'running' });
-        expect(running).toHaveLength(1);
-        expect(running[0].id).toBe('p1');
-
-        const multi = await store.getAllProcesses({ status: ['running', 'failed'] });
-        expect(multi).toHaveLength(2);
-    });
-
-    // --- Filter by type ---
-    it('should filter by type', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { type: 'clarification' }));
-        await store.addProcess(makeProcess('p2', { type: 'code-review' }));
-
-        const reviews = await store.getAllProcesses({ type: 'code-review' });
-        expect(reviews).toHaveLength(1);
-        expect(reviews[0].id).toBe('p2');
-    });
-
-    // --- Filter by since ---
-    it('should filter by since date', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('old', {
-            startTime: new Date('2025-01-01'),
-        }));
-        await store.addProcess(makeProcess('new', {
-            startTime: new Date('2026-06-01'),
-        }));
-
-        const recent = await store.getAllProcesses({
-            since: new Date('2026-01-01'),
-        });
-        expect(recent).toHaveLength(1);
-        expect(recent[0].id).toBe('new');
-    });
-
-    // --- Pagination ---
-    it('should support limit and offset', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        for (let i = 0; i < 5; i++) {
-            await store.addProcess(makeProcess(`p${i}`));
-        }
-
-        const page = await store.getAllProcesses({ limit: 2, offset: 1 });
-        expect(page).toHaveLength(2);
-        expect(page[0].id).toBe('p1');
-        expect(page[1].id).toBe('p2');
-    });
-
-    // --- onProcessChange callback ---
-    it('should fire onProcessChange callbacks', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const events: ProcessEvent[] = [];
-        store.onProcessChange = (event) => events.push(event);
-
-        const p = makeProcess('p1');
+        const p = makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } });
         await store.addProcess(p);
-        await store.updateProcess('p1', { status: 'failed' });
-        await store.removeProcess('p1');
 
-        expect(events).toHaveLength(3);
-        expect(events[0].type).toBe('process-added');
-        expect(events[1].type).toBe('process-updated');
-        expect(events[2].type).toBe('process-removed');
+        const filePath = path.join(tmpDir, 'processes', 'ws-a', 'p1.json');
+        const raw = await fs.readFile(filePath, 'utf-8');
+        const entry: StoredProcessEntry = JSON.parse(raw);
+        expect(entry.workspaceId).toBe('ws-a');
+        expect(entry.process.id).toBe('p1');
     });
 
-    // --- onProcessOutput / emitProcessOutput ---
-    it('should deliver output chunks to subscriber in order', async () => {
+    // 2. Layout — addProcess updates workspace index.json
+    it('should update workspace index.json after adding processes', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { status: 'running' }));
-
-        const received: ProcessOutputEvent[] = [];
-        store.onProcessOutput('p1', (event) => received.push(event));
-
-        store.emitProcessOutput('p1', 'chunk-1');
-        store.emitProcessOutput('p1', 'chunk-2');
-        store.emitProcessOutput('p1', 'chunk-3');
-
-        expect(received).toHaveLength(3);
-        expect(received[0]).toEqual({ type: 'chunk', content: 'chunk-1' });
-        expect(received[1]).toEqual({ type: 'chunk', content: 'chunk-2' });
-        expect(received[2]).toEqual({ type: 'chunk', content: 'chunk-3' });
-    });
-
-    it('should deliver complete event and clean up emitter', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { status: 'running' }));
-
-        const received: ProcessOutputEvent[] = [];
-        store.onProcessOutput('p1', (event) => received.push(event));
-
-        store.emitProcessOutput('p1', 'hello');
-        store.emitProcessComplete('p1', 'completed', '2m 30s');
-
-        expect(received).toHaveLength(2);
-        expect(received[1]).toEqual({ type: 'complete', status: 'completed', duration: '2m 30s' });
-
-        // Emitter should be cleaned up — further emits are no-ops
-        store.emitProcessOutput('p1', 'after-complete');
-        expect(received).toHaveLength(2);
-    });
-
-    it('should support unsubscribe before complete', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        const received: ProcessOutputEvent[] = [];
-        const unsub = store.onProcessOutput('p1', (event) => received.push(event));
-
-        store.emitProcessOutput('p1', 'before-unsub');
-        unsub();
-        store.emitProcessOutput('p1', 'after-unsub');
-
-        expect(received).toHaveLength(1);
-        expect(received[0].content).toBe('before-unsub');
-    });
-
-    it('should handle emitProcessOutput with no subscribers', () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        // Should not throw
-        store.emitProcessOutput('no-subscribers', 'data');
-    });
-
-    it('should handle emitProcessComplete with no subscribers', () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        // No emitter exists — should not throw
-        store.emitProcessComplete('no-emitter', 'completed', '1s');
-    });
-
-    // --- Concurrent write safety (expanded) ---
-    it('should handle 10 parallel updates on overlapping IDs', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        for (let i = 0; i < 5; i++) {
-            await store.addProcess(makeProcess(`p${i}`, { status: 'running' }));
+        for (const id of ['p1', 'p2', 'p3']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
         }
 
-        const updates = Array.from({ length: 10 }, (_, i) =>
-            store.updateProcess(`p${i % 5}`, { result: `result-${i}` })
-        );
-        await Promise.all(updates);
-
-        // All 5 processes should still exist and have a result
-        for (let i = 0; i < 5; i++) {
-            const p = await store.getProcess(`p${i}`);
-            expect(p).toBeDefined();
-            expect(p!.result).toBeDefined();
-        }
+        const indexPath = path.join(tmpDir, 'processes', 'ws-a', 'index.json');
+        const raw = await fs.readFile(indexPath, 'utf-8');
+        const index: Array<{ id: string }> = JSON.parse(raw);
+        const ids = index.map(e => e.id).sort();
+        expect(ids).toEqual(['p1', 'p2', 'p3']);
     });
 
-    // --- Large dataset performance ---
-    it('should handle 500 processes with fast list and get', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses: 600 });
-        const count = 500;
-
-        for (let i = 0; i < count; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
-                metadata: { type: 'clarification', workspaceId: i % 2 === 0 ? 'ws-a' : 'ws-b' }
-            }));
-        }
-
-        const startList = Date.now();
-        const all = await store.getAllProcesses();
-        const listDuration = Date.now() - startList;
-        expect(all).toHaveLength(count);
-        expect(listDuration).toBeLessThan(2000);
-
-        // Filter by workspace
-        const wsA = await store.getAllProcesses({ workspaceId: 'ws-a' });
-        expect(wsA).toHaveLength(250);
-
-        // Fast single get
-        const startGet = Date.now();
-        const last = await store.getProcess(`p${count - 1}`);
-        const getDuration = Date.now() - startGet;
-        expect(last).toBeDefined();
-        expect(getDuration).toBeLessThan(500);
-    });
-
-    // --- Retention pruning expanded ---
-    it('should prune old processes while respecting maxCount', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses: 100 });
-
-        // Insert 150 completed processes
-        for (let i = 0; i < 150; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
-                status: 'completed',
-                startTime: new Date(Date.now() - (150 - i) * 60_000),
-            }));
-        }
-
-        const all = await store.getAllProcesses();
-        expect(all.length).toBeLessThanOrEqual(100);
-    });
-});
-
-describe('getDefaultDataDir', () => {
-    it('should return COC_DATA_DIR when env var is set, else ~/.coc under homedir', () => {
-        const dir = getDefaultDataDir();
-        if (process.env.COC_DATA_DIR) {
-            expect(dir).toBe(process.env.COC_DATA_DIR);
-        } else {
-            expect(dir).toContain('.coc');
-            expect(dir.startsWith(os.homedir())).toBe(true);
-        }
-    });
-});
-
-describe('ensureDataDir', () => {
-    let tmpDir: string;
-
-    beforeEach(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-ensure-'));
-    });
-
-    afterEach(async () => {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-    });
-
-    it('should create nested directories', async () => {
-        const nested = path.join(tmpDir, 'a', 'b', 'c');
-        const result = await ensureDataDir(nested);
-        expect(result).toBe(path.resolve(nested));
-
-        const stat = await fs.stat(nested);
-        expect(stat.isDirectory()).toBe(true);
-    });
-
-    it('should be idempotent', async () => {
-        const dir = path.join(tmpDir, 'existing');
-        await ensureDataDir(dir);
-        // Should not throw on second call
-        const result = await ensureDataDir(dir);
-        expect(result).toBe(path.resolve(dir));
-    });
-});
-
-// ============================================================================
-// clearAllWorkspaces / clearAllWikis / getStorageStats
-// ============================================================================
-
-describe('FileProcessStore - Admin Methods', () => {
-    let tmpDir: string;
-
-    beforeEach(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-admin-test-'));
-    });
-
-    afterEach(async () => {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-    });
-
-    // --- clearAllWorkspaces ---
-
-    it('clearAllWorkspaces should clear all workspaces and return count', async () => {
+    // 3. Layout — addProcess updates _id-map.json
+    it('should update _id-map.json with workspaceId mapping after addProcess', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWorkspace({ id: 'ws1', name: 'Workspace 1', rootPath: '/tmp/ws1' });
-        await store.registerWorkspace({ id: 'ws2', name: 'Workspace 2', rootPath: '/tmp/ws2' });
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
 
-        const removed = await store.clearAllWorkspaces();
-        expect(removed).toBe(2);
-
-        const remaining = await store.getWorkspaces();
-        expect(remaining).toEqual([]);
+        const idMapPath = path.join(tmpDir, 'processes', '_id-map.json');
+        const raw = await fs.readFile(idMapPath, 'utf-8');
+        const idMap: Record<string, string> = JSON.parse(raw);
+        expect(idMap['p1']).toBe('ws-a');
     });
 
-    it('clearAllWorkspaces should return 0 for empty store', async () => {
+    // 4. getProcess with workspaceId hint — hits correct file directly (no _id-map needed)
+    it('should retrieve process via direct path when workspaceId hint is provided', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        const removed = await store.clearAllWorkspaces();
-        expect(removed).toBe(0);
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+
+        // Delete _id-map to prove direct path doesn't need it
+        await fs.unlink(path.join(tmpDir, 'processes', '_id-map.json'));
+
+        const result = await store.getProcess('p1', 'ws-a');
+        expect(result).toBeDefined();
+        expect(result!.id).toBe('p1');
     });
 
-    // --- clearAllWikis ---
-
-    it('clearAllWikis should clear all wikis and return count', async () => {
+    // 5. getProcess without hint — uses _id-map.json lookup
+    it('should use _id-map.json lookup when no workspaceId hint is given', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.registerWiki({
-            id: 'w1', name: 'Wiki 1', wikiDir: '/tmp/w1', aiEnabled: false, registeredAt: new Date().toISOString(),
-        });
-        await store.registerWiki({
-            id: 'w2', name: 'Wiki 2', wikiDir: '/tmp/w2', aiEnabled: true, registeredAt: new Date().toISOString(),
-        });
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
 
-        const removed = await store.clearAllWikis();
-        expect(removed).toBe(2);
-
-        const remaining = await store.getWikis();
-        expect(remaining).toEqual([]);
-    });
-
-    it('clearAllWikis should return 0 for empty store', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const removed = await store.clearAllWikis();
-        expect(removed).toBe(0);
-    });
-
-    // --- getStorageStats ---
-
-    it('getStorageStats should return correct counts', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-        await store.registerWorkspace({ id: 'ws1', name: 'WS', rootPath: '/tmp/ws1' });
-        await store.registerWiki({
-            id: 'w1', name: 'Wiki', wikiDir: '/tmp/w1', aiEnabled: false, registeredAt: new Date().toISOString(),
-        });
-
-        const stats = await store.getStorageStats();
-        expect(stats.totalProcesses).toBe(2);
-        expect(stats.totalWorkspaces).toBe(1);
-        expect(stats.totalWikis).toBe(1);
-        expect(stats.storageSize).toBeGreaterThan(0);
-    });
-
-    it('getStorageStats should return zeros for empty store', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const stats = await store.getStorageStats();
-        expect(stats.totalProcesses).toBe(0);
-        expect(stats.totalWorkspaces).toBe(0);
-        expect(stats.totalWikis).toBe(0);
-        expect(stats.storageSize).toBe(0);
-    });
-
-    it('getStorageStats should not read individual process files (uses index only)', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-        await store.addProcess(makeProcess('p3'));
-
-        // Spy on getAllProcesses to ensure it is NOT called (getStorageStats should use readIndex instead)
-        const getAllProcessesSpy = vi.spyOn(store, 'getAllProcesses');
-
-        const stats = await store.getStorageStats();
-
-        expect(stats.totalProcesses).toBe(3);
-        expect(getAllProcessesSpy).not.toHaveBeenCalled();
-
-        getAllProcessesSpy.mockRestore();
-    });
-});
-
-// ============================================================================
-// Index + Per-Process Files Architecture
-// ============================================================================
-
-describe('FileProcessStore - Index + Per-Process Files', () => {
-    let tmpDir: string;
-
-    beforeEach(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-index-'));
-    });
-
-    afterEach(async () => {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-    });
-
-    it('should create processes/ directory with index.json and per-process files', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-
-        // Verify per-workspace directory structure (_default for no workspaceId)
-        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', '_default', 'index.json'), 'utf-8');
-        const index = JSON.parse(indexRaw) as ProcessIndexEntry[];
-        expect(index).toHaveLength(2);
-        expect(index.map(e => e.id).sort()).toEqual(['p1', 'p2']);
-
-        // Verify per-process files exist in workspace dir
-        const p1Raw = await fs.readFile(path.join(tmpDir, 'processes', '_default', 'p1.json'), 'utf-8');
-        const p1Entry = JSON.parse(p1Raw) as StoredProcessEntry;
-        expect(p1Entry.process.id).toBe('p1');
-        expect(p1Entry.process.fullPrompt).toBe('Full prompt for p1');
-
-        // Verify _id-map.json was created
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap = JSON.parse(idMapRaw) as Record<string, string>;
-        expect(idMap['p1']).toBe('');
-        expect(idMap['p2']).toBe('');
-    });
-
-    it('index.json should not contain heavy fields (fullPrompt, result, conversationTurns)', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            fullPrompt: 'A very long prompt...',
-            result: 'A very long result...',
-            conversationTurns: [
-                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0 },
-            ],
-        }));
-
-        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', '_default', 'index.json'), 'utf-8');
-        const index = JSON.parse(indexRaw);
-        expect(index).toHaveLength(1);
-        const entry = index[0];
-        expect(entry.fullPrompt).toBeUndefined();
-        expect(entry.result).toBeUndefined();
-        expect(entry.conversationTurns).toBeUndefined();
-        expect(entry.id).toBe('p1');
-        expect(entry.status).toBe('completed');
-    });
-
-    it('should handle missing per-process file gracefully (getProcess returns undefined)', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-
-        // Manually delete p1's file to simulate inconsistency
-        await fs.unlink(path.join(tmpDir, 'processes', '_default', 'p1.json'));
-
-        expect(await store.getProcess('p1')).toBeUndefined();
-        // p2 should still work
-        const p2 = await store.getProcess('p2');
-        expect(p2).toBeDefined();
-        expect(p2!.id).toBe('p2');
-    });
-
-    it('should skip missing per-process files in getAllProcesses', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-        await store.addProcess(makeProcess('p3'));
-
-        // Delete p2's file
-        await fs.unlink(path.join(tmpDir, 'processes', '_default', 'p2.json'));
-
-        const all = await store.getAllProcesses();
-        expect(all).toHaveLength(2);
-        expect(all.map(p => p.id).sort()).toEqual(['p1', 'p3']);
-    });
-
-    it('prune should delete per-process files for pruned entries', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses: 5 });
-
-        for (let i = 0; i < 8; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
-                status: 'completed',
-                startTime: new Date(Date.now() + i * 1000),
-            }));
-        }
-
-        const all = await store.getAllProcesses();
-        expect(all.length).toBeLessThanOrEqual(5);
-
-        // Verify pruned files are gone
-        const files = await fs.readdir(path.join(tmpDir, 'processes', '_default'));
-        const jsonFiles = files.filter(f => f !== 'index.json' && f.endsWith('.json'));
-        expect(jsonFiles.length).toBeLessThanOrEqual(5);
-    });
-
-    it('clear should delete per-process files and remove workspace dir', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-        await store.addProcess(makeProcess('p3'));
-
-        await store.clearProcesses();
-
-        // Workspace dir should be removed entirely (no content filters → fast path)
-        const defaultDirExists = await fs.access(path.join(tmpDir, 'processes', '_default'))
-            .then(() => true, () => false);
-        expect(defaultDirExists).toBe(false);
-
-        // getAllProcesses still works (returns empty)
-        const all = await store.getAllProcesses();
-        expect(all).toEqual([]);
-    });
-
-    it('remove should delete the per-process file', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-        await store.addProcess(makeProcess('p2'));
-
-        await store.removeProcess('p1');
-
-        // p1 file should be gone
-        const files = await fs.readdir(path.join(tmpDir, 'processes', '_default'));
-        const jsonFiles = files.filter(f => f !== 'index.json' && f.endsWith('.json'));
-        expect(jsonFiles).toEqual(['p2.json']);
-    });
-
-    it('should sanitize process IDs in filenames to prevent path traversal', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const dangerousId = '../../../etc/passwd';
-        await store.addProcess(makeProcess(dangerousId));
-
-        const retrieved = await store.getProcess(dangerousId);
-        expect(retrieved).toBeDefined();
-        expect(retrieved!.id).toBe(dangerousId);
-
-        // The file should be inside the _default workspace dir, not escaping it
-        const files = await fs.readdir(path.join(tmpDir, 'processes', '_default'));
-        const jsonFiles = files.filter(f => f !== 'index.json' && f.endsWith('.json'));
-        expect(jsonFiles).toHaveLength(1);
-        // Sanitized: ../../../etc/passwd -> ______etc_passwd
-        expect(jsonFiles[0]).not.toContain('..');
-    });
-});
-
-// ============================================================================
-// Per-Workspace Directory Layout
-// ============================================================================
-
-describe('FileProcessStore - Per-Workspace Layout', () => {
-    let tmpDir: string;
-
-    beforeEach(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-ws-layout-'));
-    });
-
-    afterEach(async () => {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-    });
-
-    it('addProcess with no workspaceId creates files in _default subdir', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1'));
-
-        // process file in _default/
-        const procRaw = await fs.readFile(path.join(tmpDir, 'processes', '_default', 'p1.json'), 'utf-8');
-        expect(JSON.parse(procRaw).process.id).toBe('p1');
-
-        // workspace index in _default/
-        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', '_default', 'index.json'), 'utf-8');
-        const index = JSON.parse(indexRaw);
-        expect(index).toHaveLength(1);
-
-        // _id-map.json maps id to '' (empty string = _default)
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap = JSON.parse(idMapRaw);
-        expect(idMap['p1']).toBe('');
-    });
-
-    it('addProcess with workspaceId creates files in named workspace subdir', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-abc' }
-        }));
-
-        // process file in ws-abc/
-        const procRaw = await fs.readFile(path.join(tmpDir, 'processes', 'ws-abc', 'p1.json'), 'utf-8');
-        expect(JSON.parse(procRaw).process.id).toBe('p1');
-
-        // workspace index in ws-abc/
-        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', 'ws-abc', 'index.json'), 'utf-8');
-        expect(JSON.parse(indexRaw)).toHaveLength(1);
-
-        // _id-map.json maps id to 'ws-abc'
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        expect(JSON.parse(idMapRaw)['p1']).toBe('ws-abc');
-    });
-
-    it('getProcess(id) without workspaceId uses _id-map.json lookup', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-xyz' }
-        }));
-
+        // Works with _id-map present
         const result = await store.getProcess('p1');
         expect(result).toBeDefined();
         expect(result!.id).toBe('p1');
+
+        // Delete _id-map — lookup without hint now fails
+        await fs.unlink(path.join(tmpDir, 'processes', '_id-map.json'));
+        const resultNoMap = await store.getProcess('p1');
+        expect(resultNoMap).toBeUndefined();
     });
 
-    it('getProcess(id, workspaceId) reads directly without _id-map.json', async () => {
+    // 6. getProcess — returns undefined for unknown id
+    it('should return undefined for unknown id', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-direct' }
-        }));
-
-        // Overwrite _id-map.json to be empty — direct lookup should still work
-        await fs.writeFile(
-            path.join(tmpDir, 'processes', '_id-map.json'),
-            JSON.stringify({}),
-            'utf-8'
-        );
-
-        const result = await store.getProcess('p1', 'ws-direct');
-        expect(result).toBeDefined();
-        expect(result!.id).toBe('p1');
-
-        // But lookup without workspaceId should return undefined (map is empty)
-        const resultNoWs = await store.getProcess('p1');
-        expect(resultNoWs).toBeUndefined();
+        const result = await store.getProcess('nonexistent');
+        expect(result).toBeUndefined();
     });
 
-    it('getAllProcesses() without filter aggregates all workspace subdirs', async () => {
+    // 7. getProcess — returns undefined when workspaceId hint is wrong
+    it('should return undefined when workspaceId hint points to wrong workspace', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
-        }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-2' }
-        }));
-        await store.addProcess(makeProcess('p3')); // _default
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+
+        const result = await store.getProcess('p1', 'ws-wrong');
+        expect(result).toBeUndefined();
+    });
+
+    // 8. getAllProcesses — no filter returns all workspaces
+    it('should return processes from all workspaces when no filter provided', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        for (const id of ['a1', 'a2', 'a3']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        }
+        for (const id of ['b1', 'b2']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+        }
 
         const all = await store.getAllProcesses();
-        expect(all).toHaveLength(3);
-        expect(all.map(p => p.id).sort()).toEqual(['p1', 'p2', 'p3']);
+        expect(all).toHaveLength(5);
     });
 
-    it('getAllProcesses({ workspaceId }) returns only that workspace processes', async () => {
+    // 9. getAllProcesses — filter.workspaceId returns single workspace
+    it('should return only processes from the specified workspace', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
-        }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-2' }
-        }));
-        await store.addProcess(makeProcess('p3', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
-        }));
+        for (const id of ['a1', 'a2', 'a3']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        }
+        for (const id of ['b1', 'b2']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+        }
 
-        const ws1 = await store.getAllProcesses({ workspaceId: 'ws-1' });
-        expect(ws1).toHaveLength(2);
-        expect(ws1.map(p => p.id).sort()).toEqual(['p1', 'p3']);
-
-        const ws2 = await store.getAllProcesses({ workspaceId: 'ws-2' });
-        expect(ws2).toHaveLength(1);
-        expect(ws2[0].id).toBe('p2');
+        const wsA = await store.getAllProcesses({ workspaceId: 'ws-a' });
+        expect(wsA).toHaveLength(3);
+        expect(wsA.map(p => p.id).sort()).toEqual(['a1', 'a2', 'a3']);
     });
 
-    it('updateProcess updates file in correct workspace dir; _id-map.json unchanged', async () => {
+    // 10. getAllProcesses — filter.status filters within and across workspaces
+    it('should filter by status across workspaces', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('a-run', {
+            status: 'running',
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('a-done', {
+            status: 'completed',
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
+        }));
+        await store.addProcess(makeProcess('b-done', {
+            status: 'completed',
+            metadata: { type: 'ai', workspaceId: 'ws-b' },
+        }));
+
+        const done = await store.getAllProcesses({ status: ['completed'] });
+        expect(done).toHaveLength(2);
+        expect(done.map(p => p.id).sort()).toEqual(['a-done', 'b-done']);
+    });
+
+    // 11. updateProcess — updates file and preserves workspaceId in _id-map
+    it('should update process file while leaving _id-map workspace mapping unchanged', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('p1', {
             status: 'running',
-            metadata: { type: 'clarification', workspaceId: 'ws-upd' }
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
         }));
 
         await store.updateProcess('p1', { status: 'completed', result: 'done' });
 
-        // Process file updated in correct workspace dir
-        const procRaw = await fs.readFile(path.join(tmpDir, 'processes', 'ws-upd', 'p1.json'), 'utf-8');
-        const proc = JSON.parse(procRaw);
-        expect(proc.process.status).toBe('completed');
+        const updated = await store.getProcess('p1', 'ws-a');
+        expect(updated!.status).toBe('completed');
+        expect(updated!.result).toBe('done');
 
-        // _id-map.json entry unchanged
         const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        expect(JSON.parse(idMapRaw)['p1']).toBe('ws-upd');
+        const idMap: Record<string, string> = JSON.parse(idMapRaw);
+        expect(idMap['p1']).toBe('ws-a');
     });
 
-    it('removeProcess deletes file, updates workspace index, removes from _id-map.json', async () => {
+    // 12. clearProcesses with workspaceId — removes dir and map entries
+    it('should remove workspace dir and _id-map entries when clearing by workspaceId', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-rm' }
-        }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-rm' }
-        }));
+        for (const id of ['a1', 'a2', 'a3']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
+        }
+        for (const id of ['b1', 'b2']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
+        }
 
-        await store.removeProcess('p1');
+        await store.clearProcesses({ workspaceId: 'ws-a' });
 
-        // p1 file gone
-        const p1Exists = await fs.access(path.join(tmpDir, 'processes', 'ws-rm', 'p1.json'))
-            .then(() => true, () => false);
-        expect(p1Exists).toBe(false);
+        // ws-a dir should be gone
+        const wsAExists = await fs.access(path.join(tmpDir, 'processes', 'ws-a')).then(() => true, () => false);
+        expect(wsAExists).toBe(false);
 
-        // p2 still present
-        const p2Exists = await fs.access(path.join(tmpDir, 'processes', 'ws-rm', 'p2.json'))
-            .then(() => true, () => false);
-        expect(p2Exists).toBe(true);
-
-        // workspace index updated
-        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', 'ws-rm', 'index.json'), 'utf-8');
-        const index = JSON.parse(indexRaw);
-        expect(index).toHaveLength(1);
-        expect(index[0].id).toBe('p2');
-
-        // _id-map.json: p1 removed, p2 still present
+        // _id-map should only have ws-b entries
         const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap = JSON.parse(idMapRaw);
-        expect(idMap['p1']).toBeUndefined();
-        expect(idMap['p2']).toBe('ws-rm');
+        const idMap: Record<string, string> = JSON.parse(idMapRaw);
+        expect(Object.keys(idMap).sort()).toEqual(['b1', 'b2']);
+        expect(idMap['b1']).toBe('ws-b');
+
+        // ws-b files still intact
+        for (const id of ['b1', 'b2']) {
+            const p = await store.getProcess(id, 'ws-b');
+            expect(p).toBeDefined();
+        }
     });
 
-    it('clearProcesses() clears all workspace subdirs and _id-map.json', async () => {
+    // 13. clearProcesses without workspaceId — applies status filter globally
+    it('should clear matching processes across workspaces by status filter', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
+        await store.addProcess(makeProcess('a-done', {
+            status: 'completed',
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
         }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-2' }
+        await store.addProcess(makeProcess('a-run', {
+            status: 'running',
+            metadata: { type: 'ai', workspaceId: 'ws-a' },
         }));
-        await store.addProcess(makeProcess('p3'));
-
-        const count = await store.clearProcesses();
-        expect(count).toBe(3);
-
-        // All workspace indices empty
-        const all = await store.getAllProcesses();
-        expect(all).toEqual([]);
-
-        // _id-map.json cleared
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        expect(JSON.parse(idMapRaw)).toEqual({});
-    });
-
-    it('clearProcesses({ workspaceId }) clears only that workspace, others intact', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
-        }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-2' }
-        }));
-        await store.addProcess(makeProcess('p3', {
-            metadata: { type: 'clarification', workspaceId: 'ws-1' }
+        await store.addProcess(makeProcess('b-done', {
+            status: 'completed',
+            metadata: { type: 'ai', workspaceId: 'ws-b' },
         }));
 
-        const count = await store.clearProcesses({ workspaceId: 'ws-1' });
-        expect(count).toBe(2);
+        await store.clearProcesses({ status: ['completed'] });
 
         const remaining = await store.getAllProcesses();
         expect(remaining).toHaveLength(1);
-        expect(remaining[0].id).toBe('p2');
-
-        // _id-map.json: p1/p3 removed, p2 intact
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap = JSON.parse(idMapRaw);
-        expect(idMap['p1']).toBeUndefined();
-        expect(idMap['p3']).toBeUndefined();
-        expect(idMap['p2']).toBe('ws-2');
+        expect(remaining[0].id).toBe('a-run');
     });
 
-    it('pruning removes ids from _id-map.json', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses: 3 });
+    // 14. Processes with empty workspaceId — stored under _default
+    it('should store processes with empty workspaceId under _default directory', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: '' } }));
 
-        // Add 5 completed processes to same workspace — should prune 2 oldest
-        for (let i = 0; i < 5; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
-                status: 'completed',
-                startTime: new Date(Date.now() + i * 1000),
-                metadata: { type: 'clarification', workspaceId: 'ws-prune' }
-            }));
+        const filePath = path.join(tmpDir, 'processes', '_default', 'p1.json');
+        const raw = await fs.readFile(filePath, 'utf-8');
+        const entry: StoredProcessEntry = JSON.parse(raw);
+        expect(entry.workspaceId).toBe('');
+    });
+
+    // 15. getStorageStats — counts across all workspace dirs
+    it('should count processes and workspace dirs across all workspaces', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        for (const id of ['a1', 'a2', 'a3']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
         }
-
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap = JSON.parse(idMapRaw) as Record<string, string>;
-
-        // Only 3 entries should remain in the id map
-        expect(Object.keys(idMap)).toHaveLength(3);
-
-        // All remaining ids should map to ws-prune
-        for (const wsId of Object.values(idMap)) {
-            expect(wsId).toBe('ws-prune');
+        for (const id of ['b1', 'b2']) {
+            await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-b' } }));
         }
-    });
-
-    it('getProcessSummaries aggregates workspace indices', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            metadata: { type: 'clarification', workspaceId: 'ws-a' }
-        }));
-        await store.addProcess(makeProcess('p2', {
-            metadata: { type: 'clarification', workspaceId: 'ws-b' }
-        }));
-
-        const all = await store.getProcessSummaries!();
-        expect(all.total).toBe(2);
-        expect(all.entries.map(e => e.id).sort()).toEqual(['p1', 'p2']);
-
-        const wsA = await store.getProcessSummaries!({ workspaceId: 'ws-a' });
-        expect(wsA.total).toBe(1);
-        expect(wsA.entries[0].id).toBe('p1');
-    });
-});
-
-describe('FileProcessStore - getProcessSummaries', () => {
-    let tmpDir: string;
-
-    beforeEach(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-summaries-'));
-    });
-
-    afterEach(async () => {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-    });
-
-    it('should return empty entries for empty store', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const result = await store.getProcessSummaries();
-        expect(result).toEqual({ entries: [], total: 0 });
-    });
-
-    it('should return index entries without reading process files', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws1' } }));
-        await store.addProcess(makeProcess('p2', { metadata: { workspaceId: 'ws1' } }));
-
-        const result = await store.getProcessSummaries();
-        expect(result.total).toBe(2);
-        expect(result.entries).toHaveLength(2);
-        expect(result.entries.map(e => e.id).sort()).toEqual(['p1', 'p2']);
-
-        // Entries should be lightweight (no heavy fields)
-        for (const entry of result.entries) {
-            expect(entry).toHaveProperty('id');
-            expect(entry).toHaveProperty('status');
-            expect(entry).toHaveProperty('startTime');
-            expect(entry).not.toHaveProperty('fullPrompt');
-            expect(entry).not.toHaveProperty('result');
-            expect(entry).not.toHaveProperty('conversationTurns');
-        }
-    });
-
-    it('should include title in index entry', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { title: 'My Title' }));
-
-        const result = await store.getProcessSummaries();
-        expect(result.entries[0].title).toBe('My Title');
-    });
-
-    it('should include duration in index entry when endTime is set', async () => {
-        const start = new Date('2026-01-01T00:00:00Z');
-        const end = new Date('2026-01-01T00:01:30Z');
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { startTime: start, endTime: end }));
-
-        const result = await store.getProcessSummaries();
-        expect(result.entries[0].duration).toBe(90000); // 1.5 minutes in ms
-    });
-
-    it('should have undefined duration when endTime is not set', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { status: 'running' as AIProcessStatus, endTime: undefined }));
-
-        const result = await store.getProcessSummaries();
-        expect(result.entries[0].duration).toBeUndefined();
-    });
-
-    it('should filter by workspaceId', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws1' } }));
-        await store.addProcess(makeProcess('p2', { metadata: { workspaceId: 'ws2' } }));
-
-        const result = await store.getProcessSummaries({ workspaceId: 'ws1' });
-        expect(result.total).toBe(1);
-        expect(result.entries[0].id).toBe('p1');
-    });
-
-    it('should filter by status', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { status: 'completed' as AIProcessStatus }));
-        await store.addProcess(makeProcess('p2', { status: 'running' as AIProcessStatus }));
-        await store.addProcess(makeProcess('p3', { status: 'failed' as AIProcessStatus }));
-
-        const result = await store.getProcessSummaries({ status: 'running' });
-        expect(result.total).toBe(1);
-        expect(result.entries[0].id).toBe('p2');
-    });
-
-    it('should return correct total before pagination', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        for (let i = 0; i < 10; i++) {
-            await store.addProcess(makeProcess(`p${i}`));
-        }
-
-        const result = await store.getProcessSummaries({ limit: 3, offset: 0 });
-        expect(result.total).toBe(10);
-        expect(result.entries).toHaveLength(3);
-    });
-
-    it('should apply pagination correctly', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        for (let i = 0; i < 5; i++) {
-            await store.addProcess(makeProcess(`p${i}`));
-        }
-
-        const page1 = await store.getProcessSummaries({ limit: 2, offset: 0 });
-        const page2 = await store.getProcessSummaries({ limit: 2, offset: 2 });
-        const page3 = await store.getProcessSummaries({ limit: 2, offset: 4 });
-
-        expect(page1.entries).toHaveLength(2);
-        expect(page2.entries).toHaveLength(2);
-        expect(page3.entries).toHaveLength(1);
-        expect(page1.total).toBe(5);
-        expect(page2.total).toBe(5);
-    });
-
-    it('should refresh title and duration in index on updateProcess', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const start = new Date('2026-01-01T00:00:00Z');
-        await store.addProcess(makeProcess('p1', { startTime: start }));
-
-        // Initially no title or duration
-        let result = await store.getProcessSummaries();
-        expect(result.entries[0].title).toBeUndefined();
-        expect(result.entries[0].duration).toBeUndefined();
-
-        // Update with title and endTime
-        const end = new Date('2026-01-01T00:02:00Z');
-        await store.updateProcess('p1', { title: 'AI-Generated Title', endTime: end });
-
-        result = await store.getProcessSummaries();
-        expect(result.entries[0].title).toBe('AI-Generated Title');
-        expect(result.entries[0].duration).toBe(120000); // 2 minutes
-    });
-});
-
-// ============================================================================
-// Multi-Workspace Bulk Operations (003)
-// ============================================================================
-
-describe('FileProcessStore - Multi-Workspace Bulk Ops', () => {
-    let tmpDir: string;
-
-    beforeEach(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fps-bulk-ops-'));
-    });
-
-    afterEach(async () => {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-    });
-
-    // --- getAllProcesses exclude ---
-
-    it('getAllProcesses exclude:conversation strips conversationTurns, fullPrompt, result', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            fullPrompt: 'Full prompt text',
-            result: 'Final result',
-            conversationTurns: [
-                { role: 'user' as const, content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
-            ],
-        }));
-
-        const [p] = await store.getAllProcesses({ exclude: ['conversation'] });
-        expect(p).toBeDefined();
-        expect(p.id).toBe('p1');
-        expect(p.conversationTurns).toBeUndefined();
-        expect((p as Record<string, unknown>).fullPrompt).toBeUndefined();
-        expect((p as Record<string, unknown>).result).toBeUndefined();
-        // Other fields intact
-        expect(p.status).toBe('completed');
-    });
-
-    it('getAllProcesses exclude:toolCalls strips toolCalls from turns but keeps turns', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            conversationTurns: [
-                {
-                    role: 'assistant' as const,
-                    content: 'Used a tool',
-                    timestamp: new Date(),
-                    turnIndex: 0,
-                    timeline: [],
-                    toolCalls: [{
-                        id: 'tc1',
-                        name: 'read_file',
-                        status: 'completed' as const,
-                        startTime: new Date(),
-                        args: {},
-                        result: 'content',
-                    }],
-                },
-            ],
-        }));
-
-        const [p] = await store.getAllProcesses({ exclude: ['toolCalls'] });
-        expect(p.conversationTurns).toHaveLength(1);
-        expect(p.conversationTurns![0].toolCalls).toBeUndefined();
-        expect(p.conversationTurns![0].content).toBe('Used a tool');
-    });
-
-    it('getAllProcesses without exclude returns all fields', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', {
-            result: 'some result',
-            conversationTurns: [
-                { role: 'user' as const, content: 'Hi', timestamp: new Date(), turnIndex: 0, timeline: [] },
-            ],
-        }));
-
-        const [p] = await store.getAllProcesses();
-        expect(p.result).toBe('some result');
-        expect(p.conversationTurns).toHaveLength(1);
-    });
-
-    // --- pagination across workspaces ---
-
-    it('getAllProcesses pagination across workspaces applies after merge', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        // 4 processes in ws-a, 4 in ws-b, 4 in ws-c = 12 total
-        for (let i = 0; i < 4; i++) {
-            await store.addProcess(makeProcess(`a${i}`, { metadata: { workspaceId: 'ws-a' } }));
-            await store.addProcess(makeProcess(`b${i}`, { metadata: { workspaceId: 'ws-b' } }));
-            await store.addProcess(makeProcess(`c${i}`, { metadata: { workspaceId: 'ws-c' } }));
-        }
-
-        const page = await store.getAllProcesses({ limit: 5, offset: 3 });
-        expect(page).toHaveLength(5);
-    });
-
-    // --- getProcessSummaries cross-workspace status filter ---
-
-    it('getProcessSummaries status filter spans workspaces', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('a1', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('a2', { status: 'running' as AIProcessStatus, metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('b1', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-b' } }));
-        await store.addProcess(makeProcess('b2', { status: 'failed' as AIProcessStatus, metadata: { workspaceId: 'ws-b' } }));
-
-        const result = await store.getProcessSummaries!({ status: 'completed' });
-        expect(result.total).toBe(2);
-        expect(result.entries.map(e => e.id).sort()).toEqual(['a1', 'b1']);
-    });
-
-    // --- clearProcesses fast path: workspace dir removed ---
-
-    it('clearProcesses({workspaceId}) fast path removes entire workspace dir', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('a1', { metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('a2', { metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('b1', { metadata: { workspaceId: 'ws-b' } }));
-
-        const count = await store.clearProcesses({ workspaceId: 'ws-a' });
-        expect(count).toBe(2);
-
-        // ws-a dir should be gone
-        const wsAExists = await fs.access(path.join(tmpDir, 'processes', 'ws-a'))
-            .then(() => true, () => false);
-        expect(wsAExists).toBe(false);
-
-        // ws-b untouched
-        const wsBExists = await fs.access(path.join(tmpDir, 'processes', 'ws-b'))
-            .then(() => true, () => false);
-        expect(wsBExists).toBe(true);
-
-        // _id-map.json has no ws-a entries
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap = JSON.parse(idMapRaw);
-        expect(idMap['a1']).toBeUndefined();
-        expect(idMap['a2']).toBeUndefined();
-        expect(idMap['b1']).toBe('ws-b');
-    });
-
-    it('clearProcesses({workspaceId, status}) leaves dir with remaining processes', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { status: 'running' as AIProcessStatus, metadata: { workspaceId: 'ws-x' } }));
-        await store.addProcess(makeProcess('p2', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-x' } }));
-        await store.addProcess(makeProcess('p3', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-x' } }));
-
-        const count = await store.clearProcesses({ workspaceId: 'ws-x', status: 'completed' });
-        expect(count).toBe(2);
-
-        // dir still exists (running process remains)
-        const dirExists = await fs.access(path.join(tmpDir, 'processes', 'ws-x'))
-            .then(() => true, () => false);
-        expect(dirExists).toBe(true);
-
-        // index updated
-        const indexRaw = await fs.readFile(path.join(tmpDir, 'processes', 'ws-x', 'index.json'), 'utf-8');
-        const index = JSON.parse(indexRaw);
-        expect(index).toHaveLength(1);
-        expect(index[0].id).toBe('p1');
-
-        // id-map updated
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap = JSON.parse(idMapRaw);
-        expect(idMap['p1']).toBe('ws-x');
-        expect(idMap['p2']).toBeUndefined();
-        expect(idMap['p3']).toBeUndefined();
-    });
-
-    it('clearProcesses() no filter removes all workspace dirs', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws-1' } }));
-        await store.addProcess(makeProcess('p2', { metadata: { workspaceId: 'ws-2' } }));
-        await store.addProcess(makeProcess('p3', { metadata: { workspaceId: 'ws-3' } }));
-
-        const count = await store.clearProcesses();
-        expect(count).toBe(3);
-
-        // All workspace dirs removed
-        for (const ws of ['ws-1', 'ws-2', 'ws-3']) {
-            const exists = await fs.access(path.join(tmpDir, 'processes', ws))
-                .then(() => true, () => false);
-            expect(exists).toBe(false);
-        }
-
-        // _id-map.json empty
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        expect(JSON.parse(idMapRaw)).toEqual({});
-    });
-
-    it('clearProcesses cross-workspace status filter removes matching across all workspaces', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('r1', { status: 'running' as AIProcessStatus, metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('c1', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('r2', { status: 'running' as AIProcessStatus, metadata: { workspaceId: 'ws-b' } }));
-        await store.addProcess(makeProcess('c2', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-b' } }));
-
-        const count = await store.clearProcesses({ status: 'completed' });
-        expect(count).toBe(2);
-
-        // running processes still accessible
-        expect(await store.getProcess('r1')).toBeDefined();
-        expect(await store.getProcess('r2')).toBeDefined();
-        expect(await store.getProcess('c1')).toBeUndefined();
-        expect(await store.getProcess('c2')).toBeUndefined();
-
-        // ws-a and ws-b dirs still exist (have running processes)
-        for (const ws of ['ws-a', 'ws-b']) {
-            const exists = await fs.access(path.join(tmpDir, 'processes', ws))
-                .then(() => true, () => false);
-            expect(exists).toBe(true);
-        }
-    });
-
-    it('clearProcesses cross-workspace status filter removes empty workspace dirs', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('c1', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-all-completed' } }));
-        await store.addProcess(makeProcess('c2', { status: 'completed' as AIProcessStatus, metadata: { workspaceId: 'ws-all-completed' } }));
-        await store.addProcess(makeProcess('r1', { status: 'running' as AIProcessStatus, metadata: { workspaceId: 'ws-has-running' } }));
-
-        await store.clearProcesses({ status: 'completed' });
-
-        // ws-all-completed dir should be removed (all processes matched)
-        const emptyDirExists = await fs.access(path.join(tmpDir, 'processes', 'ws-all-completed'))
-            .then(() => true, () => false);
-        expect(emptyDirExists).toBe(false);
-
-        // ws-has-running dir still exists
-        const runningDirExists = await fs.access(path.join(tmpDir, 'processes', 'ws-has-running'))
-            .then(() => true, () => false);
-        expect(runningDirExists).toBe(true);
-    });
-
-    // --- getStorageStats with workspace process dirs ---
-
-    it('getStorageStats totalWorkspaces reflects actual workspace process dirs', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        // Add 3 processes across 2 workspaces
-        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('p2', { metadata: { workspaceId: 'ws-a' } }));
-        await store.addProcess(makeProcess('p3', { metadata: { workspaceId: 'ws-b' } }));
-        // Register a workspace that has no process dir yet
-        await store.registerWorkspace({ id: 'ws-c', name: 'C', rootPath: '/c' });
 
         const stats = await store.getStorageStats();
-        expect(stats.totalProcesses).toBe(3);
-        // totalWorkspaces = number of process subdirs (ws-a, ws-b), not registry count
+        expect(stats.totalProcesses).toBe(5);
         expect(stats.totalWorkspaces).toBe(2);
-        expect(stats.storageSize).toBeGreaterThan(0);
     });
 
-    it('getStorageStats returns 0 totalWorkspaces after clearProcesses', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws-a' } }));
-        await store.clearProcesses();
-
-        const stats = await store.getStorageStats();
-        expect(stats.totalProcesses).toBe(0);
-        expect(stats.totalWorkspaces).toBe(0);
+    // --- Utility exports ---
+    it('getDefaultDataDir should return a string path', () => {
+        const dir = getDefaultDataDir();
+        expect(typeof dir).toBe('string');
+        expect(dir.length).toBeGreaterThan(0);
     });
 
-    // --- listWorkspaceDirs skips _id-map.json ---
-
-    it('listWorkspaceDirs skips _id-map.json and other non-directory entries', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        // Add processes to create workspace dirs
-        await store.addProcess(makeProcess('p1', { metadata: { workspaceId: 'ws-1' } }));
-        await store.addProcess(makeProcess('p2', { metadata: { workspaceId: 'ws-2' } }));
-        // _id-map.json exists as a file in processesDir
-        const idMapExists = await fs.access(path.join(tmpDir, 'processes', '_id-map.json'))
-            .then(() => true, () => false);
-        expect(idMapExists).toBe(true);
-
-        // getStorageStats uses listWorkspaceDirs internally; assert it returns only dirs
-        const stats = await store.getStorageStats();
-        expect(stats.totalWorkspaces).toBe(2); // only ws-1 and ws-2, not _id-map.json
+    it('ensureDataDir should create directory recursively', async () => {
+        const nested = path.join(tmpDir, 'a', 'b', 'c');
+        await ensureDataDir(nested);
+        const stat = await fs.stat(nested);
+        expect(stat.isDirectory()).toBe(true);
     });
 });

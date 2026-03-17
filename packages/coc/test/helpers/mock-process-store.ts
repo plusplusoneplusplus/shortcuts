@@ -66,7 +66,15 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
                 processes.set(id, { ...existing, ...updates });
             }
         }),
-        getProcess: vi.fn(async (id: string) => processes.get(id)),
+        getProcess: vi.fn(async (id: string, workspaceId?: string) => {
+            const p = processes.get(id);
+            if (!p) { return undefined; }
+            if (workspaceId !== undefined) {
+                const wsId = p.metadata?.workspaceId ?? '';
+                return wsId === workspaceId ? p : undefined;
+            }
+            return p;
+        }),
         getAllProcesses: vi.fn(async () => Array.from(processes.values())),
         removeProcess: vi.fn(async (id: string) => { processes.delete(id); }),
         clearProcesses: vi.fn(async () => {

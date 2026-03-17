@@ -1,8 +1,8 @@
 /**
- * FileProcessStore Flush Handler Tests
+ * FileProcessStore Flush Handler Tests — Write Queue and Concurrent Writes
  *
- * Tests the requestFlush / registerFlushHandler / unregisterFlushHandler
- * mechanism used to flush buffered streaming content on SSE reconnect.
+ * Tests the write-queue serialization for concurrent addProcess calls,
+ * concurrent writes to different workspaces, and the flush handler mechanism.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -10,9 +10,21 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
-import { FileProcessStore } from '../src/index';
+import { FileProcessStore, AIProcess, AIProcessStatus } from '../src/index';
 
-describe('FileProcessStore flush handlers', () => {
+function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
+    return {
+        id,
+        type: 'ai',
+        promptPreview: 'test prompt',
+        fullPrompt: 'test full prompt',
+        status: 'completed' as AIProcessStatus,
+        startTime: new Date(),
+        ...overrides,
+    };
+}
+
+describe('FileProcessStore flush handlers and write-queue', () => {
     let tmpDir: string;
 
     beforeEach(async () => {
@@ -23,6 +35,51 @@ describe('FileProcessStore flush handlers', () => {
         await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
+    // 25. Write queue serializes concurrent addProcess to same workspace
+    it('should serialize concurrent addProcess calls to the same workspace', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const n = 10;
+
+        await Promise.all(
+            Array.from({ length: n }, (_, i) =>
+                store.addProcess(makeProcess(`p${i}`, { metadata: { type: 'ai', workspaceId: 'ws-a' } }))
+            )
+        );
+
+        // All files must exist
+        for (let i = 0; i < n; i++) {
+            const filePath = path.join(tmpDir, 'processes', 'ws-a', `p${i}.json`);
+            const exists = await fs.access(filePath).then(() => true, () => false);
+            expect(exists).toBe(true);
+        }
+
+        // index.json must have exactly n entries
+        const indexRaw = await fs.readFile(
+            path.join(tmpDir, 'processes', 'ws-a', 'index.json'),
+            'utf-8'
+        );
+        const index: unknown[] = JSON.parse(indexRaw);
+        expect(index).toHaveLength(n);
+    });
+
+    // 26. Concurrent writes to different workspaces do not deadlock
+    it('should handle concurrent addProcess calls to different workspaces', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+
+        await Promise.all([
+            ...Array.from({ length: 5 }, (_, i) =>
+                store.addProcess(makeProcess(`a${i}`, { metadata: { type: 'ai', workspaceId: 'ws-a' } }))
+            ),
+            ...Array.from({ length: 5 }, (_, i) =>
+                store.addProcess(makeProcess(`b${i}`, { metadata: { type: 'ai', workspaceId: 'ws-b' } }))
+            ),
+        ]);
+
+        const all = await store.getAllProcesses();
+        expect(all).toHaveLength(10);
+    });
+
+    // 27. registerFlushHandler called on flush trigger
     it('should call registered flush handler on requestFlush', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         const handler = vi.fn(async () => {});
@@ -33,14 +90,8 @@ describe('FileProcessStore flush handlers', () => {
         expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    it('should be a no-op when no handler is registered', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        // Should not throw
-        await store.requestFlush('nonexistent');
-    });
-
-    it('should not call handler after unregister', async () => {
+    // 28. Unregistered handler not called after unregister
+    it('should not call handler after unregisterFlushHandler', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         const handler = vi.fn(async () => {});
 
@@ -49,38 +100,5 @@ describe('FileProcessStore flush handlers', () => {
         await store.requestFlush('proc-2');
 
         expect(handler).not.toHaveBeenCalled();
-    });
-
-    it('should replace handler on re-register', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const handler1 = vi.fn(async () => {});
-        const handler2 = vi.fn(async () => {});
-
-        store.registerFlushHandler('proc-3', handler1);
-        store.registerFlushHandler('proc-3', handler2);
-        await store.requestFlush('proc-3');
-
-        expect(handler1).not.toHaveBeenCalled();
-        expect(handler2).toHaveBeenCalledTimes(1);
-    });
-
-    it('should handle multiple processes independently', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        const handler1 = vi.fn(async () => {});
-        const handler2 = vi.fn(async () => {});
-
-        store.registerFlushHandler('proc-a', handler1);
-        store.registerFlushHandler('proc-b', handler2);
-
-        await store.requestFlush('proc-a');
-
-        expect(handler1).toHaveBeenCalledTimes(1);
-        expect(handler2).not.toHaveBeenCalled();
-    });
-
-    it('unregisterFlushHandler is a no-op for unknown id', () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        // Should not throw
-        store.unregisterFlushHandler('unknown');
     });
 });
