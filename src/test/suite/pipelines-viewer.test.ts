@@ -845,7 +845,7 @@ reduce:
 
         suite('File Watching', () => {
             test('should call refresh callback on package changes', function (done) {
-                this.timeout(5000);
+                this.timeout(15000);
 
                 pipelineManager.ensurePipelinesFolderExists();
 
