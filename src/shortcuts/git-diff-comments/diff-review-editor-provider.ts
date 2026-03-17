@@ -23,6 +23,7 @@ import {
 } from './diff-content-provider';
 import { handleDiffAIClarification } from './diff-ai-clarification-handler';
 import { getDisplayRefs } from './git-ref-utils';
+import { DiffPromptGenerator } from './diff-prompt-generator';
 import {
     DiffAskAIContext,
     DiffClarificationContext,
@@ -675,6 +676,24 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 }
                 break;
 
+            case 'copyPrompt': {
+                const promptGenerator = new DiffPromptGenerator(this.commentsManager);
+                const prompt = promptGenerator.generatePromptForFile(
+                    relativeFilePath,
+                    gitContext.commitHash ? 'committed' : undefined,
+                    gitContext.commitHash
+                );
+                const openComments = this.commentsManager.getCommentsForFile(relativeFilePath)
+                    .filter(c => c.status === 'open');
+                if (openComments.length === 0) {
+                    vscode.window.showInformationMessage('No open comments to copy.');
+                } else {
+                    await vscode.env.clipboard.writeText(prompt);
+                    vscode.window.showInformationMessage('✓ Copied comments prompt to clipboard');
+                }
+                break;
+            }
+
             case 'askAI':
                 if (message.context) {
                     await this.handleAskAI(message.context, relativeFilePath, gitContext, oldContent, newContent, panel);
@@ -1308,6 +1327,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     <button class="pin-tab-btn" id="pin-tab-btn" title="Pin this tab (keep it open when viewing other files)">
                         <span class="pin-icon">📌</span>
                         <span class="pin-label">Keep Open</span>
+                    </button>
+                    <button class="copy-prompt-btn" id="copy-prompt-btn" title="Copy all open comments as prompt">
+                        <span class="copy-prompt-icon">📋</span>
+                        <span class="copy-prompt-label">Copy Prompt</span>
                     </button>
                     <button class="whitespace-toggle" id="whitespace-toggle" title="Toggle whitespace diff visibility">
                         <span class="toggle-icon" id="whitespace-icon">␣</span>

@@ -187,6 +187,13 @@ export function sendCopyPath(filePath: string): void {
     });
 }
 
+/**
+ * Send copy-as-prompt request for the current file
+ */
+export function sendCopyPrompt(): void {
+    postMessage({ type: 'copyPrompt' });
+}
+
 import { AskAIContext } from './types';
 
 /**

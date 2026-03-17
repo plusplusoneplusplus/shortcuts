@@ -160,6 +160,7 @@ body.vscode-light {
 /* View mode toggle button */
 .view-mode-toggle,
 .whitespace-toggle,
+.copy-prompt-btn,
 .pin-tab-btn {
     display: flex;
     align-items: center;
@@ -200,6 +201,28 @@ body.vscode-light {
 
 .pin-tab-btn.pinned:hover {
     opacity: 1;
+}
+
+/* Copy prompt button specific styles */
+.copy-prompt-btn {
+    margin-left: 0;
+}
+
+.copy-prompt-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.copy-prompt-btn .copy-prompt-icon {
+    font-size: 11px;
+}
+
+.copy-prompt-btn .copy-prompt-label {
+    font-weight: 500;
+}
+
+.copy-prompt-btn.copied .copy-prompt-label::after {
+    content: ' ✓';
+    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
 
 .whitespace-toggle {

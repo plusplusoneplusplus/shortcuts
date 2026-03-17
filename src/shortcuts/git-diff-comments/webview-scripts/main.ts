@@ -7,7 +7,7 @@ import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanel
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getFullFileView, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, resetExpandedHunks, setComments, setFullFileView, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
-import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendPinTab, sendReady, sendSaveContent } from './vscode-bridge';
+import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendCopyPrompt, sendOpenFile, sendPinTab, sendReady, sendSaveContent } from './vscode-bridge';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 
 // AbortController for managing event listeners
@@ -71,6 +71,9 @@ function initialize(): void {
 
     // Setup pin tab button
     setupPinTabButton();
+
+    // Setup copy prompt button
+    setupCopyPromptBtn();
 
     // Setup editable content (for uncommitted changes)
     setupEditableContent();
@@ -861,6 +864,23 @@ function setupPinTabButton(): void {
         setTimeout(() => {
             pinBtn.style.display = 'none';
         }, 1000);
+    });
+}
+
+/**
+ * Setup copy prompt button that copies all open comments for the current file
+ */
+function setupCopyPromptBtn(): void {
+    const copyPromptBtn = document.getElementById('copy-prompt-btn');
+    if (!copyPromptBtn) {
+        console.warn('[Diff Webview] Copy prompt button not found');
+        return;
+    }
+
+    copyPromptBtn.addEventListener('click', () => {
+        sendCopyPrompt();
+        copyPromptBtn.classList.add('copied');
+        setTimeout(() => copyPromptBtn.classList.remove('copied'), 2000);
     });
 }
 

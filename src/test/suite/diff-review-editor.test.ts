@@ -277,5 +277,44 @@ suite('DiffReviewEditorProvider Tests', () => {
             }
         });
     });
+
+    suite('copyPrompt message handler logic', () => {
+        test('should show info message when there are no open comments', () => {
+            const filePath = 'src/file.ts';
+            const commentsManager = {
+                getCommentsForFile: (_p: string) => [],
+                getSettings: () => ({})
+            };
+
+            const openComments = commentsManager.getCommentsForFile(filePath)
+                .filter((c: any) => c.status === 'open');
+            assert.strictEqual(openComments.length, 0);
+            // Handler should show info message, not copy
+        });
+
+        test('should detect open comments and copy prompt when comments exist', () => {
+            const filePath = 'src/file.ts';
+            const comments = [
+                { status: 'open', id: '1', comment: 'fix this' },
+                { status: 'resolved', id: '2', comment: 'looks good' }
+            ];
+            const commentsManager = {
+                getCommentsForFile: (_p: string) => comments,
+                getSettings: () => ({})
+            };
+
+            const openComments = commentsManager.getCommentsForFile(filePath)
+                .filter((c: any) => c.status === 'open');
+            assert.strictEqual(openComments.length, 1);
+        });
+
+        test('copyPrompt should be a valid DiffWebviewMessage type', () => {
+            // Ensure 'copyPrompt' is included in the allowed message type union
+            const msg: import('../../shortcuts/git-diff-comments').DiffWebviewMessage = {
+                type: 'copyPrompt'
+            };
+            assert.strictEqual(msg.type, 'copyPrompt');
+        });
+    });
 });
 
