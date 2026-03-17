@@ -95,7 +95,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 <a
                     href="#"
                     data-tab="repos"
-                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:underline'}`}
+                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center rounded ${isOnReposTab ? 'active bg-[#0078d4] text-white' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
                     title="Copilot of Copilot"
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC</a>
@@ -176,7 +176,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'logs'
-                            ? 'bg-[#0078d4] text-white'
+                            ? 'active bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Logs"
