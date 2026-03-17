@@ -194,9 +194,10 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header */}
             <div className={cn(
-                'repo-detail-header flex gap-3 px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                isMobile ? 'flex-row items-center py-1' : 'items-center py-2'
+                'repo-detail-header flex flex-col px-4',
+                isMobile && 'border-b border-[#e0e0e0] dark:border-[#3c3c3c]'
             )}>
+                <div className={cn('flex gap-3 items-center', isMobile ? 'py-1' : 'py-2')}>
                 {/* Title row */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     {isMobile && (
@@ -332,83 +333,83 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         </>
                     )}
                 </div>
-            </div>
-
-            {/* Sub-tab bar — desktop only; mobile uses MobileTabBar */}
-            {!isMobile && (
-            <div className="relative" data-testid="repo-sub-tab-strip-container">
-                {/* Left scroll fade */}
-                {tabScrollState.canScrollLeft && (
-                    <div
-                        className="absolute left-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-r from-white dark:from-[#1e1e1e] to-transparent"
-                        data-testid="tab-scroll-fade-left"
-                    />
-                )}
-                {/* Right scroll fade */}
-                {tabScrollState.canScrollRight && (
-                    <div
-                        className="absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-l from-white dark:from-[#1e1e1e] to-transparent"
-                        data-testid="tab-scroll-fade-right"
-                    />
-                )}
-                <div
-                    ref={tabStripRef}
-                    className={cn(
-                        'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                        isMobile ? 'px-2' : 'px-4',
-                        'overflow-x-auto scrollbar-hide'
-                    )}
-                    style={{ WebkitOverflowScrolling: 'touch' }}
-                    data-testid="repo-sub-tab-strip"
-                >
-                {SUB_TABS.map(t => (
-                    <button
-                        key={t.key}
-                        data-subtab={t.key}
-                        title={t.shortcut}
-                        className={cn(
-                            'repo-sub-tab text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
-                            isMobile ? 'px-2 py-1.5' : 'px-3 py-2',
-                            activeSubTab === t.key
-                                ? 'active text-[#0078d4] dark:text-[#3794ff]'
-                                : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
-                        )}
-                        onClick={() => switchSubTab(t.key)}
-                    >
-                        {t.label}
-                        {t.key === 'git' && (gitAhead > 0 || gitBehind > 0) && (
-                            <span className="ml-1 font-mono text-[10px] opacity-70" data-testid="git-ahead-behind-badge">
-                                {gitAhead > 0 && <span data-testid="git-ahead-count">↑{gitAhead}</span>}
-                                {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
-                            </span>
-                        )}
-                        {t.key === 'tasks' && taskCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
-                        )}
-                        {t.key === 'activity' && queueRunningCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
-                        )}
-                        {t.key === 'activity' && queueQueuedCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
-                        )}
-                        {t.key === 'wiki' && wikiGeneratingCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
-                        )}
-                        {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
-                            <span
-                                className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
-                                data-testid="wiki-warning-badge"
-                                title="Needs attention"
-                            />
-                        )}
-                        {activeSubTab === t.key && (
-                            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
-                        )}
-                    </button>
-                ))}
                 </div>
+                {/* Sub-tab bar — desktop only; mobile uses MobileTabBar */}
+                {!isMobile && (
+                <div className="relative" data-testid="repo-sub-tab-strip-container">
+                    {/* Left scroll fade */}
+                    {tabScrollState.canScrollLeft && (
+                        <div
+                            className="absolute left-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-r from-white dark:from-[#1e1e1e] to-transparent"
+                            data-testid="tab-scroll-fade-left"
+                        />
+                    )}
+                    {/* Right scroll fade */}
+                    {tabScrollState.canScrollRight && (
+                        <div
+                            className="absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-l from-white dark:from-[#1e1e1e] to-transparent"
+                            data-testid="tab-scroll-fade-right"
+                        />
+                    )}
+                    <div
+                        ref={tabStripRef}
+                        className={cn(
+                            'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+                            isMobile ? 'px-2' : 'px-4',
+                            'overflow-x-auto scrollbar-hide'
+                        )}
+                        style={{ WebkitOverflowScrolling: 'touch' }}
+                        data-testid="repo-sub-tab-strip"
+                    >
+                    {SUB_TABS.map(t => (
+                        <button
+                            key={t.key}
+                            data-subtab={t.key}
+                            title={t.shortcut}
+                            className={cn(
+                                'repo-sub-tab text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
+                                isMobile ? 'px-2 py-1.5' : 'px-3 py-2',
+                                activeSubTab === t.key
+                                    ? 'active text-[#0078d4] dark:text-[#3794ff]'
+                                    : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                            )}
+                            onClick={() => switchSubTab(t.key)}
+                        >
+                            {t.label}
+                            {t.key === 'git' && (gitAhead > 0 || gitBehind > 0) && (
+                                <span className="ml-1 font-mono text-[10px] opacity-70" data-testid="git-ahead-behind-badge">
+                                    {gitAhead > 0 && <span data-testid="git-ahead-count">↑{gitAhead}</span>}
+                                    {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
+                                </span>
+                            )}
+                            {t.key === 'tasks' && taskCount > 0 && (
+                                <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
+                            )}
+                            {t.key === 'activity' && queueRunningCount > 0 && (
+                                <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
+                            )}
+                            {t.key === 'activity' && queueQueuedCount > 0 && (
+                                <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
+                            )}
+                            {t.key === 'wiki' && wikiGeneratingCount > 0 && (
+                                <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
+                            )}
+                            {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
+                                <span
+                                    className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
+                                    data-testid="wiki-warning-badge"
+                                    title="Needs attention"
+                                />
+                            )}
+                            {activeSubTab === t.key && (
+                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
+                            )}
+                        </button>
+                    ))}
+                    </div>
+                </div>
+                )}
             </div>
-            )}
 
             {/* Mobile tab bar */}
             {isMobile && (
