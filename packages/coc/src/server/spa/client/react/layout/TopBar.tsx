@@ -95,7 +95,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                 <a
                     href="#"
                     data-tab="repos"
-                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center rounded ${isOnReposTab ? 'active bg-[#0078d4] text-white' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
+                    className={`text-sm font-semibold whitespace-nowrap hidden md:inline-flex flex-shrink-0 px-2 h-8 transition-colors items-center ${isOnReposTab ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]' : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'}`}
                     title="Copilot of Copilot"
                     onClick={e => { e.preventDefault(); switchTab('repos'); }}
                 >CoC</a>

@@ -30,13 +30,16 @@ const CHAT_MODE_LABELS: Record<string, string> = {
     'autopilot': 'Autopilot',
 };
 
-export function taskMatchesFilter(task: any, selectedType: string): boolean {
-    if (selectedType === 'all') return true;
-    // Mode-based filtering for chat tasks
-    if (selectedType === 'ask' || selectedType === 'plan' || selectedType === 'autopilot') {
-        return (task.payload?.mode as string | undefined) === selectedType;
+export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
+    if (excludedTypes.size === 0) return true;
+    // For chat tasks, check mode-based exclusion first
+    if (task.type === 'chat') {
+        const mode = task.payload?.mode as string | undefined;
+        if (mode) return !excludedTypes.has(mode);
+        // No mode: fall back to type-based check
+        return !excludedTypes.has(task.type);
     }
-    return task.type === selectedType;
+    return !excludedTypes.has(task.type);
 }
 
 export function taskMatchesSearch(task: any, query: string): boolean {
@@ -134,7 +137,7 @@ export function ActivityListPane({
     onOpenDialog,
     fetchQueue,
 }: ActivityListPaneProps) {
-    const [selectedType, setSelectedType] = useState<string>('all');
+    const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -144,7 +147,7 @@ export function ActivityListPane({
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
 
     useEffect(() => {
-        setSelectedType('all');
+        setExcludedTypes(new Set());
         setSearchQuery('');
         setSearchVisible(false);
     }, [workspaceId]);
@@ -188,12 +191,12 @@ export function ActivityListPane({
         return opts;
     }, [allTasks]);
 
-    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, selectedType) && taskMatchesSearch(t, searchQuery)), [running, selectedType, searchQuery]);
+    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
-        () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, selectedType) && taskMatchesSearch(t, searchQuery))),
-        [queued, selectedType, searchQuery],
+        () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
+        [queued, excludedTypes, searchQuery],
     );
-    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, selectedType) && taskMatchesSearch(t, searchQuery)), [history, selectedType, searchQuery]);
+    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
 
     // Separate archived from non-archived history
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -494,16 +497,31 @@ export function ActivityListPane({
                 <div className={cn('flex items-center gap-2 mb-3')}>
                     {isPaused && <Badge status="warning">Paused</Badge>}
                     {availableFilters.length >= 2 && (
-                        <select
-                            data-testid="queue-filter-dropdown"
-                            value={selectedType}
-                            onChange={e => setSelectedType(e.target.value)}
-                            className="text-xs rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#1f1f1f] text-[#1e1e1e] dark:text-[#cccccc] px-1.5 py-0.5"
-                        >
-                            {availableFilters.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        <div className="flex items-center gap-1 flex-wrap" data-testid="queue-filter-pills">
+                            {availableFilters.filter(opt => opt.value !== 'all').map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => setExcludedTypes(prev => {
+                                        const next = new Set(prev);
+                                        next.has(opt.value) ? next.delete(opt.value) : next.add(opt.value);
+                                        return next;
+                                    })}
+                                    className={cn(
+                                        'text-xs rounded-full px-2 py-0.5 border transition-colors',
+                                        excludedTypes.has(opt.value)
+                                            ? 'border-[#e0e0e0] dark:border-[#474749] text-[#999] dark:text-[#666] line-through'
+                                            : 'border-[#0078d4] dark:border-[#3794ff] text-[#0078d4] dark:text-[#3794ff] bg-[#0078d4]/10 dark:bg-[#3794ff]/10',
+                                    )}
+                                >{opt.label}</button>
                             ))}
-                        </select>
+                            {excludedTypes.size > 0 && (
+                                <button
+                                    onClick={() => setExcludedTypes(new Set())}
+                                    data-testid="queue-filter-reset"
+                                    className="text-xs rounded-full px-2 py-0.5 border border-[#e0e0e0] dark:border-[#474749] text-[#666] dark:text-[#999] hover:text-[#cc0000]"
+                                >✕</button>
+                            )}
+                        </div>
                     )}
                     <div className="flex-1" />
                     <Button
