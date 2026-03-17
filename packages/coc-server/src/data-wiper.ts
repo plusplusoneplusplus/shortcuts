@@ -76,7 +76,7 @@ export class DataWiper {
         // 1. Count processes
         const stats = await this.store.getStorageStats();
         result.deletedProcesses = stats.totalProcesses;
-        result.deletedWorkspaces = stats.totalWorkspaces;
+        result.deletedWorkspaces = (await this.store.getWorkspaces()).length;
         result.deletedWikis = stats.totalWikis;
 
         // 2. Collect wiki directories if requested
