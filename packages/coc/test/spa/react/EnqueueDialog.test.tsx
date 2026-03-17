@@ -2023,4 +2023,52 @@ describe('EnqueueDialog ask mode', () => {
         expect(postBody.payload.mode).toBe('ask');
         expect(postBody.payload.prompt).toBe('What does this function do?');
     });
+
+    it('selecting a recent item restores skills and model but does NOT restore the prompt', async () => {
+        // Seed a recent entry with prompt + skills + model in preferences response
+        fetchSpy.mockImplementation((url: string) => {
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        recentFollowPrompts: [
+                            {
+                                name: 'impl',
+                                type: 'skill',
+                                timestamp: Date.now() - 1000,
+                                prompt: 'implement the feature',
+                                skills: ['impl'],
+                                model: 'gpt-4',
+                            },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap>
+                <DialogOpener />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Click the first recent item card
+        const card = await screen.findByTestId('recent-prompt-card-0');
+        fireEvent.click(card);
+
+        // Prompt textarea should remain empty — recent items are templates, not prompt restores
+        await waitFor(() => {
+            const textarea = screen.getByRole('textbox');
+            expect(textarea).toHaveProperty('value', '');
+        });
+    });
 });

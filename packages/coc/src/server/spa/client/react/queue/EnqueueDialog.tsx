@@ -141,7 +141,6 @@ export function EnqueueDialog() {
     }, []);
 
     const handleSelectRecent = useCallback((entry: import('../hooks/useRecentSkills').RecentSkillEntry) => {
-        if (entry.prompt) setPrompt(entry.prompt);
         if (entry.skills && entry.skills.length > 0) setSelectedSkills(entry.skills);
         if (entry.model) setModel(entry.model);
         setActiveTab('advanced');
