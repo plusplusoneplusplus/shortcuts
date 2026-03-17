@@ -30,14 +30,13 @@ const CHAT_MODE_LABELS: Record<string, string> = {
     'autopilot': 'Autopilot',
 };
 
-export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
-    if (excludedTypes.size === 0) return true;
+export function taskMatchesFilter(task: any, selectedType: string): boolean {
+    if (selectedType === 'all') return true;
     // Mode-based filtering for chat tasks
-    const mode = task.payload?.mode as string | undefined;
-    if (mode && (mode === 'ask' || mode === 'plan' || mode === 'autopilot')) {
-        return !excludedTypes.has(mode);
+    if (selectedType === 'ask' || selectedType === 'plan' || selectedType === 'autopilot') {
+        return (task.payload?.mode as string | undefined) === selectedType;
     }
-    return !excludedTypes.has(task.type as string);
+    return task.type === selectedType;
 }
 
 export function taskMatchesSearch(task: any, query: string): boolean {
@@ -135,7 +134,7 @@ export function ActivityListPane({
     onOpenDialog,
     fetchQueue,
 }: ActivityListPaneProps) {
-    const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
+    const [selectedType, setSelectedType] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -145,7 +144,7 @@ export function ActivityListPane({
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
 
     useEffect(() => {
-        setExcludedTypes(new Set());
+        setSelectedType('all');
         setSearchQuery('');
         setSearchVisible(false);
     }, [workspaceId]);
@@ -189,12 +188,12 @@ export function ActivityListPane({
         return opts;
     }, [allTasks]);
 
-    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
+    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, selectedType) && taskMatchesSearch(t, searchQuery)), [running, selectedType, searchQuery]);
     const filteredQueued = useMemo(
-        () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
-        [queued, excludedTypes, searchQuery],
+        () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, selectedType) && taskMatchesSearch(t, searchQuery))),
+        [queued, selectedType, searchQuery],
     );
-    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
+    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, selectedType) && taskMatchesSearch(t, searchQuery)), [history, selectedType, searchQuery]);
 
     // Separate archived from non-archived history
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -494,42 +493,17 @@ export function ActivityListPane({
                 )}
                 <div className={cn('flex items-center gap-2 mb-3')}>
                     {isPaused && <Badge status="warning">Paused</Badge>}
-                    {availableFilters.length > 2 && (
-                        <div className="flex flex-wrap gap-1 items-center" data-testid="queue-filter-pills">
-                            {availableFilters.filter(opt => opt.value !== 'all').map(opt => {
-                                const isActive = !excludedTypes.has(opt.value);
-                                return (
-                                    <button
-                                        key={opt.value}
-                                        onClick={() => {
-                                            setExcludedTypes(prev => {
-                                                const next = new Set(prev);
-                                                if (next.has(opt.value)) next.delete(opt.value);
-                                                else next.add(opt.value);
-                                                return next;
-                                            });
-                                        }}
-                                        className={cn(
-                                            'text-xs rounded border px-1.5 py-0.5 transition-colors',
-                                            isActive
-                                                ? 'border-[#0078d4] bg-[#0078d4]/10 text-[#0078d4] dark:border-[#3794ff] dark:bg-[#3794ff]/10 dark:text-[#3794ff]'
-                                                : 'border-[#e0e0e0] dark:border-[#474749] text-[#848484] dark:text-[#999]',
-                                        )}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                );
-                            })}
-                            {excludedTypes.size > 0 && (
-                                <button
-                                    onClick={() => setExcludedTypes(new Set())}
-                                    className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
-                                    data-testid="queue-filter-reset"
-                                >
-                                    Reset
-                                </button>
-                            )}
-                        </div>
+                    {availableFilters.length >= 2 && (
+                        <select
+                            data-testid="queue-filter-dropdown"
+                            value={selectedType}
+                            onChange={e => setSelectedType(e.target.value)}
+                            className="text-xs rounded border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#1f1f1f] text-[#1e1e1e] dark:text-[#cccccc] px-1.5 py-0.5"
+                        >
+                            {availableFilters.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
                     )}
                     <div className="flex-1" />
                     <Button
