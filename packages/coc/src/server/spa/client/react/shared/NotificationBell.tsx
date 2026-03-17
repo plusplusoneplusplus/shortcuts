@@ -66,9 +66,13 @@ export function NotificationBell() {
     }, [open]);
 
     const navigateToProcess = useCallback(
-        (processId: string) => {
-            dispatch({ type: 'SELECT_PROCESS', id: processId });
-            dispatch({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
+        (processId: string, workspaceId?: string) => {
+            if (workspaceId) {
+                window.location.hash = `#repos/${encodeURIComponent(workspaceId)}/activity/${encodeURIComponent(processId)}`;
+            } else {
+                dispatch({ type: 'SELECT_PROCESS', id: processId });
+                dispatch({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
+            }
             setOpen(false);
         },
         [dispatch],
@@ -173,7 +177,7 @@ export function NotificationBell() {
                                             className="text-sm text-[#0078d4] hover:underline shrink-0 mt-0.5"
                                             aria-label={`Go to process ${entry.processId}`}
                                             data-testid="notification-navigate"
-                                            onClick={() => navigateToProcess(entry.processId!)}
+                                            onClick={() => navigateToProcess(entry.processId!, entry.workspaceId)}
                                         >
                                             →
                                         </button>

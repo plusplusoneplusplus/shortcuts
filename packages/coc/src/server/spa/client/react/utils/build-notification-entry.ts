@@ -20,6 +20,7 @@ export interface NotificationEntryInput {
     title: string;
     detail: string;
     processId: string;
+    workspaceId?: string;
 }
 
 const STATUS_TYPE_MAP: Record<string, NotificationEntryInput['type']> = {
@@ -40,10 +41,13 @@ export function buildNotificationEntry(process: ProcessLike, workspaceName?: str
         ? `[${workspaceName}] ${promptLabel} ${process.status}`
         : `${promptLabel} ${process.status}`;
 
+    const workspaceId = process.workspaceId ?? process.metadata?.workspaceId ?? undefined;
+
     return {
         type: STATUS_TYPE_MAP[process.status] ?? 'info',
         title,
         detail,
         processId: process.id,
+        ...(workspaceId ? { workspaceId } : {}),
     };
 }

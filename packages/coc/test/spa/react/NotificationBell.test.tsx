@@ -180,7 +180,7 @@ describe('NotificationBell — actions', () => {
         expect(clearAll).toHaveBeenCalledOnce();
     });
 
-    it('→ arrow dispatches navigation actions', () => {
+    it('→ arrow without workspaceId dispatches processes-tab navigation actions', () => {
         const entries = [
             { id: 'n1', type: 'success' as const, title: 'x', detail: '', timestamp: Date.now(), read: false, processId: 'proc-42' },
         ];
@@ -191,5 +191,44 @@ describe('NotificationBell — actions', () => {
 
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SELECT_PROCESS', id: 'proc-42' });
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
+    });
+
+    it('→ arrow with workspaceId navigates to repo activity hash URL', () => {
+        const entries = [
+            { id: 'n1', type: 'success' as const, title: 'x', detail: '', timestamp: Date.now(), read: false, processId: 'proc-99', workspaceId: 'repo-abc' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        act(() => { fireEvent.click(screen.getByTestId('notification-navigate')); });
+
+        expect(window.location.hash).toBe('#repos/repo-abc/activity/proc-99');
+        // Should not dispatch process-tab actions
+        expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SELECT_PROCESS', id: 'proc-99' });
+        expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
+    });
+
+    it('→ arrow with workspaceId closes the notification panel', () => {
+        const entries = [
+            { id: 'n1', type: 'success' as const, title: 'x', detail: '', timestamp: Date.now(), read: false, processId: 'proc-99', workspaceId: 'repo-abc' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        expect(screen.getByTestId('notification-panel')).toBeTruthy();
+        act(() => { fireEvent.click(screen.getByTestId('notification-navigate')); });
+        expect(screen.queryByTestId('notification-panel')).toBeNull();
+    });
+
+    it('→ arrow with workspaceId containing special chars encodes the URL correctly', () => {
+        const entries = [
+            { id: 'n1', type: 'success' as const, title: 'x', detail: '', timestamp: Date.now(), read: false, processId: 'proc/special', workspaceId: 'repo/with spaces' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        act(() => { fireEvent.click(screen.getByTestId('notification-navigate')); });
+
+        expect(window.location.hash).toBe('#repos/repo%2Fwith%20spaces/activity/proc%2Fspecial');
     });
 });

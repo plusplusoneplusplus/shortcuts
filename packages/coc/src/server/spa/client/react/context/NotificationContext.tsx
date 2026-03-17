@@ -13,6 +13,7 @@ export interface NotificationEntry {
     timestamp: number;
     read: boolean;
     processId?: string;
+    workspaceId?: string;
 }
 
 export interface NotificationContextValue {

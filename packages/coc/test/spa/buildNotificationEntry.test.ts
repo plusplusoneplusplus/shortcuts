@@ -136,4 +136,31 @@ describe('buildNotificationEntry', () => {
         expect(repoB.title).toBe('[Repo-B] Deploy completed');
         expect(repoA.title).not.toBe(repoB.title);
     });
+
+    // ── workspaceId propagation ─────────────────────────────────────────
+
+    it('workspaceId from process.workspaceId is included in result', () => {
+        const result = buildNotificationEntry(makeProcess({ workspaceId: 'ws-direct', metadata: undefined }));
+        expect(result.workspaceId).toBe('ws-direct');
+    });
+
+    it('workspaceId falls back to process.metadata.workspaceId when process.workspaceId is absent', () => {
+        const result = buildNotificationEntry(makeProcess({ workspaceId: undefined, metadata: { workspaceId: 'ws-meta' } }));
+        expect(result.workspaceId).toBe('ws-meta');
+    });
+
+    it('process.workspaceId takes precedence over metadata.workspaceId', () => {
+        const result = buildNotificationEntry(makeProcess({ workspaceId: 'ws-direct', metadata: { workspaceId: 'ws-meta' } }));
+        expect(result.workspaceId).toBe('ws-direct');
+    });
+
+    it('workspaceId is undefined when neither process.workspaceId nor metadata.workspaceId are set', () => {
+        const result = buildNotificationEntry(makeProcess({ workspaceId: undefined, metadata: undefined }));
+        expect(result.workspaceId).toBeUndefined();
+    });
+
+    it('workspaceId is undefined when process.workspaceId is null', () => {
+        const result = buildNotificationEntry(makeProcess({ workspaceId: null, metadata: undefined }));
+        expect(result.workspaceId).toBeUndefined();
+    });
 });
