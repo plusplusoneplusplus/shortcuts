@@ -36,8 +36,10 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('mousedown');
     });
 
-    it('renders plan file row with 📄 icon', () => {
-        expect(SOURCE).toContain('📄');
+    it('renders plan file row with SVG file icon (no emoji)', () => {
+        expect(SOURCE).not.toContain('📄');
+        expect(SOURCE).toContain('<svg');
+        expect(SOURCE).toContain('aria-hidden="true"');
         expect(SOURCE).toContain('planPath &&');
     });
 
@@ -49,9 +51,10 @@ describe('ReferencesDropdown component', () => {
         expect(SOURCE).toContain('data-testid="references-dropdown-btn"');
     });
 
-    it('uses correct dropdown panel classes matching existing style', () => {
-        expect(SOURCE).toContain('bg-[#252526]');
-        expect(SOURCE).toContain('border border-[#3c3c3c]');
+    it('uses correct dropdown panel classes supporting light and dark mode', () => {
+        expect(SOURCE).toContain('bg-white');
+        expect(SOURCE).toContain('dark:bg-[#252526]');
+        expect(SOURCE).toContain('dark:border-[#3c3c3c]');
         expect(SOURCE).toContain('min-w-[260px]');
         expect(SOURCE).toContain('z-50');
     });
