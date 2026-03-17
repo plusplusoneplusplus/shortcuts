@@ -216,18 +216,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
                         <button
-                            data-testid="repo-tab-context-copy-info"
-                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                            role="menuitem"
-                            onClick={() => {
-                                navigator.clipboard.writeText(`${ws.name}: ${ws.rootPath ?? ''}${ws.description ? '\n' + ws.description : ''}`);
-                                setContextMenu(null);
-                            }}
-                        >
-                            Copy Repo Info
-                        </button>
-                        <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
-                        <button
                             data-testid="repo-tab-context-queue-task"
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                             role="menuitem"
@@ -282,6 +270,18 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             }}
                         >
                             Remove
+                        </button>
+                        <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
+                        <button
+                            data-testid="repo-tab-context-copy-info"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                navigator.clipboard.writeText(`${ws.name}: ${ws.rootPath ?? ''}${ws.description ? '\n' + ws.description : ''}`);
+                                setContextMenu(null);
+                            }}
+                        >
+                            Copy Repo Info
                         </button>
                     </div>
                 );

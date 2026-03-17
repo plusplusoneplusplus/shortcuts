@@ -435,6 +435,27 @@ describe('RepoTabStrip', () => {
             expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
         });
 
+        it('"Copy Repo Info" is the last menu item (after Remove)', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            const menu = screen.getByTestId('repo-tab-context-menu');
+            const menuItems = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+            const itemTestIds = menuItems.map(el => el.getAttribute('data-testid'));
+            expect(itemTestIds[itemTestIds.length - 1]).toBe('repo-tab-context-copy-info');
+            const removeIdx = itemTestIds.indexOf('repo-tab-context-remove');
+            const copyIdx = itemTestIds.indexOf('repo-tab-context-copy-info');
+            expect(removeIdx).toBeGreaterThanOrEqual(0);
+            expect(copyIdx).toBeGreaterThan(removeIdx);
+        });
+
         it('pressing Escape closes the context menu', () => {
             render(
                 <RepoTabStrip
