@@ -228,7 +228,8 @@ describe('Fix 3: per-repo selectedTaskIdByRepo', () => {
 
     describe('Router passes repoId in activity deep-links', () => {
         it('passes repoId when selecting a task via deep link', () => {
-            expect(ROUTER_SOURCE).toContain("type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]), repoId");
+            // Router decodes parts[3] and strips queue_ prefix before dispatching with repoId
+            expect(ROUTER_SOURCE).toContain("queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });");
         });
 
         it('passes repoId when clearing selection via activity URL', () => {

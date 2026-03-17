@@ -146,7 +146,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'processes'
-                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
+                            ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Processes"
@@ -161,7 +161,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'skills'
-                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
+                            ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Skills"
@@ -176,7 +176,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'logs'
-                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
+                            ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Logs"
@@ -191,7 +191,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'memory'
-                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
+                            ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Memory"
@@ -206,7 +206,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'stats'
-                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
+                            ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Usage"
@@ -221,7 +221,7 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     className={
                         `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target ` +
                         (state.activeTab === 'admin'
-                            ? 'active border-b-2 border-[#0078d4] dark:border-[#60b4ff]'
+                            ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
                     aria-label="Admin"

@@ -2060,6 +2060,9 @@ describe('EnqueueDialog ask mode', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
+        // Switch to Templates tab to access template cards
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+
         // Click the first template card
         const card = await screen.findByTestId('template-card-tmpl-1');
         fireEvent.click(card);

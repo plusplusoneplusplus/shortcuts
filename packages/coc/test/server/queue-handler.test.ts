@@ -1852,8 +1852,10 @@ describe('Queue Handler', () => {
             // Write process JSON directly to simulate turns without valid timestamps
             // (bypasses addProcess serialization which requires Date objects)
             const processesDir = path.join(dataDir, 'processes');
-            fs.mkdirSync(processesDir, { recursive: true });
-            fs.writeFileSync(path.join(processesDir, 'proc-no-ts.json'), JSON.stringify({
+            const defaultDir = path.join(processesDir, '_default');
+            fs.mkdirSync(defaultDir, { recursive: true });
+            const startTimeStr = new Date().toISOString();
+            fs.writeFileSync(path.join(defaultDir, 'proc-no-ts.json'), JSON.stringify({
                 workspaceId: '',
                 process: {
                     id: 'proc-no-ts',
@@ -1861,24 +1863,23 @@ describe('Queue Handler', () => {
                     promptPreview: 'test',
                     fullPrompt: 'test prompt',
                     status: 'completed',
-                    startTime: new Date().toISOString(),
+                    startTime: startTimeStr,
                     conversationTurns: [
                         { role: 'user', content: 'Hello', turnIndex: 0 },
                         { role: 'assistant', content: 'Hi!', turnIndex: 1 },
                     ],
                 },
             }));
-            // Update index so the store can find the process
-            fs.writeFileSync(path.join(processesDir, 'index.json'), JSON.stringify({
-                processes: [{
-                    id: 'proc-no-ts',
-                    type: 'clarification',
-                    status: 'completed',
-                    promptPreview: 'test',
-                    startTime: new Date().toISOString(),
-                    workspaceId: '',
-                }],
-            }));
+            // Write per-workspace index and id-map so the store can find the process
+            fs.writeFileSync(path.join(defaultDir, 'index.json'), JSON.stringify([{
+                id: 'proc-no-ts',
+                workspaceId: '',
+                type: 'clarification',
+                status: 'completed',
+                promptPreview: 'test',
+                startTime: startTimeStr,
+            }]));
+            fs.writeFileSync(path.join(processesDir, '_id-map.json'), JSON.stringify({ 'proc-no-ts': '' }));
 
             const completedAt = Date.now() - 5000;
             const repoRoot = path.resolve('/test/last-activity-no-ts');
@@ -2055,8 +2056,10 @@ describe('Queue Handler', () => {
 
         it('should include process title in chatMeta when set', async () => {
             const processesDir = path.join(dataDir, 'processes');
-            fs.mkdirSync(processesDir, { recursive: true });
-            fs.writeFileSync(path.join(processesDir, 'proc-titled.json'), JSON.stringify({
+            const defaultDir = path.join(processesDir, '_default');
+            fs.mkdirSync(defaultDir, { recursive: true });
+            const startTimeStr = new Date().toISOString();
+            fs.writeFileSync(path.join(defaultDir, 'proc-titled.json'), JSON.stringify({
                 workspaceId: '',
                 process: {
                     id: 'proc-titled',
@@ -2064,7 +2067,7 @@ describe('Queue Handler', () => {
                     promptPreview: 'test',
                     fullPrompt: 'test prompt',
                     status: 'completed',
-                    startTime: new Date().toISOString(),
+                    startTime: startTimeStr,
                     title: 'Fix Authentication Bug',
                     conversationTurns: [
                         { role: 'user', content: 'Fix the auth bug', timestamp: new Date().toISOString(), turnIndex: 0 },
@@ -2072,6 +2075,16 @@ describe('Queue Handler', () => {
                     ],
                 },
             }));
+            fs.writeFileSync(path.join(defaultDir, 'index.json'), JSON.stringify([{
+                id: 'proc-titled',
+                workspaceId: '',
+                type: 'clarification',
+                status: 'completed',
+                promptPreview: 'test',
+                startTime: startTimeStr,
+                title: 'Fix Authentication Bug',
+            }]));
+            fs.writeFileSync(path.join(processesDir, '_id-map.json'), JSON.stringify({ 'proc-titled': '' }));
 
             const repoRoot = path.resolve('/test/title-present');
             const crypto = require('crypto');
@@ -2112,8 +2125,10 @@ describe('Queue Handler', () => {
 
         it('should have undefined chatMeta.title when process has no title', async () => {
             const processesDir = path.join(dataDir, 'processes');
-            fs.mkdirSync(processesDir, { recursive: true });
-            fs.writeFileSync(path.join(processesDir, 'proc-no-title.json'), JSON.stringify({
+            const defaultDir = path.join(processesDir, '_default');
+            fs.mkdirSync(defaultDir, { recursive: true });
+            const startTimeStr = new Date().toISOString();
+            fs.writeFileSync(path.join(defaultDir, 'proc-no-title.json'), JSON.stringify({
                 workspaceId: '',
                 process: {
                     id: 'proc-no-title',
@@ -2121,13 +2136,22 @@ describe('Queue Handler', () => {
                     promptPreview: 'test',
                     fullPrompt: 'test prompt',
                     status: 'completed',
-                    startTime: new Date().toISOString(),
+                    startTime: startTimeStr,
                     conversationTurns: [
                         { role: 'user', content: 'Hello', timestamp: new Date().toISOString(), turnIndex: 0 },
                         { role: 'assistant', content: 'Hi', timestamp: new Date().toISOString(), turnIndex: 1 },
                     ],
                 },
             }));
+            fs.writeFileSync(path.join(defaultDir, 'index.json'), JSON.stringify([{
+                id: 'proc-no-title',
+                workspaceId: '',
+                type: 'clarification',
+                status: 'completed',
+                promptPreview: 'test',
+                startTime: startTimeStr,
+            }]));
+            fs.writeFileSync(path.join(processesDir, '_id-map.json'), JSON.stringify({ 'proc-no-title': '' }));
 
             const repoRoot = path.resolve('/test/title-absent');
             const crypto = require('crypto');

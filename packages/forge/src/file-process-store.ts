@@ -510,10 +510,11 @@ export class FileProcessStore implements ProcessStore {
 
     async getStorageStats(): Promise<StorageStats> {
         // Use getProcessSummaries() instead of getAllProcesses() to avoid reading every process file
-        const [summaries, wikis, workspaceDirIds] = await Promise.all([
+        const [summaries, wikis, workspaceDirIds, registeredWorkspaces] = await Promise.all([
             this.getProcessSummaries(),
             this.getWikis(),
             this.listWorkspaceDirs(),
+            this.getWorkspaces(),
         ]);
 
         // Stat meta files in parallel
@@ -556,7 +557,7 @@ export class FileProcessStore implements ProcessStore {
 
         return {
             totalProcesses: summaries.total,
-            totalWorkspaces: workspaceDirIds.length,
+            totalWorkspaces: registeredWorkspaces.length,
             totalWikis: wikis.length,
             storageSize,
         };

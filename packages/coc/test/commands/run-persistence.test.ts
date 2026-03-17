@@ -53,15 +53,15 @@ reduce:
     }
 
     function readProcesses(): unknown[] {
-        // FileProcessStore uses directory-based format: processes/index.json + processes/<id>.json
-        const indexFile = path.join(tmpDir, 'store', 'processes', 'index.json');
+        // FileProcessStore uses per-workspace directory format: processes/_default/index.json + processes/_default/<id>.json
+        const indexFile = path.join(tmpDir, 'store', 'processes', '_default', 'index.json');
         if (!fs.existsSync(indexFile)) {
             return [];
         }
         const index = JSON.parse(fs.readFileSync(indexFile, 'utf-8')) as Array<{ id: string }>;
         // Load each individual process file to match the old flat-array shape
         return index.map(entry => {
-            const processFile = path.join(tmpDir, 'store', 'processes', `${entry.id}.json`);
+            const processFile = path.join(tmpDir, 'store', 'processes', '_default', `${entry.id}.json`);
             return JSON.parse(fs.readFileSync(processFile, 'utf-8'));
         });
     }
