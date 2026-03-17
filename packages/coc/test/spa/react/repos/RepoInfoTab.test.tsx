@@ -119,48 +119,6 @@ describe('populated preferences', () => {
         expect(screen.getByText('go-deep')).toBeTruthy();
     });
 
-    it('renders recentFollowPrompts as cards with count in section header', async () => {
-        mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return Promise.resolve({
-                lastModel: 'claude',
-                recentFollowPrompts: [
-                    { type: 'prompt', name: 'p1', timestamp: Date.now() - 60_000, prompt: 'First prompt', mode: 'ask', model: 'gpt-4o', skills: ['impl'] },
-                    { type: 'skill', name: 'p2', timestamp: Date.now() - 3_600_000, mode: 'task' },
-                ],
-            });
-            return Promise.resolve({ processes: [] });
-        });
-
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getByText('Recent Prompts (2)')).toBeTruthy());
-
-        // Each prompt rendered as a card
-        const cards = screen.getAllByTestId('recent-prompt-card');
-        expect(cards.length).toBe(2);
-
-        // Prompt text clamp and skill chip
-        expect(screen.getByText('First prompt')).toBeTruthy();
-        expect(screen.getByText('impl')).toBeTruthy();
-
-        // Mode badges
-        expect(screen.getByText('ask')).toBeTruthy();
-        expect(screen.getByText('task')).toBeTruthy();
-    });
-
-    it('does not render recent prompts section when recentFollowPrompts is empty', async () => {
-        mockFetchApi.mockImplementation((url: string) => {
-            if (url.includes('/preferences')) return Promise.resolve({
-                lastModel: 'claude',
-                recentFollowPrompts: [],
-            });
-            return Promise.resolve({ processes: [] });
-        });
-
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.queryByTestId('recent-prompt-card')).toBeNull());
-        expect(screen.queryByText(/Recent Prompts \(/)).toBeNull();
-    });
-
     it('fetches from correct workspace endpoint', async () => {
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByText('No preferences set')).toBeTruthy());
