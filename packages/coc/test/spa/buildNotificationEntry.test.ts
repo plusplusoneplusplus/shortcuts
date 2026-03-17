@@ -163,4 +163,16 @@ describe('buildNotificationEntry', () => {
         const result = buildNotificationEntry(makeProcess({ workspaceId: null, metadata: undefined }));
         expect(result.workspaceId).toBeUndefined();
     });
+
+    // ── Regression: queue_ prefix stripped from processId ──────────────────
+
+    it('queue task id with queue_ prefix is stripped in processId', () => {
+        const result = buildNotificationEntry(makeProcess({ id: 'queue_1773719144085-3ah800e' }));
+        expect(result.processId).toBe('1773719144085-3ah800e');
+    });
+
+    it('standard process id without queue_ prefix is unchanged', () => {
+        const result = buildNotificationEntry(makeProcess({ id: 'proc-abc123' }));
+        expect(result.processId).toBe('proc-abc123');
+    });
 });

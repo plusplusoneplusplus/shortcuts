@@ -246,7 +246,9 @@ export function Router() {
                     }
                     // Activity deep-link handling — select queue task when task ID present
                     if (parts[2] === 'activity' && parts[3]) {
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: decodeURIComponent(parts[3]), repoId });
+                        const rawId = decodeURIComponent(parts[3]);
+                        const taskId = rawId.startsWith('queue_') ? rawId.substring('queue_'.length) : rawId;
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId });
                     } else if (parts[2] === 'activity') {
                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId });
                     }

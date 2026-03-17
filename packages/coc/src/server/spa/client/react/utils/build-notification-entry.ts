@@ -47,7 +47,7 @@ export function buildNotificationEntry(process: ProcessLike, workspaceName?: str
         type: STATUS_TYPE_MAP[process.status] ?? 'info',
         title,
         detail,
-        processId: process.id,
+        processId: process.id.startsWith('queue_') ? process.id.substring('queue_'.length) : process.id,
         ...(workspaceId ? { workspaceId } : {}),
     };
 }
