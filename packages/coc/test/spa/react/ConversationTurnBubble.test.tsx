@@ -1273,3 +1273,102 @@ describe('ConversationTurnBubble — read_agent content nesting', () => {
         expect(taskCard?.contains(raCard as HTMLElement)).toBe(false);
     });
 });
+
+describe('ConversationTurnBubble — task result deduplication', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    // Regression: content items tagged with parentToolId (inside a task's activeTaskStack scope)
+    // were incorrectly added to renderedContentTexts and caused the task's result to be suppressed.
+    // Those content items are already hidden from inline rendering (line 832 skips them), so
+    // suppressing the task result left the text shown nowhere.
+    it('preserves task result when the same text appears as a content item inside the task scope', () => {
+        const subAgentResult = 'The answer is 42. Here are the details.';
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: subAgentResult,
+                    timeline: [
+                        {
+                            type: 'tool-start',
+                            toolCall: {
+                                id: 'task-1',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Find answer' },
+                                status: 'running',
+                            },
+                        },
+                        // content emitted while task is on activeTaskStack → parentToolId='task-1'
+                        { type: 'content', content: subAgentResult },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'task-1',
+                                toolName: 'task',
+                                args: { agent_type: 'explore', description: 'Find answer' },
+                                status: 'completed',
+                                result: subAgentResult,
+                            },
+                        },
+                    ] as any,
+                })}
+            />
+        );
+
+        const taskCard = container.querySelector('[data-tool-id="task-1"]') as HTMLElement;
+        expect(taskCard).toBeTruthy();
+
+        // Expand the task card to check its result
+        const header = taskCard.querySelector('.tool-call-header') as HTMLElement;
+        if (header) fireEvent.click(header);
+
+        // The result text should be visible inside the task card (not suppressed)
+        expect(taskCard.textContent).toContain('The answer is 42');
+    });
+
+    it('still suppresses duplicate result when content item is at root level (no parentToolId)', () => {
+        const text = 'This text appears both inline and as a tool result.';
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: text,
+                    timeline: [
+                        // Root-level content (no enclosing task) — should suppress the tool result
+                        { type: 'content', content: text },
+                        {
+                            type: 'tool-start',
+                            toolCall: { id: 'grep-1', toolName: 'grep', args: { pattern: 'foo' }, status: 'running' },
+                        },
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'grep-1',
+                                toolName: 'grep',
+                                args: { pattern: 'foo' },
+                                status: 'completed',
+                                result: text,
+                            },
+                        },
+                    ] as any,
+                })}
+            />
+        );
+
+        const grepCard = container.querySelector('[data-tool-id="grep-1"]') as HTMLElement;
+        expect(grepCard).toBeTruthy();
+
+        // Expand the grep card
+        const header = grepCard.querySelector('.tool-call-header') as HTMLElement;
+        if (header) fireEvent.click(header);
+
+        // The result section should NOT appear inside the card (suppressed because shown inline)
+        // The result text may appear in the inline markdown, but the "Result" label inside the card should be absent
+        const resultLabel = Array.from(grepCard.querySelectorAll('div')).find(
+            d => d.textContent?.trim() === 'RESULT'
+        );
+        expect(resultLabel).toBeUndefined();
+    });
+});

@@ -350,7 +350,9 @@ function buildAssistantRender(turn: ClientConversationTurn): {
                     : undefined;
                 chunks.push({ kind: 'content', key: `content-${i}`, html, parentToolId });
                 hasContent = true;
-                if (item.content) renderedContentTexts.add((item.content as string).trim());
+                // Only track inline content (no parentToolId). Content inside a task card is
+                // skipped from inline rendering (line 832), so it should not suppress the task's result.
+                if (item.content && !parentToolId) renderedContentTexts.add((item.content as string).trim());
             }
             continue;
         }
