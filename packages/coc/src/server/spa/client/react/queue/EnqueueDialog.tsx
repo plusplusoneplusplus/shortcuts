@@ -45,7 +45,7 @@ export function EnqueueDialog() {
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
-    const [activeTab, setActiveTab] = useState<'recent' | 'advanced'>('advanced');
+    const [activeTab, setActiveTab] = useState<'recent' | 'advanced'>('recent');
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
     const { recentItems, trackUsage, loaded: recentLoaded } = useRecentSkills(workspaceId || undefined);
     const { models: modelInfos } = useModels();
