@@ -17,11 +17,19 @@ export interface RepoTabStripProps {
     onRefresh: () => void;
 }
 
+interface ContextMenuState {
+    repoId: string;
+    x: number;
+    y: number;
+}
+
 export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, onRefresh }: RepoTabStripProps) {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const contextMenuRef = useRef<HTMLDivElement>(null);
     const groups = groupReposByRemote(repos, {});
 
     useEffect(() => {
@@ -41,6 +49,24 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             document.removeEventListener('keydown', handleKeyDown);
         };
     }, [dropdownOpen]);
+
+    useEffect(() => {
+        if (!contextMenu) return;
+        const handleMouseDown = (e: MouseEvent) => {
+            if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+                setContextMenu(null);
+            }
+        };
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setContextMenu(null);
+        };
+        document.addEventListener('mousedown', handleMouseDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleMouseDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [contextMenu]);
 
     return (
         <div
@@ -77,6 +103,10 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 aria-label={ws.name}
                                 title={ws.name}
                                 onClick={() => onSelect(ws.id)}
+                                onContextMenu={e => {
+                                    e.preventDefault();
+                                    setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
+                                }}
                             >
                                 <span
                                     className="inline-block w-2 h-2 rounded-full flex-shrink-0"
@@ -147,6 +177,31 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 onClose={() => setAddFolderOpen(false)}
                 onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
             />
+            {contextMenu !== null && (() => {
+                const ws = repos.flatMap(r => [r.workspace]).find(w => w.id === contextMenu.repoId);
+                if (!ws) return null;
+                return (
+                    <div
+                        ref={contextMenuRef}
+                        data-testid="repo-tab-context-menu"
+                        className="fixed z-50 min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                        role="menu"
+                        style={{ left: contextMenu.x, top: contextMenu.y }}
+                    >
+                        <button
+                            data-testid="repo-tab-context-copy-info"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                navigator.clipboard.writeText(`${ws.name}: ${ws.rootPath ?? ''}`);
+                                setContextMenu(null);
+                            }}
+                        >
+                            Copy Info
+                        </button>
+                    </div>
+                );
+            })()}
         </div>
     );
 }

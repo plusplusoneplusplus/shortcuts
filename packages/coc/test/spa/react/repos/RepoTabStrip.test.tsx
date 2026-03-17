@@ -360,4 +360,124 @@ describe('RepoTabStrip', () => {
         // The second group's label should appear as the separator title
         expect(separator.getAttribute('title')).toBeTruthy();
     });
+
+    describe('context menu', () => {
+        beforeEach(() => {
+            Object.assign(navigator, {
+                clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+            });
+        });
+
+        it('right-clicking a repo tab opens the context menu', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-menu')).toBeDefined();
+        });
+
+        it('context menu contains a "Copy Info" item', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-copy-info')).toBeDefined();
+        });
+
+        it('clicking Copy Info writes "<name>: <path>" to clipboard and closes menu', async () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-copy-info'));
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Alpha: /repos/r1');
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+        });
+
+        it('pressing Escape closes the context menu', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-menu')).toBeDefined();
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+        });
+
+        it('clicking outside closes the context menu', () => {
+            render(
+                <div>
+                    <RepoTabStrip
+                        repos={[makeRepo('r1', 'Alpha')]}
+                        selectedRepoId={null}
+                        onSelect={vi.fn()}
+                        unseenCounts={{}}
+                        onRefresh={vi.fn()}
+                    />
+                    <div data-testid="outside" />
+                </div>
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            expect(screen.getByTestId('repo-tab-context-menu')).toBeDefined();
+            fireEvent.mouseDown(screen.getByTestId('outside'));
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+        });
+
+        it('only one context menu open at a time: opening a new one closes the previous', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            const tabs = screen.getAllByTestId('repo-tab');
+            fireEvent.contextMenu(tabs[0]);
+            expect(screen.getAllByTestId('repo-tab-context-menu')).toHaveLength(1);
+            fireEvent.contextMenu(tabs[1]);
+            expect(screen.getAllByTestId('repo-tab-context-menu')).toHaveLength(1);
+        });
+
+        it('left-click on repo tab still calls onSelect (unchanged behavior)', () => {
+            const onSelect = vi.fn();
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={onSelect}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.click(screen.getByTestId('repo-tab'));
+            expect(onSelect).toHaveBeenCalledWith('r1');
+        });
+    });
 });
