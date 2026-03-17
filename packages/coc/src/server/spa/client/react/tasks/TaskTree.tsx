@@ -7,7 +7,7 @@ import { useTaskPanel } from '../context/TaskContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useQueueActivity } from '../hooks/useQueueActivity';
 import type { TaskFolder, TaskNode, TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
-import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup } from '../hooks/useTaskTree';
+import { countMarkdownFilesInFolder, folderToNodes, isTaskFolder, isTaskDocument, isTaskDocumentGroup, getTaskNodePath } from '../hooks/useTaskTree';
 import { useTaskDragDrop } from '../hooks/useTaskDragDrop';
 import type { DragItem } from '../hooks/useTaskDragDrop';
 import { TaskTreeItem } from './TaskTreeItem';
@@ -27,21 +27,6 @@ interface TaskTreeProps {
     onFileContextMenu?: (item: TaskDocument | TaskDocumentGroup, x: number, y: number) => void;
     onDrop?: (items: DragItem[], targetFolderPath: string) => void;
     onNavigateBack?: () => void;
-}
-
-function getNodePath(node: TaskNode): string | null {
-    if ('fileName' in node && !('documents' in node) && !('children' in node)) {
-        const rel = ((node as any).relativePath || '').replace(/\\/g, '/');
-        return rel ? rel + '/' + node.fileName : node.fileName;
-    }
-    if ('documents' in node && 'baseName' in node && !('children' in node)) {
-        const firstDoc = (node as any).documents[0];
-        if (firstDoc) {
-            const rel = (firstDoc.relativePath || '').replace(/\\/g, '/');
-            return rel ? rel + '/' + firstDoc.fileName : firstDoc.fileName;
-        }
-    }
-    return null;
 }
 
 export function getFolderKey(folder: TaskFolder): string {
@@ -251,8 +236,7 @@ export function TaskTree({
             const folder = node as TaskFolder;
             return { path: getFolderKey(folder), type: 'folder', name: folder.name };
         }
-        const path = getNodePath(node);
-        if (!path) return null;
+        const path = getTaskNodePath(node);
         const name = isTaskDocument(node)
             ? node.baseName || node.fileName
             : isTaskDocumentGroup(node)
@@ -320,7 +304,7 @@ export function TaskTree({
                     ) : (
                         <ul className="py-1">
                             {colNodes.map((node, nodeIndex) => {
-                                const path = getNodePath(node);
+                                const path = getTaskNodePath(node);
                                 const dragItem = nodeToDragItem(node);
                                 const folderMdCount = isTaskFolder(node) ? countMarkdownFilesInFolder(node) : 0;
                                 const folderKey = isTaskFolder(node) ? getFolderKey(node as TaskFolder) : null;

@@ -4,7 +4,7 @@
 
 import { useRef } from 'react';
 import { cn } from '../shared';
-import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument, getTaskStatusIcon } from '../hooks/useTaskTree';
+import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument, getTaskStatusIcon, getTaskNodePath } from '../hooks/useTaskTree';
 import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from '../hooks/useTaskTree';
 
 export interface TaskTreeItemProps {
@@ -39,21 +39,6 @@ function getItemFileName(item: TaskNode): string {
     if (isTaskDocument(item)) return item.fileName;
     if (isTaskDocumentGroup(item)) return item.baseName;
     return '';
-}
-
-function getItemPath(item: TaskNode): string | null {
-    if (isTaskDocument(item)) {
-        const rel = (item.relativePath || '').replace(/\\/g, '/');
-        return rel ? rel + '/' + item.fileName : item.fileName;
-    }
-    if (isTaskDocumentGroup(item)) {
-        const firstDoc = item.documents[0];
-        if (firstDoc) {
-            const rel = (firstDoc.relativePath || '').replace(/\\/g, '/');
-            return rel ? rel + '/' + firstDoc.fileName : firstDoc.fileName;
-        }
-    }
-    return null;
 }
 
 function getDisplayName(item: TaskNode): string {
@@ -109,7 +94,7 @@ export function TaskTreeItem({
     if (isContext && !showContextFiles) return null;
 
     const displayName = getDisplayName(item);
-    const path = getItemPath(item);
+    const path = getTaskNodePath(item);
     const isNestedContextDoc = isContext && fileName.toLowerCase() === 'context.md' && !!path && path.includes('/');
     const canOpenFileContextMenu = !isFolder && (!isContext || isNestedContextDoc);
     const status = isTaskDocument(item)

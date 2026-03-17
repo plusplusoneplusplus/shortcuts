@@ -82,6 +82,27 @@ export function isTaskDocument(node: TaskNode): node is TaskDocument {
     return 'fileName' in node && !('documents' in node) && !('children' in node);
 }
 
+// ── Path helper ────────────────────────────────────────────────────────
+
+/**
+ * Resolve the relative file path for a task document or document group node.
+ * Returns null for folder nodes.
+ */
+export function getTaskNodePath(item: TaskNode): string | null {
+    if (isTaskDocument(item)) {
+        const rel = (item.relativePath || '').replace(/\\/g, '/');
+        return rel ? rel + '/' + item.fileName : item.fileName;
+    }
+    if (isTaskDocumentGroup(item)) {
+        const firstDoc = item.documents[0];
+        if (firstDoc) {
+            const rel = (firstDoc.relativePath || '').replace(/\\/g, '/');
+            return rel ? rel + '/' + firstDoc.fileName : firstDoc.fileName;
+        }
+    }
+    return null;
+}
+
 // ── Helper ─────────────────────────────────────────────────────────────
 
 export function folderToNodes(folder: TaskFolder): TaskNode[] {

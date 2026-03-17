@@ -5,7 +5,7 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '../shared';
-import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon } from '../hooks/useTaskTree';
+import { isTaskDocument, isTaskDocumentGroup, getTaskStatusIcon, getTaskNodePath } from '../hooks/useTaskTree';
 import type { TaskDocument, TaskDocumentGroup } from '../hooks/useTaskTree';
 
 export function highlightMatch(text: string, query: string): ReactNode {
@@ -33,21 +33,6 @@ export interface TaskSearchResultsProps {
 }
 
 
-function getItemPath(item: TaskDocument | TaskDocumentGroup): string | null {
-    if (isTaskDocument(item)) {
-        const rel = (item.relativePath || '').replace(/\\/g, '/');
-        return rel ? rel + '/' + item.fileName : item.fileName;
-    }
-    if (isTaskDocumentGroup(item)) {
-        const firstDoc = item.documents[0];
-        if (firstDoc) {
-            const rel = (firstDoc.relativePath || '').replace(/\\/g, '/');
-            return rel ? rel + '/' + firstDoc.fileName : firstDoc.fileName;
-        }
-    }
-    return null;
-}
-
 export function TaskSearchResults({ results, query, commentCounts, onFileClick, onContextMenu }: TaskSearchResultsProps) {
     if (results.length === 0) {
         return (
@@ -68,7 +53,7 @@ export function TaskSearchResults({ results, query, commentCounts, onFileClick, 
                         : (item as TaskDocumentGroup).baseName;
                     const status = isDoc ? (item as TaskDocument).status : undefined;
                     const statusIcon = getTaskStatusIcon(status);
-                    const itemPath = getItemPath(item);
+                    const itemPath = getTaskNodePath(item);
                     const relativePath = isDoc
                         ? (item as TaskDocument).relativePath
                         : (item as TaskDocumentGroup).documents[0]?.relativePath;

@@ -13,6 +13,7 @@ import {
     isGitMetadataFolder,
     filterGitMetadataFolders,
     filterTaskItems,
+    getTaskNodePath,
     type TaskFolder,
     type TaskDocumentGroup,
     type TaskDocument,
@@ -477,7 +478,48 @@ describe('filterTaskItems — archive sorting', () => {
     });
 });
 
-// ── getTaskStatusIcon ─────────────────────────────────────────────────
+// ── getTaskNodePath ───────────────────────────────────────────────────
+
+describe('getTaskNodePath', () => {
+    it('returns fileName when TaskDocument has no relativePath', () => {
+        const doc: TaskDocument = { baseName: 'task', fileName: 'task.md', isArchived: false };
+        expect(getTaskNodePath(doc)).toBe('task.md');
+    });
+
+    it('returns rel/fileName for TaskDocument with relativePath', () => {
+        const doc: TaskDocument = { baseName: 'task', fileName: 'task.plan.md', relativePath: 'feature', isArchived: false };
+        expect(getTaskNodePath(doc)).toBe('feature/task.plan.md');
+    });
+
+    it('normalises Windows backslashes in relativePath', () => {
+        const doc: TaskDocument = { baseName: 'task', fileName: 'task.md', relativePath: 'a\\b', isArchived: false };
+        expect(getTaskNodePath(doc)).toBe('a/b/task.md');
+    });
+
+    it('returns first doc fileName for TaskDocumentGroup with no relativePath', () => {
+        const doc: TaskDocument = { baseName: 'task', fileName: 'task.plan.md', isArchived: false };
+        const group: TaskDocumentGroup = { baseName: 'task', documents: [doc], isArchived: false };
+        expect(getTaskNodePath(group)).toBe('task.plan.md');
+    });
+
+    it('returns first doc path for TaskDocumentGroup with relativePath', () => {
+        const doc: TaskDocument = { baseName: 'task', fileName: 'task.plan.md', relativePath: 'feat', isArchived: false };
+        const group: TaskDocumentGroup = { baseName: 'task', documents: [doc], isArchived: false };
+        expect(getTaskNodePath(group)).toBe('feat/task.plan.md');
+    });
+
+    it('returns null for TaskDocumentGroup with no documents', () => {
+        const group: TaskDocumentGroup = { baseName: 'empty', documents: [], isArchived: false };
+        expect(getTaskNodePath(group)).toBeNull();
+    });
+
+    it('returns null for TaskFolder', () => {
+        const folder: TaskFolder = { name: 'f', relativePath: 'f', children: [], documentGroups: [], singleDocuments: [] };
+        expect(getTaskNodePath(folder)).toBeNull();
+    });
+});
+
+
 
 import { getTaskStatusIcon } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 
