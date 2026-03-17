@@ -78,6 +78,8 @@ export interface WorkspaceInfo {
     color?: string;
     /** Git remote URL (typically origin) — used to group clones of the same repo */
     remoteUrl?: string;
+    /** Optional user-supplied description for this workspace. */
+    description?: string;
     /**
      * Per-workspace MCP server filter.
      * - `undefined` — use the default MCP configuration (no override).

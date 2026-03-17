@@ -374,6 +374,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (body.color !== undefined) { updates.color = body.color; }
             if (body.rootPath !== undefined) { updates.rootPath = body.rootPath; }
             if (body.remoteUrl !== undefined) { updates.remoteUrl = body.remoteUrl; }
+            if (body.description !== undefined) { updates.description = body.description; }
 
             const updated = await store.updateWorkspace(id, updates);
             if (!updated) {

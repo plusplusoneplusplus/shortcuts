@@ -64,6 +64,9 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const remoteUrl = ws.remoteUrl || repo.gitInfo?.remoteUrl || null;
 
+    const [desc, setDesc] = useState(ws.description ?? '');
+    const [savingDesc, setSavingDesc] = useState(false);
+
     const [processes, setProcesses] = useState<any[]>([]);
     const [loadingProcesses, setLoadingProcesses] = useState(true);
 
@@ -116,6 +119,32 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
                 <MetaRow label="Completed" value={String(stats.success)} />
                 <MetaRow label="Failed" value={String(stats.failed)} />
                 <MetaRow label="Running" value={String(stats.running)} />
+            </div>
+
+            {/* Description */}
+            <div id="repo-description-section">
+                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Description</h3>
+                <textarea
+                    id="repo-description-textarea"
+                    className="w-full text-xs text-[#1e1e1e] dark:text-[#cccccc] bg-transparent border border-[#848484]/40 rounded px-2 py-1.5 resize-none focus:outline-none focus:border-[#0078d4] dark:focus:border-[#3794ff]"
+                    rows={3}
+                    placeholder="Add a description for this repo…"
+                    value={desc}
+                    onChange={e => setDesc(e.target.value)}
+                    onBlur={async () => {
+                        if (desc === (ws.description ?? '')) return;
+                        setSavingDesc(true);
+                        try {
+                            await fetchApi(`/workspaces/${encodeURIComponent(ws.id)}`, {
+                                method: 'PATCH',
+                                body: JSON.stringify({ description: desc }),
+                            });
+                        } finally {
+                            setSavingDesc(false);
+                        }
+                    }}
+                    disabled={savingDesc}
+                />
             </div>
 
             {/* Recent processes */}
