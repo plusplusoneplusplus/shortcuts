@@ -109,7 +109,11 @@ test.describe('Mobile Processes', () => {
         // Type filter dropdown may appear for multiple task types
         const filterDropdown = page.locator('[data-testid="queue-filter-dropdown"]');
         if (await filterDropdown.count() > 0 && await filterDropdown.isVisible()) {
-            await filterDropdown.selectOption('chat');
+            await page.locator('[data-testid="filter-dropdown-trigger"]').click();
+            const chatCheckbox = page.locator('[data-testid="filter-checkbox-run-workflow"]');
+            if (await chatCheckbox.count() > 0) {
+                await chatCheckbox.uncheck();
+            }
             await page.waitForTimeout(300);
             const items = page.locator('[data-task-id]');
             const count = await items.count();

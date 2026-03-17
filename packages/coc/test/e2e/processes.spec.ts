@@ -134,7 +134,7 @@ test.describe('ProcessesView – Task list', () => {
 test.describe('ProcessesView – Filtering', () => {
     test('P.7 type filter dropdown changes the visible task list', async ({ page, serverUrl }) => {
         // Seed two tasks of different types so the type-filter dropdown renders
-        // (it only appears when availableFilters.length > 2)
+        // (it only appears when availableFilters.length > 0)
         const chatTask = await seedQueueTask(serverUrl, { type: 'chat', payload: { prompt: 'Filter test' } });
         const scriptTask = await seedQueueTask(serverUrl, { type: 'run-script', payload: { script: 'echo hi' } });
         await Promise.all([
@@ -144,16 +144,17 @@ test.describe('ProcessesView – Filtering', () => {
 
         await gotoProcesses(page, serverUrl);
 
-        // The type filter dropdown renders when there are >2 types (data-testid="queue-filter-dropdown")
+        // The type filter dropdown renders when there are multiple types (data-testid="queue-filter-dropdown")
         const filterDd = page.locator('[data-testid="queue-filter-dropdown"]');
         await expect(filterDd).toBeVisible({ timeout: 10_000 });
 
-        // Change filter to 'chat' — only chat tasks should be visible
-        await filterDd.selectOption('chat');
+        // Open the dropdown and uncheck 'run-script' to filter to only chat
+        await page.locator('[data-testid="filter-dropdown-trigger"]').click();
+        await page.locator('[data-testid="filter-checkbox-run-script"]').uncheck();
         await page.waitForTimeout(300);
 
-        // The filter selection should be 'chat'
-        await expect(filterDd).toHaveValue('chat');
+        // The run-script checkbox should now be unchecked (excluded)
+        await expect(page.locator('[data-testid="filter-checkbox-run-script"]')).not.toBeChecked();
     });
 });
 

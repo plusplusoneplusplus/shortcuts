@@ -74,12 +74,13 @@ test.describe('Dashboard — Processes tab', () => {
         await page.goto(serverUrl + '/#processes');
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 8000 });
 
-        // Filter dropdown appears when ≥3 options (All + Chat + Run Workflow)
+        // Filter dropdown appears when there are multiple task types
         const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
         await expect(dropdown).toBeVisible({ timeout: 5000 });
 
-        // Select run-workflow: only Beta Workflow should remain
-        await dropdown.selectOption('run-workflow');
+        // Open the filter dropdown and exclude 'chat' to show only run-workflow
+        await page.locator('[data-testid="filter-dropdown-trigger"]').click();
+        await page.locator('[data-testid="filter-checkbox-chat"]').uncheck();
         await expect(page.locator('[title="Beta Workflow"]').first()).toBeVisible({ timeout: 5000 });
         await expect(page.locator('[title="Alpha Chat"]')).not.toBeVisible();
     });
@@ -97,7 +98,10 @@ test.describe('Dashboard — Processes tab', () => {
 
         const dropdown = page.locator('[data-testid="queue-filter-dropdown"]');
         await expect(dropdown).toBeVisible({ timeout: 5000 });
-        await dropdown.selectOption('chat');
+
+        // Open the filter dropdown and exclude 'run-workflow' to show only chat
+        await page.locator('[data-testid="filter-dropdown-trigger"]').click();
+        await page.locator('[data-testid="filter-checkbox-run-workflow"]').uncheck();
 
         await expect(page.locator('[title="Chat Only Task"]').first()).toBeVisible({ timeout: 5000 });
         await expect(page.locator('[title="Workflow Only Task"]')).not.toBeVisible();
