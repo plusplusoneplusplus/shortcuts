@@ -10,7 +10,7 @@ import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { lazy, Suspense } from 'react';
-import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, CopilotSection } from '../types/dashboard';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
@@ -148,6 +148,17 @@ export function parseActivityDeepLink(hash: string): string | null {
 }
 
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'copilot', 'workflow', 'explorer', 'activity', 'pull-requests']);
+
+export const VALID_COPILOT_SECTIONS: Set<string> = new Set(['mcp', 'skills', 'instructions']);
+
+export function parseCopilotSection(hash: string): CopilotSection {
+    const parts = hash.replace(/^#/, '').split('/');
+    if (parts[0] === 'repos' && parts[2] === 'copilot' && parts[3]) {
+        const section = decodeURIComponent(parts[3]);
+        if (VALID_COPILOT_SECTIONS.has(section)) return section as CopilotSection;
+    }
+    return 'mcp';
+}
 
 /** Maps Alt+<letter> to a repo sub-tab key. Used by the keyboard handler and tooltip hints. */
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
@@ -304,6 +315,10 @@ export function Router() {
                         dispatch({ type: 'SET_SELECTED_PR', prId: decodeURIComponent(parts[3]) });
                     } else if (parts[2] === 'pull-requests') {
                         dispatch({ type: 'CLEAR_SELECTED_PR' });
+                    }
+                    // Copilot section deep-link: #repos/{id}/copilot/{section}
+                    if (parts[2] === 'copilot') {
+                        dispatch({ type: 'SET_COPILOT_SECTION', section: parseCopilotSection('#' + hash) });
                     }
                 }
             }

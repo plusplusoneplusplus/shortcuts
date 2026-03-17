@@ -20,6 +20,7 @@ export interface ClientTokenUsage {
 
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs';
 export type RepoSubTab = 'info' | 'workflows' | 'tasks' | 'schedules' | 'git' | 'wiki' | 'copilot' | 'workflow' | 'explorer' | 'activity' | 'pull-requests';
+export type CopilotSection = 'mcp' | 'skills' | 'instructions';
 export type WikiProjectTab = 'browse' | 'ask' | 'graph' | 'admin';
 export type WikiAdminTab = 'generate' | 'seeds' | 'config' | 'delete';
 export type MemorySubTab = 'entries' | 'config' | 'files';

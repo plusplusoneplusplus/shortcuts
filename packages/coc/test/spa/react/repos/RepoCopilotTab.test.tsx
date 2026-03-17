@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import React from 'react';
 
 // fetchApi mock — default resolves with two servers
 const mockFetchApi = vi.fn();
@@ -29,7 +30,10 @@ async function renderTab(workspaceId = 'ws-1') {
     const { RepoCopilotTab } = await import(
         '../../../../src/server/spa/client/react/repos/RepoCopilotTab'
     );
-    return render(<RepoCopilotTab workspaceId={workspaceId} />);
+    const { AppProvider } = await import(
+        '../../../../src/server/spa/client/react/context/AppContext'
+    );
+    return render(<AppProvider><RepoCopilotTab workspaceId={workspaceId} /></AppProvider>);
 }
 
 /** Helper: navigate the sidebar to the skills section */
@@ -52,8 +56,9 @@ const emptySkillsResponse = { skills: [] };
 
 beforeEach(() => {
     vi.resetAllMocks();
+    location.hash = '';
     mockFetchApi.mockResolvedValue(twoServers);
-    // Default: skills API returns empty list
+    // Default: skills API returns empty list; AppProvider preferences call returns {}
     mockFetch.mockResolvedValue({
         ok: true,
         json: async () => emptySkillsResponse,
@@ -344,5 +349,33 @@ describe('sidebar navigation', () => {
         await act(async () => { fireEvent.click(screen.getByTestId('nav-item-mcp')); });
         await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
         expect(screen.getByTestId('mcp-toggle-github')).toBeTruthy();
+    });
+});
+
+// ── 13. Deep URL — section reflects context + updates hash ────────────────────
+
+describe('deep URL section routing', () => {
+    it('updates location.hash to copilot/skills when skills nav item is clicked', async () => {
+        await act(async () => { await renderTab('ws-deep'); });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('nav-item-skills'));
+        });
+        expect(location.hash).toBe('#repos/ws-deep/copilot/skills');
+    });
+
+    it('updates location.hash to copilot/instructions when instructions nav item is clicked', async () => {
+        await act(async () => { await renderTab('ws-deep'); });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('nav-item-instructions'));
+        });
+        expect(location.hash).toBe('#repos/ws-deep/copilot/instructions');
+    });
+
+    it('updates location.hash to copilot/mcp when mcp nav item is clicked', async () => {
+        await act(async () => { await renderTab('ws-deep'); });
+        // Navigate away then back
+        await act(async () => { fireEvent.click(screen.getByTestId('nav-item-skills')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('nav-item-mcp')); });
+        expect(location.hash).toBe('#repos/ws-deep/copilot/mcp');
     });
 });

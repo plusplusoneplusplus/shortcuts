@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { useGlobalToast } from '../context/ToastContext';
+import { useApp } from '../context/AppContext';
 import { getApiBase } from '../utils/config';
 import { McpServersPanel } from './McpServersPanel';
 import type { McpServerEntry } from './McpServersPanel';
@@ -13,12 +14,13 @@ import { AgentSkillsPanel } from './AgentSkillsPanel';
 import type { Skill, SkillDetail } from './AgentSkillsPanel';
 import { CustomInstructionsPanel } from './CustomInstructionsPanel';
 import type { InstructionMode } from './CustomInstructionsPanel';
+import type { CopilotSection } from '../types/dashboard';
 
 interface RepoCopilotTabProps {
     workspaceId: string;
 }
 
-type ActiveSection = 'mcp' | 'skills' | 'instructions';
+type ActiveSection = CopilotSection;
 
 const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'mcp', label: 'MCP Servers', icon: '🖥️' },
@@ -28,6 +30,7 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
 
 export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const { addToast } = useGlobalToast();
+    const { state, dispatch } = useApp();
 
     // ── MCP state ────────────────────────────────────────────────────────────
     const [loading, setLoading] = useState(true);
@@ -240,7 +243,12 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     };
 
     // ── Sidebar navigation state ──────────────────────────────────────────────
-    const [activeSection, setActiveSection] = useState<ActiveSection>('mcp');
+    const activeSection = state.copilotSection;
+
+    const setActiveSection = useCallback((section: ActiveSection) => {
+        dispatch({ type: 'SET_COPILOT_SECTION', section });
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/copilot/' + section;
+    }, [dispatch, workspaceId]);
 
     // Count badges for sidebar
     const enabledMcpCount = availableServers.filter(s => isEnabled(s.name)).length;

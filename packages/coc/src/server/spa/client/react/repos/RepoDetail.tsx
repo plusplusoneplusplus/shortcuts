@@ -170,8 +170,11 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         if (tab !== 'git') {
             dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null });
         }
-        // Update hash
-        const suffix = tab !== 'info' ? '/' + tab : '';
+        // Update hash — copilot tab preserves the active section as a 4th segment
+        let suffix = tab !== 'info' ? '/' + tab : '';
+        if (tab === 'copilot') {
+            suffix = '/copilot/' + state.copilotSection;
+        }
         location.hash = '#repos/' + encodeURIComponent(ws.id) + suffix;
     };
 

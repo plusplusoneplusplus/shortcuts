@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, TasksPanelNavState } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, CopilotSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -63,6 +63,8 @@ export interface AppContextState {
     wikiTabState: Record<string, string>;
     /** Per-repo per-sub-tab navigation state, keyed by `${repoId}::${subTab}` (in-memory only). */
     repoSubTabNavState: Record<string, TasksPanelNavState>;
+    /** Currently active section within the Copilot tab (MCP / Skills / Instructions). */
+    copilotSection: CopilotSection;
 }
 
 const initialState: AppContextState = {
@@ -103,6 +105,7 @@ const initialState: AppContextState = {
     repoTabState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
+    copilotSection: 'mcp',
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -161,7 +164,8 @@ export type AppAction =
     | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
     | { type: 'SET_SELECTED_PR'; prId: number | string }
     | { type: 'CLEAR_SELECTED_PR' }
-    | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState };
+    | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
+    | { type: 'SET_COPILOT_SECTION'; section: CopilotSection };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -373,6 +377,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                     [`${action.repoId}::tasks`]: action.navState,
                 },
             };
+        case 'SET_COPILOT_SECTION':
+            return state.copilotSection === action.section ? state : { ...state, copilotSection: action.section };
         default:
             return state;
     }

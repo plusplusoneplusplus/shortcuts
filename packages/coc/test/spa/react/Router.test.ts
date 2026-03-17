@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseCopilotSection, VALID_COPILOT_SECTIONS } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -1718,5 +1718,124 @@ describe('handleHash pull-requests dispatch simulation', () => {
 
     it('pull-requests is in VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
+    });
+});
+
+// ─── parseCopilotSection ──────────────────────────────────────────
+
+describe('parseCopilotSection', () => {
+    it('returns "mcp" for #repos/r1/copilot (no section)', () => {
+        expect(parseCopilotSection('#repos/r1/copilot')).toBe('mcp');
+    });
+
+    it('returns "mcp" for #repos/r1/copilot/mcp', () => {
+        expect(parseCopilotSection('#repos/r1/copilot/mcp')).toBe('mcp');
+    });
+
+    it('returns "skills" for #repos/r1/copilot/skills', () => {
+        expect(parseCopilotSection('#repos/r1/copilot/skills')).toBe('skills');
+    });
+
+    it('returns "instructions" for #repos/r1/copilot/instructions', () => {
+        expect(parseCopilotSection('#repos/r1/copilot/instructions')).toBe('instructions');
+    });
+
+    it('falls back to "mcp" for an unknown section', () => {
+        expect(parseCopilotSection('#repos/r1/copilot/unknown')).toBe('mcp');
+    });
+
+    it('falls back to "mcp" for a non-copilot hash', () => {
+        expect(parseCopilotSection('#repos/r1/git')).toBe('mcp');
+    });
+
+    it('falls back to "mcp" for empty hash', () => {
+        expect(parseCopilotSection('')).toBe('mcp');
+    });
+
+    it('URL-decodes the section', () => {
+        expect(parseCopilotSection('#repos/r1/copilot/skill%73')).toBe('skills');
+    });
+});
+
+// ─── VALID_COPILOT_SECTIONS ───────────────────────────────────────
+
+describe('VALID_COPILOT_SECTIONS', () => {
+    it('includes "mcp"', () => {
+        expect(VALID_COPILOT_SECTIONS.has('mcp')).toBe(true);
+    });
+
+    it('includes "skills"', () => {
+        expect(VALID_COPILOT_SECTIONS.has('skills')).toBe(true);
+    });
+
+    it('includes "instructions"', () => {
+        expect(VALID_COPILOT_SECTIONS.has('instructions')).toBe(true);
+    });
+
+    it('does not include unknown values', () => {
+        expect(VALID_COPILOT_SECTIONS.has('unknown')).toBe(false);
+    });
+});
+
+// ─── Copilot hash dispatching simulation ─────────────────────────
+
+describe('copilot section hash routing', () => {
+    function simulateCopilotHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+        const dispatches: Array<{ type: string; [key: string]: any }> = [];
+        const hash = rawHash.replace(/^#/, '');
+        const tab = tabFromHash('#' + hash);
+        if (tab === 'repos') {
+            const parts = hash.split('/');
+            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
+                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
+                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
+                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
+                }
+                if (parts[2] === 'copilot') {
+                    dispatches.push({ type: 'SET_COPILOT_SECTION', section: parseCopilotSection('#' + hash) });
+                }
+            }
+        }
+        return dispatches;
+    }
+
+    it('dispatches SET_REPO_SUB_TAB copilot for #repos/r1/copilot', () => {
+        const dispatches = simulateCopilotHash('#repos/r1/copilot');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'copilot' });
+    });
+
+    it('dispatches SET_COPILOT_SECTION mcp for #repos/r1/copilot (default)', () => {
+        const dispatches = simulateCopilotHash('#repos/r1/copilot');
+        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'mcp' });
+    });
+
+    it('dispatches SET_COPILOT_SECTION skills for #repos/r1/copilot/skills', () => {
+        const dispatches = simulateCopilotHash('#repos/r1/copilot/skills');
+        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'skills' });
+    });
+
+    it('dispatches SET_COPILOT_SECTION instructions for #repos/r1/copilot/instructions', () => {
+        const dispatches = simulateCopilotHash('#repos/r1/copilot/instructions');
+        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'instructions' });
+    });
+
+    it('falls back to mcp for #repos/r1/copilot/invalid-section', () => {
+        const dispatches = simulateCopilotHash('#repos/r1/copilot/invalid-section');
+        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'mcp' });
+    });
+
+    it('does not dispatch SET_COPILOT_SECTION for non-copilot tabs', () => {
+        const dispatches = simulateCopilotHash('#repos/r1/git');
+        expect(dispatches.find(d => d.type === 'SET_COPILOT_SECTION')).toBeUndefined();
+    });
+
+    it('dispatches SET_SELECTED_REPO alongside copilot section action', () => {
+        const dispatches = simulateCopilotHash('#repos/my-repo/copilot/skills');
+        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'my-repo' });
+        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'skills' });
+    });
+
+    it('copilot is in VALID_REPO_SUB_TABS', () => {
+        expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(true);
     });
 });

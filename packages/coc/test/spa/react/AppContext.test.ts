@@ -39,6 +39,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoWikiInitialComponentId: null,
         repoTabState: {},
         repoSubTabNavState: {},
+        copilotSection: 'mcp',
         ...overrides,
     };
 }
@@ -905,6 +906,38 @@ describe('AppContext reducer', () => {
             const updated = { openFilePath: 'new.md', selectedFilePaths: [] };
             const result = appReducer(state, { type: 'SET_TASKS_NAV_STATE', repoId: 'repo1', navState: updated });
             expect(result.repoSubTabNavState['repo1::tasks']).toEqual(updated);
+        });
+    });
+
+    // ── SET_COPILOT_SECTION ────────────────────────────────────────
+    describe('SET_COPILOT_SECTION', () => {
+        it('defaults copilotSection to "mcp"', () => {
+            const state = makeState();
+            expect(state.copilotSection).toBe('mcp');
+        });
+
+        it('updates copilotSection to "skills"', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'skills' });
+            expect(result.copilotSection).toBe('skills');
+        });
+
+        it('updates copilotSection to "instructions"', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'instructions' });
+            expect(result.copilotSection).toBe('instructions');
+        });
+
+        it('updates copilotSection to "mcp"', () => {
+            const state = makeState({ copilotSection: 'skills' });
+            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'mcp' });
+            expect(result.copilotSection).toBe('mcp');
+        });
+
+        it('returns same state reference when section is unchanged', () => {
+            const state = makeState({ copilotSection: 'skills' });
+            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'skills' });
+            expect(result).toBe(state);
         });
     });
 });
