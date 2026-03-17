@@ -100,7 +100,7 @@ describe('useRecentSkills', () => {
         });
 
         act(() => {
-            result.current.trackUsage('draft', 'Draft a spec');
+            result.current.trackUsage('draft', { description: 'Draft a spec' });
         });
 
         expect(result.current.recentItems.length).toBe(1);

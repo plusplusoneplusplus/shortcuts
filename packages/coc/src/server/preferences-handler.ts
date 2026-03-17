@@ -42,6 +42,14 @@ export interface RecentFollowPromptEntry {
     path?: string;
     description?: string;
     timestamp: number;
+    /** Full prompt text at submission time. */
+    prompt?: string;
+    /** Selected skill names at submission time. */
+    skills?: string[];
+    /** Model id; omitted if default. */
+    model?: string;
+    /** Dialog mode at submission time. */
+    mode?: 'ask' | 'task';
 }
 
 /** Global (cross-repo) UI preferences. */
@@ -191,6 +199,13 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
                 };
                 if (typeof entry.path === 'string') clean.path = entry.path;
                 if (typeof entry.description === 'string') clean.description = entry.description;
+                if (typeof entry.prompt === 'string') clean.prompt = entry.prompt;
+                if (Array.isArray(entry.skills)) {
+                    const skills = entry.skills.filter((s: unknown): s is string => typeof s === 'string');
+                    if (skills.length > 0) clean.skills = skills;
+                }
+                if (typeof entry.model === 'string' && entry.model.length > 0) clean.model = entry.model;
+                if (entry.mode === 'ask' || entry.mode === 'task') clean.mode = entry.mode;
                 validated.push(clean);
             }
             if (validated.length >= 10) break;

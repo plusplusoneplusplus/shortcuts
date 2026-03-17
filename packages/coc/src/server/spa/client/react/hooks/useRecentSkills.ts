@@ -12,11 +12,19 @@ export interface RecentSkillEntry {
     name: string;
     description?: string;
     timestamp: number;
+    /** Full prompt text at submission time. */
+    prompt?: string;
+    /** Selected skill names at submission time. */
+    skills?: string[];
+    /** Model id; omitted if default. */
+    model?: string;
+    /** Dialog mode at submission time. */
+    mode?: 'ask' | 'task';
 }
 
 export interface UseRecentSkillsResult {
     recentItems: RecentSkillEntry[];
-    trackUsage: (name: string, description?: string) => void;
+    trackUsage: (name: string, opts?: { description?: string; prompt?: string; skills?: string[]; model?: string; mode?: 'ask' | 'task' }) => void;
     loaded: boolean;
 }
 
@@ -40,7 +48,16 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
                 if (!cancelled && Array.isArray(prefs.recentFollowPrompts)) {
                     const items: RecentSkillEntry[] = prefs.recentFollowPrompts
                         .filter((e: any) => e.name)
-                        .map((e: any) => ({ type: e.type || 'skill' as const, name: e.name, description: e.description, timestamp: e.timestamp }));
+                        .map((e: any) => ({
+                            type: e.type || 'skill' as const,
+                            name: e.name,
+                            description: e.description,
+                            timestamp: e.timestamp,
+                            prompt: e.prompt,
+                            skills: Array.isArray(e.skills) ? e.skills : undefined,
+                            model: e.model,
+                            mode: e.mode,
+                        }));
                     setRecentItems(items);
                 }
             } catch {
@@ -52,10 +69,9 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
         return () => { cancelled = true; };
     }, [wsId]);
 
-    const trackUsage = useCallback((name: string, description?: string) => {
+    const trackUsage = useCallback((name: string, opts?: { description?: string; prompt?: string; skills?: string[]; model?: string; mode?: 'ask' | 'task' }) => {
         setRecentItems(prev => {
-            const entry: RecentSkillEntry = { type: 'skill', name, timestamp: Date.now() };
-            if (description) entry.description = description;
+            const entry: RecentSkillEntry = { type: 'prompt', name, timestamp: Date.now(), ...opts };
 
             const filtered = prev.filter(e => e.name !== name);
             const updated = [entry, ...filtered].slice(0, MAX_RECENT);

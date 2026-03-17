@@ -590,6 +590,70 @@ describe('validatePreferences', () => {
         expect(result.recentFollowPrompts![1].description).toBe('Some description');
     });
 
+    it('preserves new prompt/skills/model/mode fields in recentFollowPrompts', () => {
+        const entries = [
+            {
+                type: 'prompt',
+                name: 'Fix auth bug…',
+                timestamp: 2000,
+                prompt: 'Fix the authentication bug in login',
+                skills: ['impl', 'code-review'],
+                model: 'gpt-4o',
+                mode: 'ask',
+            },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        const entry = result.recentFollowPrompts![0];
+        expect(entry.prompt).toBe('Fix the authentication bug in login');
+        expect(entry.skills).toEqual(['impl', 'code-review']);
+        expect(entry.model).toBe('gpt-4o');
+        expect(entry.mode).toBe('ask');
+    });
+
+    it('preserves mode=task in recentFollowPrompts', () => {
+        const entries = [
+            { type: 'prompt', name: 'refactor', timestamp: 3000, mode: 'task' },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts![0].mode).toBe('task');
+    });
+
+    it('omits skills array if empty after filtering in recentFollowPrompts', () => {
+        const entries = [
+            { type: 'prompt', name: 'test', timestamp: 4000, skills: [42, null, true] },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts![0].skills).toBeUndefined();
+    });
+
+    it('strips invalid model (empty string) from recentFollowPrompts', () => {
+        const entries = [
+            { type: 'prompt', name: 'test', timestamp: 5000, model: '' },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts![0].model).toBeUndefined();
+    });
+
+    it('strips invalid mode value from recentFollowPrompts', () => {
+        const entries = [
+            { type: 'prompt', name: 'test', timestamp: 6000, mode: 'autopilot' },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        expect(result.recentFollowPrompts![0].mode).toBeUndefined();
+    });
+
+    it('backward compat: old entries without new fields pass through unchanged', () => {
+        const entries = [
+            { type: 'skill', name: 'impl', path: 'skills/impl.md', timestamp: 1000 },
+        ];
+        const result = validatePreferences({ recentFollowPrompts: entries });
+        const entry = result.recentFollowPrompts![0];
+        expect(entry.prompt).toBeUndefined();
+        expect(entry.skills).toBeUndefined();
+        expect(entry.model).toBeUndefined();
+        expect(entry.mode).toBeUndefined();
+    });
+
     it('omits recentFollowPrompts when all entries are invalid', () => {
         const entries = [
             { type: 'invalid', name: 'bad', timestamp: 1000 },

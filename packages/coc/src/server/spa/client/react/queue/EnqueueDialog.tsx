@@ -18,6 +18,8 @@ import { getApiBase } from '../utils/config';
 import { useMinimizedDialog } from '../context/MinimizedDialogsContext';
 import { useSlashCommands } from '../repos/useSlashCommands';
 import { SlashCommandMenu } from '../repos/SlashCommandMenu';
+import { useRecentSkills } from '../hooks/useRecentSkills';
+import { RecentPromptsTab } from './RecentPromptsTab';
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -43,7 +45,9 @@ export function EnqueueDialog() {
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
+    const [activeTab, setActiveTab] = useState<'new' | 'recent'>('new');
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
+    const { recentItems, trackUsage, loaded: recentLoaded } = useRecentSkills(workspaceId || undefined);
     const { models: modelInfos } = useModels();
     const models = modelInfos.map(m => m.id);
     const [folders, setFolders] = useState<FolderOption[]>([]);
@@ -136,6 +140,13 @@ export function EnqueueDialog() {
         );
     }, []);
 
+    const handleSelectRecent = useCallback((entry: import('../hooks/useRecentSkills').RecentSkillEntry) => {
+        if (entry.prompt) setPrompt(entry.prompt);
+        if (entry.skills && entry.skills.length > 0) setSelectedSkills(entry.skills);
+        if (entry.model) setModel(entry.model);
+        setActiveTab('new');
+    }, []);
+
     const handleSubmit = useCallback(async () => {
         // Parse /skill tokens from prompt text
         const { skills: slashSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(prompt);
@@ -210,6 +221,16 @@ export function EnqueueDialog() {
             setPrompt('');
             setSelectedSkills([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
+            // Track recent history for EnqueueDialog
+            const displayName = effectivePrompt.trim()
+                ? (effectivePrompt.length > 40 ? effectivePrompt.slice(0, 40) + '…' : effectivePrompt)
+                : `Skills: ${effectiveSkills.join(', ')}`;
+            trackUsage(displayName, {
+                prompt: effectivePrompt,
+                skills: effectiveSkills.length > 0 ? effectiveSkills : undefined,
+                model: model || undefined,
+                mode: isAskMode ? 'ask' : 'task',
+            });
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
                 if (sk && workspaceId) {
@@ -224,7 +245,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, trackUsage, slashCommands, isAskMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt);
@@ -279,6 +300,31 @@ export function EnqueueDialog() {
 
     const dialogContent = (
         <div className="flex flex-col gap-3">
+            {/* Tab bar */}
+            <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] -mb-1">
+                {(['new', 'recent'] as const).map(tab => (
+                    <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-3 py-1.5 text-xs font-medium capitalize border-b-2 transition-colors ${
+                            activeTab === tab
+                                ? 'border-[#0078d4] text-[#0078d4]'
+                                : 'border-transparent text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                        }`}
+                    >
+                        {tab === 'recent' ? `Recent${recentItems.length > 0 ? ` (${recentItems.length})` : ''}` : 'New'}
+                    </button>
+                ))}
+            </div>
+            {activeTab === 'recent' ? (
+                <RecentPromptsTab
+                    items={recentItems}
+                    loaded={recentLoaded}
+                    onSelect={handleSelectRecent}
+                />
+            ) : (
+            <>
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
                 <div className="relative">
@@ -378,6 +424,8 @@ export function EnqueueDialog() {
                         ))}
                     </select>
                 </div>
+            )}
+            </>
             )}
         </div>
     );
