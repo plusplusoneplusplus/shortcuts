@@ -39,6 +39,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () =>
     NotificationBell: () => null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+    QueueProvider: ({ children }: any) => children,
+    useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
