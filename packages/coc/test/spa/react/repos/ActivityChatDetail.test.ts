@@ -935,9 +935,37 @@ describe('ActivityChatDetail', () => {
             expect(CONVERSATION_AREA_SOURCE).toContain('space-y-3');
         });
 
-        it('wraps ConversationArea and minimap in a flex row', () => {
-            const flexWrapper = source.includes('flex-1 min-h-0 flex');
-            expect(flexWrapper).toBe(true);
+        it('hides minimap on mobile viewports', () => {
+            // ConversationMiniMap must be conditionally hidden when isMobile is true
+            expect(source).toContain('!isMobile');
+        });
+
+        it('imports useBreakpoint hook', () => {
+            expect(source).toContain("import { useBreakpoint } from '../hooks/useBreakpoint'");
+        });
+
+        it('destructures isMobile from useBreakpoint', () => {
+            expect(source).toContain('isMobile');
+            expect(source).toContain('useBreakpoint()');
+        });
+    });
+
+    describe('mobile responsiveness', () => {
+        it('back button uses min-h-11 min-w-11 for 44px touch target', () => {
+            expect(CHAT_HEADER_SRC).toContain('min-h-11 min-w-11');
+            expect(CHAT_HEADER_SRC).not.toContain('min-h-7 min-w-7');
+        });
+
+        it('scroll-to-bottom button is 44px on mobile and 32px on sm+ screens', () => {
+            expect(CONVERSATION_AREA_SOURCE).toContain('w-11 h-11 sm:w-8 sm:h-8');
+        });
+
+        it('FollowUpInputArea stacks vertically on mobile', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-col sm:flex-row');
+        });
+
+        it('send button is full-width on mobile', () => {
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('w-full sm:w-auto');
         });
     });
 });

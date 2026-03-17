@@ -472,6 +472,38 @@ describe('ConversationMiniMap', () => {
             expect(tooltip.textContent).toContain('User');
             expect(tooltip.textContent).toContain('Turn 1');
         });
+
+        it('tooltip left position is clamped to stay within viewport', () => {
+            // Set a narrow innerWidth so the tooltip would overflow without clamping
+            Object.defineProperty(window, 'innerWidth', { value: 400, writable: true, configurable: true });
+            renderMiniMap();
+            const strip = screen.getByTestId('minimap-strip-0');
+
+            // Use a very large clientX to force the clamp: left = 1200 - 56 - 160 = 984 > 400 - 220 = 180
+            fireEvent.mouseEnter(strip, { clientX: 1200, clientY: 100 });
+            const tooltip = screen.getByTestId('minimap-tooltip');
+            const left = parseFloat(tooltip.style.left as string);
+            expect(left).toBeLessThanOrEqual(window.innerWidth - 220);
+        });
+
+        it('tooltip left position has a minimum of 8px', () => {
+            renderMiniMap();
+            const strip = screen.getByTestId('minimap-strip-0');
+
+            // clientX near 0 — without min, left = 0 - 56 - 160 = -216, clamped to 8
+            fireEvent.mouseEnter(strip, { clientX: 0, clientY: 100 });
+            const tooltip = screen.getByTestId('minimap-tooltip');
+            const left = parseFloat(tooltip.style.left as string);
+            expect(left).toBeGreaterThanOrEqual(8);
+        });
+
+        it('tooltip has max-w class to prevent overflow on narrow screens', () => {
+            renderMiniMap();
+            const strip = screen.getByTestId('minimap-strip-0');
+            fireEvent.mouseEnter(strip, { clientX: 100, clientY: 100 });
+            const tooltip = screen.getByTestId('minimap-tooltip');
+            expect(tooltip.className).toContain('max-w-[calc(100vw-16px)]');
+        });
     });
 
     describe('edge cases', () => {

@@ -16,6 +16,7 @@ import { useQueue } from '../context/QueueContext';
 import { useApp } from '../context/AppContext';
 import { useImagePaste } from '../hooks/useImagePaste';
 import { useSlashCommands } from './useSlashCommands';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import type { SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../utils/conversationScan';
 import type { ClientConversationTurn } from '../types/dashboard';
@@ -94,6 +95,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     const isInitialLoadRef = useRef(true);
 
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
+    const { isMobile } = useBreakpoint();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
     const slashCommands = useSlashCommands(skills);
@@ -474,7 +476,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                     taskId={taskId}
                     wsId={workspaceId}
                 />
-                {variant !== 'floating' && (
+                {variant !== 'floating' && !isMobile && (
                     <ConversationMiniMap
                         turns={turns}
                         scrollContainerRef={conversationContainerRef}

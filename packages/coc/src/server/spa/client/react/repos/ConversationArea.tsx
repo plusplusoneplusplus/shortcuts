@@ -78,7 +78,7 @@ export function ConversationArea({
             <button
                 data-testid="scroll-to-bottom-btn"
                 className={cn(
-                    'absolute bottom-4 right-4 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-[#0078d4] text-white shadow-md hover:bg-[#106ebe] text-sm pointer-events-none opacity-0 transition-opacity',
+                    'absolute bottom-4 right-4 z-10 flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full bg-[#0078d4] text-white shadow-md hover:bg-[#106ebe] text-sm pointer-events-none opacity-0 transition-opacity',
                     isScrolledUp && 'visible pointer-events-auto opacity-100',
                 )}
                 onClick={onScrollToBottom}

@@ -351,11 +351,11 @@ export function ConversationMiniMap({
             {/* Tooltip */}
             {tooltip && (
                 <div
-                    className="minimap-tooltip"
+                    className="minimap-tooltip max-w-[calc(100vw-16px)]"
                     data-testid="minimap-tooltip"
                     style={{
                         top: tooltip.y - 10,
-                        left: tooltip.x - MINIMAP_WIDTH - 160,
+                        left: Math.max(8, Math.min(tooltip.x - MINIMAP_WIDTH - 160, window.innerWidth - 220)),
                     }}
                 >
                     <div className="minimap-tooltip-header">

@@ -90,7 +90,7 @@ export function FollowUpInputArea({
                 />
             )}
             <ImagePreviews images={images} onRemove={onImageRemove} />
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <div className="shrink-0" data-testid="mode-selector">
                     <select
                         value={selectedMode}
@@ -103,7 +103,7 @@ export function FollowUpInputArea({
                         ))}
                     </select>
                 </div>
-                <div className="relative flex-1">
+                <div className="relative flex-1 w-full sm:w-auto">
                     <textarea
                         ref={textareaRef}
                         rows={1}
@@ -159,7 +159,7 @@ export function FollowUpInputArea({
                 <button
                     type="button"
                     disabled={inputDisabled}
-                    className="h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full sm:w-auto h-[34px] px-3 rounded bg-[#0078d4] text-white text-sm font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => { void onSend(); }}
                     data-testid="activity-chat-send-btn"
                 >
