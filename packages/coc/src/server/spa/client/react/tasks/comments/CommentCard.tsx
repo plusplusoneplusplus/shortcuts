@@ -13,23 +13,9 @@ import { renderMarkdownToHtml } from '../../../markdown-renderer';
 import { AICommandMenu } from './AICommandMenu';
 import type { AnyComment } from '../../../shared-comment-types';
 import { isDiffComment } from '../../../shared-comment-types';
+import { formatRelativeTime } from '../../utils/format';
 
 const ACTION_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded transition-colors text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
-
-function formatRelative(dateStr: string | null | undefined): string {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const diff = Date.now() - d.getTime();
-    if (diff < 60000) return 'just now';
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return mins + 'm ago';
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return hours + 'h ago';
-    const days = Math.floor(hours / 24);
-    if (days === 1) return 'yesterday';
-    if (days < 7) return days + 'd ago';
-    return d.toLocaleDateString();
-}
 
 export interface CommentCardProps {
     comment: AnyComment;
@@ -99,7 +85,7 @@ export function CommentCard({
                 <span className={cn('w-2 h-2 rounded-full shrink-0', isResolved ? 'bg-green-500' : 'bg-[#0078d4]')}
                     title={isResolved ? 'Resolved' : 'Open'} />
                 <span className="text-[10px] text-[#848484] truncate">{comment.author || 'Anonymous'}</span>
-                <span className="text-[10px] text-[#a0a0a0] ml-auto shrink-0">{formatRelative(comment.createdAt)}</span>
+                <span className="text-[10px] text-[#a0a0a0] ml-auto shrink-0">{formatRelativeTime(comment.createdAt)}</span>
             </div>
             {showFilePath && isDiffComment(comment) && (
                 <span className="text-[10px] font-mono text-[#848484] truncate" title={comment.context.filePath}>

@@ -3,21 +3,7 @@
  */
 
 import type { AnyCommentReply } from '../../../shared-comment-types';
-
-function formatRelative(dateStr: string | null | undefined): string {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const diff = Date.now() - d.getTime();
-    if (diff < 60000) return 'just now';
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return mins + 'm ago';
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return hours + 'h ago';
-    const days = Math.floor(hours / 24);
-    if (days === 1) return 'yesterday';
-    if (days < 7) return days + 'd ago';
-    return d.toLocaleDateString();
-}
+import { formatRelativeTime } from '../../utils/format';
 
 interface CommentReplyProps {
     reply: AnyCommentReply;
@@ -35,7 +21,7 @@ export function CommentReply({ reply }: CommentReplyProps) {
         >
             <div className="flex items-center gap-2 text-[10px] text-[#848484]">
                 <span className="font-medium">{reply.isAI ? '🤖 AI' : reply.author}</span>
-                <span>{formatRelative(reply.createdAt)}</span>
+                <span>{formatRelativeTime(reply.createdAt)}</span>
             </div>
             <div className="text-[#1e1e1e] dark:text-[#cccccc]">{reply.text}</div>
         </div>
