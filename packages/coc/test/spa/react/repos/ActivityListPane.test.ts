@@ -869,3 +869,98 @@ describe('taskMatchesFilter: exclusion logic', () => {
         expect(taskMatchesFilter(chatAutopilot, excluded)).toBe(false);
     });
 });
+
+// ── Mobile long-press context menu (regression) ──────────────────────────────
+
+describe('ActivityListPane mobile long-press context menu', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = fs.readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
+    });
+
+    describe('useLongPress import', () => {
+        it('imports useLongPress hook', () => {
+            expect(source).toContain("from '../hooks/useLongPress'");
+        });
+    });
+
+    describe('QueueTaskItem — long-press wiring', () => {
+        it('declares onLongPress prop', () => {
+            expect(source).toContain('onLongPress?: (x: number, y: number) => void');
+        });
+
+        it('declares cancelLongPress prop', () => {
+            expect(source).toContain('cancelLongPress?: boolean');
+        });
+
+        it('attaches onTouchStart handler to Card', () => {
+            expect(source).toContain('onTouchStart={longPress.onTouchStart}');
+        });
+
+        it('attaches onTouchEnd handler to Card', () => {
+            expect(source).toContain('onTouchEnd={longPress.onTouchEnd}');
+        });
+
+        it('attaches onTouchMove handler to Card', () => {
+            expect(source).toContain('onTouchMove={longPress.onTouchMove}');
+        });
+
+        it('suppresses onClick when long press fired', () => {
+            expect(source).toContain('longPress.didLongPress()');
+        });
+    });
+
+    describe('running tasks — onLongPress wired', () => {
+        it('passes onLongPress to running QueueTaskItem', () => {
+            // The source should contain onLongPress wired for running tasks
+            // (look for the pattern near 'running' status in JSX invocations)
+            expect(source).toContain("task.id, 'running')}");
+        });
+    });
+
+    describe('queued tasks — onLongPress wired with cancelLongPress', () => {
+        it('passes onLongPress to queued QueueTaskItem', () => {
+            // The source should contain onLongPress wired for queued tasks
+            expect(source).toContain("item.id, 'queued')}");
+        });
+
+        it('passes cancelLongPress={!!activeDraggedTaskId} to queued QueueTaskItem', () => {
+            expect(source).toContain('cancelLongPress={!!activeDraggedTaskId}');
+        });
+    });
+
+    describe('history items — long-press handlers', () => {
+        it('defines handleHistoryTouchStart callback', () => {
+            expect(source).toContain('handleHistoryTouchStart');
+        });
+
+        it('defines cancelHistoryLongPress callback', () => {
+            expect(source).toContain('cancelHistoryLongPress');
+        });
+
+        it('defines handleHistoryTouchMove callback', () => {
+            expect(source).toContain('handleHistoryTouchMove');
+        });
+
+        it('wires onTouchStart to pinned history cards', () => {
+            // There should be at least three occurrences of handleHistoryTouchStart in JSX
+            const occurrences = source.split('onTouchStart={e => handleHistoryTouchStart(e, task.id)}').length - 1;
+            expect(occurrences).toBeGreaterThanOrEqual(3);
+        });
+
+        it('wires onTouchEnd (cancel) to history cards', () => {
+            const occurrences = source.split('onTouchEnd={cancelHistoryLongPress}').length - 1;
+            expect(occurrences).toBeGreaterThanOrEqual(3);
+        });
+
+        it('wires onTouchMove to history cards', () => {
+            const occurrences = source.split('onTouchMove={handleHistoryTouchMove}').length - 1;
+            expect(occurrences).toBeGreaterThanOrEqual(3);
+        });
+
+        it('suppresses onClick when long press fired for pinned history', () => {
+            expect(source).toContain('historyLongPressFired.current');
+        });
+    });
+});

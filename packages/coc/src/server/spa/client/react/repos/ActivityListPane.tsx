@@ -16,6 +16,7 @@ import { useQueueTouchDragDrop } from '../hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import { useWorkflowProgress } from '../hooks/useWorkflowProgress';
 import { getDraft } from '../hooks/useDraftStore';
+import { useLongPress } from '../hooks/useLongPress';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -324,6 +325,48 @@ export function ActivityListPane({
     const activeDropTargetIndex = dropTargetIndex ?? touchDrag.dropTargetIndex;
     const activeDropPosition = dropPosition || touchDrag.dropPosition;
 
+    // ── History/archived long-press (shared refs — only one touch at a time) ──
+    const historyLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const historyLongPressFired = useRef(false);
+    const historyTouchStartPos = useRef({ x: 0, y: 0 });
+
+    const cancelHistoryLongPress = useCallback(() => {
+        if (historyLongPressTimer.current !== null) {
+            clearTimeout(historyLongPressTimer.current);
+            historyLongPressTimer.current = null;
+        }
+    }, []);
+
+    const handleHistoryTouchStart = useCallback((e: React.TouchEvent, taskId: string) => {
+        historyLongPressFired.current = false;
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        historyTouchStartPos.current = { x: touch.clientX, y: touch.clientY };
+        const x = touch.clientX;
+        const y = touch.clientY;
+        cancelHistoryLongPress();
+        historyLongPressTimer.current = setTimeout(() => {
+            historyLongPressFired.current = true;
+            historyLongPressTimer.current = null;
+            const bulkIds =
+                selectedHistoryIds.size >= 2 && selectedHistoryIds.has(taskId)
+                    ? Array.from(selectedHistoryIds)
+                    : undefined;
+            setContextMenu({ x, y, taskId, taskStatus: 'completed', bulkIds });
+        }, 500);
+    }, [cancelHistoryLongPress, selectedHistoryIds]);
+
+    const handleHistoryTouchMove = useCallback((e: React.TouchEvent) => {
+        if (historyLongPressTimer.current === null) return;
+        const touch = e.touches[0];
+        if (!touch) { cancelHistoryLongPress(); return; }
+        const dx = touch.clientX - historyTouchStartPos.current.x;
+        const dy = touch.clientY - historyTouchStartPos.current.y;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+            cancelHistoryLongPress();
+        }
+    }, [cancelHistoryLongPress]);
+
     // Clean up stale selection when the filtered list changes
     useEffect(() => {
         if (selectedHistoryIds.size === 0) return;
@@ -581,6 +624,7 @@ export function ActivityListPane({
                                         isPinned={pinnedChatIds?.has(task.id) ?? false}
                                         onClick={() => onSelectTask(task.id, task)}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
+                                        onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, task.id, 'running')}
                                     />
                                 ))}
                             </div>
@@ -645,6 +689,8 @@ export function ActivityListPane({
                                                     selected={selectedTaskId === item.id}
                                                     onClick={() => onSelectTask(item.id, item)}
                                                     onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
+                                                    onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, item.id, 'queued')}
+                                                    cancelLongPress={!!activeDraggedTaskId}
                                                 />
                                             </div>
                                             {!isMobile && (
@@ -688,8 +734,14 @@ export function ActivityListPane({
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
                                                     : selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                             )}
-                                            onClick={e => handleHistoryItemClick(e, task, filteredPinned)}
+                                            onClick={e => {
+                                                if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                                handleHistoryItemClick(e, task, filteredPinned);
+                                            }}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                            onTouchStart={e => handleHistoryTouchStart(e, task.id)}
+                                            onTouchEnd={cancelHistoryLongPress}
+                                            onTouchMove={handleHistoryTouchMove}
                                             data-task-id={task.id}
                                             data-pinned="true"
                                             data-unseen={isUnseen || undefined}
@@ -771,8 +823,14 @@ export function ActivityListPane({
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
                                                     : selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                             )}
-                                            onClick={e => handleHistoryItemClick(e, task, filteredUnpinned)}
+                                            onClick={e => {
+                                                if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                                handleHistoryItemClick(e, task, filteredUnpinned);
+                                            }}
                                             onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                            onTouchStart={e => handleHistoryTouchStart(e, task.id)}
+                                            onTouchEnd={cancelHistoryLongPress}
+                                            onTouchMove={handleHistoryTouchMove}
                                             data-task-id={task.id}
                                             data-unseen={isUnseen || undefined}
                                             data-selected={isHistorySelected || undefined}
@@ -826,8 +884,14 @@ export function ActivityListPane({
                                             "p-2 cursor-pointer opacity-60",
                                             selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
                                         )}
-                                        onClick={() => onSelectTask(task.id, task)}
+                                        onClick={() => {
+                                            if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
+                                            onSelectTask(task.id, task);
+                                        }}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'completed')}
+                                        onTouchStart={e => handleHistoryTouchStart(e, task.id)}
+                                        onTouchEnd={cancelHistoryLongPress}
+                                        onTouchMove={handleHistoryTouchMove}
                                         data-task-id={task.id}
                                         data-archived="true"
                                     >
@@ -864,7 +928,7 @@ export function ActivityListPane({
     );
 }
 
-export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, onContextMenu }: {
+export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, onContextMenu, onLongPress, cancelLongPress }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
@@ -872,6 +936,8 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, 
     isPinned?: boolean;
     onClick?: () => void;
     onContextMenu?: (e: React.MouseEvent) => void;
+    onLongPress?: (x: number, y: number) => void;
+    cancelLongPress?: boolean;
 }){
     const name = task.displayName || task.type || 'Task';
     const icon = getTaskTypeIcon(task);
@@ -886,8 +952,26 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, 
         elapsed = formatRelativeTime(new Date(task.createdAt).toISOString());
     }
 
+    const longPress = useLongPress(
+        onLongPress ?? (() => {}),
+        { cancelSignal: cancelLongPress },
+    );
+
+    const handleClick = () => {
+        if (longPress.didLongPress()) return;
+        onClick?.();
+    };
+
     return (
-        <Card className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500")} onClick={onClick} onContextMenu={onContextMenu} data-task-id={task.id}>
+        <Card
+            className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500")}
+            onClick={handleClick}
+            onContextMenu={onContextMenu}
+            onTouchStart={longPress.onTouchStart}
+            onTouchEnd={longPress.onTouchEnd}
+            onTouchMove={longPress.onTouchMove}
+            data-task-id={task.id}
+        >
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
                     <span className="shrink-0">{task.frozen ? '❄️' : icon}</span>
