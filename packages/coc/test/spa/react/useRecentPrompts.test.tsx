@@ -108,8 +108,8 @@ describe('useRecentSkills', () => {
         expect(result.current.recentItems[0].description).toBe('Draft a spec');
     });
 
-    it('trackUsage caps at 10 items', async () => {
-        const items = Array.from({ length: 10 }, (_, i) => ({
+    it('trackUsage caps at 5 items', async () => {
+        const items = Array.from({ length: 5 }, (_, i) => ({
             name: `skill-${i}`,
             timestamp: 1000 - i,
         }));
@@ -129,10 +129,10 @@ describe('useRecentSkills', () => {
             result.current.trackUsage('new-skill');
         });
 
-        expect(result.current.recentItems.length).toBe(10);
+        expect(result.current.recentItems.length).toBe(5);
         expect(result.current.recentItems[0].name).toBe('new-skill');
         // The last old item should be evicted
-        expect(result.current.recentItems.map(i => i.name)).not.toContain('skill-9');
+        expect(result.current.recentItems.map(i => i.name)).not.toContain('skill-4');
     });
 
     it('trackUsage fires PATCH /api/preferences', async () => {

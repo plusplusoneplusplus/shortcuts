@@ -28,7 +28,7 @@ export interface UseRecentSkillsResult {
     loaded: boolean;
 }
 
-const MAX_RECENT = 10;
+const MAX_RECENT = 5;
 
 export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
     const [recentItems, setRecentItems] = useState<RecentSkillEntry[]>([]);
