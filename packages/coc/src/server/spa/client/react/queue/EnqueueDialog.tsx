@@ -45,7 +45,7 @@ export function EnqueueDialog() {
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
     const [workspaceId, setWorkspaceId] = useState('');
-    const [activeTab, setActiveTab] = useState<'new' | 'recent'>('new');
+    const [activeTab, setActiveTab] = useState<'recent' | 'advanced'>('advanced');
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
     const { recentItems, trackUsage, loaded: recentLoaded } = useRecentSkills(workspaceId || undefined);
     const { models: modelInfos } = useModels();
@@ -144,7 +144,7 @@ export function EnqueueDialog() {
         if (entry.prompt) setPrompt(entry.prompt);
         if (entry.skills && entry.skills.length > 0) setSelectedSkills(entry.skills);
         if (entry.model) setModel(entry.model);
-        setActiveTab('new');
+        setActiveTab('advanced');
     }, []);
 
     const handleSubmit = useCallback(async () => {
@@ -300,31 +300,7 @@ export function EnqueueDialog() {
 
     const dialogContent = (
         <div className="flex flex-col gap-3">
-            {/* Tab bar */}
-            <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c] -mb-1">
-                {(['new', 'recent'] as const).map(tab => (
-                    <button
-                        key={tab}
-                        type="button"
-                        onClick={() => setActiveTab(tab)}
-                        className={`px-3 py-1.5 text-xs font-medium capitalize border-b-2 transition-colors ${
-                            activeTab === tab
-                                ? 'border-[#0078d4] text-[#0078d4]'
-                                : 'border-transparent text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
-                        }`}
-                    >
-                        {tab === 'recent' ? `Recent${recentItems.length > 0 ? ` (${recentItems.length})` : ''}` : 'New'}
-                    </button>
-                ))}
-            </div>
-            {activeTab === 'recent' ? (
-                <RecentPromptsTab
-                    items={recentItems}
-                    loaded={recentLoaded}
-                    onSelect={handleSelectRecent}
-                />
-            ) : (
-            <>
+            {/* Prompt — always visible */}
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Prompt</label>
                 <div className="relative">
@@ -352,6 +328,34 @@ export function EnqueueDialog() {
                 </div>
                 <ImagePreviews images={images} onRemove={removeImage} showHint />
             </div>
+
+            {/* Lower section tab bar: Recent | Advanced */}
+            <div className="flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                {(['recent', 'advanced'] as const).map(tab => (
+                    <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-3 py-1.5 text-xs font-medium capitalize border-b-2 transition-colors ${
+                            activeTab === tab
+                                ? 'border-[#0078d4] text-[#0078d4]'
+                                : 'border-transparent text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                        }`}
+                    >
+                        {tab === 'recent' ? `Recent${recentItems.length > 0 ? ` (${recentItems.length})` : ''}` : 'Advanced'}
+                    </button>
+                ))}
+            </div>
+
+            {/* Lower section content */}
+            {activeTab === 'recent' ? (
+                <RecentPromptsTab
+                    items={recentItems}
+                    loaded={recentLoaded}
+                    onSelect={handleSelectRecent}
+                />
+            ) : (
+            <>
             {workspaceId && skills.length > 0 && (
                 <div>
                     <label className="block text-xs font-medium text-[#848484] mb-1">Skills (optional)</label>

@@ -1,6 +1,6 @@
 /**
  * RecentPromptsTab — displays a list of recent EnqueueDialog submissions.
- * Clicking a card pre-fills the form and switches back to the "New" tab.
+ * Clicking a card pre-fills the prompt and switches to the Advanced tab.
  */
 
 import React from 'react';
