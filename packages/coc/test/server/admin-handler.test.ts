@@ -1326,4 +1326,88 @@ describe('Admin Handler', () => {
             expect(body.error).toContain('Invalid payload');
         });
     });
+
+    // ========================================================================
+    // Section 9: Wipe Token Security (edge cases)
+    // ========================================================================
+
+    describe('Token Security — Section 9', () => {
+        it('wipe with expired token is rejected (uses short TTL server)', async () => {
+            // Start a server with a 1 ms token TTL so tokens expire immediately
+            const shortTtlStore = new FileProcessStore({ dataDir });
+            const shortTtlServer = await createExecutionServer({
+                port: 0, host: 'localhost', store: shortTtlStore, dataDir, tokenTtlMs: 1,
+            });
+            try {
+                const tokenRes = await request(`${shortTtlServer.url}/api/admin/data/wipe-token`);
+                const { token } = JSON.parse(tokenRes.body);
+
+                // Wait for token to expire
+                await new Promise(r => setTimeout(r, 10));
+
+                const wipeRes = await request(`${shortTtlServer.url}/api/admin/data?confirm=${token}`, {
+                    method: 'DELETE',
+                });
+                expect(wipeRes.status).toBe(403);
+                const body = JSON.parse(wipeRes.body);
+                expect(body.error).toContain('Invalid or expired');
+            } finally {
+                await shortTtlServer.close();
+            }
+        });
+
+        it('wipe with import token (wrong type) → 403', async () => {
+            const srv = await startServer();
+            // Get an import token and try to use it for wipe
+            const importTokenRes = await request(`${srv.url}/api/admin/import-token`);
+            const { token } = JSON.parse(importTokenRes.body);
+
+            const wipeRes = await request(`${srv.url}/api/admin/data?confirm=${token}`, {
+                method: 'DELETE',
+            });
+            expect(wipeRes.status).toBe(403);
+            const body = JSON.parse(wipeRes.body);
+            expect(body.error).toContain('Invalid or expired');
+        });
+
+        it('import with wipe token (wrong type) → 403', async () => {
+            const srv = await startServer();
+            // Covered in POST /api/admin/import tests above, but also verified here for clarity.
+            const wipeTokenRes = await request(`${srv.url}/api/admin/data/wipe-token`);
+            const { token } = JSON.parse(wipeTokenRes.body);
+
+            const validPayload = {
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+                processes: [], workspaces: [], wikis: [], queueHistory: [], preferences: {},
+            };
+
+            const importRes = await request(`${srv.url}/api/admin/import?confirm=${token}`, {
+                method: 'POST',
+                body: JSON.stringify(validPayload),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(importRes.status).toBe(403);
+            const body = JSON.parse(importRes.body);
+            expect(body.error).toContain('Invalid or expired');
+        });
+
+        it('two concurrent wipe requests with same token: only one succeeds, second gets 403', async () => {
+            const srv = await startServer();
+            const tokenRes = await request(`${srv.url}/api/admin/data/wipe-token`);
+            const { token } = JSON.parse(tokenRes.body);
+
+            // Send both simultaneously
+            const [r1, r2] = await Promise.all([
+                request(`${srv.url}/api/admin/data?confirm=${token}`, { method: 'DELETE' }),
+                request(`${srv.url}/api/admin/data?confirm=${token}`, { method: 'DELETE' }),
+            ]);
+
+            const statuses = [r1.status, r2.status].sort();
+            // Exactly one 200 and one 403
+            expect(statuses).toContain(200);
+            expect(statuses).toContain(403);
+        });
+    });
 });
