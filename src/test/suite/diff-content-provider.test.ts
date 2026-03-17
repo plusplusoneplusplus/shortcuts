@@ -272,6 +272,7 @@ suite('Diff Content Provider Tests', () => {
         let featureCommitHash: string;
 
         setup(function() {
+            this.timeout(15000); // git operations can be slow on Windows
             // Skip if git is not available
             try {
                 const { execSync } = require('child_process');
