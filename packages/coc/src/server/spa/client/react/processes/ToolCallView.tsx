@@ -512,7 +512,7 @@ export function ToolCallView({
             </div>
             {hasDetails && (
                 <div className={cn(
-                    'tool-call-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2.5 py-2 space-y-2',
+                    'tool-call-body border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-2.5 py-2 space-y-2 select-text',
                     !expanded && 'collapsed',
                     !expanded && 'hidden'
                 )}>

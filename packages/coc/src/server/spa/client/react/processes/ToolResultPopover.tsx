@@ -414,7 +414,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     if (isMobile) {
         return (
             <BottomSheet isOpen={true} onClose={() => onMouseLeave()} height={70}>
-                <div className="p-3 max-h-[70vh] overflow-y-auto" data-testid="tool-result-popover">
+                <div className="p-3 max-h-[70vh] overflow-y-auto select-text" data-testid="tool-result-popover">
                     <div className="text-[10px] uppercase text-[#848484] mb-1">{headerLabel}</div>
                     {renderBody()}
                 </div>
@@ -426,7 +426,7 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
         <div
             ref={popoverRef}
             data-testid="tool-result-popover"
-            className="fixed z-50 w-[900px] max-w-[calc(100vw-16px)] max-h-[300px] overflow-y-auto rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg"
+            className="fixed z-50 w-[900px] max-w-[calc(100vw-16px)] max-h-[300px] overflow-y-auto rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 shadow-lg select-text"
             style={pos ? { top: pos.top, left: pos.left } : { top: anchorRect.bottom + 4, left: anchorRect.left, visibility: 'hidden' }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
