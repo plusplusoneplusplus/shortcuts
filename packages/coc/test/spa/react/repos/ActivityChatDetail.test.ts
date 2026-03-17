@@ -644,6 +644,14 @@ describe('ActivityChatDetail', () => {
             expect(expr).not.toContain('sending');
         });
 
+        it('inputDisabled includes loading so input is disabled while data is being fetched', () => {
+            const expr = source.substring(
+                source.indexOf('const inputDisabled'),
+                source.indexOf('const inputDisabled') + 200,
+            );
+            expect(expr).toContain('loading');
+        });
+
         it('imports DeliveryMode from pipeline-core', () => {
             expect(USE_SEND_MESSAGE_SOURCE).toContain("import type { DeliveryMode } from '@plusplusoneplusplus/pipeline-core'");
         });
