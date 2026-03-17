@@ -30,13 +30,14 @@ const CHAT_MODE_LABELS: Record<string, string> = {
     'autopilot': 'Autopilot',
 };
 
-export function taskMatchesFilter(task: any, filter: string): boolean {
-    if (filter === 'all') return true;
+export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
+    if (excludedTypes.size === 0) return true;
     // Mode-based filtering for chat tasks
-    if (filter === 'ask' || filter === 'plan' || filter === 'autopilot') {
-        return task.type === 'chat' && task.payload?.mode === filter;
+    const mode = task.payload?.mode as string | undefined;
+    if (mode && (mode === 'ask' || mode === 'plan' || mode === 'autopilot')) {
+        return !excludedTypes.has(mode);
     }
-    return task.type === filter;
+    return !excludedTypes.has(task.type as string);
 }
 
 export function taskMatchesSearch(task: any, query: string): boolean {
@@ -134,7 +135,7 @@ export function ActivityListPane({
     onOpenDialog,
     fetchQueue,
 }: ActivityListPaneProps) {
-    const [filterType, setFilterType] = useState<string>('all');
+    const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -144,7 +145,7 @@ export function ActivityListPane({
     const [anchorHistoryId, setAnchorHistoryId] = useState<string | null>(null);
 
     useEffect(() => {
-        setFilterType('all');
+        setExcludedTypes(new Set());
         setSearchQuery('');
         setSearchVisible(false);
     }, [workspaceId]);
@@ -188,12 +189,12 @@ export function ActivityListPane({
         return opts;
     }, [allTasks]);
 
-    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, filterType) && taskMatchesSearch(t, searchQuery)), [running, filterType, searchQuery]);
+    const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
-        () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, filterType) && taskMatchesSearch(t, searchQuery))),
-        [queued, filterType, searchQuery],
+        () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
+        [queued, excludedTypes, searchQuery],
     );
-    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, filterType) && taskMatchesSearch(t, searchQuery)), [history, filterType, searchQuery]);
+    const filteredHistory = useMemo(() => history.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [history, excludedTypes, searchQuery]);
 
     // Separate archived from non-archived history
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -492,19 +493,43 @@ export function ActivityListPane({
                     </div>
                 )}
                 <div className={cn('flex items-center gap-2 mb-3')}>
-                    <span className="text-sm font-medium">Queue</span>
                     {isPaused && <Badge status="warning">Paused</Badge>}
                     {availableFilters.length > 2 && (
-                        <select
-                            className="text-xs bg-transparent border border-[#e0e0e0] dark:border-[#474749] rounded px-1.5 py-0.5 text-[#848484] dark:text-[#999] outline-none"
-                            value={filterType}
-                            onChange={e => setFilterType(e.target.value)}
-                            data-testid="queue-filter-dropdown"
-                        >
-                            {availableFilters.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
+                        <div className="flex flex-wrap gap-1 items-center" data-testid="queue-filter-pills">
+                            {availableFilters.filter(opt => opt.value !== 'all').map(opt => {
+                                const isActive = !excludedTypes.has(opt.value);
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        onClick={() => {
+                                            setExcludedTypes(prev => {
+                                                const next = new Set(prev);
+                                                if (next.has(opt.value)) next.delete(opt.value);
+                                                else next.add(opt.value);
+                                                return next;
+                                            });
+                                        }}
+                                        className={cn(
+                                            'text-xs rounded border px-1.5 py-0.5 transition-colors',
+                                            isActive
+                                                ? 'border-[#0078d4] bg-[#0078d4]/10 text-[#0078d4] dark:border-[#3794ff] dark:bg-[#3794ff]/10 dark:text-[#3794ff]'
+                                                : 'border-[#e0e0e0] dark:border-[#474749] text-[#848484] dark:text-[#999]',
+                                        )}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                );
+                            })}
+                            {excludedTypes.size > 0 && (
+                                <button
+                                    onClick={() => setExcludedTypes(new Set())}
+                                    className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                                    data-testid="queue-filter-reset"
+                                >
+                                    Reset
+                                </button>
+                            )}
+                        </div>
                     )}
                     <div className="flex-1" />
                     <Button

@@ -677,3 +677,171 @@ describe('ActivityListPane pinned chats', () => {
         });
     });
 });
+
+// ── Filter dropdown rework ─────────────────────────────────────────────
+
+describe('ActivityListPane: filter dropdown rework', () => {
+    let source: string;
+
+    beforeAll(() => {
+        source = require('fs').readFileSync(ACTIVITY_LIST_PATH, 'utf-8');
+    });
+
+    describe('"Queue" label removed', () => {
+        it('does not render a standalone Queue label span', () => {
+            expect(source).not.toContain('<span className="text-sm font-medium">Queue</span>');
+        });
+    });
+
+    describe('excludedTypes state', () => {
+        it('uses excludedTypes state instead of filterType', () => {
+            expect(source).toContain('excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set())');
+        });
+
+        it('resets excludedTypes to empty set on workspaceId change', () => {
+            const workspaceEffect = source.substring(
+                source.indexOf("}, [workspaceId])") - 200,
+                source.indexOf("}, [workspaceId])") + 1,
+            );
+            expect(workspaceEffect).toContain('setExcludedTypes(new Set())');
+        });
+    });
+
+    describe('taskMatchesFilter exclusion signature', () => {
+        it('accepts excludedTypes: Set<string> parameter', () => {
+            expect(source).toContain('taskMatchesFilter(task: any, excludedTypes: Set<string>)');
+        });
+
+        it('returns true when excludedTypes is empty', () => {
+            const fn = source.substring(
+                source.indexOf('export function taskMatchesFilter'),
+                source.indexOf('export function taskMatchesFilter') + 300,
+            );
+            expect(fn).toContain('excludedTypes.size === 0');
+        });
+
+        it('uses !excludedTypes.has to include/exclude', () => {
+            const fn = source.substring(
+                source.indexOf('export function taskMatchesFilter'),
+                source.indexOf('export function taskMatchesFilter') + 500,
+            );
+            expect(fn).toContain('!excludedTypes.has');
+        });
+    });
+
+    describe('toggle pills UI', () => {
+        it('renders queue-filter-pills instead of queue-filter-dropdown', () => {
+            expect(source).toContain('data-testid="queue-filter-pills"');
+            expect(source).not.toContain('data-testid="queue-filter-dropdown"');
+        });
+
+        it('renders a Reset button when filters are excluded', () => {
+            expect(source).toContain('data-testid="queue-filter-reset"');
+        });
+
+        it('pills skip the synthetic all entry', () => {
+            // Pills are rendered from availableFilters filtered to skip 'all'
+            expect(source).toContain("availableFilters.filter(opt => opt.value !== 'all')");
+        });
+
+        it('clicking a pill toggles its value in excludedTypes', () => {
+            expect(source).toContain('setExcludedTypes(prev => {');
+        });
+
+        it('Reset button clears excludedTypes', () => {
+            const resetBtn = source.substring(
+                source.indexOf('queue-filter-reset'),
+                source.indexOf('queue-filter-reset') + 300,
+            );
+            expect(source.substring(
+                source.indexOf('queue-filter-reset') - 300,
+                source.indexOf('queue-filter-reset') + 10,
+            )).toContain('setExcludedTypes(new Set())');
+        });
+    });
+
+    describe('filteredRunning/Queued/History use excludedTypes', () => {
+        it('filteredRunning uses excludedTypes', () => {
+            const memo = source.substring(
+                source.indexOf('filteredRunning = useMemo'),
+                source.indexOf('filteredRunning = useMemo') + 200,
+            );
+            expect(memo).toContain('taskMatchesFilter(t, excludedTypes)');
+            expect(memo).toContain('excludedTypes');
+        });
+
+        it('filteredQueued uses excludedTypes', () => {
+            const memo = source.substring(
+                source.indexOf('filteredQueued = useMemo'),
+                source.indexOf('filteredQueued = useMemo') + 250,
+            );
+            expect(memo).toContain('taskMatchesFilter(t, excludedTypes)');
+            expect(memo).toContain('excludedTypes');
+        });
+
+        it('filteredHistory uses excludedTypes', () => {
+            const memo = source.substring(
+                source.indexOf('filteredHistory = useMemo'),
+                source.indexOf('filteredHistory = useMemo') + 200,
+            );
+            expect(memo).toContain('taskMatchesFilter(t, excludedTypes)');
+            expect(memo).toContain('excludedTypes');
+        });
+    });
+});
+
+// ── taskMatchesFilter unit tests (exclusion logic) ────────────────────
+
+import { taskMatchesFilter } from '../../../../src/server/spa/client/react/repos/ActivityListPane';
+
+describe('taskMatchesFilter: exclusion logic', () => {
+    const chatAsk = { type: 'chat', payload: { mode: 'ask' } };
+    const chatPlan = { type: 'chat', payload: { mode: 'plan' } };
+    const chatAutopilot = { type: 'chat', payload: { mode: 'autopilot' } };
+    const workflow = { type: 'run-workflow', payload: {} };
+    const script = { type: 'run-script', payload: {} };
+
+    it('returns true for any task when excludedTypes is empty', () => {
+        const empty = new Set<string>();
+        expect(taskMatchesFilter(chatAsk, empty)).toBe(true);
+        expect(taskMatchesFilter(workflow, empty)).toBe(true);
+        expect(taskMatchesFilter(script, empty)).toBe(true);
+    });
+
+    it('excludes a task type when its type key is in excludedTypes', () => {
+        const excluded = new Set(['run-workflow']);
+        expect(taskMatchesFilter(workflow, excluded)).toBe(false);
+        expect(taskMatchesFilter(script, excluded)).toBe(true);
+    });
+
+    it('excludes chat tasks by mode key', () => {
+        const excluded = new Set(['ask']);
+        expect(taskMatchesFilter(chatAsk, excluded)).toBe(false);
+        expect(taskMatchesFilter(chatPlan, excluded)).toBe(true);
+    });
+
+    it('excludes multiple types simultaneously', () => {
+        const excluded = new Set(['run-workflow', 'run-script']);
+        expect(taskMatchesFilter(workflow, excluded)).toBe(false);
+        expect(taskMatchesFilter(script, excluded)).toBe(false);
+        expect(taskMatchesFilter(chatAsk, excluded)).toBe(true);
+    });
+
+    it('excludes multiple chat modes simultaneously', () => {
+        const excluded = new Set(['ask', 'plan']);
+        expect(taskMatchesFilter(chatAsk, excluded)).toBe(false);
+        expect(taskMatchesFilter(chatPlan, excluded)).toBe(false);
+        expect(taskMatchesFilter(chatAutopilot, excluded)).toBe(true);
+    });
+
+    it('does not exclude a task whose type is not in excludedTypes', () => {
+        const excluded = new Set(['ask']);
+        expect(taskMatchesFilter(workflow, excluded)).toBe(true);
+    });
+
+    it('chat task without a mode falls back to type-based check', () => {
+        const chatNoMode = { type: 'chat', payload: {} };
+        const excluded = new Set(['chat']);
+        expect(taskMatchesFilter(chatNoMode, excluded)).toBe(false);
+    });
+});
