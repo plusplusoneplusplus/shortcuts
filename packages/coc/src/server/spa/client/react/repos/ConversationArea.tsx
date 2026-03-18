@@ -45,11 +45,11 @@ export function ConversationArea({
     wsId,
 }: ConversationAreaProps) {
     return (
-        <div className="relative flex-1 min-h-0">
+        <div className="relative flex-1 min-h-0 overflow-x-hidden min-w-0">
             <div
                 ref={scrollRef}
                 data-testid="activity-chat-conversation"
-                className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3', variant === 'floating' ? 'p-2' : 'p-4')}
+                className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
             >
                 {isPending ? (
                     <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />

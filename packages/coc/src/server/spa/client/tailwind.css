@@ -1411,7 +1411,7 @@
     .markdown-body .md-table-container {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
-        max-width: calc(100vw - 32px);
+        max-width: 100%;
     }
 
     /* Task 6: Improve markdown body readability on mobile */

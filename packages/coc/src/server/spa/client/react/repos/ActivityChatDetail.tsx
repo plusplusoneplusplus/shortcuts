@@ -457,7 +457,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
                 onPopOut={handlePopOut}
                 onFloat={handleFloat}
             />
-            <div className="relative flex-1 min-h-0 flex">
+            <div className="relative flex-1 min-h-0 flex overflow-x-hidden min-w-0">
                 <ConversationArea
                     loading={loading}
                     error={error}
