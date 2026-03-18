@@ -153,6 +153,7 @@ export function EnqueueDialog() {
         const effectiveMode = t.mode;
         const effectiveModel = t.model || '';
         const effectiveSkills = t.skills;
+        const effectivePrompt = prompt.trim();
         const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
 
         let body: any;
@@ -161,7 +162,7 @@ export function EnqueueDialog() {
                 type: 'chat', priority: 'normal',
                 payload: {
                     kind: 'chat', mode: 'ask',
-                    prompt: `Ask: ${effectiveSkills.join(', ')}`,
+                    prompt: effectivePrompt || `Ask: ${effectiveSkills.join(', ')}`,
                     workspaceId: workspaceId || undefined,
                     workingDirectory: ws?.rootPath || undefined,
                     ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
@@ -175,7 +176,7 @@ export function EnqueueDialog() {
                 type: 'chat', priority: 'normal', displayName,
                 payload: {
                     kind: 'chat', mode: 'autopilot',
-                    prompt: `Use the ${effectiveSkills.join(', ')} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
+                    prompt: effectivePrompt || `Use the ${effectiveSkills.join(', ')} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
                     workingDirectory: ws?.rootPath || folderPath || '',
                     ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
                 },
@@ -193,7 +194,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [appState.workspaces, workspaceId, folderPath, queueDispatch]);
+    }, [prompt, appState.workspaces, workspaceId, folderPath, queueDispatch]);
 
     const handleSaveTemplate = useCallback(() => {
         const mode = isAskMode ? 'ask' : 'task';

@@ -2233,4 +2233,61 @@ describe('EnqueueDialog ask mode', () => {
         );
         expect(postCalls).toHaveLength(0);
     });
+
+    it('clicking ▶ Run with a non-empty prompt uses the typed prompt instead of the fallback', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        skillTemplates: [
+                            {
+                                id: 'tmpl-prompt-1',
+                                name: 'task: impl',
+                                model: '',
+                                mode: 'task',
+                                skills: ['impl'],
+                            },
+                        ],
+                    }),
+                });
+            }
+            if (typeof url === 'string' && url.includes('/queue/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+        });
+
+        // Type a prompt before switching to Templates
+        const textarea = screen.getByPlaceholderText(/Enter your prompt/);
+        fireEvent.change(textarea, { target: { value: 'my custom task prompt' } });
+
+        // Switch to Templates tab and click ▶ Run
+        act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+        const runBtn = await screen.findByTestId('template-run-tmpl-prompt-1');
+        await act(async () => { fireEvent.click(runBtn); });
+
+        await waitFor(() => {
+            expect(postBody).not.toBeNull();
+        });
+
+        // The user's typed prompt must be used, not the fallback
+        expect(postBody.payload.prompt).toBe('my custom task prompt');
+    });
 });
