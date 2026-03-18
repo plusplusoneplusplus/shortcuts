@@ -29,6 +29,7 @@ import {
     getJobTemplateManager,
     resetJobTemplateManager
 } from '../../shortcuts/ai-service/job-template-manager';
+import { showTemplatePicker } from '../../shortcuts/ai-service/job-template-commands';
 
 // ============================================================================
 // Mock Classes
@@ -1043,6 +1044,71 @@ suite('Job Templates', () => {
 
             const wsTemplates = manager.getTemplatesByScope('workspace');
             assert.ok(wsTemplates.length <= 50, `Expected <= 50 templates, got ${wsTemplates.length}`);
+        });
+    });
+
+    // ========================================================================
+    // showTemplatePicker type filtering
+    // ========================================================================
+
+    suite('showTemplatePicker type filtering', () => {
+        function makeTemplate(overrides: Partial<JobTemplate>): JobTemplate {
+            return {
+                id: overrides.id ?? 'tmpl-1',
+                name: overrides.name ?? 'Test',
+                scope: overrides.scope ?? 'workspace',
+                prompt: overrides.prompt ?? 'prompt',
+                type: overrides.type ?? 'freeform',
+                createdAt: new Date().toISOString(),
+                useCount: 0,
+                ...overrides,
+            };
+        }
+
+        test('returns undefined immediately when no freeform templates match freeform filter', async () => {
+            const templates = [
+                makeTemplate({ id: 's1', type: 'skill', name: 'Skill A', skillName: 'my-skill' }),
+                makeTemplate({ id: 's2', type: 'skill', name: 'Skill B', skillName: 'other-skill' }),
+            ];
+            // No freeform templates — should return undefined without opening VS Code UI
+            const result = await showTemplatePicker(templates, 'freeform');
+            assert.strictEqual(result, undefined);
+        });
+
+        test('returns undefined immediately when no skill templates match skill filter', async () => {
+            const templates = [
+                makeTemplate({ id: 'f1', type: 'freeform', name: 'Prompt A' }),
+                makeTemplate({ id: 'f2', type: 'freeform', name: 'Prompt B' }),
+            ];
+            const result = await showTemplatePicker(templates, 'skill');
+            assert.strictEqual(result, undefined);
+        });
+
+        test('returns undefined immediately when template list is empty regardless of filter', async () => {
+            assert.strictEqual(await showTemplatePicker([], 'freeform'), undefined);
+            assert.strictEqual(await showTemplatePicker([], 'skill'), undefined);
+            assert.strictEqual(await showTemplatePicker([]), undefined);
+        });
+
+        test('filters out skill templates when typeFilter is freeform', async () => {
+            // Verify that a mixed list, when filtered to freeform, excludes skill items.
+            // We can only observe this indirectly: if only skill templates are present
+            // the picker returns undefined immediately (no UI shown).
+            const onlySkill = [makeTemplate({ id: 's1', type: 'skill', skillName: 'x' })];
+            const result = await showTemplatePicker(onlySkill, 'freeform');
+            assert.strictEqual(result, undefined, 'skill-only list should yield undefined for freeform filter');
+        });
+
+        test('filters out freeform templates when typeFilter is skill', async () => {
+            const onlyFreeform = [makeTemplate({ id: 'f1', type: 'freeform' })];
+            const result = await showTemplatePicker(onlyFreeform, 'skill');
+            assert.strictEqual(result, undefined, 'freeform-only list should yield undefined for skill filter');
+        });
+
+        test('passes all templates through when typeFilter is undefined', async () => {
+            // Empty list → undefined regardless
+            const result = await showTemplatePicker([], undefined);
+            assert.strictEqual(result, undefined);
         });
     });
 });

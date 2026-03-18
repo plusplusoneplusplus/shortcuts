@@ -20,7 +20,7 @@ import {
 } from './queue-job-dialog';
 import { getJobTemplateManager } from './job-template-manager';
 import { saveTemplateInteractive, queueFromTemplate, showTemplatePicker } from './job-template-commands';
-import { JobTemplate } from './job-template-types';
+import { JobTemplate, JobTemplateType } from './job-template-types';
 
 /**
  * Service for showing the Queue Job dialog as a webview panel
@@ -153,7 +153,7 @@ export class QueueJobDialogService {
                 break;
 
             case 'loadTemplate':
-                this.handleLoadTemplate();
+                this.handleLoadTemplate(message.mode as QueueJobMode | undefined);
                 break;
         }
     }
@@ -181,19 +181,25 @@ export class QueueJobDialogService {
 
     /**
      * Handle "Load from Saved" from the webview dialog.
-     * Shows the template picker. If a template is selected,
-     * queues the job directly and closes the dialog.
+     * Shows the template picker filtered by the current mode.
+     * If a template is selected, queues the job directly and closes the dialog.
      */
-    private async handleLoadTemplate(): Promise<void> {
+    private async handleLoadTemplate(mode?: QueueJobMode): Promise<void> {
         const templateManager = getJobTemplateManager();
         const templates = templateManager.getAllTemplates();
+        const typeFilter: JobTemplateType | undefined = mode === 'skill' ? 'skill' : mode === 'prompt' ? 'freeform' : undefined;
 
-        if (templates.length === 0) {
-            vscode.window.showInformationMessage('No saved templates yet.');
+        const filtered = typeFilter ? templates.filter(t => t.type === typeFilter) : templates;
+
+        if (filtered.length === 0) {
+            const label = typeFilter === 'skill' ? 'skill' : typeFilter === 'freeform' ? 'prompt' : '';
+            vscode.window.showInformationMessage(
+                label ? `No saved ${label} templates yet.` : 'No saved templates yet.'
+            );
             return;
         }
 
-        const selected = await showTemplatePicker(templates);
+        const selected = await showTemplatePicker(templates, typeFilter);
         if (!selected) {
             return;
         }

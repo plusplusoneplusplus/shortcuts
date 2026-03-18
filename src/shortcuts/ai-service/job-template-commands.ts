@@ -337,16 +337,26 @@ export async function queueFromTemplate(
  * Show a quick-pick list of saved templates.
  *
  * @param templates - Templates to display
+ * @param typeFilter - If provided, only show templates of this type
  * @returns The selected template, or undefined if cancelled
  */
 export async function showTemplatePicker(
-    templates: JobTemplate[]
+    templates: JobTemplate[],
+    typeFilter?: JobTemplate['type']
 ): Promise<JobTemplate | undefined> {
-    if (templates.length === 0) {
+    const filtered = typeFilter ? templates.filter(t => t.type === typeFilter) : templates;
+
+    if (filtered.length === 0) {
         return undefined;
     }
 
-    const items = templates.map(t => ({
+    const placeHolder = typeFilter === 'skill'
+        ? 'Select a skill template'
+        : typeFilter === 'freeform'
+            ? 'Select a prompt template'
+            : 'Select a saved template';
+
+    const items = filtered.map(t => ({
         label: `${t.scope === 'global' ? '$(star-full)' : '$(folder)'} ${t.name}`,
         description: t.scope === 'global' ? '(global)' : '(workspace)',
         detail: truncatePrompt(t.prompt, 80),
@@ -354,7 +364,7 @@ export async function showTemplatePicker(
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select a saved template',
+        placeHolder,
         matchOnDescription: true,
         matchOnDetail: true,
     });

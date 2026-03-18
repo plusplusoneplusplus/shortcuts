@@ -476,7 +476,7 @@ export function getQueueJobDialogHtml(
             // Load from Saved Templates
             if (loadTemplateBtn) {
                 loadTemplateBtn.addEventListener('click', function() {
-                    vscode.postMessage({ type: 'loadTemplate' });
+                    vscode.postMessage({ type: 'loadTemplate', mode: currentMode });
                 });
             }
             
