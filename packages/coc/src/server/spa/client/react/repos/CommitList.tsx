@@ -14,6 +14,7 @@ import { formatRelativeTime } from '../utils/format';
 import { TruncatedPath } from '../shared';
 import { CommitTooltip } from './CommitTooltip';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
+import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
 
 export interface GitCommitItem {
@@ -93,6 +94,12 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
         expandedHash,
     );
     const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
+
+    // Fetch per-commit total comment counts for all visible commits
+    const commitTotals = useCommitCommentTotals(
+        workspaceId ?? '',
+        commits.map(c => c.hash),
+    );
 
     // Pre-compute storageKey → count lookup keyed by filePath for render-time access
     useEffect(() => {
@@ -300,6 +307,18 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-start gap-2">
                                             <span className={`font-mono text-xs flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
+                                            {(() => {
+                                                const count = commitTotals.get(commit.hash) ?? 0;
+                                                return count > 0 ? (
+                                                    <span
+                                                        className="text-xs text-[#848484] flex-shrink-0"
+                                                        title={`${count} active comment${count > 1 ? 's' : ''}`}
+                                                        data-testid={`commit-comment-badge-${commit.hash}`}
+                                                    >
+                                                        💬{count}
+                                                    </span>
+                                                ) : null;
+                                            })()}
                                             <span className="text-xs text-[#1e1e1e] dark:text-[#ccc] break-words min-w-0">{commit.subject}</span>
                                         </div>
                                         <div className="text-[11px] text-[#848484] mt-0.5">

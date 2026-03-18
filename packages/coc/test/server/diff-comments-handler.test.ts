@@ -404,6 +404,80 @@ describe('DiffCommentsManager', () => {
         });
     });
 
+    // -- getCommentTotals --
+
+    describe('getCommentTotals', () => {
+        it('returns totals grouped by newRef (commitHash)', async () => {
+            const ctx1 = makeContext({ newRef: 'abc123', filePath: 'src/a.ts' });
+            const ctx2 = makeContext({ newRef: 'abc123', filePath: 'src/b.ts' });
+            const ctx3 = makeContext({ newRef: 'def456', filePath: 'src/c.ts' });
+            await manager.addComment('ws1', ctx1, makeCommentData(ctx1));
+            await manager.addComment('ws1', ctx2, makeCommentData(ctx2));
+            await manager.addComment('ws1', ctx3, makeCommentData(ctx3));
+
+            const totals = await manager.getCommentTotals('ws1', ['abc123', 'def456']);
+            expect(totals['abc123']).toBe(2);
+            expect(totals['def456']).toBe(1);
+        });
+
+        it('only returns hashes that are in the requested list', async () => {
+            const ctx = makeContext({ newRef: 'abc123', filePath: 'src/a.ts' });
+            await manager.addComment('ws1', ctx, makeCommentData(ctx));
+
+            const totals = await manager.getCommentTotals('ws1', ['other-hash']);
+            expect(totals['abc123']).toBeUndefined();
+            expect(Object.keys(totals)).toHaveLength(0);
+        });
+
+        it('returns empty object for empty commitHashes array', async () => {
+            const ctx = makeContext({ newRef: 'abc123' });
+            await manager.addComment('ws1', ctx, makeCommentData(ctx));
+            const totals = await manager.getCommentTotals('ws1', []);
+            expect(totals).toEqual({});
+        });
+
+        it('returns empty object for workspace with no files', async () => {
+            const totals = await manager.getCommentTotals('ws-empty', ['abc123']);
+            expect(totals).toEqual({});
+        });
+
+        it('filters by status: only open comments counted', async () => {
+            const ctx = makeContext({ newRef: 'abc123', filePath: 'src/status.ts' });
+            const key = manager.hashContext(ctx);
+            const c1 = await manager.addComment('ws1', ctx, makeCommentData(ctx));
+            await manager.addComment('ws1', ctx, makeCommentData(ctx));
+            await manager.updateComment('ws1', key, c1.id, { status: 'resolved' });
+
+            const allTotals = await manager.getCommentTotals('ws1', ['abc123']);
+            expect(allTotals['abc123']).toBe(2);
+
+            const openTotals = await manager.getCommentTotals('ws1', ['abc123'], { statuses: ['open'] });
+            expect(openTotals['abc123']).toBe(1);
+        });
+
+        it('omits hashes with zero matching comments', async () => {
+            const ctx = makeContext({ newRef: 'abc123', filePath: 'src/all-resolved.ts' });
+            const key = manager.hashContext(ctx);
+            const c = await manager.addComment('ws1', ctx, makeCommentData(ctx));
+            await manager.updateComment('ws1', key, c.id, { status: 'resolved' });
+
+            const totals = await manager.getCommentTotals('ws1', ['abc123'], { statuses: ['open'] });
+            expect(totals['abc123']).toBeUndefined();
+        });
+
+        it('isolates workspaces', async () => {
+            const ctx = makeContext({ newRef: 'abc123' });
+            await manager.addComment('ws1', ctx, makeCommentData(ctx));
+            await manager.addComment('ws2', ctx, makeCommentData(ctx));
+            await manager.addComment('ws2', ctx, makeCommentData(ctx));
+
+            const totals1 = await manager.getCommentTotals('ws1', ['abc123']);
+            const totals2 = await manager.getCommentTotals('ws2', ['abc123']);
+            expect(totals1['abc123']).toBe(1);
+            expect(totals2['abc123']).toBe(2);
+        });
+    });
+
     // -- listAllComments --
 
     describe('listAllComments', () => {
@@ -499,6 +573,9 @@ describe('Diff Comments REST API', () => {
         return `${baseUrl}/api/diff-comment-counts/${WS_ID}`;
     }
 
+    function totalsUrl() {
+        return `${baseUrl}/api/diff-comment-totals/${WS_ID}`;
+    }
     function makePostBody(ctxOverrides: Partial<DiffCommentContext> = {}) {
         const context = makeContext(ctxOverrides);
         return {
@@ -586,6 +663,69 @@ describe('Diff Comments REST API', () => {
             const body = JSON.parse(res.body);
             const total = Object.values(body.counts as Record<string, number>).reduce((a, b) => a + b, 0);
             expect(total).toBe(1); // only the open comment
+        });
+    });
+
+    // -- GET /api/diff-comment-totals/:wsId --
+
+    describe('GET /api/diff-comment-totals/:wsId', () => {
+        it('returns { totals } object', async () => {
+            const res = await getJSON(`${totalsUrl()}?commits=abc123`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.totals).toBeDefined();
+            expect(typeof body.totals).toBe('object');
+        });
+
+        it('returns empty totals when no commits param', async () => {
+            const res = await getJSON(totalsUrl());
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.totals).toEqual({});
+        });
+
+        it('reflects created comments grouped by newRef (commitHash)', async () => {
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-aaa', filePath: 'src/a.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-aaa', filePath: 'src/b.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-bbb', filePath: 'src/c.ts' }));
+
+            const res = await getJSON(`${totalsUrl()}?commits=commit-aaa,commit-bbb`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.totals['commit-aaa']).toBe(2);
+            expect(body.totals['commit-bbb']).toBe(1);
+        });
+
+        it('omits commits not in the requested list', async () => {
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-xxx', filePath: 'src/x.ts' }));
+
+            const res = await getJSON(`${totalsUrl()}?commits=commit-other`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.totals['commit-xxx']).toBeUndefined();
+        });
+
+        it('filters resolved comments with status=open', async () => {
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-open', filePath: 'src/open.ts' }));
+            const postRes = await postJSON(collectionUrl(), makePostBody({ newRef: 'commit-open', filePath: 'src/open.ts' }));
+            const createdId = JSON.parse(postRes.body).comment.id as string;
+            const manager = new DiffCommentsManager(tmpDir);
+            const ctx = makeContext({ newRef: 'commit-open', filePath: 'src/open.ts' });
+            const key = manager.hashContext(ctx);
+            await patchJSON(`${baseUrl}/api/diff-comments/${WS_ID}/${key}/${createdId}`, { status: 'resolved' });
+
+            const res = await getJSON(`${totalsUrl()}?commits=commit-open&status=open`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.totals['commit-open']).toBe(1); // only the open one
+        });
+
+        it('returns empty totals when commits param lists unknown hashes', async () => {
+            // No comments seeded — all requested hashes should have zero counts
+            const res = await getJSON(`${totalsUrl()}?commits=unknown-hash-1,unknown-hash-2&status=open`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.totals).toEqual({});
         });
     });
 

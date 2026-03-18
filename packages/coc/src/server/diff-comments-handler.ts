@@ -314,6 +314,60 @@ export class DiffCommentsManager {
     }
 
     /**
+     * Get total active comment counts per commit hash.
+     *
+     * Scans all storage files in the workspace and groups comment counts by
+     * `context.newRef` (commit hash).  Only hashes present in `commitHashes`
+     * are included in the result, and only entries with a count > 0 are returned.
+     *
+     * @param wsId          - Workspace ID
+     * @param commitHashes  - The commit hashes to tally
+     * @param options       - Optional `statuses` filter (defaults to all statuses)
+     */
+    async getCommentTotals(
+        wsId: string,
+        commitHashes: string[],
+        options?: { statuses?: string[] }
+    ): Promise<Record<string, number>> {
+        if (commitHashes.length === 0) return {};
+        const hashSet = new Set(commitHashes);
+        const wsDir = this.getWorkspaceDir(wsId);
+        if (!fs.existsSync(wsDir)) {
+            return {};
+        }
+        let entries: string[];
+        try {
+            entries = await fs.promises.readdir(wsDir);
+        } catch {
+            return {};
+        }
+        const totals: Record<string, number> = {};
+        for (const entry of entries) {
+            if (!entry.endsWith('.json')) continue;
+            try {
+                const content = await fs.promises.readFile(path.join(wsDir, entry), 'utf8');
+                const storage: DiffCommentsStorage = JSON.parse(content);
+                let comments = storage.comments || [];
+
+                // Filter by status when requested
+                if (options?.statuses && options.statuses.length > 0) {
+                    comments = comments.filter(c => options.statuses!.includes(c.status));
+                }
+
+                for (const comment of comments) {
+                    const ref = comment.context?.newRef;
+                    if (ref && hashSet.has(ref)) {
+                        totals[ref] = (totals[ref] ?? 0) + 1;
+                    }
+                }
+            } catch {
+                // Skip corrupted files
+            }
+        }
+        return totals;
+    }
+
+    /**
      * List all comments in a workspace across all storage files.
      */
     async listAllComments(wsId: string): Promise<DiffComment[]> {
@@ -375,6 +429,9 @@ function isValidContext(ctx: any): ctx is DiffCommentContext {
 // /api/diff-comment-counts/:wsId
 const countsPattern = /^\/api\/diff-comment-counts\/([a-zA-Z0-9_-]+)$/;
 
+// /api/diff-comment-totals/:wsId
+const totalsPattern = /^\/api\/diff-comment-totals\/([a-zA-Z0-9_-]+)$/;
+
 // /api/diff-comments/:wsId  (list all / create)
 const collectionPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)$/;
 
@@ -400,6 +457,7 @@ const askAiPattern = /^\/api\/diff-comments\/([a-zA-Z0-9_-]+)\/([0-9a-f]{64})\/(
  *
  * Endpoints:
  *   GET    /api/diff-comment-counts/:wsId              — comment counts per storage key
+ *   GET    /api/diff-comment-totals/:wsId             — total open comment counts per commit hash
  *   GET    /api/diff-comments/:wsId                    — list all comments in workspace
  *   POST   /api/diff-comments/:wsId                    — create comment
  *   GET    /api/diff-comments/:wsId/:key               — list comments for storage key
@@ -447,6 +505,36 @@ export function registerDiffCommentsRoutes(
                 sendJSON(res, 200, { counts });
             } catch {
                 sendError(res, 500, 'Failed to retrieve comment counts');
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/diff-comment-totals/:wsId — total comment counts per commit
+    // Query params: commits=hash1,hash2,...  status=open
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: totalsPattern,
+        handler: async (req, res, match) => {
+            const [, wsId] = match!;
+            if (!isValidWorkspaceId(wsId)) {
+                return sendError(res, 400, 'Invalid workspace ID');
+            }
+            try {
+                const url = new URL(req.url!, 'http://x');
+                const commitsParam = url.searchParams.get('commits') ?? '';
+                const commitHashes = commitsParam
+                    ? commitsParam.split(',').map(s => s.trim()).filter(Boolean)
+                    : [];
+                const statusParam = url.searchParams.get('status');
+                const statuses = statusParam
+                    ? statusParam.split(',').map(s => s.trim()).filter(Boolean)
+                    : undefined;
+                const totals = await manager.getCommentTotals(wsId, commitHashes, { statuses });
+                sendJSON(res, 200, { totals });
+            } catch {
+                sendError(res, 500, 'Failed to retrieve comment totals');
             }
         },
     });
