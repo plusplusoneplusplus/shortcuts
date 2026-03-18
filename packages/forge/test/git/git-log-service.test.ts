@@ -97,9 +97,11 @@ describe('GitLogService', () => {
             if (!word) return; // can't construct a meaningful search term
             const result = service.getCommits(REPO_ROOT, { maxCount: 50, skip: 0, search: word });
             expect(result.commits.length).toBeGreaterThan(0);
-            for (const c of result.commits) {
-                expect(c.subject.toLowerCase()).toContain(word.toLowerCase());
-            }
+            // --grep searches the full commit message (subject + body), so results may include
+            // commits where the word only appears in the body. Verify the first commit from all
+            // (whose subject contains the word) is present in the results.
+            const firstHash = all.commits[0].hash;
+            expect(result.commits.some(c => c.hash === firstHash)).toBe(true);
         });
 
         it('should not alter results when search is empty string', () => {
