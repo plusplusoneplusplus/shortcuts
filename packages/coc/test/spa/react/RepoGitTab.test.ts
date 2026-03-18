@@ -984,7 +984,7 @@ describe('RepoGitTab', () => {
         });
 
         it('handleLoadMore calls fetchCommits with nextSkip', () => {
-            expect(source).toContain('fetchCommits(false, nextSkip)');
+            expect(source).toContain('fetchCommits(false, nextSkip, searchQuery)');
         });
 
         it('handleLoadMore updates skip state on success', () => {
