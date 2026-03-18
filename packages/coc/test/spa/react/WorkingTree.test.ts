@@ -44,7 +44,7 @@ describe('WorkingTree', () => {
         });
 
         it('destructures refreshKey in function signature', () => {
-            expect(source).toContain('refreshKey }');
+            expect(source).toContain('refreshKey');
         });
     });
 
@@ -185,6 +185,28 @@ describe('WorkingTree', () => {
 
         it('shows action error', () => {
             expect(source).toContain('data-testid="working-tree-action-error"');
+        });
+    });
+
+    describe('all-comments button', () => {
+        it('accepts optional onAllCommentsClick prop', () => {
+            expect(source).toContain('onAllCommentsClick?: () => void');
+        });
+
+        it('renders the all-comments button when onAllCommentsClick is provided', () => {
+            expect(source).toContain('data-testid="working-tree-all-comments-btn"');
+        });
+
+        it('shows comment count badge from allWorkingComments', () => {
+            expect(source).toContain('allWorkingComments.length');
+        });
+
+        it('fetches working-tree comments using newRef=working-tree', () => {
+            expect(source).toContain('newRef=working-tree');
+        });
+
+        it('stops click propagation on the all-comments button', () => {
+            expect(source).toContain('e.stopPropagation()');
         });
     });
 

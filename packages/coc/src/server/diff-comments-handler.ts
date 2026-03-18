@@ -558,6 +558,8 @@ export function registerDiffCommentsRoutes(
                 const newRef = url.searchParams.get('newRef');
                 const filtered = (oldRef && newRef)
                     ? comments.filter(c => c.context.oldRef === oldRef && c.context.newRef === newRef)
+                    : newRef
+                    ? comments.filter(c => c.context.newRef === newRef)
                     : comments;
                 sendJSON(res, 200, { comments: filtered });
             } catch {

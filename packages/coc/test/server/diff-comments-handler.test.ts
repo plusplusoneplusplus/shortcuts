@@ -797,6 +797,45 @@ describe('Diff Comments REST API', () => {
         });
     });
 
+    // -- GET /api/diff-comments/:wsId — list all with filters --
+
+    describe('GET /api/diff-comments/:wsId', () => {
+        it('returns all comments when no filters provided', async () => {
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'working-tree', filePath: 'src/a.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ oldRef: 'abc^', newRef: 'abc', filePath: 'src/b.ts' }));
+            const res = await getJSON(collectionUrl());
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.comments).toHaveLength(2);
+        });
+
+        it('filters by newRef only (working-tree)', async () => {
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'working-tree', filePath: 'src/a.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'working-tree', filePath: 'src/b.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ oldRef: 'abc^', newRef: 'abc', filePath: 'src/c.ts' }));
+
+            const res = await getJSON(`${collectionUrl()}?newRef=working-tree`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(Array.isArray(body.comments)).toBe(true);
+            // Should include only the two working-tree comments, not the commit comment
+            expect(body.comments).toHaveLength(2);
+            expect(body.comments.every((c: any) => c.context.newRef === 'working-tree')).toBe(true);
+        });
+
+        it('filters by both oldRef and newRef', async () => {
+            await postJSON(collectionUrl(), makePostBody({ oldRef: 'main^', newRef: 'main', filePath: 'src/a.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ oldRef: 'other^', newRef: 'other', filePath: 'src/b.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ newRef: 'working-tree', filePath: 'src/c.ts' }));
+
+            const res = await getJSON(`${collectionUrl()}?oldRef=main^&newRef=main`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.comments).toHaveLength(1);
+            expect(body.comments[0].context.newRef).toBe('main');
+        });
+    });
+
     // -- GET /api/diff-comments/:wsId/:key — list by storage key --
 
     describe('GET /api/diff-comments/:wsId/:key', () => {

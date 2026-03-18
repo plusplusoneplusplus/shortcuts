@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner } from '../shared';
 import { copyToClipboard } from '../utils/format';
+import type { DiffComment } from '../../diff-comment-types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -33,6 +34,8 @@ interface WorkingTreeProps {
     selectedFilePath?: string | null;
     /** Increment this counter to trigger a working-changes re-fetch from the parent. */
     refreshKey?: number;
+    /** Callback when the "all comments" button is clicked in the header. */
+    onAllCommentsClick?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -297,7 +300,7 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey }: WorkingTreeProps) {
+export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -306,6 +309,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     const [busyFiles, setBusyFiles] = useState<Set<string>>(new Set());
     const [stagingAll, setStagingAll] = useState(false);
     const [workingChangesExpanded, setWorkingChangesExpanded] = useState(false);
+    const [allWorkingComments, setAllWorkingComments] = useState<DiffComment[]>([]);
 
     const fetchChanges = useCallback(() => {
         return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/changes`)
@@ -318,6 +322,13 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         setError(null);
         fetchChanges().finally(() => setLoading(false));
     }, [workspaceId, fetchChanges]);
+
+    // Fetch working-tree comment count for the badge in the header.
+    useEffect(() => {
+        fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}?newRef=working-tree`)
+            .then((data: { comments?: DiffComment[] }) => setAllWorkingComments(data.comments ?? []))
+            .catch(() => setAllWorkingComments([]));
+    }, [workspaceId]);
 
     // Re-fetch when parent increments refreshKey (e.g. Refresh button click)
     const refreshKeyMountedRef = useRef(false);
@@ -473,6 +484,16 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                         Working Changes
                     </span>
                     <span className="text-xs text-[#848484] flex-shrink-0 mr-1">{totalCount}</span>
+                    {onAllCommentsClick && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onAllCommentsClick(); }}
+                            title="Show all working-tree comments"
+                            className="text-xs px-1.5 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] flex-shrink-0"
+                            data-testid="working-tree-all-comments-btn"
+                        >
+                            💬 {allWorkingComments.length > 0 ? allWorkingComments.length : ''}
+                        </button>
+                    )}
                 </button>
                 {workingChangesExpanded && (
                     <div data-testid="working-changes-content">
