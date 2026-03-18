@@ -10,9 +10,10 @@ export class MemoryRetriever {
     /**
      * Retrieve consolidated memory at the given level.
      *
-     * - `'repo'`   — returns raw repo consolidated content or null
-     * - `'system'` — returns raw system consolidated content or null
-     * - `'both'`   — returns a formatted markdown block combining both levels
+     * - `'repo'`       — returns raw repo consolidated content or null
+     * - `'system'`     — returns raw system consolidated content or null
+     * - `'git-remote'` — returns git-remote consolidated content or null
+     * - `'both'`       — returns a formatted markdown block combining both levels
      */
     async retrieve(level: MemoryLevel, repoHash?: string): Promise<string | null> {
         if (level === 'repo') {
@@ -21,6 +22,12 @@ export class MemoryRetriever {
 
         if (level === 'system') {
             return this.readAndNormalize('system');
+        }
+
+        if (level === 'git-remote') {
+            const raw = await this.store.readConsolidated('git-remote', repoHash);
+            if (raw === null || raw.trim().length === 0) return null;
+            return raw.trim();
         }
 
         // level === 'both'

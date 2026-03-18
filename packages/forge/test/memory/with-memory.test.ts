@@ -179,4 +179,56 @@ describe('withMemory', () => {
         const calledOpts = mockInvoker.mock.calls[0][1] as AIInvokerOptions;
         expect(calledOpts.tools).toEqual([existingTool, mockMemoryTool]);
     });
+
+    it('full cycle with level: repo → retriever called at repo level', async () => {
+        const repoOpts: WithMemoryOptions = {
+            ...memOpts,
+            level: 'repo',
+            repoHash: 'abc123',
+        };
+
+        await withMemory(mockInvoker, 'prompt', baseOpts, repoOpts);
+
+        expect(mockRetrieve).toHaveBeenCalledWith('repo', 'abc123');
+        expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'repo', 'abc123');
+    });
+
+    it('full cycle with level: system → retriever called at system level', async () => {
+        const sysOpts: WithMemoryOptions = { ...memOpts, level: 'system' };
+
+        await withMemory(mockInvoker, 'prompt', baseOpts, sysOpts);
+
+        expect(mockRetrieve).toHaveBeenCalledWith('system', undefined);
+        expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'system', undefined);
+    });
+
+    it('full cycle with level: both (default) → retriever called with both', async () => {
+        // Default level is 'both'
+        await withMemory(mockInvoker, 'prompt', baseOpts, { ...memOpts, repoHash: 'xyz' });
+
+        expect(mockRetrieve).toHaveBeenCalledWith('both', 'xyz');
+        expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'both', 'xyz');
+    });
+
+    it('level: git-remote → retriever called at git-remote level', async () => {
+        const gitRemoteOpts: WithMemoryOptions = {
+            ...memOpts,
+            level: 'git-remote',
+            repoHash: 'remotehash1',
+        };
+
+        await withMemory(mockInvoker, 'prompt', baseOpts, gitRemoteOpts);
+
+        expect(mockRetrieve).toHaveBeenCalledWith('git-remote', 'remotehash1');
+        expect(mockAggregateIfNeeded).toHaveBeenCalledWith(mockInvoker, 'git-remote', 'remotehash1');
+    });
+
+    it('AI call fails → error propagated, not swallowed', async () => {
+        const aiError = new Error('AI service down');
+        mockInvoker.mockRejectedValue(aiError);
+
+        await expect(withMemory(mockInvoker, 'prompt', baseOpts, memOpts)).rejects.toThrow(
+            'AI service down',
+        );
+    });
 });

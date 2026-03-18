@@ -66,6 +66,24 @@ const INDEX_FILE = 'index.json';
 const DEFAULT_PAGE_SIZE = 20;
 
 // ============================================================================
+// Options
+// ============================================================================
+
+export interface FileMemoryStoreOptions {
+    /**
+     * Time-to-live in days. Entries older than this are excluded from list().
+     * 0 (default) means no TTL — entries never expire.
+     */
+    ttlDays?: number;
+    /**
+     * Maximum number of entries to retain. When a new entry is created and the
+     * total exceeds this limit, the oldest entries (by createdAt) are pruned.
+     * 0 (default) means no limit.
+     */
+    maxEntries?: number;
+}
+
+// ============================================================================
 // FileMemoryStore
 // ============================================================================
 
@@ -75,7 +93,13 @@ const DEFAULT_PAGE_SIZE = 20;
  * An index file at <storageDir>/index.json enables fast listing and search.
  */
 export class FileMemoryStore {
-    constructor(private readonly storageDir: string) {}
+    private readonly ttlDays: number;
+    private readonly maxEntries: number;
+
+    constructor(private readonly storageDir: string, options?: FileMemoryStoreOptions) {
+        this.ttlDays = options?.ttlDays ?? 0;
+        this.maxEntries = options?.maxEntries ?? 0;
+    }
 
     /** Ensure the storage directory and index exist. */
     private ensureDir(): void {
@@ -124,12 +148,19 @@ export class FileMemoryStore {
 
     /**
      * List entries with optional full-text search, tag filter, and pagination.
+     * Expired entries (per ttlDays constructor option) are excluded.
      */
     list(query: MemoryListQuery = {}): MemoryListResult {
         const index = this.readIndex();
         const { q, tag, page = 1, pageSize = DEFAULT_PAGE_SIZE } = query;
 
         let filtered = index;
+
+        // Apply TTL filtering: ttlDays > 0 means entries older than that are excluded
+        if (this.ttlDays > 0) {
+            const cutoffMs = Date.now() - this.ttlDays * 24 * 60 * 60 * 1000;
+            filtered = filtered.filter(e => new Date(e.createdAt).getTime() > cutoffMs);
+        }
 
         if (tag) {
             filtered = filtered.filter(e => e.tags.includes(tag));
@@ -198,6 +229,17 @@ export class FileMemoryStore {
         const { content: _c, embedding: _e, ...record } = entry;
         index.push(record);
         this.writeIndex(index);
+
+        // Prune oldest entries if maxEntries limit is set and exceeded
+        if (this.maxEntries > 0 && index.length > this.maxEntries) {
+            const sorted = [...index].sort(
+                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            );
+            const toDelete = sorted.slice(0, index.length - this.maxEntries);
+            for (const r of toDelete) {
+                this.delete(r.id);
+            }
+        }
 
         return entry;
     }

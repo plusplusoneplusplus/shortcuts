@@ -97,7 +97,10 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
         handler: async (req, res) => {
             try {
                 const config = readMemoryConfig(dataDir);
-                const store = new FileMemoryStore(config.storageDir);
+                const store = new FileMemoryStore(config.storageDir, {
+                    ttlDays: config.ttlDays,
+                    maxEntries: config.maxEntries,
+                });
 
                 const parsedUrl = url.parse(req.url ?? '', true);
                 const q = typeof parsedUrl.query.q === 'string' ? parsedUrl.query.q : undefined;
@@ -131,7 +134,10 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
                 }
 
                 const config = readMemoryConfig(dataDir);
-                const store = new FileMemoryStore(config.storageDir);
+                const store = new FileMemoryStore(config.storageDir, {
+                    ttlDays: config.ttlDays,
+                    maxEntries: config.maxEntries,
+                });
 
                 const entry = store.create({
                     content: body.content,

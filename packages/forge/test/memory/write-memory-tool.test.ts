@@ -145,4 +145,33 @@ describe('createWriteMemoryTool', () => {
 
         expect(getWrittenFacts()).toEqual(['Fact 1']);
     });
+
+    it('getWrittenFacts() returns empty array before any tool calls', () => {
+        const { getWrittenFacts } = createWriteMemoryTool(mockStore, { source: 'test' });
+        expect(getWrittenFacts()).toEqual([]);
+    });
+
+    it('tool schema has fact as required property', () => {
+        const { tool } = createWriteMemoryTool(mockStore, { source: 'test' });
+        const required = tool.parameters?.required ?? [];
+        expect(required).toContain('fact');
+    });
+
+    it('tool schema includes optional category field with enum values', () => {
+        const { tool } = createWriteMemoryTool(mockStore, { source: 'test' });
+        const properties = (tool.parameters as any)?.properties ?? {};
+        expect(properties.category).toBeDefined();
+        expect(Array.isArray(properties.category.enum)).toBe(true);
+        expect(properties.category.enum).toContain('conventions');
+        expect(properties.category.enum).toContain('architecture');
+    });
+
+    it('tool call without category → fact stored as plain bullet', async () => {
+        const { tool } = createWriteMemoryTool(mockStore, { source: 'test' });
+        await tool.handler({ fact: 'no category fact' }, mockInvocation);
+
+        const content = (mockStore.writeRaw as ReturnType<typeof vi.fn>).mock.calls[0][3];
+        expect(content).not.toContain('##');
+        expect(content).toMatch(/^- no category fact$/);
+    });
 });

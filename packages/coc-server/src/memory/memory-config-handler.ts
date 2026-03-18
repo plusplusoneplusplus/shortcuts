@@ -144,6 +144,15 @@ export async function handlePutMemoryConfig(
 ): Promise<void> {
     try {
         const body = await readJsonBody(req);
+        // Strict validation: reject explicitly invalid numeric fields
+        if (typeof (body as any).maxEntries === 'number' && (body as any).maxEntries <= 0) {
+            send400(res, 'Invalid config: maxEntries must be a positive number');
+            return;
+        }
+        if (typeof (body as any).ttlDays === 'number' && (body as any).ttlDays < 0) {
+            send400(res, 'Invalid config: ttlDays must be 0 or a positive number');
+            return;
+        }
         const config = validateMemoryConfig(body);
         writeMemoryConfig(dataDir, config);
         sendJson(res, config);
