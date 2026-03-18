@@ -71,6 +71,7 @@ function makeHook(overrides: Record<string, unknown> = {}) {
         aiLoadingIds: new Set(),
         aiErrors: new Map(),
         clearAiError: vi.fn(),
+        copyAllCommentsAsPrompt: vi.fn(),
         resolving: false,
         resolvingCommentId: null,
         refresh: vi.fn(),
@@ -187,6 +188,18 @@ describe('CommitDetail — comment integration', () => {
         const trigger = await screen.findByTestId('trigger-comment-click');
         await act(async () => { fireEvent.click(trigger); });
         expect(screen.getByTestId('popover-comment-body').textContent).toBe('test');
+    });
+
+    // Regression: onCopyPrompt wired to file-level CommentSidebar
+    it('passes copyAllCommentsAsPrompt as onCopyPrompt to the file-level sidebar', async () => {
+        const mockCopy = vi.fn();
+        const openComment = { id: 'c1', context: {}, selection: { diffLineStart: 0, diffLineEnd: 0 }, comment: 'test', status: 'open', createdAt: '', updatedAt: '', selectedText: '' };
+        mockUseDiffComments.mockReturnValue(makeHook({ comments: [openComment], copyAllCommentsAsPrompt: mockCopy }));
+        await renderDetail({ filePath: 'src/foo.ts' });
+        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
+        const copyBtn = await screen.findByTitle('Copy all comments as prompt');
+        await act(async () => { fireEvent.click(copyBtn); });
+        expect(mockCopy).toHaveBeenCalledTimes(1);
     });
 
     // 7. Comments are passed to UnifiedDiffViewer

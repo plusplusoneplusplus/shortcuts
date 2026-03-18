@@ -61,7 +61,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
 
     const { comments, loading: commentsLoading, addComment, deleteComment, updateComment,
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
-            clearAiError } = useDiffComments(workspaceId, diffContext);
+            clearAiError, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
     // Commit-level comments (only fetched when !filePath)
     const [allCommitComments, setAllCommitComments] = useState<DiffComment[]>([]);
@@ -342,6 +342,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                         aiLoadingIds={aiLoadingIds}
                         aiErrors={aiErrors}
                         onClearAiError={clearAiError}
+                        onCopyPrompt={copyAllCommentsAsPrompt}
                         data-testid="diff-comment-sidebar"
                     />
                 )}
