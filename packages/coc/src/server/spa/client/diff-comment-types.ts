@@ -12,7 +12,7 @@
 export type { DiffCommentSelection, DiffCommentContext } from '@plusplusoneplusplus/forge/editor/types';
 
 import type { CommentCategory } from './comment-constants';
-import { ALL_COMMENT_CATEGORIES, COMMENT_CATEGORY_REGEX } from './comment-constants';
+import { ALL_COMMENT_CATEGORIES, resolveCommentCategory } from './comment-constants';
 
 // ============================================================================
 // Diff Comment Types
@@ -28,12 +28,7 @@ export const ALL_DIFF_CATEGORIES: DiffCommentCategory[] = [...ALL_COMMENT_CATEGO
 
 /** Get category from a DiffComment (field first, then text prefix fallback). */
 export function getDiffCommentCategory(comment: DiffComment): DiffCommentCategory {
-    if (comment.category && ALL_DIFF_CATEGORIES.includes(comment.category)) {
-        return comment.category;
-    }
-    const match = comment.comment.match(COMMENT_CATEGORY_REGEX);
-    if (match) return match[1].toLowerCase() as DiffCommentCategory;
-    return 'general';
+    return resolveCommentCategory(comment.category, comment.comment);
 }
 
 /**

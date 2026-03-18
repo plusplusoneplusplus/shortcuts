@@ -12,7 +12,7 @@
 export type { CommentSelection, CommentAnchor } from '@plusplusoneplusplus/forge/editor/types';
 
 import type { CommentCategory } from './comment-constants';
-import { ALL_COMMENT_CATEGORIES, COMMENT_CATEGORY_REGEX } from './comment-constants';
+import { ALL_COMMENT_CATEGORIES, resolveCommentCategory } from './comment-constants';
 
 // ============================================================================
 // Task Comment Types
@@ -46,12 +46,7 @@ export const ALL_CATEGORIES: TaskCommentCategory[] = [...ALL_COMMENT_CATEGORIES]
 
 /** Get category from a TaskComment (field first, then text prefix fallback). */
 export function getCommentCategory(comment: TaskComment): TaskCommentCategory {
-    if (comment.category && ALL_CATEGORIES.includes(comment.category)) {
-        return comment.category;
-    }
-    const match = comment.comment.match(COMMENT_CATEGORY_REGEX);
-    if (match) return match[1].toLowerCase() as TaskCommentCategory;
-    return 'general';
+    return resolveCommentCategory(comment.category, comment.comment);
 }
 
 /**
