@@ -66,6 +66,14 @@ describe('BranchChanges', () => {
             expect(source).toContain('selectedFile?: string | null');
         });
 
+        it('accepts optional onBranchRangeSelect prop', () => {
+            expect(source).toContain('onBranchRangeSelect?: () => void');
+        });
+
+        it('calls onBranchRangeSelect on header click', () => {
+            expect(source).toContain('onBranchRangeSelect?.()');
+        });
+
         it('defines BranchChangesProps interface', () => {
             expect(source).toContain('interface BranchChangesProps');
         });

@@ -35,6 +35,8 @@ interface BranchChangesProps {
     onFileSelect?: (filePath: string) => void;
     selectedFile?: string | null;
     onBranchContextMenu?: (e: React.MouseEvent) => void;
+    /** Called when the user clicks the branch-changes section header, to show the branch range overview. */
+    onBranchRangeSelect?: () => void;
 }
 
 interface BranchRangeFile {
@@ -71,7 +73,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const DIFF_LINE_LIMIT = 500;
 
-export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu }: BranchChangesProps) {
+export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu, onBranchRangeSelect }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
     const [filesLoading, setFilesLoading] = useState(false);
@@ -210,7 +212,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
         <div className="branch-changes" data-testid="branch-changes">
             <button
                 className="w-full flex items-center gap-2 px-4 py-2 bg-[#f5f5f5] dark:bg-[#252526] border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-left cursor-pointer hover:bg-[#ececec] dark:hover:bg-[#2a2d2e] transition-colors"
-                onClick={() => setExpanded(prev => !prev)}
+                onClick={() => { setExpanded(prev => !prev); onBranchRangeSelect?.(); }}
                 onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onBranchContextMenu?.(e); }}
                 data-testid="branch-changes-header"
             >
