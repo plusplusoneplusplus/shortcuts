@@ -79,6 +79,42 @@ export class StaleTaskDetector {
     }
 
     /**
+     * Run a single detection pass — mark tasks stale when they exceed their task timeout
+     * (but before the grace period expires). Does NOT force-fail tasks.
+     * @returns Number of tasks newly marked stale
+     */
+    async detectAndMarkStale(): Promise<number> {
+        const running = this.queueManager.getRunning();
+        if (running.length === 0) return 0;
+
+        const now = Date.now();
+        let count = 0;
+
+        for (const task of running) {
+            if (!task.startedAt) continue;
+
+            const taskTimeout = task.config?.timeoutMs ?? this.defaultTimeoutMs;
+            const staleThreshold = taskTimeout + this.gracePeriodMs;
+            const elapsed = now - task.startedAt;
+
+            // Only mark stale if exceeded task timeout but not yet grace period
+            if (elapsed > taskTimeout && elapsed <= staleThreshold) {
+                const processId = task.processId;
+                if (this.store && processId) {
+                    try {
+                        await this.store.updateProcess(processId, { stale: true });
+                    } catch {
+                        // Non-fatal
+                    }
+                }
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /**
      * Run a single detection pass — check all running tasks and force-fail stale ones.
      * @returns Number of tasks force-failed
      */

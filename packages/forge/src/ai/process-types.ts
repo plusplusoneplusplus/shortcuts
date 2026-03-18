@@ -415,6 +415,9 @@ export interface AIProcess {
     currentTokens?: number;
     /** Running total of token usage across all turns in this session */
     cumulativeTokenUsage?: TokenUsage;
+
+    /** True when the stale task detector has flagged this process as stale (running past timeout) */
+    stale?: boolean;
 }
 
 /**
