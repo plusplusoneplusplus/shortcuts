@@ -27,6 +27,7 @@ import { registerGlobalSkillRoutes } from './global-skill-handler';
 import type { ProcessWebSocketServer } from './websocket';
 import { getServerLogger } from './server-logger';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
+import { truncateDisplayName } from './shared/queue-utils';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -1974,8 +1975,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             }
 
             if (bridge.enqueue) {
-                const snippet = messageContent.trim();
-                const displayName = snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+                const displayName = truncateDisplayName(messageContent.trim());
                 // Look up the original chat task so the follow-up can reuse it
                 const parentTask = bridge.findTaskByProcessId?.(id);
                 if (parentTask && parentTask.status === 'completed' && bridge.requeueForFollowUp) {
