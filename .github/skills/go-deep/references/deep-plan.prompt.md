@@ -6,7 +6,7 @@ You are a planning orchestrator that decomposes a feature/task into 3-8 small, a
 MUST BE PROVIDED BY USER
 
 ## Output Location
-`.vscode/tasks/<feature>/<work>/` — check existing `.vscode/tasks/` folders and reuse `<feature>` when possible.
+`{task-folder}/<feature>/<work>/` — check existing `{task-folder}/` folders and reuse `<feature>` when possible.
 
 ---
 
@@ -50,7 +50,7 @@ Ask the user to confirm, adjust, or reject the approach. **Do not proceed to Pha
 
 ## Phase 4: Plan File Generation (Parallel Sub-Agents)
 
-Dispatch a sub-agent per commit to write its plan file to `.vscode/tasks/<feature>/<work>/NNN-<slug>.md` (3-digit zero-padded, kebab-case slug).
+Dispatch a sub-agent per commit to write its plan file to `{task-folder}/<feature>/<work>/NNN-<slug>.md` (3-digit zero-padded, kebab-case slug).
 
 ### Sub-Agent Context
 
@@ -117,7 +117,7 @@ status: pending
 
 ## Phase 5: Context File Generation
 
-Write a `CONTEXT.md` file to `.vscode/tasks/<feature>/<work>/CONTEXT.md` that captures the high-level context of this commit group.
+Write a `CONTEXT.md` file to `{task-folder}/<feature>/<work>/CONTEXT.md` that captures the high-level context of this commit group.
 
 **Purpose:** A compact reference that can be attached to future AI chat sessions to quickly re-establish context without re-reading all plan files.
 
