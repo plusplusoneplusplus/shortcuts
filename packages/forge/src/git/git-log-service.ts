@@ -36,7 +36,7 @@ export class GitLogService {
      */
     getCommits(repoRoot: string, options: CommitLoadOptions): CommitLoadResult {
         try {
-            const { maxCount, skip } = options;
+            const { maxCount, skip, search } = options;
 
             // Request one extra commit to determine if there are more
             const requestCount = maxCount + 1;
@@ -44,7 +44,10 @@ export class GitLogService {
             // Format: hash|shortHash|subject|authorName|authorEmail|date|relativeDate|parentHashes|refs
             const format = '%H|%h|%s|%an|%ae|%aI|%ar|%P|%D';
 
-            const command = `git log --pretty=format:"${format}" -n ${requestCount} --skip ${skip}`;
+            const searchFlags = search
+                ? ` --grep=${JSON.stringify(search)} --regexp-ignore-case`
+                : '';
+            const command = `git log --pretty=format:"${format}" -n ${requestCount} --skip ${skip}${searchFlags}`;
 
             const output = execSync(command, {
                 cwd: repoRoot,

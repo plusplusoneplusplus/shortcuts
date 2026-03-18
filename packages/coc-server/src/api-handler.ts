@@ -560,12 +560,13 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const limit = Math.min(Math.max(parseInt(String(parsed.query.limit || '50'), 10) || 50, 1), 200);
             const skip = Math.max(parseInt(String(parsed.query.skip || '0'), 10) || 0, 0);
             const refresh = parsed.query.refresh === 'true';
+            const search = parsed.query.search ? String(parsed.query.search).trim() : '';
 
             if (refresh) {
                 gitCache.invalidateMutable(id);
             }
 
-            const cacheKey = `${id}:commits:${limit}:${skip}`;
+            const cacheKey = `${id}:commits:${limit}:${skip}${search ? `:search:${search}` : ''}`;
             const cached = gitCache.get<{ commits: any[]; unpushedCount: number }>(cacheKey);
             if (cached) {
                 return sendJSON(res, 200, cached);
@@ -573,8 +574,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             try {
                 const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
+                const searchFlags = search
+                    ? ` --grep=${JSON.stringify(search)} --regexp-ignore-case`
+                    : '';
                 const raw = execGitSync(
-                    `log --format="${format}" --skip=${skip} --max-count=${limit} -z`,
+                    `log --format="${format}" --skip=${skip} --max-count=${limit} -z${searchFlags}`,
                     ws.rootPath
                 );
 

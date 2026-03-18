@@ -90,6 +90,8 @@ export interface CommitLoadOptions {
     maxCount: number;
     /** Number of commits to skip (for pagination) */
     skip: number;
+    /** Optional search string to filter commits by message (uses --grep, case-insensitive) */
+    search?: string;
 }
 
 /**

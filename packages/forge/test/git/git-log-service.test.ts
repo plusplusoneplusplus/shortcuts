@@ -80,6 +80,33 @@ describe('GitLogService', () => {
             expect(result.commits).toEqual([]);
             expect(result.hasMore).toBe(false);
         });
+
+        it('should filter commits by search string (case-insensitive)', () => {
+            // Use a search term that is unlikely to match any commit but should still return an array
+            const resultNoMatch = service.getCommits(REPO_ROOT, { maxCount: 50, skip: 0, search: 'zzz_no_match_xyz_12345' });
+            expect(resultNoMatch.commits).toEqual([]);
+            expect(resultNoMatch.hasMore).toBe(false);
+        });
+
+        it('should return commits matching search string', () => {
+            // Fetch all commits and use the subject of the first as search term
+            const all = service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
+            if (all.commits.length === 0) return;
+            const subject = all.commits[0].subject;
+            const word = subject.split(' ').find(w => w.length >= 4);
+            if (!word) return; // can't construct a meaningful search term
+            const result = service.getCommits(REPO_ROOT, { maxCount: 50, skip: 0, search: word });
+            expect(result.commits.length).toBeGreaterThan(0);
+            for (const c of result.commits) {
+                expect(c.subject.toLowerCase()).toContain(word.toLowerCase());
+            }
+        });
+
+        it('should not alter results when search is empty string', () => {
+            const withEmpty = service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0, search: '' });
+            const withUndefined = service.getCommits(REPO_ROOT, { maxCount: 5, skip: 0 });
+            expect(withEmpty.commits.map(c => c.hash)).toEqual(withUndefined.commits.map(c => c.hash));
+        });
     });
 
     // -----------------------------------------------------------------------

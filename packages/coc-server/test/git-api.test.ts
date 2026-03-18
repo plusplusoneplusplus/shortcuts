@@ -224,6 +224,47 @@ describe('Git API endpoints', () => {
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=10&skip=5`);
         });
+
+        it('passes --grep flag when search query is provided', async () => {
+            let capturedCmd = '';
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+                return '';
+            });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=fix+auth`);
+            expect(capturedCmd).toContain('--grep=');
+            expect(capturedCmd).toContain('fix auth');
+            expect(capturedCmd).toContain('--regexp-ignore-case');
+        });
+
+        it('does not include --grep when search is empty', async () => {
+            let capturedCmd = '';
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+                return '';
+            });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=`);
+            expect(capturedCmd).not.toContain('--grep');
+        });
+
+        it('uses separate cache keys for different search queries', async () => {
+            const logOutput = 'abc123def456789\nabc123d\nFix auth bug\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n';
+            let callCount = 0;
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('log --format=')) { callCount++; return logOutput; }
+                return '';
+            });
+
+            // First call with search=fix
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=fix`);
+            // Second call with search=auth — should not use cached result from search=fix
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=auth`);
+            // Third call with no search — should be a separate cache entry
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits`);
+            expect(callCount).toBe(3);
+        });
     });
 
     // ========================================================================

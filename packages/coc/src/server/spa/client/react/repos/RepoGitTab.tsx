@@ -72,6 +72,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const pullPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
     const [workingChangesRefreshKey, setWorkingChangesRefreshKey] = useState(0);
+    const [searchQuery, setSearchQuery] = useState('');
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Branch-range state (lifted from BranchChanges)
     const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
@@ -88,10 +90,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
 
-    const fetchCommits = useCallback((refresh = false, skipOffset = 0) => {
+    const fetchCommits = useCallback((refresh = false, skipOffset = 0, search = '') => {
         const skipQs = skipOffset > 0 ? `&skip=${skipOffset}` : '';
         const refreshQs = refresh ? '&refresh=true' : '';
-        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits?limit=50${skipQs}${refreshQs}`)
+        const searchQs = search ? `&search=${encodeURIComponent(search)}` : '';
+        return fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits?limit=50${skipQs}${refreshQs}${searchQs}`)
             .then(data => {
                 const loaded = data.commits || [];
                 if (skipOffset > 0) {
@@ -186,6 +189,21 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             .catch(() => {});
     }, [workspaceId]);
 
+    // Debounced search: when searchQuery changes, reset pagination and re-fetch
+    useEffect(() => {
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = setTimeout(() => {
+            searchDebounceRef.current = null;
+            setSkip(0);
+            setCommits([]);
+            fetchCommits(false, 0, searchQuery).catch(() => {});
+        }, 300);
+        return () => {
+            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchQuery, workspaceId]);
+
     // Refresh all data (non-blocking, keeps current content visible)
     const refreshAll = useCallback(() => {
         if (refreshing) return;
@@ -194,7 +212,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setSkip(0);
         setWorkingChangesRefreshKey(k => k + 1);
         const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
-        Promise.all([fetchCommits(true), fetchBranchRange(true)])
+        Promise.all([fetchCommits(true, 0, searchQuery), fetchBranchRange(true)])
             .then(([loaded]) => {
                 // Retain selection if the commit still exists
                 if (prevSelectedHash) {
@@ -221,18 +239,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             })
             .catch(err => setRefreshError(err.message || 'Refresh failed'))
             .finally(() => setRefreshing(false));
-    }, [refreshing, rightPanelView, fetchCommits, fetchBranchRange]);
+    }, [refreshing, rightPanelView, fetchCommits, fetchBranchRange, searchQuery]);
 
     // Load more commits (append next page)
     const handleLoadMore = useCallback(() => {
         if (isLoadingMore || !hasMore) return;
         setIsLoadingMore(true);
         const nextSkip = skip + 50;
-        fetchCommits(false, nextSkip)
+        fetchCommits(false, nextSkip, searchQuery)
             .then(() => setSkip(nextSkip))
             .catch(() => {})
             .finally(() => setIsLoadingMore(false));
-    }, [isLoadingMore, hasMore, skip, fetchCommits]);
+    }, [isLoadingMore, hasMore, skip, fetchCommits, searchQuery]);
 
     // WebSocket: auto-refresh on git-changed events for this workspace
     const gitChangedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -683,11 +701,15 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         );
     })();
 
-    const commitListPanel = (
+    const commitListPanel = searchQuery && commits.length === 0 ? (
+        <div className="text-sm text-[#848484] py-8 text-center px-4" data-testid="git-search-empty">
+            No commits match &ldquo;{searchQuery}&rdquo;
+        </div>
+    ) : (
         <CommitList
             title="History"
             commits={commits}
-            unpushedCount={unpushedCount}
+            unpushedCount={searchQuery ? 0 : unpushedCount}
             selectedHash={selectedCommit?.hash}
             selectedFile={selectedCommitFile}
             initialExpandedHash={initialCommitHash ? selectedCommit?.hash : null}
@@ -767,6 +789,33 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     pushing={pushing}
                     rebasing={rebasing}
                 />
+                {/* Search input */}
+                <div className="px-2 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-search-bar">
+                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded border bg-white dark:bg-[#3c3c3c] focus-within:border-[#0078d4] ${searchQuery ? 'border-[#0078d4]' : 'border-[#e0e0e0] dark:border-[#474749]'}`}>
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0 text-[#848484]" aria-hidden="true">
+                            <path d="M6.5 1a5.5 5.5 0 1 0 3.547 9.714l3.37 3.369a.75.75 0 1 0 1.06-1.06l-3.369-3.37A5.5 5.5 0 0 0 6.5 1zm-4 5.5a4 4 0 1 1 8 0 4 4 0 0 1-8 0z" fill="currentColor"/>
+                        </svg>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder="Search commits…"
+                            className="flex-1 bg-transparent outline-none text-sm text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#999] min-w-0"
+                            data-testid="git-search-input"
+                            aria-label="Search commits by message"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none"
+                                data-testid="git-search-clear"
+                                aria-label="Clear search"
+                            >
+                                ×
+                            </button>
+                        )}
+                    </div>
+                </div>
                 {scenarioBanner}
                 {refreshError && (
                     <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-refresh-error">
