@@ -2,8 +2,9 @@
 - Never `git add/commit` files under `.vscode/tasks` (creating is fine).
 - Assume no backward compatibility unless explicitly asked.
 - Use `claude-haiku-4.5` for simple exploration tasks. Use `claude-sonnet-4.6` for complex exploration tasks.
-- By default, focus on the CoC (Copilot of Copilot) project (`packages/coc/`, `packages/coc-server/`, `packages/pipeline-core/`). Ignore the VS Code extension (`src/`) unless the user explicitly asks about it.
+- By default, focus on the CoC (Copilot of Copilot) project (`packages/coc/`, `packages/coc-server/`, `packages/forge/`). Ignore the VS Code extension (`src/`) unless the user explicitly asks about it.
 - When the plan involves UI/UX, make sure to include the visual design in the plan.
+- When fixing the tests, check commit history to see if the test was broken by a previous commit. And if the commit is a new feature or behaivor change and is intentional. You SHOULD gather more information and make a decision on whether to fix the test or the source code.
 
 ## Project Principles
 - CoC (Copilot of Copilot) is independent of the VS Code extension.
