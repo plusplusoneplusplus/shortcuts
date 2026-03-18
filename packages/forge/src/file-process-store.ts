@@ -422,6 +422,7 @@ export class FileProcessStore implements ProcessStore {
                 if (updates.remoteUrl !== undefined) { workspaces[idx].remoteUrl = updates.remoteUrl; }
                 if ('enabledMcpServers' in updates) { workspaces[idx].enabledMcpServers = updates.enabledMcpServers; }
                 if ('disabledSkills' in updates) { workspaces[idx].disabledSkills = updates.disabledSkills; }
+                if ('extraSkillFolders' in updates) { workspaces[idx].extraSkillFolders = updates.extraSkillFolders; }
                 updated = { ...workspaces[idx] };
                 await this.writeWorkspaces(workspaces);
             }

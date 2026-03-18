@@ -46,6 +46,8 @@ interface AgentSkillsPanelProps {
     onSkillToggle: (name: string, enabled: boolean) => void;
     onSetDeleteConfirm: (name: string | null) => void;
     onInstalled: () => void;
+    extraSkillFolders?: string[];
+    onExtraSkillFoldersChange?: (folders: string[]) => void;
 }
 
 export function AgentSkillsPanel({
@@ -63,8 +65,11 @@ export function AgentSkillsPanel({
     onSkillToggle,
     onSetDeleteConfirm,
     onInstalled,
+    extraSkillFolders = [],
+    onExtraSkillFoldersChange,
 }: AgentSkillsPanelProps) {
     const [showInstallDialog, setShowInstallDialog] = useState(false);
+    const [newFolderInput, setNewFolderInput] = useState('');
 
     const isSkillEnabled = (name: string) => !disabledSkills.includes(name);
 
@@ -173,6 +178,86 @@ export function AgentSkillsPanel({
                     onInstalled={() => { setShowInstallDialog(false); onInstalled(); }}
                 />
             )}
+
+            {/* ── Extra Skill Folders ── */}
+            <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-4" data-testid="extra-skill-folders-section">
+                <h3 className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Extra Skill Folders</h3>
+                <p className="text-xs text-[#848484] mb-3">
+                    Searched after <code className="font-mono bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">.github/skills/</code> and global, in order:
+                </p>
+
+                {extraSkillFolders.length > 0 && (
+                    <ul className="flex flex-col gap-1 mb-3" data-testid="extra-skill-folders-list">
+                        {extraSkillFolders.map((folder, idx) => (
+                            <li key={idx} className="flex items-center gap-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                                <span className="w-4 text-right text-[#848484] flex-shrink-0">{idx + 1}</span>
+                                <span
+                                    className="flex-1 font-mono truncate bg-[#f3f3f3] dark:bg-[#2a2a2a] px-2 py-1 rounded"
+                                    title={folder}
+                                    data-testid={`extra-folder-path-${idx}`}
+                                >{folder}</span>
+                                <button
+                                    className="px-1 py-0.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
+                                    title="Move up"
+                                    disabled={idx === 0}
+                                    onClick={() => {
+                                        const next = [...extraSkillFolders];
+                                        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                        onExtraSkillFoldersChange?.(next);
+                                    }}
+                                    data-testid={`extra-folder-up-${idx}`}
+                                >↑</button>
+                                <button
+                                    className="px-1 py-0.5 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
+                                    title="Move down"
+                                    disabled={idx === extraSkillFolders.length - 1}
+                                    onClick={() => {
+                                        const next = [...extraSkillFolders];
+                                        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                        onExtraSkillFoldersChange?.(next);
+                                    }}
+                                    data-testid={`extra-folder-down-${idx}`}
+                                >↓</button>
+                                <button
+                                    className="px-1 py-0.5 text-[#848484] hover:text-red-600 dark:hover:text-red-400"
+                                    title="Remove"
+                                    onClick={() => onExtraSkillFoldersChange?.(extraSkillFolders.filter((_, i) => i !== idx))}
+                                    data-testid={`extra-folder-remove-${idx}`}
+                                >✕</button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        className="flex-1 text-xs font-mono border border-[#e0e0e0] dark:border-[#3c3c3c] rounded px-2 py-1 bg-[#ffffff] dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] placeholder-[#848484]"
+                        placeholder="/enter/a/path/here"
+                        value={newFolderInput}
+                        onChange={e => setNewFolderInput(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' && newFolderInput.trim()) {
+                                onExtraSkillFoldersChange?.([...extraSkillFolders, newFolderInput.trim()]);
+                                setNewFolderInput('');
+                            }
+                        }}
+                        data-testid="extra-folder-input"
+                    />
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!newFolderInput.trim()}
+                        onClick={() => {
+                            if (newFolderInput.trim()) {
+                                onExtraSkillFoldersChange?.([...extraSkillFolders, newFolderInput.trim()]);
+                                setNewFolderInput('');
+                            }
+                        }}
+                        data-testid="extra-folder-add-btn"
+                    >+ Add</Button>
+                </div>
+            </div>
         </div>
     );
 }

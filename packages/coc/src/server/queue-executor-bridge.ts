@@ -1671,7 +1671,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
     /**
      * Resolve per-workspace skill configuration for the SDK session.
-     * Returns `skillDirectories` (global + repo `.github/skills/` paths)
+     * Returns `skillDirectories` (repo-local + global + extra paths)
      * and `disabledSkills` from the workspace config + global preferences.
      */
     private async resolveSkillConfig(
@@ -1680,14 +1680,18 @@ export class CLITaskExecutor implements TaskExecutor {
     ): Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }> {
         const wsId: string | undefined = workspaceId;
         let disabledSkills: string[] | undefined;
+        let extraSkillFolders: string[] | undefined;
 
-        // Resolve disabled skills from workspace config
+        // Resolve workspace config (disabled skills + extra folders)
         if (wsId) {
             try {
                 const workspaces = await this.store.getWorkspaces();
                 const ws = workspaces.find(w => w.id === wsId);
                 if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
                     disabledSkills = [...ws.disabledSkills];
+                }
+                if (ws?.extraSkillFolders && ws.extraSkillFolders.length > 0) {
+                    extraSkillFolders = [...ws.extraSkillFolders];
                 }
             } catch {
                 // Non-fatal: continue without workspace config
@@ -1710,22 +1714,10 @@ export class CLITaskExecutor implements TaskExecutor {
             }
         }
 
-        // Resolve skill directories: global first, then repo-local
+        // Resolve skill directories: repo-local first, then global, then extra
         const dirs: string[] = [];
 
-        // 1. Global skills (always included)
-        if (this.dataDir) {
-            const globalSkillsDir = path.join(this.dataDir, 'skills');
-            try {
-                if (fs.existsSync(globalSkillsDir)) {
-                    dirs.push(globalSkillsDir);
-                }
-            } catch {
-                // Non-fatal
-            }
-        }
-
-        // 2. Repo-local skills (workspace-specific)
+        // 1. Repo-local skills (workspace-specific, highest priority)
         const root = workingDirectory;
         if (root) {
             const skillsDir = path.join(root, DEFAULT_SKILLS_SETTINGS.installPath);
@@ -1738,12 +1730,40 @@ export class CLITaskExecutor implements TaskExecutor {
             }
         }
 
+        // 2. Global skills (~/.coc/skills)
+        if (this.dataDir) {
+            const globalSkillsDir = path.join(this.dataDir, 'skills');
+            try {
+                if (fs.existsSync(globalSkillsDir)) {
+                    dirs.push(globalSkillsDir);
+                }
+            } catch {
+                // Non-fatal
+            }
+        }
+
+        // 3. Extra skill folders from workspace config (in declared order)
+        if (extraSkillFolders) {
+            for (const folder of extraSkillFolders) {
+                const resolved = path.isAbsolute(folder)
+                    ? folder
+                    : (root ? path.resolve(root, folder) : null);
+                if (resolved) {
+                    try {
+                        if (fs.existsSync(resolved)) {
+                            dirs.push(resolved);
+                        }
+                    } catch {
+                        // Non-fatal
+                    }
+                }
+            }
+        }
+
         const skillDirectories = dirs.length > 0 ? dirs : undefined;
 
         return { skillDirectories, disabledSkills };
     }
-
-    /**
     /**
      * Look for a CONTEXT.md file in the same directory as the plan file.
      * Returns a prompt suffix like "See context details in /abs/path/CONTEXT.md",

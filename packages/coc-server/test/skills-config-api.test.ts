@@ -124,6 +124,13 @@ describe('Skills Config API endpoints', () => {
             expect(data.disabledSkills).toEqual([]);
         });
 
+        it('returns extraSkillFolders: [] when not set on workspace', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/skills-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.extraSkillFolders).toEqual([]);
+        });
+
         it('returns disabledSkills array when workspace has disabledSkills set', async () => {
             (mockStore.getWorkspaces as any).mockResolvedValue([
                 { id: WORKSPACE_ID, name: 'Skills Project', rootPath: '/projects/skills', disabledSkills: ['impl', 'draft'] },
@@ -132,6 +139,16 @@ describe('Skills Config API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.disabledSkills).toEqual(['impl', 'draft']);
+        });
+
+        it('returns extraSkillFolders when workspace has extraSkillFolders set', async () => {
+            (mockStore.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'Skills Project', rootPath: '/projects/skills', extraSkillFolders: ['/team/skills', './custom'] },
+            ]);
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/skills-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.extraSkillFolders).toEqual(['/team/skills', './custom']);
         });
     });
 
@@ -191,6 +208,44 @@ describe('Skills Config API endpoints', () => {
             });
             expect(res.status).toBe(200);
             expect(mockStore.updateWorkspace).toHaveBeenCalledWith(WORKSPACE_ID, { disabledSkills: [] });
+        });
+
+        it('saves extraSkillFolders when provided alongside disabledSkills', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/skills-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledSkills: [], extraSkillFolders: ['/team/skills', './custom'] }),
+            });
+            expect(res.status).toBe(200);
+            expect(mockStore.updateWorkspace).toHaveBeenCalledWith(WORKSPACE_ID, {
+                disabledSkills: [],
+                extraSkillFolders: ['/team/skills', './custom'],
+            });
+        });
+
+        it('does not include extraSkillFolders in update when not provided', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/skills-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledSkills: ['impl'] }),
+            });
+            expect(res.status).toBe(200);
+            const callArg = (mockStore.updateWorkspace as any).mock.calls.at(-1)[1];
+            expect('extraSkillFolders' in callArg).toBe(false);
+        });
+
+        it('returns 400 when extraSkillFolders is not an array', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/skills-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledSkills: [], extraSkillFolders: '/bad' }),
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when extraSkillFolders contains non-string items', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/skills-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledSkills: [], extraSkillFolders: ['/ok', 42] }),
+            });
+            expect(res.status).toBe(400);
         });
     });
 });

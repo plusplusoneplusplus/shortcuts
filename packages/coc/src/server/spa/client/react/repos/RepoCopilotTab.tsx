@@ -87,6 +87,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const [detailLoading, setDetailLoading] = useState(false);
     const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
     const [skillToggleSaving, setSkillToggleSaving] = useState(false);
+    const [extraSkillFolders, setExtraSkillFolders] = useState<string[]>([]);
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true);
@@ -108,7 +109,10 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     // Fetch disabled skills config
     useEffect(() => {
         fetchApi(`/workspaces/${workspaceId}/skills-config`)
-            .then((data) => setDisabledSkills(data.disabledSkills ?? []))
+            .then((data) => {
+                setDisabledSkills(data.disabledSkills ?? []);
+                setExtraSkillFolders(data.extraSkillFolders ?? []);
+            })
             .catch(() => {});
     }, [workspaceId]);
 
@@ -170,6 +174,21 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
             addToast(e?.message ?? 'Failed to save skill config', 'error');
         } finally {
             setSkillToggleSaving(false);
+        }
+    };
+
+    const handleExtraSkillFoldersChange = async (nextFolders: string[]) => {
+        const prevFolders = extraSkillFolders;
+        setExtraSkillFolders(nextFolders); // optimistic update
+        try {
+            await fetchApi(`/workspaces/${workspaceId}/skills-config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ disabledSkills, extraSkillFolders: nextFolders }),
+            });
+        } catch (e: any) {
+            setExtraSkillFolders(prevFolders); // revert on error
+            addToast(e?.message ?? 'Failed to save skill config', 'error');
         }
     };
 
@@ -329,6 +348,8 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                         onSkillToggle={handleSkillToggle}
                         onSetDeleteConfirm={setDeleteConfirm}
                         onInstalled={fetchSkills}
+                        extraSkillFolders={extraSkillFolders}
+                        onExtraSkillFoldersChange={handleExtraSkillFoldersChange}
                     />
                 )}
                 {activeSection === 'instructions' && (

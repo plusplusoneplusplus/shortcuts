@@ -93,6 +93,11 @@ export interface WorkspaceInfo {
      * - `string[]` — skills whose name matches an entry are disabled.
      */
     disabledSkills?: string[];
+    /**
+     * Extra skill directories searched after `.github/skills/` and `~/.coc/skills/`, in order.
+     * Paths may be absolute or relative to the workspace `rootPath`.
+     */
+    extraSkillFolders?: string[];
     /** True for the global workspace (not a real git repo). Virtual workspaces are hidden from the repos grid. */
     virtual?: boolean;
 }

@@ -87,6 +87,25 @@ describe('WorkspaceInfo', () => {
         };
         expect(ws.disabledSkills).toBeUndefined();
     });
+
+    it('should accept extraSkillFolders as an array of paths', () => {
+        const ws: WorkspaceInfo = {
+            id: 'abc123',
+            name: 'my-project',
+            rootPath: '/home/user/my-project',
+            extraSkillFolders: ['/abs/path/skills', './relative-skills'],
+        };
+        expect(ws.extraSkillFolders).toEqual(['/abs/path/skills', './relative-skills']);
+    });
+
+    it('should default extraSkillFolders to undefined', () => {
+        const ws: WorkspaceInfo = {
+            id: 'abc123',
+            name: 'my-project',
+            rootPath: '/home/user/my-project',
+        };
+        expect(ws.extraSkillFolders).toBeUndefined();
+    });
 });
 
 describe('ProcessFilter', () => {

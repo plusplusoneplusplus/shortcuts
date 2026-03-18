@@ -516,7 +516,8 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const disabledSkills: string[] = ws.disabledSkills ?? [];
-            sendJSON(res, 200, { disabledSkills });
+            const extraSkillFolders: string[] = ws.extraSkillFolders ?? [];
+            sendJSON(res, 200, { disabledSkills, extraSkillFolders });
         },
     });
 
@@ -539,7 +540,17 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (body.disabledSkills.some((e: any) => typeof e !== 'string')) {
                 return handleAPIError(res, badRequest('`disabledSkills` items must be strings'));
             }
-            const updated = await store.updateWorkspace(id, { disabledSkills: body.disabledSkills });
+            const wsUpdates: Partial<Omit<WorkspaceInfo, 'id'>> = { disabledSkills: body.disabledSkills };
+            if (Object.prototype.hasOwnProperty.call(body, 'extraSkillFolders')) {
+                if (!Array.isArray(body.extraSkillFolders)) {
+                    return handleAPIError(res, badRequest('`extraSkillFolders` must be an array of strings'));
+                }
+                if (body.extraSkillFolders.some((e: any) => typeof e !== 'string')) {
+                    return handleAPIError(res, badRequest('`extraSkillFolders` items must be strings'));
+                }
+                wsUpdates.extraSkillFolders = body.extraSkillFolders;
+            }
+            const updated = await store.updateWorkspace(id, wsUpdates);
             if (!updated) {
                 return handleAPIError(res, notFound('Workspace'));
             }

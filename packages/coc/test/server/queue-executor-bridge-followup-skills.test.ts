@@ -206,4 +206,98 @@ describe('executeFollowUp — skill configuration', () => {
         const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callOpts.disabledSkills).toBeUndefined();
     });
+
+    // 7 -----------------------------------------------------------------------
+    it('should order repo-local before global skills dir', async () => {
+        const dataDir = path.join(os.homedir(), '.coc');
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        const workDir = '/tmp/my-project';
+        const localSkillsDir = path.join(workDir, '.github', 'skills');
+
+        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === globalSkillsDir || p === localSkillsDir,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service, dataDir });
+        const proc = createCompletedProcessWithSession('proc-s7', 'sess-7');
+        proc.workingDirectory = workDir;
+        await store.addProcess(proc);
+
+        await executor.executeFollowUp('proc-s7', 'follow up');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        // repo-local should come first
+        expect(callOpts.skillDirectories[0]).toBe(localSkillsDir);
+        expect(callOpts.skillDirectories[1]).toBe(globalSkillsDir);
+    });
+
+    // 8 -----------------------------------------------------------------------
+    it('should include extraSkillFolders (absolute) after global skills dir', async () => {
+        const extraDir = '/abs/path/to/team-skills';
+        const wsId = 'ws-extra-abs';
+        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { id: wsId, extraSkillFolders: [extraDir] },
+        ]);
+        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === extraDir,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-s8', 'sess-8');
+        proc.metadata = { ...(proc.metadata ?? {}), workspaceId: wsId };
+        await store.addProcess(proc);
+
+        await executor.executeFollowUp('proc-s8', 'follow up');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callOpts.skillDirectories).toContain(extraDir);
+    });
+
+    // 9 -----------------------------------------------------------------------
+    it('should resolve relative extraSkillFolders against workingDirectory', async () => {
+        const workDir = '/tmp/my-project';
+        const relativeFolder = './custom-skills';
+        const resolvedDir = path.resolve(workDir, relativeFolder);
+        const wsId = 'ws-extra-rel';
+        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { id: wsId, extraSkillFolders: [relativeFolder] },
+        ]);
+        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) =>
+            p === resolvedDir,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-s9', 'sess-9');
+        proc.workingDirectory = workDir;
+        proc.metadata = { ...(proc.metadata ?? {}), workspaceId: wsId };
+        await store.addProcess(proc);
+
+        await executor.executeFollowUp('proc-s9', 'follow up');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callOpts.skillDirectories).toContain(resolvedDir);
+    });
+
+    // 10 ----------------------------------------------------------------------
+    it('should skip extraSkillFolders that do not exist', async () => {
+        const wsId = 'ws-extra-missing';
+        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { id: wsId, extraSkillFolders: ['/does/not/exist'] },
+        ]);
+        // existsSync always returns false (set in beforeEach)
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-s10', 'sess-10');
+        proc.metadata = { ...(proc.metadata ?? {}), workspaceId: wsId };
+        await store.addProcess(proc);
+
+        await executor.executeFollowUp('proc-s10', 'follow up');
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const callOpts = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callOpts.skillDirectories).toBeUndefined();
+    });
 });
