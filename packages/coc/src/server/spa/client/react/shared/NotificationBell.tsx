@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNotifications, type NotificationEntry } from '../context/NotificationContext';
 import { useApp } from '../context/AppContext';
+import { useFloatingChats } from '../context/FloatingChatsContext';
 import { cn } from './cn';
 
 const TYPE_ICONS: Record<NotificationEntry['type'], string> = {
@@ -34,6 +35,7 @@ function parseRepoTag(title: string): { tag: string; rest: string } | null {
 export function NotificationBell() {
     const { notifications, unreadCount, markAllRead, clearAll } = useNotifications();
     const { dispatch } = useApp();
+    const { floatChat } = useFloatingChats();
     const [open, setOpen] = useState(false);
     const bellRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -76,6 +78,21 @@ export function NotificationBell() {
             setOpen(false);
         },
         [dispatch],
+    );
+
+    const openAsFloating = useCallback(
+        (entry: NotificationEntry) => {
+            if (!entry.processId) return;
+            const shortTitle = entry.title.replace(/^\[[^\]]+\]\s*/, '').slice(0, 60);
+            floatChat({
+                taskId: entry.processId,
+                workspaceId: entry.workspaceId,
+                title: shortTitle || entry.title,
+                status: entry.type === 'success' ? 'completed' : entry.type === 'error' ? 'failed' : 'running',
+            });
+            setOpen(false);
+        },
+        [floatChat],
     );
 
     const badgeText = unreadCount > 9 ? '9+' : String(unreadCount);
@@ -173,14 +190,26 @@ export function NotificationBell() {
                                         )}
                                     </div>
                                     {entry.processId && (
-                                        <button
-                                            className="text-sm text-[#0078d4] hover:underline shrink-0 mt-0.5"
-                                            aria-label={`Go to process ${entry.processId}`}
-                                            data-testid="notification-navigate"
-                                            onClick={() => navigateToProcess(entry.processId!, entry.workspaceId)}
-                                        >
-                                            →
-                                        </button>
+                                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                                            <button
+                                                className="text-sm text-[#0078d4] hover:underline"
+                                                aria-label={`Open process ${entry.processId} as floating dialog`}
+                                                data-testid="notification-float"
+                                                onClick={() => openAsFloating(entry)}
+                                                title="Open as floating dialog"
+                                            >
+                                                ⧉
+                                            </button>
+                                            <button
+                                                className="text-sm text-[#0078d4] hover:underline"
+                                                aria-label={`Go to process ${entry.processId}`}
+                                                data-testid="notification-navigate"
+                                                onClick={() => navigateToProcess(entry.processId!, entry.workspaceId)}
+                                                title="Go to conversation"
+                                            >
+                                                →
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             ))

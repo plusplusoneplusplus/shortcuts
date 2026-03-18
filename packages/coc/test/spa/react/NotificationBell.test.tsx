@@ -10,9 +10,14 @@ import type { NotificationContextValue } from '../../../src/server/spa/client/re
 // ── Mocks ───────────────────────────────────────────────────────
 
 const mockDispatch = vi.fn();
+const mockFloatChat = vi.fn();
 
 vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({ state: { activeTab: 'repos' }, dispatch: mockDispatch }),
+}));
+
+vi.mock('../../../src/server/spa/client/react/context/FloatingChatsContext', () => ({
+    useFloatingChats: () => ({ floatChat: mockFloatChat }),
 }));
 
 const mockCtx: NotificationContextValue = {
@@ -41,6 +46,7 @@ function setMockCtx(overrides: Partial<NotificationContextValue>) {
 beforeEach(() => {
     setMockCtx({});
     mockDispatch.mockClear();
+    mockFloatChat.mockClear();
 });
 
 // ── Badge tests ─────────────────────────────────────────────────
@@ -230,5 +236,95 @@ describe('NotificationBell — actions', () => {
         act(() => { fireEvent.click(screen.getByTestId('notification-navigate')); });
 
         expect(window.location.hash).toBe('#repos/repo%2Fwith%20spaces/activity/proc%2Fspecial');
+    });
+});
+
+// ── Float button ─────────────────────────────────────────────────
+
+describe('NotificationBell — float button', () => {
+    it('⧉ float button is rendered for entries with processId', () => {
+        const entries = [
+            { id: 'n1', type: 'success' as const, title: 'foo completed', detail: '', timestamp: Date.now(), read: false, processId: 'p1' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        expect(screen.getByTestId('notification-float')).toBeTruthy();
+    });
+
+    it('⧉ float button is NOT rendered for entries without processId', () => {
+        const entries = [
+            { id: 'n2', type: 'error' as const, title: 'bar failed', detail: '', timestamp: Date.now(), read: true },
+        ];
+        setMockCtx({ notifications: entries });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        expect(screen.queryByTestId('notification-float')).toBeNull();
+    });
+
+    it('clicking ⧉ calls floatChat with correct args for success type', () => {
+        const entries = [
+            { id: 'n1', type: 'success' as const, title: '[my-repo] task done', detail: '', timestamp: Date.now(), read: false, processId: 'proc-42', workspaceId: 'ws-1' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        act(() => { fireEvent.click(screen.getByTestId('notification-float')); });
+
+        expect(mockFloatChat).toHaveBeenCalledWith({
+            taskId: 'proc-42',
+            workspaceId: 'ws-1',
+            title: 'task done',
+            status: 'completed',
+        });
+    });
+
+    it('clicking ⧉ maps error type to failed status', () => {
+        const entries = [
+            { id: 'n1', type: 'error' as const, title: 'something failed', detail: '', timestamp: Date.now(), read: false, processId: 'proc-5' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        act(() => { fireEvent.click(screen.getByTestId('notification-float')); });
+
+        expect(mockFloatChat).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
+
+    it('clicking ⧉ maps info type to running status', () => {
+        const entries = [
+            { id: 'n1', type: 'info' as const, title: 'in progress', detail: '', timestamp: Date.now(), read: false, processId: 'proc-6' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        act(() => { fireEvent.click(screen.getByTestId('notification-float')); });
+
+        expect(mockFloatChat).toHaveBeenCalledWith(expect.objectContaining({ status: 'running' }));
+    });
+
+    it('clicking ⧉ closes the notification panel', () => {
+        const entries = [
+            { id: 'n1', type: 'success' as const, title: 'done', detail: '', timestamp: Date.now(), read: false, processId: 'proc-7' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        expect(screen.getByTestId('notification-panel')).toBeTruthy();
+        act(() => { fireEvent.click(screen.getByTestId('notification-float')); });
+        expect(screen.queryByTestId('notification-panel')).toBeNull();
+    });
+
+    it('title without repo tag is used as-is (truncated to 60 chars)', () => {
+        const longTitle = 'a'.repeat(80);
+        const entries = [
+            { id: 'n1', type: 'success' as const, title: longTitle, detail: '', timestamp: Date.now(), read: false, processId: 'proc-8' },
+        ];
+        setMockCtx({ notifications: entries, unreadCount: 1 });
+        render(<NotificationBell />);
+        act(() => { fireEvent.click(screen.getByTestId('notification-bell')); });
+        act(() => { fireEvent.click(screen.getByTestId('notification-float')); });
+
+        expect(mockFloatChat).toHaveBeenCalledWith(expect.objectContaining({ title: 'a'.repeat(60) }));
     });
 });
