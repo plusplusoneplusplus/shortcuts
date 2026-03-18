@@ -197,113 +197,215 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
                 isMobile ? 'flex flex-col' : 'flex flex-row items-end'
             )}>
-                <div className={cn('flex gap-3 items-center', isMobile ? 'py-1' : 'pb-2 flex-shrink-0')}>
-                {/* Title row */}
-                <div className={cn('flex items-center gap-3 min-w-0', isMobile ? 'flex-1' : 'max-w-[180px]')}>
-                    {isMobile && (
-                        <button
-                            className="text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex-shrink-0 p-0.5 -ml-1"
-                            onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
-                            aria-label="Back to repos"
-                            data-testid="repo-back-btn"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                            </svg>
-                        </button>
-                    )}
-                    <span
-                        className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
-                        style={{ background: color }}
-                    />
-                    <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
-                </div>
-                {/* Action buttons */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                    {activeSubTab === 'activity' && isRepoPaused && (
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={isPauseResumeLoading}
-                            onClick={handleResumeQueue}
-                            data-testid="repo-header-resume-btn"
-                        >
-                            ▶ Resume Queue
-                        </Button>
-                    )}
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={isLaunchingCli}
-                        onClick={handleLaunchCli}
-                        title="Open CLI in terminal"
-                        data-testid="repo-launch-cli-btn"
-                    >
-                        &gt;_ Launch CLI
-                    </Button>
-                    {/* On mobile: collapse Queue Task, Generate, Edit, Remove into overflow menu */}
-                    {isMobile ? (
-                        <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
+                {isMobile ? (
+                    // Mobile: title + buttons in one row
+                    <div className="flex gap-3 items-center py-1">
+                        {/* Title row */}
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <button
+                                className="text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex-shrink-0 p-0.5 -ml-1"
+                                onClick={() => { dispatch({ type: 'SET_SELECTED_REPO', id: null }); location.hash = ''; }}
+                                aria-label="Back to repos"
+                                data-testid="repo-back-btn"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                                </svg>
+                            </button>
+                            <span
+                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
+                                style={{ background: color }}
+                            />
+                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
+                        </div>
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            {activeSubTab === 'activity' && isRepoPaused && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={isPauseResumeLoading}
+                                    onClick={handleResumeQueue}
+                                    data-testid="repo-header-resume-btn"
+                                >
+                                    ▶ Resume Queue
+                                </Button>
+                            )}
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                onClick={() => setMoreMenuOpen(prev => !prev)}
-                                data-testid="repo-more-menu-btn"
-                                title="More actions"
+                                disabled={isLaunchingCli}
+                                onClick={handleLaunchCli}
+                                title="Open CLI in terminal"
+                                data-testid="repo-launch-cli-btn"
                             >
-                                ⋯
+                                &gt;_ Launch CLI
                             </Button>
-                            {moreMenuOpen && (
-                                <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
-                                    <div className="flex flex-col" data-testid="repo-more-menu-items">
-                                        <button
-                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                            data-testid="repo-more-launch-cli"
-                                            onClick={() => { setMoreMenuOpen(false); handleLaunchCli(); }}
-                                        >
-                                            &gt;_ Launch CLI
-                                        </button>
-                                        <button
-                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                            data-testid="repo-more-queue-task"
-                                            onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
-                                        >
-                                            + Queue Task
-                                        </button>
-                                        <button
-                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                            data-testid="repo-more-ask"
-                                            onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }); }}
-                                        >
-                                            💬 Ask
-                                        </button>
-                                        <button
-                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                            data-testid="repo-more-generate"
-                                            onClick={() => { setMoreMenuOpen(false); handleOpenGenerateDialog(); }}
-                                        >
-                                            ✨ Generate Plan
-                                        </button>
-                                        <button
-                                            className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                            data-testid="repo-more-edit"
-                                            onClick={() => { setMoreMenuOpen(false); setEditOpen(true); }}
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-500/10"
-                                            data-testid="repo-more-remove"
-                                            onClick={() => { setMoreMenuOpen(false); handleRemove(); }}
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
-                                </BottomSheet>
-                            )}
+                            <div className="relative" ref={moreMenuRef} data-testid="repo-more-menu-container">
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => setMoreMenuOpen(prev => !prev)}
+                                    data-testid="repo-more-menu-btn"
+                                    title="More actions"
+                                >
+                                    ⋯
+                                </Button>
+                                {moreMenuOpen && (
+                                    <BottomSheet isOpen onClose={() => setMoreMenuOpen(false)} title="Actions">
+                                        <div className="flex flex-col" data-testid="repo-more-menu-items">
+                                            <button
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                data-testid="repo-more-launch-cli"
+                                                onClick={() => { setMoreMenuOpen(false); handleLaunchCli(); }}
+                                            >
+                                                &gt;_ Launch CLI
+                                            </button>
+                                            <button
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                data-testid="repo-more-queue-task"
+                                                onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }); }}
+                                            >
+                                                + Queue Task
+                                            </button>
+                                            <button
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                data-testid="repo-more-ask"
+                                                onClick={() => { setMoreMenuOpen(false); queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }); }}
+                                            >
+                                                💬 Ask
+                                            </button>
+                                            <button
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                data-testid="repo-more-generate"
+                                                onClick={() => { setMoreMenuOpen(false); handleOpenGenerateDialog(); }}
+                                            >
+                                                ✨ Generate Plan
+                                            </button>
+                                            <button
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
+                                                data-testid="repo-more-edit"
+                                                onClick={() => { setMoreMenuOpen(false); setEditOpen(true); }}
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                                                data-testid="repo-more-remove"
+                                                onClick={() => { setMoreMenuOpen(false); handleRemove(); }}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </BottomSheet>
+                                )}
+                            </div>
                         </div>
-                    ) : (
-                        <>
+                    </div>
+                ) : (
+                    <>
+                        {/* Title */}
+                        <div className="flex items-center gap-3 min-w-0 max-w-[180px] pb-2 flex-shrink-0">
+                            <span
+                                className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
+                                style={{ background: color }}
+                            />
+                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
+                        </div>
+                        {/* Sub-tab bar */}
+                        <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
+                            {/* Left scroll fade */}
+                            {tabScrollState.canScrollLeft && (
+                                <div
+                                    className="absolute left-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-r from-white dark:from-[#1e1e1e] to-transparent"
+                                    data-testid="tab-scroll-fade-left"
+                                />
+                            )}
+                            {/* Right scroll fade */}
+                            {tabScrollState.canScrollRight && (
+                                <div
+                                    className="absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-l from-white dark:from-[#1e1e1e] to-transparent"
+                                    data-testid="tab-scroll-fade-right"
+                                />
+                            )}
+                            <div
+                                ref={tabStripRef}
+                                className="flex pl-2 overflow-x-auto scrollbar-hide"
+                                style={{ WebkitOverflowScrolling: 'touch' }}
+                                data-testid="repo-sub-tab-strip"
+                            >
+                            {SUB_TABS.map(t => (
+                                <button
+                                    key={t.key}
+                                    data-subtab={t.key}
+                                    title={t.shortcut}
+                                    className={cn(
+                                        'repo-sub-tab text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
+                                        'px-3 py-2',
+                                        activeSubTab === t.key
+                                            ? 'active text-[#0078d4] dark:text-[#3794ff]'
+                                            : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                                    )}
+                                    onClick={() => switchSubTab(t.key)}
+                                >
+                                    {t.label}
+                                    {t.key === 'git' && (gitAhead > 0 || gitBehind > 0) && (
+                                        <span className="ml-1 font-mono text-[10px] opacity-70" data-testid="git-ahead-behind-badge">
+                                            {gitAhead > 0 && <span data-testid="git-ahead-count">↑{gitAhead}</span>}
+                                            {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
+                                        </span>
+                                    )}
+                                    {t.key === 'tasks' && taskCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
+                                    )}
+                                    {t.key === 'activity' && queueRunningCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
+                                    )}
+                                    {t.key === 'activity' && queueQueuedCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
+                                    )}
+                                    {t.key === 'wiki' && wikiGeneratingCount > 0 && (
+                                        <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
+                                    )}
+                                    {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
+                                        <span
+                                            className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
+                                            data-testid="wiki-warning-badge"
+                                            title="Needs attention"
+                                        />
+                                    )}
+                                    {activeSubTab === t.key && (
+                                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
+                                    )}
+                                </button>
+                            ))}
+                            </div>
+                        </div>
+                        {/* Vertical splitter between tabs and action buttons */}
+                        <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-2 my-1 flex-shrink-0" data-testid="repo-header-splitter" />
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2 flex-shrink-0 pb-2">
+                            {activeSubTab === 'activity' && isRepoPaused && (
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={isPauseResumeLoading}
+                                    onClick={handleResumeQueue}
+                                    data-testid="repo-header-resume-btn"
+                                >
+                                    ▶ Resume Queue
+                                </Button>
+                            )}
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={isLaunchingCli}
+                                onClick={handleLaunchCli}
+                                title="Open CLI in terminal"
+                                data-testid="repo-launch-cli-btn"
+                            >
+                                &gt;_ Launch CLI
+                            </Button>
                             <Button
                                 variant="primary"
                                 size="sm"
@@ -330,80 +432,8 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             </Button>
                             <Button variant="secondary" size="sm" id="repo-edit-btn" data-testid="repo-edit-btn" onClick={() => setEditOpen(true)}>Edit</Button>
                             <Button variant="danger" size="sm" id="repo-remove-btn" data-testid="repo-remove-btn" onClick={handleRemove}>Remove</Button>
-                        </>
-                    )}
-                </div>
-                </div>
-                {/* Sub-tab bar — desktop only; mobile uses MobileTabBar */}
-                {!isMobile && (
-                <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
-                    {/* Left scroll fade */}
-                    {tabScrollState.canScrollLeft && (
-                        <div
-                            className="absolute left-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-r from-white dark:from-[#1e1e1e] to-transparent"
-                            data-testid="tab-scroll-fade-left"
-                        />
-                    )}
-                    {/* Right scroll fade */}
-                    {tabScrollState.canScrollRight && (
-                        <div
-                            className="absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-10 bg-gradient-to-l from-white dark:from-[#1e1e1e] to-transparent"
-                            data-testid="tab-scroll-fade-right"
-                        />
-                    )}
-                    <div
-                        ref={tabStripRef}
-                        className="flex pl-2 overflow-x-auto scrollbar-hide"
-                        style={{ WebkitOverflowScrolling: 'touch' }}
-                        data-testid="repo-sub-tab-strip"
-                    >
-                    {SUB_TABS.map(t => (
-                        <button
-                            key={t.key}
-                            data-subtab={t.key}
-                            title={t.shortcut}
-                            className={cn(
-                                'repo-sub-tab text-xs font-medium transition-colors relative whitespace-nowrap shrink-0',
-                                isMobile ? 'px-2 py-1.5' : 'px-3 py-2',
-                                activeSubTab === t.key
-                                    ? 'active text-[#0078d4] dark:text-[#3794ff]'
-                                    : 'text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
-                            )}
-                            onClick={() => switchSubTab(t.key)}
-                        >
-                            {t.label}
-                            {t.key === 'git' && (gitAhead > 0 || gitBehind > 0) && (
-                                <span className="ml-1 font-mono text-[10px] opacity-70" data-testid="git-ahead-behind-badge">
-                                    {gitAhead > 0 && <span data-testid="git-ahead-count">↑{gitAhead}</span>}
-                                    {gitBehind > 0 && <span data-testid="git-behind-count">↓{gitBehind}</span>}
-                                </span>
-                            )}
-                            {t.key === 'tasks' && taskCount > 0 && (
-                                <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full">{taskCount}</span>
-                            )}
-                            {t.key === 'activity' && queueRunningCount > 0 && (
-                                <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full" data-testid="activity-running-badge" title="Running">{queueRunningCount}</span>
-                            )}
-                            {t.key === 'activity' && queueQueuedCount > 0 && (
-                                <span className="ml-1 text-[10px] bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
-                            )}
-                            {t.key === 'wiki' && wikiGeneratingCount > 0 && (
-                                <span className="ml-1 text-[10px] bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
-                            )}
-                            {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
-                                <span
-                                    className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
-                                    data-testid="wiki-warning-badge"
-                                    title="Needs attention"
-                                />
-                            )}
-                            {activeSubTab === t.key && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0078d4] dark:bg-[#3794ff]" />
-                            )}
-                        </button>
-                    ))}
-                    </div>
-                </div>
+                        </div>
+                    </>
                 )}
             </div>
 

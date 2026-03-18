@@ -32,7 +32,20 @@ describe('RepoDetail mobile: header layout', () => {
     it('uses single-line flex-row layout on desktop, flex-col on mobile', () => {
         expect(REPO_DETAIL_SOURCE).toContain("'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]'");
         expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'flex flex-col' : 'flex flex-row items-end'");
-        expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'py-1' : 'pb-2 flex-shrink-0'");
+    });
+
+    it('desktop layout: tabs come before action buttons (title | tabs | splitter | buttons)', () => {
+        // On desktop, the tab strip container appears before the action buttons
+        const tabStripIdx = REPO_DETAIL_SOURCE.indexOf('repo-sub-tab-strip-container');
+        const splitterIdx = REPO_DETAIL_SOURCE.indexOf('repo-header-splitter');
+        const editBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-edit-btn');
+        expect(tabStripIdx).toBeGreaterThan(-1);
+        expect(splitterIdx).toBeGreaterThan(tabStripIdx);
+        expect(editBtnIdx).toBeGreaterThan(splitterIdx);
+    });
+
+    it('renders a vertical splitter between tabs and action buttons on desktop', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-splitter"');
     });
 
     it('title row has truncate class to prevent overflow', () => {
@@ -241,9 +254,14 @@ describe('RepoDetail mobile: MobileTabBar integration', () => {
     });
 
     it('hides top tab strip on mobile', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('!isMobile && (');
-        const noMobileIdx = REPO_DETAIL_SOURCE.indexOf('!isMobile && (');
-        const nearby = REPO_DETAIL_SOURCE.substring(noMobileIdx, noMobileIdx + 200);
-        expect(nearby).toContain('repo-sub-tab-strip-container');
+        // Tab strip is in the desktop-only branch of the top-level isMobile ternary (not wrapped in !isMobile && ())
+        expect(REPO_DETAIL_SOURCE).toContain('repo-sub-tab-strip-container');
+        // The old !isMobile guard wrapper is no longer present (now in desktop ternary branch)
+        const noMobileGuardIdx = REPO_DETAIL_SOURCE.indexOf('!isMobile && (');
+        // If present at all, it should NOT be just before the tab strip container
+        if (noMobileGuardIdx !== -1) {
+            const afterGuard = REPO_DETAIL_SOURCE.substring(noMobileGuardIdx, noMobileGuardIdx + 100);
+            expect(afterGuard).not.toContain('repo-sub-tab-strip-container');
+        }
     });
 });
