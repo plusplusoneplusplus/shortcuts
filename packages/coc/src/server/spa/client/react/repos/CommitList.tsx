@@ -13,6 +13,8 @@ import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
 import { TruncatedPath } from '../shared';
 import { CommitTooltip } from './CommitTooltip';
+import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
+import { computeDiffCommentKey } from '../../diff-comment-utils';
 
 export interface GitCommitItem {
     hash: string;
@@ -83,6 +85,40 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
     const [tooltipAnchorRect, setTooltipAnchorRect] = useState<DOMRect | null>(null);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Fetch active comment counts for the currently expanded commit
+    const commentCounts = useFileCommentCounts(
+        workspaceId ?? '',
+        expandedHash ? `${expandedHash}^` : null,
+        expandedHash,
+    );
+    const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
+
+    // Pre-compute storageKey → count lookup keyed by filePath for render-time access
+    useEffect(() => {
+        if (commentCounts.size === 0 || !expandedHash) {
+            setFileCommentMap(new Map());
+            return;
+        }
+        const files = fileCache[expandedHash] ?? [];
+        if (files.length === 0) {
+            setFileCommentMap(new Map());
+            return;
+        }
+        let cancelled = false;
+        const oldRef = `${expandedHash}^`;
+        const computeMap = async () => {
+            const map = new Map<string, number>();
+            for (const file of files) {
+                const key = await computeDiffCommentKey(workspaceId ?? '', oldRef, expandedHash, file.path);
+                const count = commentCounts.get(key) ?? 0;
+                if (count > 0) map.set(file.path, count);
+            }
+            if (!cancelled) setFileCommentMap(map);
+        };
+        void computeMap();
+        return () => { cancelled = true; };
+    }, [fileCache, expandedHash, commentCounts, workspaceId]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (!onSelect || commits.length === 0) return;
@@ -294,6 +330,18 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
                                                         }}
                                                         data-testid={`commit-file-${i}`}
                                                     >
+                                                        {(() => {
+                                                            const count = fileCommentMap.get(f.path) ?? 0;
+                                                            return count > 0 ? (
+                                                                <span
+                                                                    className="text-xs text-[#848484] flex-shrink-0"
+                                                                    title={`${count} active comment${count > 1 ? 's' : ''}`}
+                                                                    data-testid={`commit-file-comment-badge-${i}`}
+                                                                >
+                                                                    💬{count}
+                                                                </span>
+                                                            ) : null;
+                                                        })()}
                                                         <span
                                                             className={`font-mono font-bold w-3 text-center flex-shrink-0 ${STATUS_COLORS[f.status] || 'text-[#848484]'}`}
                                                             title={STATUS_LABELS[f.status] || f.status}

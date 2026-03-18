@@ -12,6 +12,8 @@
 import { useState, useEffect } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { Spinner, TruncatedPath } from '../shared';
+import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
+import { computeDiffCommentKey } from '../../diff-comment-utils';
 
 export interface BranchRangeInfo {
     baseRef: string;
@@ -80,6 +82,30 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
     const [fileDiffLoading, setFileDiffLoading] = useState(false);
     const [fileDiffError, setFileDiffError] = useState<string | null>(null);
     const [showFullDiff, setShowFullDiff] = useState(false);
+
+    // Fetch active comment counts for all files in this branch range
+    const commentCounts = useFileCommentCounts(workspaceId, 'branch-base', 'branch-head');
+    const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
+
+    // Pre-compute storageKey → count lookup keyed by filePath for render-time access
+    useEffect(() => {
+        if (commentCounts.size === 0 || files.length === 0) {
+            setFileCommentMap(new Map());
+            return;
+        }
+        let cancelled = false;
+        const computeMap = async () => {
+            const map = new Map<string, number>();
+            for (const file of files) {
+                const key = await computeDiffCommentKey(workspaceId, 'branch-base', 'branch-head', file.path);
+                const count = commentCounts.get(key) ?? 0;
+                if (count > 0) map.set(file.path, count);
+            }
+            if (!cancelled) setFileCommentMap(map);
+        };
+        void computeMap();
+        return () => { cancelled = true; };
+    }, [files, commentCounts, workspaceId]);
 
     // Reset file-level state when workspace or range data changes
     useEffect(() => {
@@ -233,6 +259,18 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                                                 {expandedFile === file.path ? '▼' : '▶'}
                                             </span>
                                         )}
+                                        {(() => {
+                                            const count = fileCommentMap.get(file.path) ?? 0;
+                                            return count > 0 ? (
+                                                <span
+                                                    className="text-xs text-[#848484] mr-0.5 flex-shrink-0"
+                                                    title={`${count} active comment${count > 1 ? 's' : ''}`}
+                                                    data-testid={`branch-file-comment-badge-${file.path}`}
+                                                >
+                                                    💬{count}
+                                                </span>
+                                            ) : null;
+                                        })()}
                                         <span
                                             className={`font-mono font-bold w-4 text-center ${STATUS_COLORS[file.status] || 'text-[#848484]'}`}
                                             title={STATUS_LABELS[file.status] || file.status}

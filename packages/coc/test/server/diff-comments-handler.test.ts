@@ -367,6 +367,41 @@ describe('DiffCommentsManager', () => {
             expect(counts1[key]).toBe(1);
             expect(counts2[key]).toBe(2);
         });
+
+        it('filters by status: only open comments are counted', async () => {
+            const ctx = makeContext({ filePath: 'src/status-test.ts' });
+            const key = manager.hashContext(ctx);
+            const c1 = await manager.addComment('ws1', ctx, makeCommentData(ctx));
+            await manager.addComment('ws1', ctx, makeCommentData(ctx)); // second stays open
+            await manager.updateComment('ws1', key, c1.id, { status: 'resolved' });
+
+            const allCounts = await manager.getCommentCounts('ws1');
+            expect(allCounts[key]).toBe(2); // unfiltered: both
+
+            const openCounts = await manager.getCommentCounts('ws1', { statuses: ['open'] });
+            expect(openCounts[key]).toBe(1); // only the open one
+        });
+
+        it('filters by newRef: excludes comments with different newRef', async () => {
+            const ctxFeature = makeContext({ newRef: 'feature', filePath: 'src/refs.ts' });
+            const ctxOther  = makeContext({ newRef: 'other',   filePath: 'src/refs.ts' });
+            await manager.addComment('ws1', ctxFeature, makeCommentData(ctxFeature));
+            await manager.addComment('ws1', ctxOther,   makeCommentData(ctxOther));
+
+            const counts = await manager.getCommentCounts('ws1', { newRef: 'feature' });
+            const total = Object.values(counts).reduce((a, b) => a + b, 0);
+            expect(total).toBe(1);
+        });
+
+        it('excludes storage files with zero matching comments from result', async () => {
+            const ctx = makeContext({ filePath: 'src/empty-match.ts' });
+            const key = manager.hashContext(ctx);
+            const c = await manager.addComment('ws1', ctx, makeCommentData(ctx));
+            await manager.updateComment('ws1', key, c.id, { status: 'resolved' });
+
+            const counts = await manager.getCommentCounts('ws1', { statuses: ['open'] });
+            expect(counts[key]).toBeUndefined(); // 0 matches → not included
+        });
     });
 
     // -- listAllComments --
@@ -500,6 +535,57 @@ describe('Diff Comments REST API', () => {
             const body = JSON.parse(res.body);
             const values = Object.values(body.counts as Record<string, number>);
             expect(values.some(v => v === 2)).toBe(true);
+        });
+
+        it('filters by status=open, excluding resolved comments', async () => {
+            // Create one open and one resolved comment for the same file
+            const postRes = await postJSON(collectionUrl(), makePostBody({ filePath: 'src/filter.ts' }));
+            const createdId = JSON.parse(postRes.body).comment.id as string;
+            const manager = new DiffCommentsManager(tmpDir);
+            const ctx = makeContext({ filePath: 'src/filter.ts' });
+            const key = manager.hashContext(ctx);
+            await patchJSON(`${baseUrl}/api/diff-comments/${WS_ID}/${key}/${createdId}`, { status: 'resolved' });
+            await postJSON(collectionUrl(), makePostBody({ filePath: 'src/filter.ts' })); // second comment stays open
+
+            const res = await getJSON(`${countsUrl()}?status=open`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const values = Object.values(body.counts as Record<string, number>);
+            // Only the open comment should be counted → 1
+            expect(values.some(v => v === 1)).toBe(true);
+            // Total should not include the resolved comment
+            const total = values.reduce((a, b) => a + b, 0);
+            expect(total).toBe(1);
+        });
+
+        it('filters by oldRef and newRef, excluding unrelated refs', async () => {
+            await postJSON(collectionUrl(), makePostBody({ oldRef: 'main', newRef: 'feature', filePath: 'src/a.ts' }));
+            await postJSON(collectionUrl(), makePostBody({ oldRef: 'other', newRef: 'branch', filePath: 'src/b.ts' }));
+
+            const res = await getJSON(`${countsUrl()}?oldRef=main&newRef=feature`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const total = Object.values(body.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+            // Only the main→feature comment should be counted
+            expect(total).toBe(1);
+        });
+
+        it('combines status and ref filters', async () => {
+            // Open comment for main→feature
+            await postJSON(collectionUrl(), makePostBody({ oldRef: 'main', newRef: 'feature', filePath: 'src/a.ts' }));
+            // Resolved comment for main→feature
+            const postRes2 = await postJSON(collectionUrl(), makePostBody({ oldRef: 'main', newRef: 'feature', filePath: 'src/a.ts' }));
+            const id2 = JSON.parse(postRes2.body).comment.id as string;
+            const manager = new DiffCommentsManager(tmpDir);
+            const ctx = makeContext({ oldRef: 'main', newRef: 'feature', filePath: 'src/a.ts' });
+            const key = manager.hashContext(ctx);
+            await patchJSON(`${baseUrl}/api/diff-comments/${WS_ID}/${key}/${id2}`, { status: 'resolved' });
+
+            const res = await getJSON(`${countsUrl()}?oldRef=main&newRef=feature&status=open`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            const total = Object.values(body.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+            expect(total).toBe(1); // only the open comment
         });
     });
 

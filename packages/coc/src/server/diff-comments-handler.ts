@@ -259,8 +259,18 @@ export class DiffCommentsManager {
     /**
      * Get comment counts for all storage keys in a workspace.
      * Returns a map of storageKey → comment count.
+     *
+     * @param wsId - Workspace ID
+     * @param options - Optional filters:
+     *   - `oldRef`    Only count comments whose context.oldRef matches.
+     *   - `newRef`    Only count comments whose context.newRef matches.
+     *   - `statuses`  Only count comments with one of these status values.
+     *                 Defaults to all statuses when omitted.
      */
-    async getCommentCounts(wsId: string): Promise<Record<string, number>> {
+    async getCommentCounts(
+        wsId: string,
+        options?: { oldRef?: string; newRef?: string; statuses?: string[] }
+    ): Promise<Record<string, number>> {
         const wsDir = this.getWorkspaceDir(wsId);
         if (!fs.existsSync(wsDir)) {
             return {};
@@ -277,7 +287,23 @@ export class DiffCommentsManager {
             try {
                 const content = await fs.promises.readFile(path.join(wsDir, entry), 'utf8');
                 const storage: DiffCommentsStorage = JSON.parse(content);
-                const comments = storage.comments || [];
+                let comments = storage.comments || [];
+
+                // Filter by ref range when requested
+                if (options?.oldRef !== undefined || options?.newRef !== undefined) {
+                    comments = comments.filter(c => {
+                        if (options?.oldRef !== undefined && c.context?.oldRef !== options.oldRef) return false;
+                        if (options?.newRef !== undefined && c.context?.newRef !== options.newRef) return false;
+                        return true;
+                    });
+                }
+
+                // Filter by status when requested
+                if (options?.statuses && options.statuses.length > 0) {
+                    comments = comments.filter(c => options.statuses!.includes(c.status));
+                }
+
+                if (comments.length === 0) continue;
                 const key = entry.slice(0, -5); // strip ".json"
                 counts[key] = comments.length;
             } catch {
@@ -404,13 +430,20 @@ export function registerDiffCommentsRoutes(
     routes.push({
         method: 'GET',
         pattern: countsPattern,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const [, wsId] = match!;
             if (!isValidWorkspaceId(wsId)) {
                 return sendError(res, 400, 'Invalid workspace ID');
             }
             try {
-                const counts = await manager.getCommentCounts(wsId);
+                const url = new URL(req.url!, 'http://x');
+                const oldRef = url.searchParams.get('oldRef') ?? undefined;
+                const newRef = url.searchParams.get('newRef') ?? undefined;
+                const statusParam = url.searchParams.get('status');
+                const statuses = statusParam
+                    ? statusParam.split(',').map(s => s.trim()).filter(Boolean)
+                    : undefined;
+                const counts = await manager.getCommentCounts(wsId, { oldRef, newRef, statuses });
                 sendJSON(res, 200, { counts });
             } catch {
                 sendError(res, 500, 'Failed to retrieve comment counts');
