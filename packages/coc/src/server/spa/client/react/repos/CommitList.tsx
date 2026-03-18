@@ -56,6 +56,8 @@ interface CommitListProps {
     selectedHash?: string | null;
     /** When set, highlights the matching file row under the matching commit. */
     selectedFile?: { hash: string; filePath: string } | null;
+    /** When set on first render (deep-link scenario), auto-expands the matching commit once. */
+    initialExpandedHash?: string | null;
     onSelect?: (commit: GitCommitItem) => void;
     onFileSelect?: (hash: string, filePath: string) => void;
     onCommitContextMenu?: (e: React.MouseEvent, commitHash: string) => void;
@@ -67,13 +69,15 @@ interface CommitListProps {
     unpushedCount?: number;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedFile, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     // Expanded file list state: hash -> files (cached)
     const [expandedHash, setExpandedHash] = useState<string | null>(null);
     const [fileCache, setFileCache] = useState<Record<string, FileChange[]>>({});
     const [filesLoading, setFilesLoading] = useState<string | null>(null);
+    // Track whether we've already performed the one-time deep-link auto-expansion
+    const hasAutoExpanded = useRef(false);
     // Hover tooltip state
     const [hoveredCommit, setHoveredCommit] = useState<GitCommitItem | null>(null);
     const [tooltipAnchorRect, setTooltipAnchorRect] = useState<DOMRect | null>(null);
@@ -100,6 +104,24 @@ export function CommitList({ title, commits, selectedHash, selectedFile, onSelec
         const el = listRef.current.querySelector(`[data-hash="${selectedHash}"]`);
         if (el) el.scrollIntoView({ block: 'nearest' });
     }, [selectedHash]);
+
+    // Deep-link: auto-expand the initially-selected commit once when its hash is first available
+    useEffect(() => {
+        if (!initialExpandedHash || hasAutoExpanded.current) return;
+        hasAutoExpanded.current = true;
+        setExpandedHash(initialExpandedHash);
+        if (workspaceId) {
+            setFilesLoading(initialExpandedHash);
+            fetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${initialExpandedHash}/files`)
+                .then(data => {
+                    setFileCache(prev => ({ ...prev, [initialExpandedHash]: data.files || [] }));
+                })
+                .catch(() => {
+                    setFileCache(prev => ({ ...prev, [initialExpandedHash]: [] }));
+                })
+                .finally(() => setFilesLoading(null));
+        }
+    }, [initialExpandedHash, workspaceId]);
 
     // Expand/collapse file list and fetch files on first expand
     const handleCommitClick = useCallback((commit: GitCommitItem) => {

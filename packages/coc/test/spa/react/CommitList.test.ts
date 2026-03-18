@@ -88,6 +88,10 @@ describe('CommitList', () => {
         it('accepts optional onCommitContextMenu callback', () => {
             expect(source).toContain('onCommitContextMenu?: (e: React.MouseEvent, commitHash: string) => void');
         });
+
+        it('accepts optional initialExpandedHash prop for deep-link auto-expansion', () => {
+            expect(source).toContain('initialExpandedHash?: string | null');
+        });
     });
 
     describe('GitCommitItem interface', () => {
