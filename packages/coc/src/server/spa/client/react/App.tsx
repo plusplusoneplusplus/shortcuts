@@ -48,9 +48,9 @@ function normalizePath(pathValue: string): string {
     return toForwardSlashes(pathValue);
 }
 
-function getFileName(path: string): string {
-    const normalized = path.replace(/\\/g, '/');
-    return normalized.split('/').pop() || path;
+/* @internal – exported for testing only */
+export function getFileName(path: string): string {
+    return toForwardSlashes(path).split('/').pop() || path;
 }
 
 

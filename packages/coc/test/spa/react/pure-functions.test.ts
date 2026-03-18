@@ -16,6 +16,7 @@ import {
     type TaskDocumentGroup,
 } from '../../../src/server/spa/client/react/hooks/useTaskTree';
 import { getFolderKey, rebuildColumnsFromKeys } from '../../../src/server/spa/client/react/tasks/TaskTree';
+import { getFileName } from '../../../src/server/spa/client/react/App';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -254,5 +255,33 @@ describe('countMarkdownFilesInFolder', () => {
         });
         // top.md (1) + feat.plan.md (1) + deep.md (1) = 3
         expect(countMarkdownFilesInFolder(root)).toBe(3);
+    });
+});
+
+// ── getFileName ────────────────────────────────────────────────────────
+
+describe('getFileName', () => {
+    it('extracts filename from a Unix-style path', () => {
+        expect(getFileName('/home/user/project/file.ts')).toBe('file.ts');
+    });
+
+    it('extracts filename from a Windows-style path (backslashes)', () => {
+        expect(getFileName('C:\\Users\\user\\project\\file.ts')).toBe('file.ts');
+    });
+
+    it('extracts filename from a mixed-separator path', () => {
+        expect(getFileName('C:\\Users/user\\file.ts')).toBe('file.ts');
+    });
+
+    it('returns bare filename unchanged', () => {
+        expect(getFileName('file.ts')).toBe('file.ts');
+    });
+
+    it('returns the path itself when result would be empty (trailing separator)', () => {
+        expect(getFileName('dir/')).toBe('dir/');
+    });
+
+    it('handles empty string by returning empty string', () => {
+        expect(getFileName('')).toBe('');
     });
 });
