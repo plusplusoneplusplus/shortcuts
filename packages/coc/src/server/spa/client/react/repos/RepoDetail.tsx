@@ -195,7 +195,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             {/* Header */}
             <div className={cn(
                 'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                isMobile ? 'flex flex-col' : 'flex flex-row items-end'
+                isMobile ? 'flex flex-col' : 'flex flex-row items-center'
             )}>
                 {isMobile ? (
                     // Mobile: title + buttons in one row
@@ -305,7 +305,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 ) : (
                     <>
                         {/* Title */}
-                        <div className="flex items-center gap-3 min-w-0 max-w-[180px] pb-2 flex-shrink-0">
+                        <div className="flex items-center gap-3 min-w-0 max-w-[180px] flex-shrink-0">
                             <span
                                 className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
                                 style={{ background: color }}
@@ -384,7 +384,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {/* Vertical splitter between tabs and action buttons */}
                         <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-2 my-1 flex-shrink-0" data-testid="repo-header-splitter" />
                         {/* Action buttons */}
-                        <div className="flex items-center gap-2 flex-shrink-0 pb-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                             {activeSubTab === 'activity' && isRepoPaused && (
                                 <Button
                                     variant="secondary"

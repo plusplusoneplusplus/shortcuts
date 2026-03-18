@@ -31,7 +31,7 @@ describe('RepoDetail mobile: imports', () => {
 describe('RepoDetail mobile: header layout', () => {
     it('uses single-line flex-row layout on desktop, flex-col on mobile', () => {
         expect(REPO_DETAIL_SOURCE).toContain("'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]'");
-        expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'flex flex-col' : 'flex flex-row items-end'");
+        expect(REPO_DETAIL_SOURCE).toContain("isMobile ? 'flex flex-col' : 'flex flex-row items-center'");
     });
 
     it('desktop layout: tabs come before action buttons (title | tabs | splitter | buttons)', () => {
