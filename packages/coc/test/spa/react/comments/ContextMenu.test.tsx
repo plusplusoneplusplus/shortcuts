@@ -320,6 +320,55 @@ describe('ContextMenu', () => {
         expect(withSub.querySelector('[aria-haspopup="true"]')).toBeTruthy();
     });
 
+    // ── Submenu viewport-aware positioning ────────────────────────────
+
+    it('submenu opens to the right when there is enough space', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[{
+                    label: 'Parent',
+                    onClick: vi.fn(),
+                    children: [{ label: 'Child', onClick: vi.fn() }],
+                }]}
+                onClose={vi.fn()}
+            />
+        );
+        const parent = screen.getByTestId('context-menu-item-0');
+        // Row is at x=0, plenty of space to the right (viewport width ~1024 in jsdom)
+        vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue(
+            { right: 200, bottom: 50, top: 30, left: 0, width: 200, height: 20 } as DOMRect
+        );
+        fireEvent.mouseEnter(parent);
+        const submenu = screen.getByTestId('context-submenu-0');
+        expect(submenu.className).toContain('left-full');
+        expect(submenu.className).not.toContain('right-full');
+    });
+
+    it('submenu flips to the left when near the right viewport edge', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[{
+                    label: 'Parent',
+                    onClick: vi.fn(),
+                    children: [{ label: 'Child', onClick: vi.fn() }],
+                }]}
+                onClose={vi.fn()}
+            />
+        );
+        const parent = screen.getByTestId('context-menu-item-0');
+        // Row's right edge is so close to viewport right that submenu would overflow
+        const viewportWidth = window.innerWidth;
+        vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue(
+            { right: viewportWidth - 10, bottom: 50, top: 30, left: viewportWidth - 210, width: 200, height: 20 } as DOMRect
+        );
+        fireEvent.mouseEnter(parent);
+        const submenu = screen.getByTestId('context-submenu-0');
+        expect(submenu.className).toContain('right-full');
+        expect(submenu.className).not.toContain('left-full');
+    });
+
     it('submenu items count correctly alongside regular items', () => {
         render(
             <ContextMenu

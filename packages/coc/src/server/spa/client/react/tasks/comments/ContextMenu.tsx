@@ -5,7 +5,7 @@
  * visual separators between logical groups of items.
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
@@ -63,10 +63,31 @@ function SubmenuItem({
     onClose: () => void;
 }) {
     const [open, setOpen] = useState(false);
+    const [openLeft, setOpenLeft] = useState(false);
+    const [topOffset, setTopOffset] = useState(0);
     const rowRef = useRef<HTMLDivElement>(null);
     const subRef = useRef<HTMLDivElement>(null);
 
-    const handleEnter = useCallback(() => setOpen(true), []);
+    const handleEnter = useCallback(() => {
+        if (rowRef.current) {
+            const rect = rowRef.current.getBoundingClientRect();
+            // Flip submenu to the left if not enough space on the right (use max-width 240px)
+            setOpenLeft(rect.right + 240 + VIEWPORT_MARGIN > window.innerWidth);
+        }
+        setOpen(true);
+    }, []);
+
+    // Adjust vertical position after render to keep submenu within viewport
+    useLayoutEffect(() => {
+        if (!open || !subRef.current) {
+            setTopOffset(0);
+            return;
+        }
+        const subRect = subRef.current.getBoundingClientRect();
+        const overflow = subRect.bottom + VIEWPORT_MARGIN - window.innerHeight;
+        setTopOffset(overflow > 0 ? -overflow : 0);
+    }, [open]);
+
     const handleLeave = useCallback((e: React.MouseEvent) => {
         const related = e.relatedTarget as Node | null;
         if (
@@ -108,7 +129,8 @@ function SubmenuItem({
             {open && item.children && (
                 <div
                     ref={subRef}
-                    className="absolute left-full top-0 z-[10005] min-w-[160px] max-w-[240px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl rounded-md py-1"
+                    className={`absolute ${openLeft ? 'right-full' : 'left-full'} top-0 z-[10005] min-w-[160px] max-w-[240px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl rounded-md py-1`}
+                    style={topOffset !== 0 ? { top: topOffset } : undefined}
                     onMouseLeave={handleLeave}
                     data-testid={`context-submenu-${idx}`}
                     role="menu"
