@@ -194,12 +194,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header */}
             <div className={cn(
-                'repo-detail-header flex flex-col px-4',
-                isMobile && 'border-b border-[#e0e0e0] dark:border-[#3c3c3c]'
+                'repo-detail-header px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
+                isMobile ? 'flex flex-col' : 'flex flex-row items-end'
             )}>
-                <div className={cn('flex gap-3 items-center', isMobile ? 'py-1' : 'py-2')}>
+                <div className={cn('flex gap-3 items-center', isMobile ? 'py-1' : 'pb-2 flex-shrink-0')}>
                 {/* Title row */}
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className={cn('flex items-center gap-3 min-w-0', isMobile ? 'flex-1' : 'max-w-[180px]')}>
                     {isMobile && (
                         <button
                             className="text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] flex-shrink-0 p-0.5 -ml-1"
@@ -336,7 +336,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 </div>
                 {/* Sub-tab bar — desktop only; mobile uses MobileTabBar */}
                 {!isMobile && (
-                <div className="relative" data-testid="repo-sub-tab-strip-container">
+                <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">
                     {/* Left scroll fade */}
                     {tabScrollState.canScrollLeft && (
                         <div
@@ -353,11 +353,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     )}
                     <div
                         ref={tabStripRef}
-                        className={cn(
-                            'flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]',
-                            isMobile ? 'px-2' : 'px-4',
-                            'overflow-x-auto scrollbar-hide'
-                        )}
+                        className="flex pl-2 overflow-x-auto scrollbar-hide"
                         style={{ WebkitOverflowScrolling: 'touch' }}
                         data-testid="repo-sub-tab-strip"
                     >
