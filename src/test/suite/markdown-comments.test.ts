@@ -1618,4 +1618,86 @@ suite('Markdown Comments Feature Tests', () => {
             assert.strictEqual(shouldShowPlainText('source'), true);
         });
     });
+
+    suite('loadComments — preserve state on transient read failure', () => {
+        test('should preserve in-memory comments when config file is missing after initialization', async () => {
+            await commentsManager.initialize();
+
+            // Add a comment so there is in-memory state
+            await commentsManager.addComment(
+                'test.md',
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                'Sample text',
+                'Persisted comment'
+            );
+            assert.strictEqual(commentsManager.getAllComments().length, 1);
+
+            // Simulate transient failure: delete the backing file
+            const vscodePath = path.join(tempDir, '.vscode');
+            const configFile = path.join(vscodePath, COMMENTS_CONFIG_FILE);
+            fs.unlinkSync(configFile);
+
+            // loadComments() should not wipe in-memory state when file is gone
+            await (commentsManager as unknown as { loadComments(): Promise<unknown> }).loadComments();
+
+            assert.strictEqual(
+                commentsManager.getAllComments().length,
+                1,
+                'In-memory comments must be preserved when the backing file is temporarily unavailable'
+            );
+        });
+
+        test('should preserve in-memory comments when config file contains invalid JSON', async () => {
+            await commentsManager.initialize();
+
+            await commentsManager.addComment(
+                'test.md',
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 20 },
+                'Some text',
+                'Badge must not disappear'
+            );
+            assert.strictEqual(commentsManager.getAllComments().length, 1);
+
+            // Corrupt the file to simulate a mid-write OS read
+            const vscodePath = path.join(tempDir, '.vscode');
+            const configFile = path.join(vscodePath, COMMENTS_CONFIG_FILE);
+            fs.writeFileSync(configFile, '{ "version": 1, "comments": ['); // truncated JSON
+
+            // loadComments() must not reset config to empty on parse error
+            await (commentsManager as unknown as { loadComments(): Promise<unknown> }).loadComments();
+
+            assert.strictEqual(
+                commentsManager.getAllComments().length,
+                1,
+                'In-memory comments must be preserved when the config file is temporarily corrupted'
+            );
+        });
+
+        test('should emit comments-loaded event only on successful read', async () => {
+            await commentsManager.initialize();
+
+            await commentsManager.addComment(
+                'test.md',
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 },
+                'Text',
+                'Event test comment'
+            );
+
+            // Corrupt the file
+            const configFile = path.join(tempDir, '.vscode', COMMENTS_CONFIG_FILE);
+            fs.writeFileSync(configFile, 'not-json');
+
+            let eventFired = false;
+            const disposable = commentsManager.onDidChangeComments(() => { eventFired = true; });
+
+            await (commentsManager as unknown as { loadComments(): Promise<unknown> }).loadComments();
+
+            disposable.dispose();
+            assert.strictEqual(
+                eventFired,
+                false,
+                'comments-loaded event must NOT fire when the read fails'
+            );
+        });
+    });
 });

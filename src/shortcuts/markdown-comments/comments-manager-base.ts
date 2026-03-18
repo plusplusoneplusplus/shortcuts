@@ -88,6 +88,7 @@ export abstract class CommentsManagerBase<
     protected config: TConfig;
     protected fileWatcher?: FileWatcher;
     protected debounceTimer?: NodeJS.Timeout;
+    private suppressWatcherEvents = 0;
 
     protected readonly _onDidChangeComments = new TypedEventEmitter<TEvent>();
     readonly onDidChangeComments = this._onDidChangeComments.event;
@@ -124,7 +125,8 @@ export abstract class CommentsManagerBase<
                     const parsed = JSON.parse(readResult.data) as TConfig;
                     this.config = this.validateConfig(parsed);
                 } else {
-                    this.config = this.getDefaultConfig();
+                    // Transient read failure — preserve current in-memory state
+                    return this.config;
                 }
             } else {
                 this.config = this.getDefaultConfig();
@@ -138,8 +140,7 @@ export abstract class CommentsManagerBase<
             return this.config;
         } catch (error) {
             this.logger.error('Comments', 'Error loading comments', error instanceof Error ? error : undefined);
-            this.config = this.getDefaultConfig();
-            return this.config;
+            return this.config; // Preserve state on error; don't reset to empty
         }
     }
 
@@ -153,8 +154,10 @@ export abstract class CommentsManagerBase<
             ensureDirectoryExists(configDir);
 
             const content = JSON.stringify(this.config, null, 2);
+            this.suppressWatcherEvents++;
             const result = safeWriteFile(this.configPath, content);
             if (!result.success) {
+                this.suppressWatcherEvents--;
                 throw result.error || new Error('Failed to write comments file');
             }
         } catch (error) {
@@ -474,6 +477,10 @@ export abstract class CommentsManagerBase<
         this.fileWatcher = this.fileWatcherFactory(this.configPath);
 
         const handleChange = () => {
+            if (this.suppressWatcherEvents > 0) {
+                this.suppressWatcherEvents--;
+                return;
+            }
             if (this.debounceTimer) {
                 clearTimeout(this.debounceTimer);
             }
