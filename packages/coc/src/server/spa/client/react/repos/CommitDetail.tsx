@@ -71,7 +71,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         if (filePath) return;
         setAllCommentsLoading(true);
         const params = new URLSearchParams({ oldRef: `${hash}^`, newRef: hash });
-        fetchApi(`/api/diff-comments/${encodeURIComponent(workspaceId)}?${params}`)
+        fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}?${params}`)
             .then((data: { comments?: DiffComment[] }) => setAllCommitComments(data.comments ?? []))
             .catch(() => setAllCommitComments([]))
             .finally(() => setAllCommentsLoading(false));

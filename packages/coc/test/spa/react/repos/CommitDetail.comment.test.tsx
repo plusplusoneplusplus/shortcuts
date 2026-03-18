@@ -9,13 +9,14 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 const mockAddComment = vi.fn();
 const mockUseDiffComments = vi.fn();
+const mockFetchApi = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: () => Promise.resolve({ diff: '+added line\n context' }),
+    fetchApi: (path: string, options?: RequestInit) => mockFetchApi(path, options),
 }));
 
 vi.mock('react-dom', async (importOriginal) => {
@@ -84,6 +85,7 @@ describe('CommitDetail — comment integration', () => {
         vi.clearAllMocks();
         mockAddComment.mockResolvedValue({ id: 'new-c' });
         mockUseDiffComments.mockReturnValue(makeHook());
+        mockFetchApi.mockResolvedValue({ diff: '+added line\n context', comments: [] });
     });
 
     async function renderDetail(props: Record<string, unknown> = {}) {
@@ -212,5 +214,22 @@ describe('CommitDetail — comment integration', () => {
         await renderDetail({ filePath: 'src/foo.ts' });
         const viewer = await screen.findByTestId('diff-content');
         expect(viewer.getAttribute('data-comment-count')).toBe('2');
+    });
+
+    // Regression: commit-level comment fetch must not produce double /api prefix.
+    // fetchApi already prepends /api (from getApiBase()), so the path passed to it
+    // must start with /diff-comments/, not /api/diff-comments/.
+    it('commit-level comment fetch uses /diff-comments/ path (no double /api prefix)', async () => {
+        await renderDetail({});
+        await waitFor(() => {
+            const calls = mockFetchApi.mock.calls.filter(([path]) =>
+                typeof path === 'string' && path.includes('diff-comments'),
+            );
+            expect(calls.length).toBeGreaterThan(0);
+            for (const [path] of calls) {
+                expect(path).not.toMatch(/^\/api\//);
+                expect(path).toMatch(/^\/diff-comments\//);
+            }
+        });
     });
 });
