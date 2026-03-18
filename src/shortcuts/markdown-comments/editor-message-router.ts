@@ -429,26 +429,7 @@ export class EditorMessageRouter {
             includeLineNumbers: true
         });
         const newConversation = message.promptOptions?.newConversation ?? true;
-
-        try {
-            if (newConversation) {
-                await this.host.executeCommand('workbench.action.chat.newChat');
-                await new Promise(resolve => setTimeout(resolve, 200));
-            }
-            await this.host.executeCommand('workbench.action.chat.open', { query: prompt });
-        } catch {
-            await this.host.copyToClipboard(prompt);
-            try {
-                if (newConversation) {
-                    await this.host.executeCommand('workbench.action.chat.newChat');
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
-                await this.host.executeCommand('workbench.action.chat.open');
-                await this.host.showInfo('Chat opened. Prompt copied to clipboard - paste to continue.');
-            } catch {
-                await this.host.showWarning('Chat not available. Prompt copied to clipboard.');
-            }
-        }
+        await this.openChatWithPrompt(prompt, newConversation);
         return {};
     }
 
@@ -469,26 +450,7 @@ export class EditorMessageRouter {
             includeLineNumbers: true
         });
         const newConversation = message.newConversation ?? true;
-
-        try {
-            if (newConversation) {
-                await this.host.executeCommand('workbench.action.chat.newChat');
-                await new Promise(resolve => setTimeout(resolve, 200));
-            }
-            await this.host.executeCommand('workbench.action.chat.open', { query: prompt });
-        } catch {
-            await this.host.copyToClipboard(prompt);
-            try {
-                if (newConversation) {
-                    await this.host.executeCommand('workbench.action.chat.newChat');
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
-                await this.host.executeCommand('workbench.action.chat.open');
-                await this.host.showInfo('Chat opened. Prompt copied to clipboard - paste to continue.');
-            } catch {
-                await this.host.showWarning('Chat not available. Prompt copied to clipboard.');
-            }
-        }
+        await this.openChatWithPrompt(prompt, newConversation);
         return {};
     }
 
@@ -1635,6 +1597,28 @@ Please take this additional context into account when refreshing the plan.`;
 
     private saveLastFollowPromptSelection(mode: 'interactive' | 'background', model: string): void {
         this.host.setState('followPrompt.lastSelection', { mode, model });
+    }
+
+    private async openChatWithPrompt(prompt: string, newConversation: boolean): Promise<void> {
+        try {
+            if (newConversation) {
+                await this.host.executeCommand('workbench.action.chat.newChat');
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+            await this.host.executeCommand('workbench.action.chat.open', { query: prompt });
+        } catch {
+            await this.host.copyToClipboard(prompt);
+            try {
+                if (newConversation) {
+                    await this.host.executeCommand('workbench.action.chat.newChat');
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                await this.host.executeCommand('workbench.action.chat.open');
+                await this.host.showInfo('Chat opened. Prompt copied to clipboard - paste to continue.');
+            } catch {
+                await this.host.showWarning('Chat not available. Prompt copied to clipboard.');
+            }
+        }
     }
 
     /**
