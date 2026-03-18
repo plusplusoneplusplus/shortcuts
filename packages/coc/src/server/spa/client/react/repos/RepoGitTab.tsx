@@ -680,7 +680,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             unpushedCount={unpushedCount}
             selectedHash={selectedCommit?.hash}
             selectedFile={selectedCommitFile}
-            initialExpandedHash={selectedCommit?.hash}
+            initialExpandedHash={initialCommitHash ? selectedCommit?.hash : null}
             onSelect={handleSelect}
             onFileSelect={handleCommitFileSelect}
             onCommitContextMenu={handleCommitContextMenu}
