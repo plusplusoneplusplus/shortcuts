@@ -129,7 +129,11 @@ export abstract class CommentsManagerBase<
                     return this.config;
                 }
             } else {
-                this.config = this.getDefaultConfig();
+                // File does not exist — treat as transient and preserve current
+                // in-memory state to avoid wiping un-persisted comments.
+                // (True first-run initialisation: this.config is already the
+                // default set in the constructor, so no state is lost.)
+                return this.config;
             }
 
             this.fireEvent({

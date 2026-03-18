@@ -345,13 +345,13 @@ Final thoughts and summary of the document.
             const configPath = commentsManager.getConfigPath();
             fs.unlinkSync(configPath);
 
-            // Reload - should start fresh
+            // Reload - in-memory state is preserved (transient-failure protection)
             await commentsManager.loadComments();
 
             // Wait for file watcher event
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            assert.strictEqual(commentsManager.getAllComments().length, 0);
+            assert.strictEqual(commentsManager.getAllComments().length, 1);
         });
     });
 
