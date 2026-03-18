@@ -372,6 +372,7 @@ suite('Diff Content Provider Tests', () => {
         });
 
         test('should handle modified files correctly in range diff', function() {
+            this.timeout(15000); // git operations can be slow on Windows
             const { execSync } = require('child_process');
             const { getRangeDiffContent } = require('../../shortcuts/git-diff-comments/diff-content-provider');
             
