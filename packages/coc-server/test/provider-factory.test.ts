@@ -101,6 +101,30 @@ describe('ProviderFactory.parseAdoRemote', () => {
         });
     });
 
+    it('parses visualstudio.com URL with DefaultCollection', () => {
+        expect(
+            ProviderFactory.parseAdoRemote(
+                'https://myorg.visualstudio.com/DefaultCollection/myproject/_git/myrepo',
+            ),
+        ).toEqual({
+            orgUrl: 'https://myorg.visualstudio.com',
+            project: 'myproject',
+            repo: 'myrepo',
+        });
+    });
+
+    it('parses visualstudio.com URL with custom collection name', () => {
+        expect(
+            ProviderFactory.parseAdoRemote(
+                'https://myorg.visualstudio.com/MyCollection/myproject/_git/myrepo',
+            ),
+        ).toEqual({
+            orgUrl: 'https://myorg.visualstudio.com',
+            project: 'myproject',
+            repo: 'myrepo',
+        });
+    });
+
     it('returns null for non-ADO URL', () => {
         expect(ProviderFactory.parseAdoRemote('https://github.com/org/repo.git')).toBeNull();
     });

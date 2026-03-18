@@ -81,6 +81,17 @@ export class ProviderFactory {
                 repo: devAzureMatch[3],
             };
         }
+        // https://org.visualstudio.com/DefaultCollection/project/_git/repo
+        const vsCollectionMatch = url.match(
+            /https:\/\/([^.]+)\.visualstudio\.com\/[^/]+\/([^/]+)\/_git\/([^/]+)/,
+        );
+        if (vsCollectionMatch) {
+            return {
+                orgUrl: `https://${vsCollectionMatch[1]}.visualstudio.com`,
+                project: vsCollectionMatch[2],
+                repo: vsCollectionMatch[3],
+            };
+        }
         // https://org.visualstudio.com/project/_git/repo
         const vsMatch = url.match(
             /https:\/\/([^.]+)\.visualstudio\.com\/([^/]+)\/_git\/([^/]+)/,
