@@ -127,23 +127,21 @@ function AppInner() {
                         appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
                         if (!seenProcessIdsRef.current.has(msg.process.id)) {
                             seenProcessIdsRef.current.add(msg.process.id);
-                            // Highest priority: server-resolved workspace name.
-                            let wsName: string | undefined = msg.process.workspaceName;
-                            if (!wsName) {
-                                // Fallback 1: lookup by workspaceId.
-                                const wsId = msg.process.workspaceId;
-                                const ws = wsId
-                                    ? (appState.workspaces as WorkspaceLike[]).find(w => w.id === wsId)
-                                    : undefined;
-                                // Fallback 2: longest-prefix match on workingDirectory.
-                                const resolvedWs = ws
-                                    ?? (msg.process.workingDirectory
-                                        ? resolveWorkspaceForPath(msg.process.workingDirectory, appState.workspaces as WorkspaceLike[])
-                                        : null);
-                                wsName = resolvedWs?.name
-                                    ?? (resolvedWs?.rootPath ? resolvedWs.rootPath.replace(/\\/g, '/').split('/').pop() : undefined);
-                            }
-                            addNotification(buildNotificationEntry(msg.process, wsName));
+                            // Resolve workspace for both display name and ID.
+                            const wsId = msg.process.workspaceId;
+                            const ws = wsId
+                                ? (appState.workspaces as WorkspaceLike[]).find(w => w.id === wsId)
+                                : undefined;
+                            // Fallback: longest-prefix match on workingDirectory.
+                            const resolvedWs = ws
+                                ?? (msg.process.workingDirectory
+                                    ? resolveWorkspaceForPath(msg.process.workingDirectory, appState.workspaces as WorkspaceLike[])
+                                    : null);
+                            const wsName: string | undefined = msg.process.workspaceName
+                                ?? resolvedWs?.name
+                                ?? (resolvedWs?.rootPath ? resolvedWs.rootPath.replace(/\\/g, '/').split('/').pop() : undefined);
+                            const effectiveWsId = msg.process.workspaceId ?? resolvedWs?.id;
+                            addNotification(buildNotificationEntry(msg.process, wsName, effectiveWsId));
                         }
                     }
                 }

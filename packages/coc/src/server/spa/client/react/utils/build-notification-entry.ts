@@ -29,7 +29,7 @@ const STATUS_TYPE_MAP: Record<string, NotificationEntryInput['type']> = {
     cancelled: 'warning',
 };
 
-export function buildNotificationEntry(process: ProcessLike, workspaceName?: string): NotificationEntryInput {
+export function buildNotificationEntry(process: ProcessLike, workspaceName?: string, workspaceIdOverride?: string): NotificationEntryInput {
     const durationSec = process.endTime && process.startTime
         ? Math.round((+new Date(process.endTime as string) - +new Date(process.startTime as string)) / 1000)
         : null;
@@ -41,7 +41,7 @@ export function buildNotificationEntry(process: ProcessLike, workspaceName?: str
         ? `[${workspaceName}] ${promptLabel} ${process.status}`
         : `${promptLabel} ${process.status}`;
 
-    const workspaceId = process.workspaceId ?? process.metadata?.workspaceId ?? undefined;
+    const workspaceId = workspaceIdOverride ?? process.workspaceId ?? process.metadata?.workspaceId ?? undefined;
 
     return {
         type: STATUS_TYPE_MAP[process.status] ?? 'info',

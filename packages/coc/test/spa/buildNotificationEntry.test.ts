@@ -175,4 +175,36 @@ describe('buildNotificationEntry', () => {
         const result = buildNotificationEntry(makeProcess({ id: 'proc-abc123' }));
         expect(result.processId).toBe('proc-abc123');
     });
+
+    // ── Regression: workspaceIdOverride (autopilot cross-workspace navigation) ─
+
+    it('workspaceIdOverride takes highest priority over process.workspaceId', () => {
+        const result = buildNotificationEntry(makeProcess({ workspaceId: 'ws-server' }), undefined, 'ws-client');
+        expect(result.workspaceId).toBe('ws-client');
+    });
+
+    it('workspaceIdOverride takes priority over metadata.workspaceId', () => {
+        const result = buildNotificationEntry(
+            makeProcess({ workspaceId: undefined, metadata: { workspaceId: 'ws-meta' } }),
+            undefined,
+            'ws-override',
+        );
+        expect(result.workspaceId).toBe('ws-override');
+    });
+
+    it('workspaceIdOverride used when process has no workspaceId (autopilot mode)', () => {
+        // Simulates autopilot process: workspaceId absent server-side, client resolves via workingDirectory
+        const result = buildNotificationEntry(
+            makeProcess({ workspaceId: undefined, metadata: undefined }),
+            'my-repo',
+            'resolved-ws-id',
+        );
+        expect(result.workspaceId).toBe('resolved-ws-id');
+        expect(result.title).toBe('[my-repo] Summarize code completed');
+    });
+
+    it('workspaceIdOverride undefined falls back to process.workspaceId', () => {
+        const result = buildNotificationEntry(makeProcess({ workspaceId: 'ws-direct' }), undefined, undefined);
+        expect(result.workspaceId).toBe('ws-direct');
+    });
 });
