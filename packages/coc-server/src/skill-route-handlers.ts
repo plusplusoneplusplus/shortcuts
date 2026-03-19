@@ -75,8 +75,8 @@ export function createSkillRouteHandlers(opts: SkillRouteHandlerOptions): SkillR
             const allBundled = getBundledSkills(installPath);
             const selectedNames: string[] = Array.isArray(body.skills)
                 ? body.skills
-                : allBundled.map((s: any) => s.name);
-            const toInstall = allBundled.filter((s: any) => selectedNames.includes(s.name));
+                : allBundled.map(s => s.name);
+            const toInstall = allBundled.filter(s => selectedNames.includes(s.name));
 
             if (toInstall.length === 0) {
                 return sendJSON(res, 200, { installed: 0, skipped: 0, failed: 0, details: [] });
