@@ -19,6 +19,37 @@ export function WorkingTreeAllComments({ workspaceId }: WorkingTreeAllCommentsPr
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const copyAllCommentsAsPrompt = useCallback(() => {
+        const openComments = comments.filter(c => c.status === 'open');
+        if (!openComments.length) return;
+
+        const byFile = new Map<string, DiffComment[]>();
+        for (const c of openComments) {
+            const fp = c.context.filePath;
+            if (!byFile.has(fp)) byFile.set(fp, []);
+            byFile.get(fp)!.push(c);
+        }
+
+        const sections = [...byFile.entries()].map(([filePath, cs]) => {
+            const block = cs
+                .map((c, i) =>
+                    `### Comment ${i + 1} (id: ${c.id}, status: ${c.status})\n` +
+                    `Lines ${c.selection.diffLineStart}–${c.selection.diffLineEnd} (${c.selection.side})\n` +
+                    `Selected code:\n\`\`\`\n${c.selectedText}\n\`\`\`\n` +
+                    `Comment: ${c.comment}`
+                )
+                .join('\n\n');
+            return `## File: ${filePath} (${cs.length} comment(s))\n\n${block}`;
+        }).join('\n\n');
+
+        const prompt =
+            `You are reviewing working tree changes with comments across ${byFile.size} file(s).\n\n` +
+            `${sections}\n\n` +
+            `Please address these comments.`;
+
+        void navigator.clipboard.writeText(prompt);
+    }, [comments]);
+
     const fetchComments = useCallback(() => {
         setLoading(true);
         setError(null);
@@ -64,6 +95,7 @@ export function WorkingTreeAllComments({ workspaceId }: WorkingTreeAllCommentsPr
                 onEdit={() => undefined}
                 onAskAI={() => undefined}
                 onCommentClick={() => undefined}
+                onCopyPrompt={copyAllCommentsAsPrompt}
                 data-testid="working-tree-all-comments-sidebar"
             />
         </div>
