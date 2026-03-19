@@ -1678,15 +1678,14 @@ export class CLITaskExecutor implements TaskExecutor {
         workspaceId: string | undefined,
         workingDirectory?: string,
     ): Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }> {
-        const wsId: string | undefined = workspaceId;
         let disabledSkills: string[] | undefined;
         let extraSkillFolders: string[] | undefined;
 
         // Resolve workspace config (disabled skills + extra folders)
-        if (wsId) {
+        if (workspaceId) {
             try {
                 const workspaces = await this.store.getWorkspaces();
-                const ws = workspaces.find(w => w.id === wsId);
+                const ws = workspaces.find(w => w.id === workspaceId);
                 if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
                     disabledSkills = [...ws.disabledSkills];
                 }
