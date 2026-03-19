@@ -57,6 +57,10 @@ interface CommitListProps {
     title: string;
     commits: GitCommitItem[];
     selectedHash?: string | null;
+    /** When provided, drives multi-select highlighting; supersedes selectedHash. */
+    selectedHashes?: ReadonlySet<string>;
+    /** Fires on Ctrl/Cmd+click or Shift+click with the full new selection. */
+    onMultiSelect?: (commits: GitCommitItem[]) => void;
     /** When set, highlights the matching file row under the matching commit. */
     selectedFile?: { hash: string; filePath: string } | null;
     /** When set on first render (deep-link scenario), auto-expands the matching commit once. */
@@ -72,9 +76,10 @@ interface CommitListProps {
     unpushedCount?: number;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0 }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
+    const [anchorHash, setAnchorHash] = useState<string | null>(null);
     // Expanded file list state: hash -> files (cached)
     const [expandedHash, setExpandedHash] = useState<string | null>(null);
     const [fileCache, setFileCache] = useState<Record<string, FileChange[]>>({});
@@ -128,18 +133,34 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
     }, [fileCache, expandedHash, commentCounts, workspaceId]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if (!onSelect || commits.length === 0) return;
-        const idx = commits.findIndex(c => c.hash === selectedHash);
+        if (commits.length === 0) return;
+        if (!onSelect && !onMultiSelect) return;
+        const focusedHash = selectedHash ?? (selectedHashes && selectedHashes.size > 0 ? [...selectedHashes][selectedHashes.size - 1] : null);
+        const idx = focusedHash ? commits.findIndex(c => c.hash === focusedHash) : -1;
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            const next = idx < commits.length - 1 ? idx + 1 : idx;
-            onSelect(commits[next]);
+            const next = idx < commits.length - 1 ? idx + 1 : Math.max(0, idx);
+            if (e.shiftKey && onMultiSelect) {
+                const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
+                const newSet = new Set(currentSet);
+                newSet.add(commits[next].hash);
+                onMultiSelect(commits.filter(c => newSet.has(c.hash)));
+            } else if (onSelect) {
+                onSelect(commits[next]);
+            }
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             const prev = idx > 0 ? idx - 1 : 0;
-            onSelect(commits[prev]);
+            if (e.shiftKey && onMultiSelect) {
+                const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
+                const newSet = new Set(currentSet);
+                newSet.add(commits[prev].hash);
+                onMultiSelect(commits.filter(c => newSet.has(c.hash)));
+            } else if (onSelect) {
+                onSelect(commits[prev]);
+            }
         }
-    }, [commits, selectedHash, onSelect]);
+    }, [commits, selectedHash, selectedHashes, onSelect, onMultiSelect]);
 
     // Scroll selected row into view
     useEffect(() => {
@@ -167,8 +188,40 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
     }, [initialExpandedHash, workspaceId]);
 
     // Expand/collapse file list and fetch files on first expand
-    const handleCommitClick = useCallback((commit: GitCommitItem) => {
+    const handleCommitClick = useCallback((commit: GitCommitItem, e: React.MouseEvent) => {
+        const isCtrl = e.ctrlKey || e.metaKey;
+        const isShift = e.shiftKey;
+
+        if (isCtrl && onMultiSelect) {
+            // Toggle this commit in the current multi-selection
+            const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
+            const newSet = new Set(currentSet);
+            if (newSet.has(commit.hash)) {
+                newSet.delete(commit.hash);
+            } else {
+                newSet.add(commit.hash);
+            }
+            onMultiSelect(commits.filter(c => newSet.has(c.hash)));
+            setAnchorHash(commit.hash);
+            return;
+        }
+
+        if (isShift && onMultiSelect && anchorHash) {
+            // Extend selection range from anchor to this commit
+            const anchorIdx = commits.findIndex(c => c.hash === anchorHash);
+            const targetIdx = commits.findIndex(c => c.hash === commit.hash);
+            if (anchorIdx !== -1 && targetIdx !== -1) {
+                const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+                onMultiSelect(commits.slice(start, end + 1));
+            } else {
+                onMultiSelect([commit]);
+            }
+            return;
+        }
+
+        // Plain click: single select
         onSelect?.(commit);
+        setAnchorHash(commit.hash);
         if (expandedHash === commit.hash) {
             setExpandedHash(null);
         } else {
@@ -185,7 +238,7 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
                     .finally(() => setFilesLoading(null));
             }
         }
-    }, [expandedHash, fileCache, workspaceId, onSelect]);
+    }, [expandedHash, fileCache, workspaceId, onSelect, onMultiSelect, selectedHashes, selectedHash, anchorHash, commits]);
 
     // Hover tooltip handlers with 1000ms delay
     const handleRowMouseEnter = useCallback((commit: GitCommitItem, e: React.MouseEvent) => {
@@ -275,7 +328,9 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
                     ) : (
                 <div ref={listRef} role="listbox" tabIndex={0} onKeyDown={handleKeyDown} className="outline-none">
                     {commits.map((commit, index) => {
-                        const isSelected = commit.hash === selectedHash;
+                        const isSelected = selectedHashes
+                            ? selectedHashes.has(commit.hash)
+                            : commit.hash === selectedHash;
                         const isExpanded = commit.hash === expandedHash;
                         const files = fileCache[commit.hash];
                         const isFilesLoading = filesLoading === commit.hash;
@@ -297,7 +352,7 @@ export function CommitList({ title, commits, selectedHash, selectedFile, initial
                                     aria-selected={isSelected}
                                     data-hash={commit.hash}
                                     className={`commit-row w-full flex items-start gap-2 px-3 py-2 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}`}
-                                    onClick={() => handleCommitClick(commit)}
+                                    onClick={(e) => handleCommitClick(commit, e)}
                                     onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
                                     onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
                                     onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}

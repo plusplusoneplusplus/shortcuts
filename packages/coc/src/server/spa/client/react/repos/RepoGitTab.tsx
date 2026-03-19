@@ -44,7 +44,8 @@ type RightPanelView =
     | { type: 'branch-range' }
     | { type: 'branch-file'; filePath: string }
     | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
-    | { type: 'working-tree-comments' };
+    | { type: 'working-tree-comments' }
+    | { type: 'multi-commit'; commits: GitCommitItem[] };
 
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const { state, dispatch } = useApp();
@@ -440,6 +441,23 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
     }, [workspaceId, dispatch]);
 
+    const handleMultiSelect = useCallback((selectedCommits: GitCommitItem[]) => {
+        if (selectedCommits.length === 1) {
+            handleSelect(selectedCommits[0]);
+            return;
+        }
+        setRightPanelView({ type: 'multi-commit', commits: selectedCommits });
+    }, [handleSelect]);
+
+    const selectedHashes = useMemo<ReadonlySet<string>>(() => {
+        if (rightPanelView?.type === 'multi-commit') {
+            return new Set(rightPanelView.commits.map(c => c.hash));
+        }
+        if (rightPanelView?.type === 'commit') return new Set([rightPanelView.commit.hash]);
+        if (rightPanelView?.type === 'commit-file') return new Set([rightPanelView.hash]);
+        return new Set();
+    }, [rightPanelView]);
+
     const handleFileSelect = useCallback((filePath: string) => {
         setRightPanelView({ type: 'branch-file', filePath });
     }, []);
@@ -717,9 +735,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             commits={commits}
             unpushedCount={searchQuery ? 0 : unpushedCount}
             selectedHash={selectedCommit?.hash}
+            selectedHashes={selectedHashes}
             selectedFile={selectedCommitFile}
             initialExpandedHash={initialCommitHash ? selectedCommit?.hash : null}
             onSelect={handleSelect}
+            onMultiSelect={handleMultiSelect}
             onFileSelect={handleCommitFileSelect}
             onCommitContextMenu={handleCommitContextMenu}
             workspaceId={workspaceId}
@@ -765,6 +785,20 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         />
     ) : rightPanelView?.type === 'working-tree-comments' ? (
         <WorkingTreeAllComments workspaceId={workspaceId} />
+    ) : rightPanelView?.type === 'multi-commit' ? (
+        <div className="flex flex-col h-full p-4 gap-3" data-testid="git-multi-commit-panel">
+            <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc]">
+                {rightPanelView.commits.length} commits selected
+            </div>
+            <div className="flex flex-col gap-1 overflow-y-auto">
+                {rightPanelView.commits.map(c => (
+                    <div key={c.hash} className="flex items-center gap-2 text-xs py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <span className="font-mono text-[#0078d4] dark:text-[#3794ff] flex-shrink-0">{c.shortHash}</span>
+                        <span className="text-[#1e1e1e] dark:text-[#ccc] truncate">{c.subject}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
     ) : (
         <div className="flex-1 flex items-center justify-center text-sm text-[#848484]" data-testid="git-detail-empty">
             Select a commit to view details

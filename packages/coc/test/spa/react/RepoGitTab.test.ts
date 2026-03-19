@@ -1034,4 +1034,56 @@ describe('RepoGitTab', () => {
             expect(switchedBlock![0]).toContain('setSkip(0)');
         });
     });
+
+    describe('multi-select commits', () => {
+        it('adds multi-commit variant to RightPanelView union type', () => {
+            expect(source).toContain("type: 'multi-commit'");
+            expect(source).toContain("commits: GitCommitItem[]");
+        });
+
+        it('defines handleMultiSelect callback', () => {
+            expect(source).toContain('const handleMultiSelect = useCallback');
+        });
+
+        it('handleMultiSelect delegates single-commit selection to handleSelect', () => {
+            const block = source.match(/const handleMultiSelect = useCallback[\s\S]*?\}, \[handleSelect\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('selectedCommits.length === 1');
+            expect(block![0]).toContain('handleSelect(selectedCommits[0])');
+        });
+
+        it('handleMultiSelect sets multi-commit right panel view for >1 commit', () => {
+            expect(source).toContain("setRightPanelView({ type: 'multi-commit', commits: selectedCommits })");
+        });
+
+        it('derives selectedHashes useMemo from rightPanelView', () => {
+            expect(source).toContain('const selectedHashes = useMemo<ReadonlySet<string>>');
+        });
+
+        it('selectedHashes covers the multi-commit case', () => {
+            expect(source).toContain("rightPanelView?.type === 'multi-commit'");
+            expect(source).toContain('rightPanelView.commits.map(c => c.hash)');
+        });
+
+        it('passes selectedHashes to CommitList', () => {
+            expect(source).toContain('selectedHashes={selectedHashes}');
+        });
+
+        it('passes onMultiSelect to CommitList', () => {
+            expect(source).toContain('onMultiSelect={handleMultiSelect}');
+        });
+
+        it('renders multi-commit summary panel with data-testid', () => {
+            expect(source).toContain('data-testid="git-multi-commit-panel"');
+        });
+
+        it('multi-commit panel shows selected count heading', () => {
+            expect(source).toContain('commits selected');
+        });
+
+        it('multi-commit panel lists shortHash and subject for each commit', () => {
+            expect(source).toContain('c.shortHash');
+            expect(source).toContain('c.subject');
+        });
+    });
 });
