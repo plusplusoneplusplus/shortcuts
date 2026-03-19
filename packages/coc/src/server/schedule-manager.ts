@@ -9,12 +9,15 @@
  */
 
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
 import * as crypto from 'crypto';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
 import { getErrorMessage } from '@plusplusoneplusplus/coc-server';
 import { SchedulePersistence } from './schedule-persistence';
 import type { ScheduleRunPersistence } from './schedule-run-persistence';
+import { loadRepoSchedules, getRepoScheduleDir } from './repo-schedule-loader';
+import type { RepoScheduleOverrideStore } from './repo-schedule-overrides';
 
 // ============================================================================
 // Types
@@ -36,6 +39,8 @@ export interface ScheduleEntry {
     outputFolder?: string;     // output folder path prepended to prompt for prompt-type schedules
     model?: string;            // optional model override for prompt-type schedules
     mode?: ChatMode;           // chat mode for prompt-type schedules; defaults to 'autopilot'
+    /** 'user' = stored in schedules.json; 'repo' = loaded from .github/schedule/ */
+    source?: 'user' | 'repo';
 }
 
 export interface ScheduleRunRecord {
@@ -224,24 +229,38 @@ function finaliseRun(
 }
 
 export class ScheduleManager extends EventEmitter {
-    // repoId → scheduleId → ScheduleEntry
+    // repoId → scheduleId → ScheduleEntry (user-managed)
     private readonly schedules = new Map<string, Map<string, ScheduleEntry>>();
+    // repoId → scheduleId → ScheduleEntry (repo-managed, from .github/schedule/)
+    private readonly repoSchedules = new Map<string, Map<string, ScheduleEntry>>();
+    // repoId → workspace rootPath
+    private readonly workspacePaths = new Map<string, string>();
     // scheduleId → timer handle
     private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
     // scheduleId → currently running flag
     private readonly runningSchedules = new Set<string>();
     // scheduleId → run history (most recent first)
     private readonly runHistory = new Map<string, ScheduleRunRecord[]>();
+    // file watchers: repoId → fs.FSWatcher
+    private readonly repoWatchers = new Map<string, fs.FSWatcher>();
+    // debounce timers for file watch events
+    private readonly watchDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
     // Dependencies
     private readonly persistence: SchedulePersistence;
     private readonly queueManager: TaskQueueManager | null;
     private runPersistence: ScheduleRunPersistence | null = null;
+    private readonly overrideStore: RepoScheduleOverrideStore | null;
     private disposed = false;
 
-    constructor(persistence: SchedulePersistence, queueManager: TaskQueueManager | null = null) {
+    constructor(
+        persistence: SchedulePersistence,
+        queueManager: TaskQueueManager | null = null,
+        overrideStore: RepoScheduleOverrideStore | null = null,
+    ) {
         super();
         this.persistence = persistence;
         this.queueManager = queueManager;
+        this.overrideStore = overrideStore;
     }
 
     /**
@@ -282,18 +301,23 @@ export class ScheduleManager extends EventEmitter {
     }
 
     /**
-     * Get all schedules for a repo.
+     * Get all schedules for a repo (user + repo-defined merged).
      */
     getSchedules(repoId: string): ScheduleEntry[] {
-        const map = this.schedules.get(repoId);
-        return map ? Array.from(map.values()) : [];
+        const result: ScheduleEntry[] = [];
+        const userMap = this.schedules.get(repoId);
+        if (userMap) result.push(...userMap.values());
+        const repoMap = this.repoSchedules.get(repoId);
+        if (repoMap) result.push(...repoMap.values());
+        return result;
     }
 
     /**
-     * Get a single schedule.
+     * Get a single schedule (checks user schedules first, then repo schedules).
      */
     getSchedule(repoId: string, scheduleId: string): ScheduleEntry | undefined {
-        return this.schedules.get(repoId)?.get(scheduleId);
+        return this.schedules.get(repoId)?.get(scheduleId)
+            ?? this.repoSchedules.get(repoId)?.get(scheduleId);
     }
 
     /**
@@ -331,8 +355,30 @@ export class ScheduleManager extends EventEmitter {
 
     /**
      * Update an existing schedule.
+     * For repo-sourced schedules, only the status (active/paused) may be changed.
      */
     updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model'>>): ScheduleEntry | undefined {
+        // Check repo schedules first
+        const repoSchedule = this.repoSchedules.get(repoId)?.get(scheduleId);
+        if (repoSchedule) {
+            // Only allow status changes for repo schedules
+            if (updates.status && updates.status !== repoSchedule.status) {
+                repoSchedule.status = updates.status;
+                this.overrideStore?.setStatus(repoId, scheduleId, updates.status);
+                this.cancelTimer(scheduleId);
+                if (repoSchedule.status === 'active') {
+                    this.scheduleNextRun(repoId, repoSchedule);
+                }
+                this.emit('change', {
+                    type: 'schedule-updated',
+                    repoId,
+                    scheduleId,
+                    schedule: repoSchedule,
+                } as ScheduleChangeEvent);
+            }
+            return repoSchedule;
+        }
+
         const schedule = this.schedules.get(repoId)?.get(scheduleId);
         if (!schedule) return undefined;
 
@@ -363,8 +409,12 @@ export class ScheduleManager extends EventEmitter {
 
     /**
      * Remove a schedule.
+     * Repo-sourced schedules cannot be removed via the API.
      */
     removeSchedule(repoId: string, scheduleId: string): boolean {
+        // Block removal of repo schedules
+        if (this.repoSchedules.get(repoId)?.has(scheduleId)) return false;
+
         const map = this.schedules.get(repoId);
         if (!map || !map.has(scheduleId)) return false;
 
@@ -392,7 +442,7 @@ export class ScheduleManager extends EventEmitter {
      * Trigger a schedule run immediately.
      */
     async triggerRun(repoId: string, scheduleId: string): Promise<ScheduleRunRecord> {
-        const schedule = this.schedules.get(repoId)?.get(scheduleId);
+        const schedule = this.getSchedule(repoId, scheduleId);
         if (!schedule) throw new Error('Schedule not found');
 
         return this.executeRun(repoId, schedule);
@@ -421,6 +471,14 @@ export class ScheduleManager extends EventEmitter {
             clearTimeout(timer);
         }
         this.timers.clear();
+        for (const timer of this.watchDebounceTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.watchDebounceTimers.clear();
+        for (const watcher of this.repoWatchers.values()) {
+            try { watcher.close(); } catch { /* non-fatal */ }
+        }
+        this.repoWatchers.clear();
         this.removeAllListeners();
     }
 
@@ -445,7 +503,7 @@ export class ScheduleManager extends EventEmitter {
             this.timers.delete(schedule.id);
 
             if (this.disposed) return;
-            const current = this.schedules.get(repoId)?.get(schedule.id);
+            const current = this.getSchedule(repoId, schedule.id);
             if (!current || current.status !== 'active') return;
 
             // If delay was capped, just reschedule — we haven't reached the target time yet
@@ -463,13 +521,13 @@ export class ScheduleManager extends EventEmitter {
 
             this.executeRun(repoId, current).then(() => {
                 // Schedule next run after completion
-                const latest = this.schedules.get(repoId)?.get(schedule.id);
+                const latest = this.getSchedule(repoId, schedule.id);
                 if (latest && latest.status === 'active') {
                     this.scheduleNextRun(repoId, latest);
                 }
             }).catch(() => {
                 // Still schedule next even on error
-                const latest = this.schedules.get(repoId)?.get(schedule.id);
+                const latest = this.getSchedule(repoId, schedule.id);
                 if (latest && latest.status === 'active') {
                     this.scheduleNextRun(repoId, latest);
                 }
@@ -619,7 +677,100 @@ export class ScheduleManager extends EventEmitter {
     }
 
     private persist(repoId: string): void {
-        const schedules = this.getSchedules(repoId);
+        // Only persist user-managed schedules (not repo-sourced ones)
+        const map = this.schedules.get(repoId);
+        const schedules = map ? Array.from(map.values()) : [];
         this.persistence.saveRepo(repoId, schedules);
+    }
+
+    // ========================================================================
+    // Public — repo schedule management
+    // ========================================================================
+
+    /**
+     * Register a workspace root path for a repo and load repo-defined schedules
+     * from <rootPath>/.github/schedule/.  Sets up a file watcher for live reload.
+     * Safe to call multiple times (idempotent — re-registers path and refreshes).
+     */
+    registerWorkspacePath(repoId: string, rootPath: string): void {
+        this.workspacePaths.set(repoId, rootPath);
+        this.reloadRepoSchedules(repoId);
+        this.watchRepoScheduleDir(repoId, rootPath);
+    }
+
+    /**
+     * Reload repo-defined schedules for a workspace from disk.
+     * Called automatically by the file watcher.
+     */
+    reloadRepoSchedules(repoId: string): void {
+        const rootPath = this.workspacePaths.get(repoId);
+        if (!rootPath) return;
+
+        const overrides = this.overrideStore?.load(repoId) ?? {};
+        const entries = loadRepoSchedules(rootPath, overrides);
+        const newMap = new Map<string, ScheduleEntry>();
+        for (const entry of entries) {
+            newMap.set(entry.id, entry);
+        }
+
+        // Cancel timers for schedules that were removed or are no longer active
+        const oldMap = this.repoSchedules.get(repoId);
+        if (oldMap) {
+            for (const [id, old] of oldMap) {
+                const updated = newMap.get(id);
+                if (!updated || updated.status !== 'active') {
+                    this.cancelTimer(id);
+                } else if (updated.cron !== old.cron) {
+                    // Cron changed — reschedule
+                    this.cancelTimer(id);
+                }
+            }
+        }
+
+        if (newMap.size > 0) {
+            this.repoSchedules.set(repoId, newMap);
+        } else {
+            this.repoSchedules.delete(repoId);
+        }
+
+        // Start timers for active repo schedules
+        for (const entry of newMap.values()) {
+            if (entry.status === 'active' && !this.timers.has(entry.id)) {
+                this.scheduleNextRun(repoId, entry);
+            }
+        }
+    }
+
+    private watchRepoScheduleDir(repoId: string, rootPath: string): void {
+        if (this.disposed) return;
+
+        const scheduleDir = getRepoScheduleDir(rootPath);
+        try {
+            if (!fs.existsSync(scheduleDir)) return;
+        } catch {
+            return;
+        }
+
+        // Close existing watcher if re-registering
+        const existing = this.repoWatchers.get(repoId);
+        if (existing) {
+            try { existing.close(); } catch { /* non-fatal */ }
+            this.repoWatchers.delete(repoId);
+        }
+
+        try {
+            const watcher = fs.watch(scheduleDir, () => {
+                const prevTimer = this.watchDebounceTimers.get(repoId);
+                if (prevTimer) clearTimeout(prevTimer);
+                const timer = setTimeout(() => {
+                    this.watchDebounceTimers.delete(repoId);
+                    this.reloadRepoSchedules(repoId);
+                }, 300);
+                this.watchDebounceTimers.set(repoId, timer);
+            });
+            this.repoWatchers.set(repoId, watcher);
+        } catch {
+            // Non-fatal: file watching may not be available in all environments
+        }
     }
 }

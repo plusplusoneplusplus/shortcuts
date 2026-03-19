@@ -71,6 +71,7 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
         outputFolder: entry.outputFolder,
         model: entry.model,
         mode: entry.mode ?? 'autopilot',
+        source: entry.source ?? 'user',
     };
 }
 
@@ -80,8 +81,24 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
 
 /**
  * Register all schedule API routes on the given route table.
+ *
+ * @param getWorkspacePath - Optional callback to resolve a workspace root path
+ *   from a repoId. Used to load repo-defined schedules from .github/schedule/.
  */
-export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager): void {
+export function registerScheduleRoutes(
+    routes: Route[],
+    manager: ScheduleManager,
+    getWorkspacePath?: (repoId: string) => Promise<string | undefined>,
+): void {
+
+    /** Lazily register workspace path with the manager on first request for a repo. */
+    async function ensureWorkspaceLoaded(repoId: string): Promise<void> {
+        if (!getWorkspacePath) return;
+        const rootPath = await getWorkspacePath(repoId);
+        if (rootPath) {
+            manager.registerWorkspacePath(repoId, rootPath);
+        }
+    }
 
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/schedules — List schedules for a repo
@@ -91,6 +108,7 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
         pattern: /^\/api\/workspaces\/([^/]+)\/schedules$/,
         handler: async (_req, res, match) => {
             const repoId = decodeURIComponent(match![1]);
+            await ensureWorkspaceLoaded(repoId);
             const schedules = manager.getSchedules(repoId).map(s => serializeSchedule(s, manager));
             sendJSON(res, 200, { schedules });
         },
@@ -145,6 +163,16 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
+            // Repo schedules are read-only except for status (pause/resume)
+            const existing = manager.getSchedule(repoId, scheduleId);
+            if (existing?.source === 'repo') {
+                const editableKeys = new Set(['status']);
+                const hasDisallowedKeys = Object.keys(body).some(k => !editableKeys.has(k));
+                if (hasDisallowedKeys) {
+                    return sendError(res, 403, 'Repo schedules are read-only. Only status (pause/resume) can be changed via the API.');
+                }
+            }
+
             if (body.cron) {
                 try {
                     parseCron(body.cron);
@@ -195,6 +223,12 @@ export function registerScheduleRoutes(routes: Route[], manager: ScheduleManager
         handler: async (_req, res, match) => {
             const repoId = decodeURIComponent(match![1]);
             const scheduleId = decodeURIComponent(match![2]);
+
+            // Repo schedules cannot be deleted via the API
+            const existing = manager.getSchedule(repoId, scheduleId);
+            if (existing?.source === 'repo') {
+                return sendError(res, 403, 'Repo schedules cannot be deleted via the API. Remove the file from .github/schedule/ in your repository.');
+            }
 
             const removed = manager.removeSchedule(repoId, scheduleId);
             if (!removed) {

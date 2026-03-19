@@ -203,8 +203,8 @@ describe('Split-panel layout', () => {
     it('empty state shows in both left panel and right panel', async () => {
         await renderEmpty();
 
-        // Left panel empty state
-        expect(screen.getByText('No schedules for this repo yet.')).toBeTruthy();
+        // Left panel empty state — new two-section UI
+        expect(screen.getByText('No schedules yet. Click "+ New" to create one.')).toBeTruthy();
         expect(screen.getByText('🕐')).toBeTruthy();
 
         // Right panel placeholder
@@ -235,16 +235,20 @@ describe('Split-panel layout', () => {
         expect(options[1].getAttribute('aria-selected')).toBe('false');
     });
 
-    it('no expand arrows are rendered in list rows', async () => {
+    it('no expand arrows are rendered in list rows (only in section headers)', async () => {
         await renderWithSchedules();
 
         await waitFor(() => {
             expect(screen.getByRole('option')).toBeTruthy();
         });
 
-        // Neither expand nor collapse arrow should appear
-        expect(screen.queryByText('▶')).toBeNull();
-        expect(screen.queryByText('▼')).toBeNull();
+        // Section header buttons use ▼/▶ for collapse toggle — that is expected
+        // List rows (role="option") should NOT contain expand arrows
+        const options = screen.getAllByRole('option');
+        for (const option of options) {
+            expect(option.textContent).not.toContain('▶');
+            expect(option.textContent).not.toContain('▼');
+        }
     });
 
     it('right panel shows placeholder when schedules exist but none selected', async () => {
@@ -280,14 +284,17 @@ describe('Split-panel layout', () => {
         await renderWithSchedules([MOCK_SCHEDULE, MOCK_SCHEDULE_2]);
 
         await waitFor(() => {
-            expect(screen.getByText(/SCHEDULES\s*\(2\)/)).toBeTruthy();
+            // MY SCHEDULES section header shows count of user schedules
+            expect(screen.getByText(/MY SCHEDULES\s*\(2\)/)).toBeTruthy();
         });
     });
 
     it('left panel header shows no count when empty', async () => {
         await renderEmpty();
 
-        const header = screen.getByText('SCHEDULES');
+        // MY SCHEDULES section header should exist and show no count (no parentheses)
+        const header = screen.getByTestId('my-schedules-header');
+        expect(header.textContent).toContain('MY SCHEDULES');
         expect(header.textContent).not.toContain('(');
     });
 

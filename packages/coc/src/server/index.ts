@@ -47,6 +47,7 @@ import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { SchedulePersistence } from './schedule-persistence';
 import { ScheduleRunPersistence } from './schedule-run-persistence';
 import { ScheduleManager } from './schedule-manager';
+import { RepoScheduleOverrideStore } from './repo-schedule-overrides';
 import { registerScheduleRoutes } from './schedule-handler';
 import { registerStatsRoutes } from './stats-handler';
 import { OutputPruner } from './output-pruner';
@@ -199,7 +200,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Initialize schedule manager with persistent storage
     const schedulePersistence = new SchedulePersistence(dataDir);
     const scheduleRunPersistence = new ScheduleRunPersistence(dataDir);
-    const scheduleManager = new ScheduleManager(schedulePersistence, queueFacade);
+    const scheduleOverrideStore = new RepoScheduleOverrideStore(dataDir);
+    const scheduleManager = new ScheduleManager(schedulePersistence, queueFacade, scheduleOverrideStore);
     scheduleManager.restore();
     scheduleManager.restoreRunHistory(scheduleRunPersistence);
 
@@ -267,7 +269,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
     registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence, restartExitCode: 75, configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile }, tokenTtlMs: options.tokenTtlMs });
-    registerScheduleRoutes(routes, scheduleManager);
+    registerScheduleRoutes(routes, scheduleManager, async (repoId) => {
+        const workspaces = await store.getWorkspaces();
+        return workspaces.find(w => w.id === repoId)?.rootPath;
+    });
 
     // Register memory routes
     registerMemoryRoutes(routes, dataDir, {

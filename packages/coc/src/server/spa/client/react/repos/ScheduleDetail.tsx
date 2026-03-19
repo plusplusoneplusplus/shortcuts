@@ -61,6 +61,11 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                     {(!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
                                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium capitalize" data-testid="mode-badge">{schedule.mode}</span>
                                     )}
+                                    {schedule.source === 'repo' && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 font-medium" data-testid="repo-source-badge">
+                                            Defined in <code className="font-mono">.github/schedule/</code>
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="text-[10px] text-[#848484] mt-0.5" data-testid="schedule-next-run">
                                     {schedule.isRunning
@@ -95,33 +100,37 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                         >
                             {schedule.status === 'active' ? '⏸ Pause' : '▶ Resume'}
                         </Button>
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={schedule.isRunning}
-                            onClick={() => onEdit(schedule.id)}
-                            aria-label="Edit schedule"
-                            data-testid="edit-btn"
-                        >
-                            ✏ Edit
-                        </Button>
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onDuplicate(schedule)}
-                            aria-label="Duplicate schedule"
-                            data-testid="duplicate-btn"
-                        >
-                            ⧉ Duplicate
-                        </Button>
-                        <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => onDelete(schedule.id)}
-                            aria-label="Delete schedule"
-                        >
-                            🗑 Delete
-                        </Button>
+                        {schedule.source !== 'repo' && (
+                            <>
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={schedule.isRunning}
+                                    onClick={() => onEdit(schedule.id)}
+                                    aria-label="Edit schedule"
+                                    data-testid="edit-btn"
+                                >
+                                    ✏ Edit
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => onDuplicate(schedule)}
+                                    aria-label="Duplicate schedule"
+                                    data-testid="duplicate-btn"
+                                >
+                                    ⧉ Duplicate
+                                </Button>
+                                <Button
+                                    variant="danger"
+                                    size="sm"
+                                    onClick={() => onDelete(schedule.id)}
+                                    aria-label="Delete schedule"
+                                >
+                                    🗑 Delete
+                                </Button>
+                            </>
+                        )}
                     </div>
 
                     {/* ── Info section ────────────────────────────────────── */}
