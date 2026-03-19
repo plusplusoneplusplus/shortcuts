@@ -174,8 +174,9 @@ describe('SchedulePersistence', () => {
     describe('corrupt file handling', () => {
         it('skips invalid JSON files', () => {
             const persistence = new SchedulePersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
-            fs.writeFileSync(path.join(schedulesDir, 'repo-corrupt.json'), '{ not valid json !!!', 'utf-8');
+            const repoDir = path.join(dataDir, 'repos', 'corrupt');
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'schedules.json'), '{ not valid json !!!', 'utf-8');
 
             const loaded = persistence.loadAll();
             expect(loaded.size).toBe(0);
@@ -183,9 +184,10 @@ describe('SchedulePersistence', () => {
 
         it('skips files with unknown version', () => {
             const persistence = new SchedulePersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
+            const repoDir = path.join(dataDir, 'repos', 'unknown');
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(schedulesDir, 'repo-unknown.json'),
+                path.join(repoDir, 'schedules.json'),
                 JSON.stringify({ version: 99, schedules: [createSchedule()] }),
                 'utf-8'
             );
@@ -204,11 +206,11 @@ describe('SchedulePersistence', () => {
             const persistence = new SchedulePersistence(dataDir);
             persistence.saveRepo('repo-atomic', [createSchedule()]);
 
-            const schedulesDir = path.join(dataDir, 'schedules');
-            const tmpFiles = fs.readdirSync(schedulesDir).filter(f => f.endsWith('.tmp'));
+            const repoDir = path.join(dataDir, 'repos', 'repo-atomic');
+            const tmpFiles = fs.readdirSync(repoDir).filter(f => f.endsWith('.tmp'));
             expect(tmpFiles).toHaveLength(0);
-            const repoFiles = fs.readdirSync(schedulesDir).filter(f => f.startsWith('repo-') && f.endsWith('.json'));
-            expect(repoFiles.length).toBeGreaterThan(0);
+            const scheduleFiles = fs.readdirSync(repoDir).filter(f => f === 'schedules.json');
+            expect(scheduleFiles.length).toBeGreaterThan(0);
         });
     });
 
@@ -255,13 +257,25 @@ describe('SchedulePersistence', () => {
     // ========================================================================
 
     describe('directory creation', () => {
-        it('creates schedules directory if it does not exist', () => {
+        it('does not eagerly create directories in constructor', () => {
             const freshDir = createTempDir();
-            const schedulesDir = path.join(freshDir, 'schedules');
-            expect(fs.existsSync(schedulesDir)).toBe(false);
+            const reposDir = path.join(freshDir, 'repos');
+            expect(fs.existsSync(reposDir)).toBe(false);
 
+            new SchedulePersistence(freshDir);
+            expect(fs.existsSync(reposDir)).toBe(false);
+
+            cleanupDir(freshDir);
+        });
+
+        it('creates repo directory on first saveRepo call', () => {
+            const freshDir = createTempDir();
             const persistence = new SchedulePersistence(freshDir);
-            expect(fs.existsSync(schedulesDir)).toBe(true);
+            persistence.saveRepo('new-repo', [createSchedule()]);
+
+            const repoDir = path.join(freshDir, 'repos', 'new-repo');
+            expect(fs.existsSync(repoDir)).toBe(true);
+            expect(fs.existsSync(path.join(repoDir, 'schedules.json'))).toBe(true);
 
             cleanupDir(freshDir);
         });
@@ -274,7 +288,8 @@ describe('SchedulePersistence', () => {
     describe('version migration', () => {
         it('loads v1 files and back-fills targetType: prompt on all entries', () => {
             const persistence = new SchedulePersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
+            const repoDir = path.join(dataDir, 'repos', 'repo-v1');
+            fs.mkdirSync(repoDir, { recursive: true });
             const v1State = {
                 version: 1,
                 savedAt: '2026-01-01T00:00:00Z',
@@ -285,7 +300,7 @@ describe('SchedulePersistence', () => {
                 ],
             };
             fs.writeFileSync(
-                path.join(schedulesDir, 'repo-repo-v1.json'),
+                path.join(repoDir, 'schedules.json'),
                 JSON.stringify(v1State),
                 'utf-8'
             );
@@ -300,7 +315,8 @@ describe('SchedulePersistence', () => {
 
         it('loads v1 files and back-fills mode: autopilot on all entries', () => {
             const persistence = new SchedulePersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
+            const repoDir = path.join(dataDir, 'repos', 'repo-v1-mode');
+            fs.mkdirSync(repoDir, { recursive: true });
             const v1State = {
                 version: 1,
                 savedAt: '2026-01-01T00:00:00Z',
@@ -310,7 +326,7 @@ describe('SchedulePersistence', () => {
                 ],
             };
             fs.writeFileSync(
-                path.join(schedulesDir, 'repo-repo-v1-mode.json'),
+                path.join(repoDir, 'schedules.json'),
                 JSON.stringify(v1State),
                 'utf-8'
             );
@@ -322,7 +338,8 @@ describe('SchedulePersistence', () => {
 
         it('loads v2 files and back-fills mode: autopilot on all entries', () => {
             const persistence = new SchedulePersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
+            const repoDir = path.join(dataDir, 'repos', 'repo-v2-mode');
+            fs.mkdirSync(repoDir, { recursive: true });
             const v2State = {
                 version: 2,
                 savedAt: '2026-01-01T00:00:00Z',
@@ -333,7 +350,7 @@ describe('SchedulePersistence', () => {
                 ],
             };
             fs.writeFileSync(
-                path.join(schedulesDir, 'repo-repo-v2-mode.json'),
+                path.join(repoDir, 'schedules.json'),
                 JSON.stringify(v2State),
                 'utf-8'
             );
@@ -347,7 +364,8 @@ describe('SchedulePersistence', () => {
 
         it('does not overwrite existing mode field during v2 migration', () => {
             const persistence = new SchedulePersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
+            const repoDir = path.join(dataDir, 'repos', 'repo-v2-existing-mode');
+            fs.mkdirSync(repoDir, { recursive: true });
             const v2State = {
                 version: 2,
                 savedAt: '2026-01-01T00:00:00Z',
@@ -357,7 +375,7 @@ describe('SchedulePersistence', () => {
                 ],
             };
             fs.writeFileSync(
-                path.join(schedulesDir, 'repo-repo-v2-existing-mode.json'),
+                path.join(repoDir, 'schedules.json'),
                 JSON.stringify(v2State),
                 'utf-8'
             );
@@ -369,9 +387,10 @@ describe('SchedulePersistence', () => {
 
         it('skips files with unknown future version (e.g. 99)', () => {
             const persistence = new SchedulePersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
+            const repoDir = path.join(dataDir, 'repos', 'future');
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(schedulesDir, 'repo-future.json'),
+                path.join(repoDir, 'schedules.json'),
                 JSON.stringify({ version: 99, repoId: 'repo-future', schedules: [createSchedule()] }),
                 'utf-8'
             );

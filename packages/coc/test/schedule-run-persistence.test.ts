@@ -120,9 +120,10 @@ describe('ScheduleRunPersistence', () => {
             persistence.save('repo_a', [runA]);
             persistence.save('repo_b', [runB]);
 
-            const schedulesDir = path.join(dataDir, 'schedules');
-            const runFiles = fs.readdirSync(schedulesDir).filter(f => f.startsWith('runs-'));
-            expect(runFiles).toHaveLength(2);
+            const repoDirA = path.join(dataDir, 'repos', 'repo_a');
+            const repoDirB = path.join(dataDir, 'repos', 'repo_b');
+            expect(fs.existsSync(path.join(repoDirA, 'schedule-runs.json'))).toBe(true);
+            expect(fs.existsSync(path.join(repoDirB, 'schedule-runs.json'))).toBe(true);
 
             const loaded = persistence.loadAll();
             expect(loaded.get('sch_1')![0].id).toBe('run_a');
@@ -229,7 +230,7 @@ describe('ScheduleRunPersistence', () => {
             const persistence = new ScheduleRunPersistence(dataDir);
             persistence.save('repo_del', [createRun()]);
 
-            const filePath = path.join(dataDir, 'schedules', 'runs-repo_del.json');
+            const filePath = path.join(dataDir, 'repos', 'repo_del', 'schedule-runs.json');
             expect(fs.existsSync(filePath)).toBe(true);
 
             persistence.deleteRepo('repo_del');
@@ -249,16 +250,18 @@ describe('ScheduleRunPersistence', () => {
     describe('corrupt file handling', () => {
         it('returns [] for corrupt JSON on load()', () => {
             const persistence = new ScheduleRunPersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
-            fs.writeFileSync(path.join(schedulesDir, 'runs-corrupt.json'), '{ not valid !!!', 'utf-8');
+            const repoDir = path.join(dataDir, 'repos', 'corrupt');
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'schedule-runs.json'), '{ not valid !!!', 'utf-8');
 
             expect(persistence.load('corrupt')).toEqual([]);
         });
 
         it('skips corrupt files in loadAll()', () => {
             const persistence = new ScheduleRunPersistence(dataDir);
-            const schedulesDir = path.join(dataDir, 'schedules');
-            fs.writeFileSync(path.join(schedulesDir, 'runs-corrupt2.json'), '{ broken', 'utf-8');
+            const corruptDir = path.join(dataDir, 'repos', 'corrupt2');
+            fs.mkdirSync(corruptDir, { recursive: true });
+            fs.writeFileSync(path.join(corruptDir, 'schedule-runs.json'), '{ broken', 'utf-8');
             persistence.save('repo_good', [createRun({ id: 'run_good', scheduleId: 'sch_good' })]);
 
             const loaded = persistence.loadAll();
@@ -275,8 +278,8 @@ describe('ScheduleRunPersistence', () => {
             const persistence = new ScheduleRunPersistence(dataDir);
             persistence.save('repo_atomic', [createRun()]);
 
-            const schedulesDir = path.join(dataDir, 'schedules');
-            const tmpFiles = fs.readdirSync(schedulesDir).filter(f => f.endsWith('.tmp'));
+            const repoDir = path.join(dataDir, 'repos', 'repo_atomic');
+            const tmpFiles = fs.readdirSync(repoDir).filter(f => f.endsWith('.tmp'));
             expect(tmpFiles).toHaveLength(0);
         });
     });
@@ -290,7 +293,7 @@ describe('ScheduleRunPersistence', () => {
             const persistence = new ScheduleRunPersistence(dataDir);
             persistence.save('repo_fmt', [createRun()]);
 
-            const filePath = path.join(dataDir, 'schedules', 'runs-repo_fmt.json');
+            const filePath = path.join(dataDir, 'repos', 'repo_fmt', 'schedule-runs.json');
             const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(raw.version).toBe(1);
             expect(raw.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -304,13 +307,25 @@ describe('ScheduleRunPersistence', () => {
     // ========================================================================
 
     describe('directory creation', () => {
-        it('creates schedules directory if it does not exist', () => {
+        it('does not eagerly create directories in constructor', () => {
             const freshDir = createTempDir();
-            const schedulesDir = path.join(freshDir, 'schedules');
-            expect(fs.existsSync(schedulesDir)).toBe(false);
+            const reposDir = path.join(freshDir, 'repos');
+            expect(fs.existsSync(reposDir)).toBe(false);
 
+            new ScheduleRunPersistence(freshDir);
+            expect(fs.existsSync(reposDir)).toBe(false);
+
+            cleanupDir(freshDir);
+        });
+
+        it('creates repo directory on first save call', () => {
+            const freshDir = createTempDir();
             const persistence = new ScheduleRunPersistence(freshDir);
-            expect(fs.existsSync(schedulesDir)).toBe(true);
+            persistence.save('new-repo', [createRun()]);
+
+            const repoDir = path.join(freshDir, 'repos', 'new-repo');
+            expect(fs.existsSync(repoDir)).toBe(true);
+            expect(fs.existsSync(path.join(repoDir, 'schedule-runs.json'))).toBe(true);
 
             cleanupDir(freshDir);
         });

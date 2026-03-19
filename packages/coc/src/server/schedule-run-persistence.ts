@@ -5,14 +5,14 @@
  * Uses the same atomic-write + per-repo file pattern as SchedulePersistence.
  *
  * Storage layout:
- *   ~/.coc/schedules/runs-<repoId>.json
+ *   ~/.coc/repos/<repoId>/schedule-runs.json
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { atomicWriteJson } from '@plusplusoneplusplus/coc-server';
+import { atomicWriteJson, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
 import type { ScheduleRunRecord } from './schedule-manager';
 
 // ============================================================================
@@ -33,15 +33,12 @@ const MAX_RUNS_DEFAULT = 100;
 // ============================================================================
 
 export class ScheduleRunPersistence {
-    private readonly schedulesDir: string;
+    private readonly dataDir: string;
     private readonly maxRuns: number;
 
     constructor(dataDir: string, maxRuns: number = MAX_RUNS_DEFAULT) {
-        this.schedulesDir = path.join(dataDir, 'schedules');
+        this.dataDir = dataDir;
         this.maxRuns = maxRuns;
-        if (!fs.existsSync(this.schedulesDir)) {
-            fs.mkdirSync(this.schedulesDir, { recursive: true });
-        }
     }
 
     /**
@@ -64,7 +61,7 @@ export class ScheduleRunPersistence {
             repoId,
             runs: toSave,
         };
-        const filePath = path.join(this.schedulesDir, `runs-${repoId}.json`);
+        const filePath = getRepoDataPath(this.dataDir, repoId, 'schedule-runs.json');
         atomicWriteJson(filePath, state);
     }
 
@@ -72,7 +69,7 @@ export class ScheduleRunPersistence {
      * Load runs for a specific repo. Returns [] if missing or corrupt.
      */
     load(repoId: string): ScheduleRunRecord[] {
-        const filePath = path.join(this.schedulesDir, `runs-${repoId}.json`);
+        const filePath = getRepoDataPath(this.dataDir, repoId, 'schedule-runs.json');
         if (!fs.existsSync(filePath)) return [];
         try {
             const raw = fs.readFileSync(filePath, 'utf-8');
@@ -91,13 +88,16 @@ export class ScheduleRunPersistence {
      */
     loadAll(): Map<string, ScheduleRunRecord[]> {
         const result = new Map<string, ScheduleRunRecord[]>();
-        if (!fs.existsSync(this.schedulesDir)) return result;
+        const reposRoot = path.join(this.dataDir, 'repos');
+        if (!fs.existsSync(reposRoot)) return result;
 
-        const files = fs.readdirSync(this.schedulesDir)
-            .filter(f => f.startsWith('runs-') && f.endsWith('.json'));
+        const repoDirs = fs.readdirSync(reposRoot, { withFileTypes: true })
+            .filter(d => d.isDirectory());
 
-        for (const file of files) {
-            const filePath = path.join(this.schedulesDir, file);
+        for (const dir of repoDirs) {
+            const repoId = dir.name;
+            const filePath = getRepoDataPath(this.dataDir, repoId, 'schedule-runs.json');
+            if (!fs.existsSync(filePath)) continue;
             try {
                 const raw = fs.readFileSync(filePath, 'utf-8');
                 const state: PersistedRunHistory = JSON.parse(raw);
@@ -110,7 +110,7 @@ export class ScheduleRunPersistence {
                     result.get(run.scheduleId)!.push(run);
                 }
             } catch (err) {
-                process.stderr.write(`[ScheduleRunPersistence] Failed to read ${file}: ${err}\n`);
+                process.stderr.write(`[ScheduleRunPersistence] Failed to read ${filePath}: ${err}\n`);
             }
         }
 
@@ -121,7 +121,7 @@ export class ScheduleRunPersistence {
      * Delete the run history file for a repo.
      */
     deleteRepo(repoId: string): void {
-        const filePath = path.join(this.schedulesDir, `runs-${repoId}.json`);
+        const filePath = getRepoDataPath(this.dataDir, repoId, 'schedule-runs.json');
         try {
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);

@@ -5,14 +5,14 @@
  * Uses the same atomic-write + per-repo file pattern as QueuePersistence.
  *
  * Storage layout:
- *   ~/.coc/schedules/repo-<repoId>.json
+ *   ~/.coc/repos/<repoId>/schedules.json
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { atomicWriteJson } from '@plusplusoneplusplus/coc-server';
+import { atomicWriteJson, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
 import type { ScheduleEntry, ScheduleRunRecord } from './schedule-manager';
 
 // ============================================================================
@@ -34,7 +34,7 @@ const CURRENT_VERSION = 3;
 
 /** Get the per-repo schedule file path. */
 export function getRepoScheduleFilePath(dataDir: string, repoId: string): string {
-    return path.join(dataDir, 'schedules', `repo-${repoId}.json`);
+    return getRepoDataPath(dataDir, repoId, 'schedules.json');
 }
 
 // ============================================================================
@@ -43,14 +43,9 @@ export function getRepoScheduleFilePath(dataDir: string, repoId: string): string
 
 export class SchedulePersistence {
     private readonly dataDir: string;
-    private readonly schedulesDir: string;
 
     constructor(dataDir: string) {
         this.dataDir = dataDir;
-        this.schedulesDir = path.join(dataDir, 'schedules');
-        if (!fs.existsSync(this.schedulesDir)) {
-            fs.mkdirSync(this.schedulesDir, { recursive: true });
-        }
     }
 
     /**
@@ -59,15 +54,16 @@ export class SchedulePersistence {
      */
     loadAll(): Map<string, ScheduleEntry[]> {
         const result = new Map<string, ScheduleEntry[]>();
-        if (!fs.existsSync(this.schedulesDir)) {
-            return result;
-        }
+        const reposRoot = path.join(this.dataDir, 'repos');
+        if (!fs.existsSync(reposRoot)) return result;
 
-        const files = fs.readdirSync(this.schedulesDir)
-            .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+        const repoDirs = fs.readdirSync(reposRoot, { withFileTypes: true })
+            .filter(d => d.isDirectory());
 
-        for (const file of files) {
-            const filePath = path.join(this.schedulesDir, file);
+        for (const dir of repoDirs) {
+            const repoId = dir.name;
+            const filePath = getRepoDataPath(this.dataDir, repoId, 'schedules.json');
+            if (!fs.existsSync(filePath)) continue;
             try {
                 const raw = fs.readFileSync(filePath, 'utf-8');
                 const state: PersistedScheduleState = JSON.parse(raw);
@@ -90,7 +86,7 @@ export class SchedulePersistence {
                     // treat as current
                 } else if (state.version !== CURRENT_VERSION) {
                     process.stderr.write(
-                        `[SchedulePersistence] Unknown version ${state.version} in ${file} — skipping\n`
+                        `[SchedulePersistence] Unknown version ${state.version} in ${filePath} — skipping\n`
                     );
                     continue;
                 }
@@ -99,7 +95,7 @@ export class SchedulePersistence {
                 }
             } catch (err) {
                 process.stderr.write(
-                    `[SchedulePersistence] Failed to read ${file}: ${err}\n`
+                    `[SchedulePersistence] Failed to read ${filePath}: ${err}\n`
                 );
             }
         }
