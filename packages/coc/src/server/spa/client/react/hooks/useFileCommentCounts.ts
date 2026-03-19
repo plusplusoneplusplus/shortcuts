@@ -8,8 +8,8 @@
  * Automatically refreshes when wsId, oldRef, or newRef change.
  */
 
-import { useState, useEffect } from 'react';
-import { getApiBase } from '../utils/config';
+import { useState, useEffect, useCallback } from 'react';
+import { getApiBase, getWsPath } from '../utils/config';
 
 export function useFileCommentCounts(
     wsId: string,
@@ -18,7 +18,7 @@ export function useFileCommentCounts(
 ): Map<string, number> {
     const [counts, setCounts] = useState<Map<string, number>>(new Map());
 
-    useEffect(() => {
+    const fetchCounts = useCallback(() => {
         if (!wsId || !oldRef || !newRef) {
             setCounts(new Map());
             return;
@@ -37,6 +37,26 @@ export function useFileCommentCounts(
                 // Fail silently — comment counts are non-critical
             });
     }, [wsId, oldRef, newRef]);
+
+    useEffect(() => {
+        fetchCounts();
+    }, [fetchCounts]);
+
+    // WebSocket subscription for instant refresh on diff-comment-updated
+    useEffect(() => {
+        if (!wsId) return;
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        ws.addEventListener('message', (event) => {
+            try {
+                const msg = JSON.parse(event.data as string) as { type: string; workspaceId?: string };
+                if (msg.type === 'diff-comment-updated' && msg.workspaceId === wsId) {
+                    fetchCounts();
+                }
+            } catch { /* ignore parse errors */ }
+        });
+        return () => { ws.close(); };
+    }, [wsId, fetchCounts]);
 
     return counts;
 }

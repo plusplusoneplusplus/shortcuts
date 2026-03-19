@@ -8,8 +8,8 @@
  * Automatically refreshes when wsId or the set of commit hashes changes.
  */
 
-import { useState, useEffect } from 'react';
-import { getApiBase } from '../utils/config';
+import { useState, useEffect, useCallback } from 'react';
+import { getApiBase, getWsPath } from '../utils/config';
 
 export function useCommitCommentTotals(
     wsId: string,
@@ -21,8 +21,8 @@ export function useCommitCommentTotals(
     // set of commits actually changes.
     const commitsKey = commitHashes.join(',');
 
-    useEffect(() => {
-        if (!wsId || commitHashes.length === 0) {
+    const fetchTotals = useCallback(() => {
+        if (!wsId || !commitsKey) {
             setTotals(new Map());
             return;
         }
@@ -39,8 +39,32 @@ export function useCommitCommentTotals(
             .catch(() => {
                 // Fail silently — comment totals are non-critical
             });
+    }, [wsId, commitsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (commitHashes.length === 0) {
+            setTotals(new Map());
+            return;
+        }
+        fetchTotals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [wsId, commitsKey]);
+    }, [fetchTotals]);
+
+    // WebSocket subscription for instant refresh on diff-comment-updated
+    useEffect(() => {
+        if (!wsId) return;
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${protocol}://${window.location.host}${getWsPath()}`);
+        ws.addEventListener('message', (event) => {
+            try {
+                const msg = JSON.parse(event.data as string) as { type: string; workspaceId?: string };
+                if (msg.type === 'diff-comment-updated' && msg.workspaceId === wsId) {
+                    fetchTotals();
+                }
+            } catch { /* ignore parse errors */ }
+        });
+        return () => { ws.close(); };
+    }, [wsId, fetchTotals]);
 
     return totals;
 }
