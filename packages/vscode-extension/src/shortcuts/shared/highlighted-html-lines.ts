@@ -10,7 +10,7 @@
  * fragment tag-balanced by temporarily closing and reopening open <span> tags.
  */
 
-function normalizeLineEndings(text: string): string {
+export function normalizeLineEndings(text: string): string {
     return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 

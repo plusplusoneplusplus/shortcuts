@@ -5,6 +5,8 @@
  * and extension-side fallback handling.
  */
 
+import { normalizeLineEndings } from '../shared';
+
 type AICommandMode = 'comment' | 'interactive' | 'background' | 'queued';
 
 interface AskAIContextLike {
@@ -24,10 +26,6 @@ interface AskAIContextLike {
 interface HeadingInfo {
     line: number;
     text: string;
-}
-
-function normalizeLineEndings(content: string): string {
-    return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 function parseHeadings(lines: string[]): HeadingInfo[] {

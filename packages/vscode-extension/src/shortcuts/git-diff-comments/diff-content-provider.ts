@@ -10,7 +10,7 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getExtensionLogger, LogCategory } from '../shared';
+import { getExtensionLogger, LogCategory, normalizeLineEndings } from '../shared';
 import { DiffGitContext } from './types';
 
 /**
@@ -25,14 +25,6 @@ export interface DiffContentResult {
     isBinary: boolean;
     /** Error message if failed */
     error?: string;
-}
-
-/**
- * Normalize line endings to LF (Unix-style)
- * This prevents CRLF vs LF differences from causing entire files to appear as changed
- */
-function normalizeLineEndings(content: string): string {
-    return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 /**
