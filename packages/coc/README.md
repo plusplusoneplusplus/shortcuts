@@ -95,7 +95,7 @@ CoC stores task data and comments locally:
 
 - **Task Results**: Managed by the pipeline execution engine
 - **Comments**: `{dataDir}/tasks-comments/{workspaceId}/{sha256(filePath)}.json`
-- **Processes**: `~/.coc/processes.json` (when using `coc serve`)
+- **Processes**: `~/.coc/repos/<workspaceId>/processes/` (when using `coc serve`; one JSON file per process plus `index.json`)
 - **Configuration**: `~/.coc.yaml`
 
 ## Exit Codes

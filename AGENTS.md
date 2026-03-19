@@ -98,7 +98,7 @@ CLI that generates comprehensive wikis via a six-phase AI pipeline. Consumes `fo
 
 Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/forge`.
 
-**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Pipeline types (YAML config types, CSV reader, template engine, filters), Process store (`FileProcessStore` — JSON persistence, atomic writes, 500-process retention), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
+**Key modules:** Logger (pluggable), Errors (`PipelineCoreError` with codes), Runtime policies (timeout/retry/cancellation via `runWithPolicy`), Task queue (`TaskQueueManager` + `QueueExecutor`), AI SDK (`CopilotSDKService`, session-per-request, MCP config, model registry), Workflow engine (DAG executor, compiler, node executors, concurrency limiter, result adapter), Map-Reduce (`MapReduceExecutor`, splitters, reducers), Pipeline types (YAML config types, CSV reader, template engine, filters), Process store (`FileProcessStore` — per-repo directory of JSON files under `~/.coc/repos/<workspaceId>/processes/`, atomic writes, 500-process cap, cross-workspace lookup via scanning `repos/*/processes/index.json`), Git CLI (`@plusplusoneplusplus/forge/git` subpath), Editor (anchor, parsing, rendering), Tasks (scanner, parser, operations), Memory (see below), Templates (commit replication), ADO (Azure DevOps work items + PRs), Skills (scanner, installer, bundled provider), Utilities (file I/O, glob, HTTP, text matching, AI response parsing, template engine).
 
 **Workflow execution:** `compileToWorkflow(yamlContent)` converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig`, then `executeWorkflow(config, options)` runs the DAG. Use `flattenWorkflowResult(result)` for flat display output.
 
@@ -112,7 +112,6 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplus
 
 **Storage layout — `~/.coc/` (top-level, global):**
 - `config.yaml` — server configuration
-- `processes.json` — cross-repo process store (500-process retention)
 - `preferences.json` — global UI preferences (theme, etc.)
 - `memory/` — cross-repo and system memory (see Memory System section)
 - `skills/` — global skill definitions
@@ -124,8 +123,9 @@ HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplus
 - `git-ops.json` — background git operations
 - `preferences.json` — per-repo UI preferences
 - `tasks/` — task and plan files
+- `processes/` — per-repo process store (`index.json` + one JSON file per process, 500-process cap)
 
-Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `@plusplusoneplusplus/coc-server`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
+Use `getRepoDataPath(dataDir, workspaceId, filename)`(exported from `@plusplusoneplusplus/coc-server`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
 
 **Convention — repo-scoped data:** All runtime data that is specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `@plusplusoneplusplus/coc-server` to resolve the path.
 
