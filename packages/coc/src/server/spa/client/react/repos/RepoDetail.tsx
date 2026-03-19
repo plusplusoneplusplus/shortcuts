@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import type { AppContextState } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { Button, cn } from '../shared';
 import { BottomSheet } from '../shared/BottomSheet';
@@ -47,6 +48,22 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'copilot', label: 'Copilot', shortcut: 'Alt+C' },
 ];
+
+function getTabSuffix(tab: RepoSubTab, state: AppContextState): string {
+    if (tab === 'info') return '';
+    if (tab === 'copilot') return '/copilot/' + state.copilotSection;
+    if (tab === 'git') {
+        if (state.selectedGitCommitHash) {
+            const hash = encodeURIComponent(state.selectedGitCommitHash);
+            const file = state.selectedGitFilePath
+                ? '/' + encodeURIComponent(state.selectedGitFilePath)
+                : '';
+            return '/git/' + hash + file;
+        }
+        return '/git';
+    }
+    return '/' + tab;
+}
 
 export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const { state, dispatch } = useApp();
@@ -167,15 +184,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
 
     const switchSubTab = (tab: RepoSubTab) => {
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
-        if (tab !== 'git') {
-            dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null });
-        }
-        // Update hash — copilot tab preserves the active section as a 4th segment
-        let suffix = tab !== 'info' ? '/' + tab : '';
-        if (tab === 'copilot') {
-            suffix = '/copilot/' + state.copilotSection;
-        }
-        location.hash = '#repos/' + encodeURIComponent(ws.id) + suffix;
+        location.hash = '#repos/' + encodeURIComponent(ws.id) + getTabSuffix(tab, state);
     };
 
     const handleOpenGenerateDialog = useCallback((targetFolder?: string) => {

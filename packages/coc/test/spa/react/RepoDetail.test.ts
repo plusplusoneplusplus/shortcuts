@@ -564,23 +564,34 @@ describe('RepoDetail Wiki badge wiring', () => {
 });
 
 describe('RepoDetail switchSubTab git deep-link', () => {
-    it('dispatches SET_GIT_COMMIT_HASH with null when switching away from git', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null })");
+    it('does NOT dispatch SET_GIT_COMMIT_HASH when switching tabs (state is preserved)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: null })");
     });
 
-    it('only clears git commit hash when switching to non-git tab', () => {
-        const switchFnStart = REPO_DETAIL_SOURCE.indexOf('const switchSubTab');
-        const switchFnBody = REPO_DETAIL_SOURCE.slice(switchFnStart, switchFnStart + 400);
-        expect(switchFnBody).toContain("tab !== 'git'");
+    it('uses getTabSuffix to build the URL suffix', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('getTabSuffix(tab, state)');
     });
 
-    it('does not clear git commit hash when switching to git tab', () => {
-        const switchFnStart = REPO_DETAIL_SOURCE.indexOf('const switchSubTab');
-        const switchFnBody = REPO_DETAIL_SOURCE.slice(switchFnStart, switchFnStart + 400);
-        expect(switchFnBody).toContain("if (tab !== 'git')");
-        const hashDispatchIdx = switchFnBody.indexOf("SET_GIT_COMMIT_HASH");
-        const ifIdx = switchFnBody.indexOf("if (tab !== 'git')");
-        expect(hashDispatchIdx).toBeGreaterThan(ifIdx);
+    it('getTabSuffix restores commit hash in URL when git tab has a selected commit', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('state.selectedGitCommitHash');
+        expect(REPO_DETAIL_SOURCE).toContain("return '/git/' + hash + file");
+    });
+
+    it('getTabSuffix includes file path in URL when git tab has a selected file', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('state.selectedGitFilePath');
+        expect(REPO_DETAIL_SOURCE).toContain("encodeURIComponent(state.selectedGitFilePath)");
+    });
+
+    it('getTabSuffix returns /git when no commit is selected', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("return '/git'");
+    });
+
+    it('getTabSuffix preserves copilot section in URL', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("return '/copilot/' + state.copilotSection");
+    });
+
+    it('getTabSuffix returns empty string for info tab', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("if (tab === 'info') return ''");
     });
 });
 
