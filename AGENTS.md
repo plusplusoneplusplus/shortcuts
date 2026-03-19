@@ -14,7 +14,7 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 
 | Product | Location | Runtime | Description |
 |---------|----------|---------|-------------|
-| **VS Code Extension** | `src/` | VS Code | Markdown review, git diff review, code review, shortcut groups, global notes, tasks viewer, YAML workflows |
+| **VS Code Extension** | `packages/vscode-extension/` | VS Code | Markdown review, git diff review, code review, shortcut groups, global notes, tasks viewer, YAML workflows — **FROZEN: do not modify** |
 | **CoC CLI** | `packages/coc/` | Node.js | CLI for executing YAML-based AI workflows (`coc run\|validate\|list\|serve\|wipe-data`) |
 | **Deep Wiki** | `packages/deep-wiki/` | Node.js | CLI that auto-generates comprehensive wikis for codebases (`deep-wiki seeds\|discover\|generate\|theme\|init`) |
 
@@ -23,7 +23,7 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 | **forge** | `packages/forge/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session-per-request), DAG workflow engine (executeWorkflow, compileToWorkflow), task queue, runtime policies, process store, git CLI, utilities |
 | **coc-server** | `packages/coc-server/` | HTTP/WebSocket server: REST API, SSE streaming, SPA dashboard, wiki serving, process store at `~/.coc/`; per-repo data at `~/.coc/repos/<workspaceId>/` |
 
-**Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `src/shortcuts/ai-service/` = VS Code UI wrapper.
+**Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `packages/vscode-extension/src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `packages/vscode-extension/src/shortcuts/ai-service/` = VS Code UI wrapper. **`packages/vscode-extension/` is frozen — do not read, edit, or reason about its code.**
 
 ## Build & Test
 
@@ -34,9 +34,11 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 - **Debug CoC:** `cd packages/coc && npm run build && npm link && cd ../..` then `coc run <path>` or `coc serve --no-open`
 - **Debug Deep Wiki:** `cd packages/deep-wiki && npm run build && npm link && cd ../..` then `deep-wiki generate <repo>`
 
-## VS Code Extension (`src/`)
+## VS Code Extension (`packages/vscode-extension/`) — FROZEN
 
-Entry point: `src/extension.ts`. Feature modules under `src/shortcuts/`:
+> ⚠️ **This folder is frozen and no longer actively developed. AI agents must NOT read, edit, or reason about code in `packages/vscode-extension/`. It is not an npm workspace.**
+
+Entry point: `packages/vscode-extension/src/extension.ts`. Feature modules under `packages/vscode-extension/src/shortcuts/`:
 
 - **markdown-comments** — Custom Editor API for inline markdown review. Comments in `.vscode/comments/<hash>.json`.
 - **git-diff-comments** — Git diff review with comment categories and resolve/reopen workflow.

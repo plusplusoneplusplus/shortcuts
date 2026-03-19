@@ -7,7 +7,7 @@
       "ES2020"
     ],
     "sourceMap": true,
-    "rootDir": "src",
+    "rootDir": "packages/vscode-extension/src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -19,15 +19,15 @@
     "inlineSources": false
   },
   "include": [
-    "src/**/*"
+    "packages/vscode-extension/src/**/*"
   ],
   "exclude": [
     "node_modules",
     ".vscode-test",
-    "src/test/fixtures/**/*",
-    "src/shortcuts/markdown-comments/webview-scripts/**/*",
-    "src/shortcuts/markdown-comments/webview-logic/**/*",
-    "src/shortcuts/git-diff-comments/webview-scripts/**/*",
-    "src/shortcuts/shared/webview/**/*"
+    "packages/vscode-extension/src/test/fixtures/**/*",
+    "packages/vscode-extension/src/shortcuts/markdown-comments/webview-scripts/**/*",
+    "packages/vscode-extension/src/shortcuts/markdown-comments/webview-logic/**/*",
+    "packages/vscode-extension/src/shortcuts/git-diff-comments/webview-scripts/**/*",
+    "packages/vscode-extension/src/shortcuts/shared/webview/**/*"
   ]
 }

@@ -10,7 +10,7 @@
       "DOM.Iterable"
     ],
     "sourceMap": true,
-    "rootDir": "src",
+    "rootDir": "packages/vscode-extension/src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -22,13 +22,13 @@
     "inlineSources": false
   },
   "include": [
-    "src/shortcuts/markdown-comments/webview-scripts/**/*",
-    "src/shortcuts/markdown-comments/webview-logic/**/*",
-    "src/shortcuts/markdown-comments/types.ts",
-    "src/shortcuts/markdown-comments/webview-utils.ts",
-    "src/shortcuts/git-diff-comments/webview-scripts/**/*",
-    "src/shortcuts/git-diff-comments/types.ts",
-    "src/shortcuts/shared/webview/**/*"
+    "packages/vscode-extension/src/shortcuts/markdown-comments/webview-scripts/**/*",
+    "packages/vscode-extension/src/shortcuts/markdown-comments/webview-logic/**/*",
+    "packages/vscode-extension/src/shortcuts/markdown-comments/types.ts",
+    "packages/vscode-extension/src/shortcuts/markdown-comments/webview-utils.ts",
+    "packages/vscode-extension/src/shortcuts/git-diff-comments/webview-scripts/**/*",
+    "packages/vscode-extension/src/shortcuts/git-diff-comments/types.ts",
+    "packages/vscode-extension/src/shortcuts/shared/webview/**/*"
   ],
   "exclude": [
     "node_modules"

@@ -14,7 +14,7 @@ const extensionConfig = {
   target: 'node', // VSCode extensions run in a Node.js-context 📖 -> https://webpack.js.org/configuration/node/
   mode: 'none', // this leaves the source code as close as possible to the original (when packaging we set this to 'production')
 
-  entry: './src/extension.ts', // the entry point of this extension, 📖 -> https://webpack.js.org/configuration/entry-context/
+  entry: './packages/vscode-extension/src/extension.ts', // the entry point of this extension, 📖 -> https://webpack.js.org/configuration/entry-context/
   output: {
     // the bundle is stored in the 'dist' folder (check package.json), 📖 -> https://webpack.js.org/configuration/output/
     path: path.resolve(__dirname, 'dist'),
@@ -34,7 +34,7 @@ const extensionConfig = {
     rules: [
       {
         test: /\.ts$/,
-        exclude: [/node_modules/, /src\/test/, /webview-scripts/, /webview-logic/],
+        exclude: [/node_modules/, /packages\/vscode-extension\/src\/test/, /webview-scripts/, /webview-logic/],
         use: [
           {
             loader: 'ts-loader',
@@ -76,7 +76,7 @@ const webviewConfig = {
   target: 'web', // Webview runs in a browser-like context
   mode: 'none',
 
-  entry: './src/shortcuts/markdown-comments/webview-scripts/main.ts',
+  entry: './packages/vscode-extension/src/shortcuts/markdown-comments/webview-scripts/main.ts',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'webview.js',
@@ -90,7 +90,7 @@ const webviewConfig = {
     rules: [
       {
         test: /\.ts$/,
-        exclude: [/node_modules/, /src\/test/],
+        exclude: [/node_modules/, /packages\/vscode-extension\/src\/test/],
         use: [
           {
             loader: 'ts-loader',
@@ -118,7 +118,7 @@ const diffWebviewConfig = {
   target: 'web', // Webview runs in a browser-like context
   mode: 'none',
 
-  entry: './src/shortcuts/git-diff-comments/webview-scripts/main.ts',
+  entry: './packages/vscode-extension/src/shortcuts/git-diff-comments/webview-scripts/main.ts',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'diff-webview.js',
@@ -132,7 +132,7 @@ const diffWebviewConfig = {
     rules: [
       {
         test: /\.ts$/,
-        exclude: [/node_modules/, /src\/test/],
+        exclude: [/node_modules/, /packages\/vscode-extension\/src\/test/],
         use: [
           {
             loader: 'ts-loader',
