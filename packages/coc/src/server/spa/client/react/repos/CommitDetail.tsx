@@ -15,6 +15,7 @@ import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
+import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
@@ -63,19 +64,15 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
-    // Commit-level comments (only fetched when !filePath)
-    const [allCommitComments, setAllCommitComments] = useState<DiffComment[]>([]);
-    const [allCommentsLoading, setAllCommentsLoading] = useState(false);
-
-    useEffect(() => {
-        if (filePath) return;
-        setAllCommentsLoading(true);
-        const params = new URLSearchParams({ oldRef: `${hash}^`, newRef: hash });
-        fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}?${params}`)
-            .then((data: { comments?: DiffComment[] }) => setAllCommitComments(data.comments ?? []))
-            .catch(() => setAllCommitComments([]))
-            .finally(() => setAllCommentsLoading(false));
-    }, [workspaceId, hash, filePath]);
+    // Commit-level comments (only active when !filePath)
+    const {
+        comments: allCommitComments,
+        loading: allCommentsLoading,
+        resolveComment: resolveCommitComment,
+        unresolveComment: unresolveCommitComment,
+        deleteComment: deleteCommitComment,
+        updateComment: updateCommitComment,
+    } = useAllCommitComments(filePath ? '' : workspaceId, filePath ? '' : hash);
 
     // Always fetch diff on mount / hash / filePath change
     useEffect(() => {
@@ -351,10 +348,22 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                         comments={allCommitComments}
                         loading={allCommentsLoading}
                         showFilePath
-                        onResolve={() => undefined}
-                        onUnresolve={() => undefined}
-                        onDelete={() => undefined}
-                        onEdit={() => undefined}
+                        onResolve={(id) => {
+                            const c = allCommitComments.find(x => x.id === id);
+                            if (c) void resolveCommitComment(c);
+                        }}
+                        onUnresolve={(id) => {
+                            const c = allCommitComments.find(x => x.id === id);
+                            if (c) void unresolveCommitComment(c);
+                        }}
+                        onDelete={(id) => {
+                            const c = allCommitComments.find(x => x.id === id);
+                            if (c) void deleteCommitComment(c);
+                        }}
+                        onEdit={(id, text) => {
+                            const c = allCommitComments.find(x => x.id === id);
+                            if (c) void updateCommitComment(c, { comment: text });
+                        }}
                         onAskAI={() => undefined}
                         onCommentClick={handleSidebarCommentClick}
                         data-testid="diff-comment-sidebar"

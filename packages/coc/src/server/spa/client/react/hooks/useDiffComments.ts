@@ -11,6 +11,7 @@ import { getApiBase, getWsPath } from '../utils/config';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../diff-comment-types';
 import type { DiffLine } from '../repos/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../utils/relocateDiffAnchor';
+import { computeStorageKey, buildDiffCommentUrl, patchDiffComment, deleteDiffCommentById } from '../utils/diffCommentApi';
 
 // ============================================================================
 // Request/Response Types
@@ -62,22 +63,8 @@ export interface UseDiffCommentsReturn {
 // Utilities
 // ============================================================================
 
-/**
- * Compute SHA-256 storage key for a diff context.
- * Mirrors DiffCommentsManager.hashContext on the server:
- *   working-tree → sha256(repositoryId + filePath + 'working-tree')
- *   normal diff  → sha256(repositoryId + oldRef + newRef + filePath)
- */
-async function computeStorageKey(ctx: DiffCommentContext): Promise<string> {
-    const input = ctx.newRef === 'working-tree'
-        ? ctx.repositoryId + ctx.filePath + 'working-tree'
-        : ctx.repositoryId + ctx.oldRef + ctx.newRef + ctx.filePath;
-    const data = new TextEncoder().encode(input);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-}
+// computeStorageKey, buildDiffCommentUrl, patchDiffComment, deleteDiffCommentById
+// are imported from ../utils/diffCommentApi
 
 /** Base collection URL used for GET (list) and POST (create). */
 function diffCommentsUrl(wsId: string, ctx: DiffCommentContext): string {
@@ -90,11 +77,8 @@ function diffCommentsUrl(wsId: string, ctx: DiffCommentContext): string {
     return `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}?${params}`;
 }
 
-/** Per-comment URL for PATCH / DELETE / ask-ai. */
-function diffCommentUrl(wsId: string, storageKey: string, commentId: string): string {
-    return `${getApiBase()}/diff-comments/${encodeURIComponent(wsId)}/${storageKey}/${encodeURIComponent(commentId)}`;
-}
-
+/** Per-comment URL for PATCH / DELETE / ask-ai — delegates to buildDiffCommentUrl from diffCommentApi. */
+// (kept for any remaining internal callers; prefer buildDiffCommentUrl directly)
 /** Poll a queued task until it completes or fails. Returns the task result. */
 async function pollTaskResult<T>(taskId: string, timeoutMs = 180_000): Promise<T> {
     const start = Date.now();
@@ -234,14 +218,7 @@ export function useDiffComments(
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         const storageKey = await computeStorageKey(ctx);
-        const res = await fetch(diffCommentUrl(wsId, storageKey, id), {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(req),
-        });
-        if (!res.ok) throw new Error('Failed to update diff comment');
-        const data = await res.json();
-        const comment: DiffComment = data.comment;
+        const comment = await patchDiffComment(wsId, storageKey, id, req);
         if (mountedRef.current) {
             setComments(prev => prev.map(c => c.id === id ? comment : c));
         }
@@ -256,8 +233,7 @@ export function useDiffComments(
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         const storageKey = await computeStorageKey(ctx);
-        const res = await fetch(diffCommentUrl(wsId, storageKey, id), { method: 'DELETE' });
-        if (!res.ok) throw new Error('Failed to delete diff comment');
+        await deleteDiffCommentById(wsId, storageKey, id);
         if (mountedRef.current) {
             setComments(prev => prev.filter(c => c.id !== id));
         }
@@ -288,7 +264,7 @@ export function useDiffComments(
         setAiErrors(prev => { const m = new Map(prev); m.delete(id); return m; });
         try {
             const storageKey = await computeStorageKey(ctx);
-            const url = diffCommentUrl(wsId, storageKey, id) + '/ask-ai';
+            const url = buildDiffCommentUrl(wsId, storageKey, id) + '/ask-ai';
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
