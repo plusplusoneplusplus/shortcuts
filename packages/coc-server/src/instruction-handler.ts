@@ -50,7 +50,7 @@ function parseMode(raw: string): InstructionMode | undefined {
     return VALID_MODES.has(raw as InstructionMode) ? (raw as InstructionMode) : undefined;
 }
 
-function invalidModeError(raw: string | undefined): ReturnType<typeof badRequest> {
+function invalidModeError(raw: string | undefined) {
     return badRequest(`Invalid mode '${raw}'. Valid values: base, ask, plan, autopilot`);
 }
 
