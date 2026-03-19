@@ -1,7 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as childProcess from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
+
+const execFileAsync = promisify(execFile);
 import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
 
 export interface RepoTreeServiceOptions {
@@ -172,6 +176,57 @@ export class RepoTreeService {
     private readonly maxEntries: number;
     private readonly dataDir: string;
 
+    private static rgAvailable: boolean | undefined;
+
+    private static async checkRipgrepAvailable(): Promise<boolean> {
+        if (RepoTreeService.rgAvailable !== undefined) return RepoTreeService.rgAvailable;
+        try {
+            await execFileAsync('rg', ['--version']);
+            RepoTreeService.rgAvailable = true;
+        } catch {
+            RepoTreeService.rgAvailable = false;
+        }
+        return RepoTreeService.rgAvailable;
+    }
+
+    private async listFilesWithRipgrep(
+        repoRoot: string,
+        options?: { showIgnored?: boolean; maxEntries?: number },
+    ): Promise<{ files: string[]; truncated: boolean } | null> {
+        const available = await RepoTreeService.checkRipgrepAvailable();
+        if (!available) return null;
+
+        const maxEntries = options?.maxEntries ?? 5000;
+        const args = ['--files', '--hidden'];
+        if (options?.showIgnored) args.push('--no-ignore');
+        args.push('--', repoRoot);
+
+        let stdout: string;
+        try {
+            const result = await execFileAsync('rg', args, {
+                encoding: 'utf-8',
+                maxBuffer: 50 * 1024 * 1024,
+            });
+            stdout = result.stdout;
+        } catch (err: any) {
+            // exit code 1 = no files found (valid empty result)
+            if (err.code === 1) {
+                return { files: [], truncated: false };
+            }
+            // exit code 2 or other = real error, fall back to existing walk
+            return null;
+        }
+
+        const allFiles = stdout
+            .split('\n')
+            .map((l: string) => l.trim())
+            .filter(Boolean)
+            .map((absPath: string) => path.relative(repoRoot, absPath).split(path.sep).join('/'));
+
+        const truncated = allFiles.length > maxEntries;
+        return { files: allFiles.slice(0, maxEntries), truncated };
+    }
+
     constructor(dataDir: string, options?: RepoTreeServiceOptions) {
         this.dataDir = dataDir;
         this.maxEntries = options?.maxEntries ?? 5000;
@@ -338,6 +393,16 @@ export class RepoTreeService {
         const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
         const absRoot = path.resolve(repoRoot, normalizedRel);
         assertInsideRepo(repoRoot, absRoot);
+
+        // Fast path: use ripgrep when listing the entire repo root
+        if (normalizedRel === '.' || normalizedRel === '') {
+            const rgResult = await this.listFilesWithRipgrep(absRoot, {
+                showIgnored: options?.showIgnored,
+                maxEntries: this.maxEntries,
+            });
+            if (rgResult) return rgResult;
+            // rg unavailable or errored — fall through to existing walk
+        }
 
         const files: string[] = [];
         const showIgnored = options?.showIgnored ?? false;
