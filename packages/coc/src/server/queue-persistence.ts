@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/forge';
-import { ImageBlobStore } from './image-blob-store';
+import { ImageBlobStore } from '@plusplusoneplusplus/coc-server';
 import { getRepoDataPath } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
