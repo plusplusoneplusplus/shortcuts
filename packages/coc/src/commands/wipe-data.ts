@@ -78,6 +78,9 @@ function printSummary(result: WipeResult, dryRun: boolean): void {
     printInfo(`  Workspaces:   ${verb} ${cyan(String(result.deletedWorkspaces))}`);
     printInfo(`  Wikis:        ${verb} ${cyan(String(result.deletedWikis))}`);
     printInfo(`  Queue files:  ${verb} ${cyan(String(result.deletedQueues))}`);
+    printInfo(`  Schedules:    ${verb} ${cyan(String(result.deletedSchedules))}`);
+    printInfo(`  Git ops:      ${verb} ${cyan(String(result.deletedGitOps))}`);
+    printInfo(`  Repo prefs:   ${verb} ${cyan(String(result.deletedRepoPreferences))}`);
     printInfo(`  Preferences:  ${result.deletedPreferences ? verb : 'None to delete'}`);
 
     if (result.deletedWikiDirs.length > 0) {

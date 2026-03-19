@@ -28,7 +28,9 @@ export interface WipeResult {
     deletedWorkspaces: number;
     deletedWikis: number;
     deletedQueues: number;
-    deletedBlobs: number;
+    deletedSchedules: number;
+    deletedGitOps: number;
+    deletedRepoPreferences: number;
     deletedPreferences: boolean;
     deletedWikiDirs: string[];
     preservedFiles: string[];
@@ -66,7 +68,9 @@ export class DataWiper {
             deletedWorkspaces: 0,
             deletedWikis: 0,
             deletedQueues: 0,
-            deletedBlobs: 0,
+            deletedSchedules: 0,
+            deletedGitOps: 0,
+            deletedRepoPreferences: 0,
             deletedPreferences: false,
             deletedWikiDirs: [],
             preservedFiles: [],
@@ -89,25 +93,41 @@ export class DataWiper {
             result.deletedWikiDirs = [...wikiDirs];
         }
 
-        // 3. Count queue files
+        // 3. Scan repos/ directory for per-repo files
         const reposDir = path.join(this.dataDir, 'repos');
-        const queueFiles = this.listQueueFiles(reposDir);
+        const repoDirs = this.listRepoDirs(reposDir);
+
+        const queueFiles: string[] = [];
+        const scheduleFiles: string[] = [];
+        const scheduleRunFiles: string[] = [];
+        const gitOpsFiles: string[] = [];
+        const repoPrefsFiles: string[] = [];
+
+        for (const repoDir of repoDirs) {
+            const qf = path.join(repoDir, 'queues.json');
+            if (fs.existsSync(qf)) { queueFiles.push(qf); }
+            const sf = path.join(repoDir, 'schedules.json');
+            if (fs.existsSync(sf)) { scheduleFiles.push(sf); }
+            const srf = path.join(repoDir, 'schedule-runs.json');
+            if (fs.existsSync(srf)) { scheduleRunFiles.push(srf); }
+            const gf = path.join(repoDir, 'git-ops.json');
+            if (fs.existsSync(gf)) { gitOpsFiles.push(gf); }
+            const pf = path.join(repoDir, 'preferences.json');
+            if (fs.existsSync(pf)) { repoPrefsFiles.push(pf); }
+        }
+
         result.deletedQueues = queueFiles.length;
+        result.deletedSchedules = scheduleFiles.length + scheduleRunFiles.length;
+        result.deletedGitOps = gitOpsFiles.length;
+        result.deletedRepoPreferences = repoPrefsFiles.length;
 
         // 3b. Count blob files
         const blobsDir = path.join(this.dataDir, 'blobs');
         const blobFiles = this.listBlobFiles(blobsDir);
-        result.deletedBlobs = blobFiles.length;
 
         // 4. Check preferences
         const prefsPath = path.join(this.dataDir, 'preferences.json');
-        result.deletedPreferences = fs.existsSync(prefsPath);
-
-        // Count per-repo preference files
-        const repoPrefsFiles = this.listRepoPreferencesFiles(reposDir);
-        if (repoPrefsFiles.length > 0) {
-            result.deletedPreferences = true;
-        }
+        result.deletedPreferences = fs.existsSync(prefsPath) || repoPrefsFiles.length > 0;
 
         // 5. Record preserved files
         const configYaml = path.join(this.dataDir, 'config.yaml');
@@ -146,12 +166,13 @@ export class DataWiper {
             result.errors.push(`Failed to clear wikis: ${err.message}`);
         }
 
-        // Delete queue files
-        for (const filePath of queueFiles) {
+        // Delete per-repo files
+        const allRepoFiles = [...queueFiles, ...scheduleFiles, ...scheduleRunFiles, ...gitOpsFiles, ...repoPrefsFiles];
+        for (const filePath of allRepoFiles) {
             try {
                 fs.unlinkSync(filePath);
             } catch (err: any) {
-                result.errors.push(`Failed to delete queue file ${filePath}: ${err.message}`);
+                result.errors.push(`Failed to delete ${filePath}: ${err.message}`);
             }
         }
 
@@ -164,21 +185,12 @@ export class DataWiper {
             }
         }
 
-        // Delete preferences
-        if (result.deletedPreferences) {
+        // Delete global preferences
+        if (fs.existsSync(prefsPath)) {
             try {
-                if (fs.existsSync(prefsPath)) {
-                    fs.unlinkSync(prefsPath);
-                }
+                fs.unlinkSync(prefsPath);
             } catch (err: any) {
                 result.errors.push(`Failed to delete preferences: ${err.message}`);
-            }
-            for (const filePath of repoPrefsFiles) {
-                try {
-                    fs.unlinkSync(filePath);
-                } catch (err: any) {
-                    result.errors.push(`Failed to delete repo preferences ${filePath}: ${err.message}`);
-                }
             }
         }
 
@@ -198,22 +210,13 @@ export class DataWiper {
         return result;
     }
 
-    private listQueueFiles(reposDir: string): string[] {
-        try {
-            if (!fs.existsSync(reposDir) || !fs.statSync(reposDir).isDirectory()) {
-                return [];
-            }
-            const results: string[] = [];
-            for (const id of fs.readdirSync(reposDir)) {
-                const filePath = path.join(reposDir, id, 'queues.json');
-                if (fs.existsSync(filePath)) {
-                    results.push(filePath);
-                }
-            }
-            return results;
-        } catch {
+    private listRepoDirs(reposDir: string): string[] {
+        if (!fs.existsSync(reposDir) || !fs.statSync(reposDir).isDirectory()) {
             return [];
         }
+        return fs.readdirSync(reposDir)
+            .map(name => path.join(reposDir, name))
+            .filter(p => fs.statSync(p).isDirectory());
     }
 
     private listBlobFiles(blobsDir: string): string[] {
@@ -229,21 +232,4 @@ export class DataWiper {
         }
     }
 
-    private listRepoPreferencesFiles(reposDir: string): string[] {
-        try {
-            if (!fs.existsSync(reposDir) || !fs.statSync(reposDir).isDirectory()) {
-                return [];
-            }
-            const results: string[] = [];
-            for (const id of fs.readdirSync(reposDir)) {
-                const filePath = path.join(reposDir, id, 'preferences.json');
-                if (fs.existsSync(filePath)) {
-                    results.push(filePath);
-                }
-            }
-            return results;
-        } catch {
-            return [];
-        }
-    }
 }

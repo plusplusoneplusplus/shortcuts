@@ -174,14 +174,15 @@ describe('importData (coc-server)', () => {
         const payload = makePayload({
             preferences: {
                 global: { theme: 'dark' },
-                repos: {
-                    'ws-abc': { lastModel: 'gpt-4' },
-                    'ws-def': { lastModel: 'claude-3' },
-                },
             },
+            repoPreferences: [
+                { repoId: 'ws-abc', repoRootPath: '/repo/abc', preferences: { lastModel: 'gpt-4' } },
+                { repoId: 'ws-def', repoRootPath: '/repo/def', preferences: { lastModel: 'claude-3' } },
+            ],
         });
 
-        await importData(payload, { store, dataDir, mode: 'replace', wiper });
+        const result = await importData(payload, { store, dataDir, mode: 'replace', wiper });
+        expect(result.importedRepoPreferenceFiles).toBe(2);
         const repoPrefsAbc = path.join(dataDir, 'repos', 'ws-abc', 'preferences.json');
         const repoPrefsDef = path.join(dataDir, 'repos', 'ws-def', 'preferences.json');
         expect(fs.existsSync(repoPrefsAbc)).toBe(true);
@@ -190,27 +191,92 @@ describe('importData (coc-server)', () => {
         expect(JSON.parse(fs.readFileSync(repoPrefsDef, 'utf-8')).lastModel).toBe('claude-3');
     });
 
-    it('merge mode does not overwrite existing per-repo preferences', async () => {
+    it('merge mode shallow-merges per-repo preferences', async () => {
         // Pre-seed per-repo prefs
         const repoDir = path.join(dataDir, 'repos', 'ws-abc');
         fs.mkdirSync(repoDir, { recursive: true });
-        fs.writeFileSync(path.join(repoDir, 'preferences.json'), JSON.stringify({ lastModel: 'existing' }));
+        fs.writeFileSync(path.join(repoDir, 'preferences.json'), JSON.stringify({ lastModel: 'existing', theme: 'dark' }));
 
         const payload = makePayload({
-            preferences: {
-                repos: {
-                    'ws-abc': { lastModel: 'imported' },
-                    'ws-new': { lastModel: 'new-model' },
-                },
-            },
+            repoPreferences: [
+                { repoId: 'ws-abc', repoRootPath: '/repo/abc', preferences: { lastModel: 'imported', newKey: 'value' } },
+                { repoId: 'ws-new', repoRootPath: '/repo/new', preferences: { lastModel: 'new-model' } },
+            ],
         });
 
-        await importData(payload, { store, dataDir, mode: 'merge', wiper });
-        // Existing per-repo prefs are not overwritten
-        expect(JSON.parse(fs.readFileSync(path.join(repoDir, 'preferences.json'), 'utf-8')).lastModel).toBe('existing');
+        const result = await importData(payload, { store, dataDir, mode: 'merge', wiper });
+        expect(result.importedRepoPreferenceFiles).toBe(2);
+        // Merge: incoming keys win for conflicts, existing keys preserved
+        const merged = JSON.parse(fs.readFileSync(path.join(repoDir, 'preferences.json'), 'utf-8'));
+        expect(merged.lastModel).toBe('imported');
+        expect(merged.theme).toBe('dark');
+        expect(merged.newKey).toBe('value');
         // New per-repo prefs are written
         const newRepoPrefs = path.join(dataDir, 'repos', 'ws-new', 'preferences.json');
         expect(fs.existsSync(newRepoPrefs)).toBe(true);
         expect(JSON.parse(fs.readFileSync(newRepoPrefs, 'utf-8')).lastModel).toBe('new-model');
+    });
+
+    // ---- Schedule import -----------------------------------------------
+
+    it('replace mode writes schedule files under correct repo dir', async () => {
+        const payload = makePayload({
+            scheduleHistory: [
+                {
+                    repoId: 'ws-abc', repoRootPath: '/repo/abc',
+                    schedules: [{ id: 's1', cron: '0 * * * *' }],
+                    scheduleRuns: [{ id: 'r1', scheduleId: 's1' }],
+                },
+            ],
+        });
+
+        const result = await importData(payload, { store, dataDir, mode: 'replace', wiper });
+        expect(result.importedScheduleFiles).toBe(1);
+        const schedulesFile = path.join(dataDir, 'repos', 'ws-abc', 'schedules.json');
+        const runsFile = path.join(dataDir, 'repos', 'ws-abc', 'schedule-runs.json');
+        expect(fs.existsSync(schedulesFile)).toBe(true);
+        expect(fs.existsSync(runsFile)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(schedulesFile, 'utf-8'))).toHaveLength(1);
+        expect(JSON.parse(fs.readFileSync(runsFile, 'utf-8'))).toHaveLength(1);
+    });
+
+    it('merge mode deduplicates schedules by id', async () => {
+        // Pre-seed schedule files
+        const repoDir = path.join(dataDir, 'repos', 'ws-abc');
+        fs.mkdirSync(repoDir, { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'schedules.json'), JSON.stringify([{ id: 's1', cron: '0 * * * *' }]));
+        fs.writeFileSync(path.join(repoDir, 'schedule-runs.json'), JSON.stringify([{ id: 'r1' }]));
+
+        const payload = makePayload({
+            scheduleHistory: [
+                {
+                    repoId: 'ws-abc', repoRootPath: '/repo/abc',
+                    schedules: [{ id: 's1', cron: 'different' }, { id: 's2', cron: '*/5 * * * *' }],
+                    scheduleRuns: [{ id: 'r1' }, { id: 'r2' }],
+                },
+            ],
+        });
+
+        const result = await importData(payload, { store, dataDir, mode: 'merge', wiper });
+        expect(result.importedScheduleFiles).toBe(1);
+        const schedules = JSON.parse(fs.readFileSync(path.join(repoDir, 'schedules.json'), 'utf-8'));
+        const runs = JSON.parse(fs.readFileSync(path.join(repoDir, 'schedule-runs.json'), 'utf-8'));
+        // s1 not duplicated, s2 added
+        expect(schedules).toHaveLength(2);
+        expect(runs).toHaveLength(2);
+    });
+
+    it('old payload without repoPreferences/scheduleHistory imports without error', async () => {
+        const payload = makePayload({
+            preferences: { global: { theme: 'dark' } },
+        });
+        // Ensure the new fields are absent
+        delete (payload as any).repoPreferences;
+        delete (payload as any).scheduleHistory;
+
+        const result = await importData(payload, { store, dataDir, mode: 'replace', wiper });
+        expect(result.errors).toHaveLength(0);
+        expect(result.importedScheduleFiles).toBe(0);
+        expect(result.importedRepoPreferenceFiles).toBe(0);
     });
 });

@@ -141,10 +141,10 @@ describe('Export Completeness — Section 7', () => {
 
     describe('queue completeness', () => {
         it('export includes queue file when repo queue file is present on disk', async () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
+            const repoDir = path.join(dataDir, 'repos', 'abc123');
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, 'repo-abc123.json'),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify({
                     version: 3,
                     repoRootPath: '/projects/repo',
@@ -175,15 +175,15 @@ describe('Export Completeness — Section 7', () => {
         it('export includes preferences when preferences.json exists', async () => {
             fs.writeFileSync(
                 path.join(dataDir, 'preferences.json'),
-                JSON.stringify({ lastModel: 'gpt-4', lastDepth: 'deep' }),
+                JSON.stringify({ global: { lastModel: 'gpt-4', lastDepth: 'deep' } }),
                 'utf-8',
             );
 
             const res = await request(`${baseUrl}/api/admin/export`);
             const body = JSON.parse(res.body);
             expect(body.preferences).toBeDefined();
-            expect(body.preferences.lastModel).toBe('gpt-4');
-            expect(body.preferences.lastDepth).toBe('deep');
+            expect(body.preferences.global.lastModel).toBe('gpt-4');
+            expect(body.preferences.global.lastDepth).toBe('deep');
         });
 
         it('export includes empty preferences object when no preferences.json', async () => {

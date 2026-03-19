@@ -55,20 +55,24 @@ describe('DataWiper', () => {
     afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
     it('dry-run returns correct counts without deleting', async () => {
-        // Create queue files under repos/<id>/queues.json
+        // Create repo dirs with multiple file types
         const repoAbcDir = path.join(tmpDir, 'repos', 'abc');
         const repoDefDir = path.join(tmpDir, 'repos', 'def');
         fs.mkdirSync(repoAbcDir, { recursive: true });
         fs.mkdirSync(repoDefDir, { recursive: true });
         fs.writeFileSync(path.join(repoAbcDir, 'queues.json'), '{}');
         fs.writeFileSync(path.join(repoDefDir, 'queues.json'), '{}');
+        fs.writeFileSync(path.join(repoAbcDir, 'schedules.json'), '[]');
+        fs.writeFileSync(path.join(repoAbcDir, 'schedule-runs.json'), '[]');
+        fs.writeFileSync(path.join(repoDefDir, 'git-ops.json'), '{}');
+        fs.writeFileSync(path.join(repoAbcDir, 'preferences.json'), '{}');
 
         // Create blob file
         const blobsDir = path.join(tmpDir, 'blobs');
         fs.mkdirSync(blobsDir);
         fs.writeFileSync(path.join(blobsDir, 'task1.images.json'), '[]');
 
-        // Create preferences
+        // Create global preferences
         fs.writeFileSync(path.join(tmpDir, 'preferences.json'), '{}');
 
         const store = createMockStore();
@@ -76,10 +80,10 @@ describe('DataWiper', () => {
         const result = await wiper.getDryRunSummary({ includeWikis: false });
 
         expect(result.deletedProcesses).toBe(3);
-        expect(result.deletedWorkspaces).toBe(2);
-        expect(result.deletedWikis).toBe(1);
         expect(result.deletedQueues).toBe(2);
-        expect(result.deletedBlobs).toBe(1);
+        expect(result.deletedSchedules).toBe(2); // 1 schedules.json + 1 schedule-runs.json
+        expect(result.deletedGitOps).toBe(1);
+        expect(result.deletedRepoPreferences).toBe(1);
         expect(result.deletedPreferences).toBe(true);
 
         // Files should not be deleted in dry-run
@@ -88,10 +92,14 @@ describe('DataWiper', () => {
         expect(fs.existsSync(path.join(tmpDir, 'preferences.json'))).toBe(true);
     });
 
-    it('wipeData deletes queue files, blobs and preferences', async () => {
+    it('wipeData deletes all repo files, blobs and preferences', async () => {
         const repoXyzDir = path.join(tmpDir, 'repos', 'xyz');
         fs.mkdirSync(repoXyzDir, { recursive: true });
         fs.writeFileSync(path.join(repoXyzDir, 'queues.json'), '{}');
+        fs.writeFileSync(path.join(repoXyzDir, 'schedules.json'), '[]');
+        fs.writeFileSync(path.join(repoXyzDir, 'schedule-runs.json'), '[]');
+        fs.writeFileSync(path.join(repoXyzDir, 'git-ops.json'), '{}');
+        fs.writeFileSync(path.join(repoXyzDir, 'preferences.json'), '{}');
 
         const blobsDir = path.join(tmpDir, 'blobs');
         fs.mkdirSync(blobsDir);
@@ -105,6 +113,10 @@ describe('DataWiper', () => {
 
         expect(result.errors).toHaveLength(0);
         expect(fs.existsSync(path.join(repoXyzDir, 'queues.json'))).toBe(false);
+        expect(fs.existsSync(path.join(repoXyzDir, 'schedules.json'))).toBe(false);
+        expect(fs.existsSync(path.join(repoXyzDir, 'schedule-runs.json'))).toBe(false);
+        expect(fs.existsSync(path.join(repoXyzDir, 'git-ops.json'))).toBe(false);
+        expect(fs.existsSync(path.join(repoXyzDir, 'preferences.json'))).toBe(false);
         expect(fs.existsSync(path.join(blobsDir, 'task2.images.json'))).toBe(false);
         expect(fs.existsSync(path.join(tmpDir, 'preferences.json'))).toBe(false);
     });
@@ -145,7 +157,9 @@ describe('DataWiper', () => {
         const result = await wiper.getDryRunSummary();
 
         expect(result.deletedQueues).toBe(0);
-        expect(result.deletedBlobs).toBe(0);
+        expect(result.deletedSchedules).toBe(0);
+        expect(result.deletedGitOps).toBe(0);
+        expect(result.deletedRepoPreferences).toBe(0);
         expect(result.deletedPreferences).toBe(false);
     });
 });

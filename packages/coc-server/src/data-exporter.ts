@@ -15,6 +15,8 @@ import type {
     ExportOptions,
     ImageBlobEntry,
     QueueSnapshot,
+    RepoPreferencesSnapshot,
+    ScheduleSnapshot,
 } from './export-import-types';
 import { EXPORT_SCHEMA_VERSION } from './export-import-types';
 import { PREFERENCES_FILE_NAME } from './preferences-handler';
@@ -45,31 +47,20 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
     // Gather image blobs from disk
     const imageBlobs = readBlobFiles(dataDir);
 
-    // Gather preferences (raw JSON to preserve all fields regardless of schema)
+    // Gather per-repo preferences
+    const repoPreferences = readRepoPrefsFiles(dataDir);
+
+    // Gather schedule data
+    const scheduleHistory = readScheduleFiles(dataDir);
+
+    // Gather global preferences (raw JSON to preserve all fields regardless of schema)
     const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
     const globalPrefs = fs.existsSync(prefFile)
         ? JSON.parse(fs.readFileSync(prefFile, 'utf-8'))
         : {};
 
-    // Gather per-repo preferences from repos/*/preferences.json
-    const repoPreferences: Record<string, unknown> = {};
-    const reposDir = path.join(dataDir, 'repos');
-    if (fs.existsSync(reposDir) && fs.statSync(reposDir).isDirectory()) {
-        for (const id of fs.readdirSync(reposDir)) {
-            const repoPrefFile = path.join(reposDir, id, PREFERENCES_FILE_NAME);
-            try {
-                if (fs.existsSync(repoPrefFile)) {
-                    repoPreferences[id] = JSON.parse(fs.readFileSync(repoPrefFile, 'utf-8'));
-                }
-            } catch {
-                // Skip corrupt per-repo preference files
-            }
-        }
-    }
-
     const preferences = {
         ...(globalPrefs.global !== undefined ? { global: globalPrefs.global } : {}),
-        ...(Object.keys(repoPreferences).length > 0 ? { repos: repoPreferences } : {}),
     };
 
     // Gather server config (optional, injected from CLI layer)
@@ -88,6 +79,8 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
             wikiCount: wikis.length,
             queueFileCount: queueHistory.length,
             blobFileCount: imageBlobs.length,
+            repoPreferenceCount: repoPreferences.length,
+            scheduleFileCount: scheduleHistory.length,
         },
         processes,
         workspaces,
@@ -96,6 +89,8 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
         preferences,
         serverConfig,
         imageBlobs,
+        repoPreferences,
+        scheduleHistory,
     };
 
     return payload;
@@ -106,23 +101,18 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
 // ============================================================================
 
 /**
- * Read all per-repo queue JSON files from `dataDir/queues/`.
+ * Read all per-repo queue JSON files from `dataDir/repos/` subdirectories.
  * Corrupt or unparseable files are silently skipped.
  */
 function readQueueFiles(dataDir: string): QueueSnapshot[] {
-    const queuesDir = path.join(dataDir, 'queues');
-    if (!fs.existsSync(queuesDir) || !fs.statSync(queuesDir).isDirectory()) {
-        return [];
-    }
-
-    const files = fs.readdirSync(queuesDir)
-        .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
-
+    const reposDir = path.join(dataDir, 'repos');
+    const repoDirs = listRepoDirs(reposDir);
     const snapshots: QueueSnapshot[] = [];
 
-    for (const file of files) {
-        const filePath = path.join(queuesDir, file);
+    for (const repoDir of repoDirs) {
+        const filePath = path.join(repoDir, 'queues.json');
         try {
+            if (!fs.existsSync(filePath)) { continue; }
             const raw = fs.readFileSync(filePath, 'utf-8');
             const parsed = JSON.parse(raw);
 
@@ -139,6 +129,112 @@ function readQueueFiles(dataDir: string): QueueSnapshot[] {
     }
 
     return snapshots;
+}
+
+/**
+ * Read per-repo preferences from `dataDir/repos/` subdirectories.
+ * Corrupt or missing files are silently skipped.
+ */
+function readRepoPrefsFiles(dataDir: string): RepoPreferencesSnapshot[] {
+    const reposDir = path.join(dataDir, 'repos');
+    const repoDirs = listRepoDirs(reposDir);
+    const snapshots: RepoPreferencesSnapshot[] = [];
+
+    for (const repoDir of repoDirs) {
+        const filePath = path.join(repoDir, 'preferences.json');
+        try {
+            if (!fs.existsSync(filePath)) { continue; }
+            const raw = fs.readFileSync(filePath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            const repoId = path.basename(repoDir);
+
+            // Try to extract repoRootPath from sibling queues.json
+            let repoRootPath = '';
+            const queueFile = path.join(repoDir, 'queues.json');
+            try {
+                if (fs.existsSync(queueFile)) {
+                    const q = JSON.parse(fs.readFileSync(queueFile, 'utf-8'));
+                    repoRootPath = q.repoRootPath ?? '';
+                }
+            } catch { /* ignore */ }
+
+            snapshots.push({
+                repoId,
+                repoRootPath,
+                preferences: typeof parsed === 'object' && parsed !== null ? parsed : {},
+            });
+        } catch {
+            // Skip corrupt files
+        }
+    }
+
+    return snapshots;
+}
+
+/**
+ * Read per-repo schedule data from `dataDir/repos/` subdirectories.
+ * Each repo may have `schedules.json` and/or `schedule-runs.json`.
+ * Corrupt or missing files are silently skipped.
+ */
+function readScheduleFiles(dataDir: string): ScheduleSnapshot[] {
+    const reposDir = path.join(dataDir, 'repos');
+    const repoDirs = listRepoDirs(reposDir);
+    const snapshots: ScheduleSnapshot[] = [];
+
+    for (const repoDir of repoDirs) {
+        const schedulesPath = path.join(repoDir, 'schedules.json');
+        const runsPath = path.join(repoDir, 'schedule-runs.json');
+
+        const hasSchedules = fs.existsSync(schedulesPath);
+        const hasRuns = fs.existsSync(runsPath);
+        if (!hasSchedules && !hasRuns) { continue; }
+
+        const repoId = path.basename(repoDir);
+
+        // Try to extract repoRootPath from sibling queues.json
+        let repoRootPath = '';
+        const queueFile = path.join(repoDir, 'queues.json');
+        try {
+            if (fs.existsSync(queueFile)) {
+                const q = JSON.parse(fs.readFileSync(queueFile, 'utf-8'));
+                repoRootPath = q.repoRootPath ?? '';
+            }
+        } catch { /* ignore */ }
+
+        let schedules: unknown[] = [];
+        let scheduleRuns: unknown[] = [];
+
+        if (hasSchedules) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(schedulesPath, 'utf-8'));
+                schedules = Array.isArray(raw) ? raw : [];
+            } catch { /* skip corrupt */ }
+        }
+        if (hasRuns) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(runsPath, 'utf-8'));
+                scheduleRuns = Array.isArray(raw) ? raw : [];
+            } catch { /* skip corrupt */ }
+        }
+
+        snapshots.push({ repoId, repoRootPath, schedules, scheduleRuns });
+    }
+
+    return snapshots;
+}
+
+/**
+ * List subdirectories under the given repos dir.
+ */
+function listRepoDirs(reposDir: string): string[] {
+    if (!fs.existsSync(reposDir) || !fs.statSync(reposDir).isDirectory()) {
+        return [];
+    }
+    return fs.readdirSync(reposDir)
+        .map(name => path.join(reposDir, name))
+        .filter(p => {
+            try { return fs.statSync(p).isDirectory(); } catch { return false; }
+        });
 }
 
 /**

@@ -71,6 +71,8 @@ describe('exportAllData', () => {
             wikiCount: 0,
             queueFileCount: 0,
             blobFileCount: 0,
+            repoPreferenceCount: 0,
+            scheduleFileCount: 0,
         });
         expect(payload.processes).toEqual([]);
         expect(payload.workspaces).toEqual([]);
@@ -122,8 +124,9 @@ describe('exportAllData', () => {
     // ========================================================================
 
     it('includes queue files when present', async () => {
-        const queuesDir = path.join(dataDir, 'queues');
-        writeJSON(path.join(queuesDir, 'repo-abc123.json'), {
+        const repoAbcDir = path.join(dataDir, 'repos', 'abc123');
+        const repoDefDir = path.join(dataDir, 'repos', 'def456');
+        writeJSON(path.join(repoAbcDir, 'queues.json'), {
             version: 3,
             repoRootPath: '/projects/frontend',
             repoId: 'abc123',
@@ -131,7 +134,7 @@ describe('exportAllData', () => {
             history: [{ id: 'q0', type: 'pipeline', status: 'completed' }],
             isPaused: false,
         });
-        writeJSON(path.join(queuesDir, 'repo-def456.json'), {
+        writeJSON(path.join(repoDefDir, 'queues.json'), {
             version: 3,
             repoRootPath: '/projects/backend',
             repoId: 'def456',
@@ -202,9 +205,9 @@ describe('exportAllData', () => {
     // ========================================================================
 
     it('skips corrupt queue files and continues', async () => {
-        const queuesDir = path.join(dataDir, 'queues');
+        const repoGoodDir = path.join(dataDir, 'repos', 'good1234');
         // One valid file
-        writeJSON(path.join(queuesDir, 'repo-good1234.json'), {
+        writeJSON(path.join(repoGoodDir, 'queues.json'), {
             version: 3,
             repoRootPath: '/good',
             repoId: 'good1234',
@@ -212,7 +215,9 @@ describe('exportAllData', () => {
             history: [],
         });
         // One corrupt file (invalid JSON)
-        writeFile(path.join(queuesDir, 'repo-bad56789.json'), '{corrupt json!!!');
+        const repoBadDir = path.join(dataDir, 'repos', 'bad56789');
+        fs.mkdirSync(repoBadDir, { recursive: true });
+        writeFile(path.join(repoBadDir, 'queues.json'), '{corrupt json!!!');
 
         const payload = await exportAllData({ store, dataDir });
 

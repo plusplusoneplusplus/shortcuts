@@ -76,6 +76,10 @@ export interface ExportMetadata {
     queueFileCount: number;
     /** Number of image blob files included in the export. Optional for backward compat. */
     blobFileCount?: number;
+    /** Number of per-repo preference snapshots included. */
+    repoPreferenceCount?: number;
+    /** Number of schedule snapshots included. */
+    scheduleFileCount?: number;
 }
 
 /** One task's externalized images, included in the export payload. */
@@ -91,6 +95,21 @@ export interface QueueSnapshot {
     pending: QueuedTask[];
     history: QueuedTask[];
     isPaused?: boolean;
+}
+
+/** Per-repo preferences snapshot included in an export. */
+export interface RepoPreferencesSnapshot {
+    repoId: string;
+    repoRootPath: string;
+    preferences: Record<string, unknown>;
+}
+
+/** Per-repo schedule snapshot included in an export. */
+export interface ScheduleSnapshot {
+    repoId: string;
+    repoRootPath: string;
+    schedules: unknown[];
+    scheduleRuns: unknown[];
 }
 
 /** Top-level export/import payload. */
@@ -111,6 +130,10 @@ export interface CoCExportPayload {
     serverConfig?: CLIConfig;
     /** Externalized image blobs per task. Optional for backward compat with pre-feature exports. */
     imageBlobs?: ImageBlobEntry[];
+    /** Per-repo preferences snapshots. Optional for backward compat. */
+    repoPreferences?: RepoPreferencesSnapshot[];
+    /** Per-repo schedule snapshots. Optional for backward compat. */
+    scheduleHistory?: ScheduleSnapshot[];
 }
 
 /** Options passed to the data exporter. */
@@ -151,6 +174,8 @@ export interface ImportResult {
     importedWikis: number;
     importedQueueFiles: number;
     importedBlobFiles: number;
+    importedScheduleFiles: number;
+    importedRepoPreferenceFiles: number;
     errors: string[];
 }
 
@@ -222,6 +247,16 @@ export function validateExportPayload(raw: unknown): ValidationResult {
     // imageBlobs (optional, forward compat) -----------------------------
     if (obj.imageBlobs !== undefined && !Array.isArray(obj.imageBlobs)) {
         return { valid: false, error: 'Field "imageBlobs" must be an array when present' };
+    }
+
+    // repoPreferences (optional, forward compat) -----------------------
+    if (obj.repoPreferences !== undefined && !Array.isArray(obj.repoPreferences)) {
+        return { valid: false, error: 'Field "repoPreferences" must be an array when present' };
+    }
+
+    // scheduleHistory (optional, forward compat) -----------------------
+    if (obj.scheduleHistory !== undefined && !Array.isArray(obj.scheduleHistory)) {
+        return { valid: false, error: 'Field "scheduleHistory" must be an array when present' };
     }
 
     return { valid: true };

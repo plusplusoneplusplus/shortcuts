@@ -226,6 +226,42 @@ describe('validateExportPayload', () => {
         expect(result.valid).toBe(false);
         expect(result.error).toMatch(/imageBlobs/);
     });
+
+    // ---- repoPreferences (optional field) ----------------------------
+
+    it('accepts payload with repoPreferences array', () => {
+        const payload = {
+            ...validPayload(),
+            repoPreferences: [{ repoId: 'ws-abc', repoRootPath: '/repo', preferences: {} }],
+        };
+        const result = validateExportPayload(payload);
+        expect(result).toEqual({ valid: true });
+    });
+
+    it('rejects payload with non-array repoPreferences', () => {
+        const payload = { ...validPayload(), repoPreferences: 'not-an-array' };
+        const result = validateExportPayload(payload);
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/repoPreferences/);
+    });
+
+    // ---- scheduleHistory (optional field) ----------------------------
+
+    it('accepts payload with scheduleHistory array', () => {
+        const payload = {
+            ...validPayload(),
+            scheduleHistory: [{ repoId: 'ws-abc', repoRootPath: '/repo', schedules: [], scheduleRuns: [] }],
+        };
+        const result = validateExportPayload(payload);
+        expect(result).toEqual({ valid: true });
+    });
+
+    it('rejects payload with non-array scheduleHistory', () => {
+        const payload = { ...validPayload(), scheduleHistory: {} };
+        const result = validateExportPayload(payload);
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/scheduleHistory/);
+    });
 });
 
 // ============================================================================

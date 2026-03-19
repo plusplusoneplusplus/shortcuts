@@ -50,6 +50,8 @@ export type {
     UserPreferences,
     CLIConfig,
     ImageBlobEntry,
+    RepoPreferencesSnapshot,
+    ScheduleSnapshot,
 } from './export-import-types';
 export {
     EXPORT_SCHEMA_VERSION,

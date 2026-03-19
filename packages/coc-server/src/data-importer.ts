@@ -17,6 +17,8 @@ import type {
     ImportOptions,
     ImportResult,
     QueueSnapshot,
+    RepoPreferencesSnapshot,
+    ScheduleSnapshot,
 } from './export-import-types';
 import { validateExportPayload } from './export-import-types';
 import { PREFERENCES_FILE_NAME } from './preferences-handler';
@@ -66,6 +68,8 @@ async function replaceImport(
         importedWikis: 0,
         importedQueueFiles: 0,
         importedBlobFiles: 0,
+        importedScheduleFiles: 0,
+        importedRepoPreferenceFiles: 0,
         errors: [],
     };
 
@@ -112,26 +116,29 @@ async function replaceImport(
     // 6b. Restore blob files
     result.importedBlobFiles = writeBlobFiles(dataDir, payload.imageBlobs ?? [], result.errors);
 
-    // 7. Restore preferences
+    // 7. Restore per-repo preferences (from new repoPreferences field)
+    if (payload.repoPreferences) {
+        result.importedRepoPreferenceFiles = writeRepoPreferences(dataDir, payload.repoPreferences, result.errors);
+    }
+
+    // 7b. Restore global preferences
     try {
         const prefs = payload.preferences as any ?? {};
-        // Write global preferences
         const globalData: Record<string, unknown> = {};
         if (prefs.global !== undefined) {
             globalData.global = prefs.global;
         }
         atomicWriteJson(path.join(dataDir, PREFERENCES_FILE_NAME), globalData);
-        // Write per-repo preferences
-        const repos = prefs.repos ?? {};
-        for (const [workspaceId, repoPrefs] of Object.entries(repos)) {
-            const repoPrefsPath = getRepoDataPath(dataDir, workspaceId, PREFERENCES_FILE_NAME);
-            atomicWriteJson(repoPrefsPath, repoPrefs);
-        }
     } catch (err: any) {
         result.errors.push(`Failed to write preferences: ${err.message}`);
     }
 
-    // 8. Restore queue from written files into the manager
+    // 8. Restore schedule files
+    if (payload.scheduleHistory) {
+        result.importedScheduleFiles = writeScheduleFiles(dataDir, payload.scheduleHistory, result.errors);
+    }
+
+    // 9. Restore queue from written files into the manager
     try {
         getQueuePersistence?.()?.restore();
     } catch (err: any) {
@@ -156,6 +163,8 @@ async function mergeImport(
         importedWikis: 0,
         importedQueueFiles: 0,
         importedBlobFiles: 0,
+        importedScheduleFiles: 0,
+        importedRepoPreferenceFiles: 0,
         errors: [],
     };
 
@@ -204,10 +213,14 @@ async function mergeImport(
     // 4b. Merge blob files — skip existing, write only new ones
     result.importedBlobFiles = mergeBlobFiles(dataDir, payload.imageBlobs ?? [], result.errors);
 
-    // 5. Merge preferences
+    // 5. Merge per-repo preferences (from new repoPreferences field)
+    if (payload.repoPreferences) {
+        result.importedRepoPreferenceFiles = mergeRepoPreferences(dataDir, payload.repoPreferences, result.errors);
+    }
+
+    // 5b. Merge global preferences
     try {
         const prefs = payload.preferences as any ?? {};
-        // Merge global preferences
         const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
         let existingGlobal: Record<string, unknown> = {};
         if (fs.existsSync(prefFile)) {
@@ -217,15 +230,13 @@ async function mergeImport(
             existingGlobal.global = { ...(existingGlobal.global as any ?? {}), ...prefs.global };
         }
         atomicWriteJson(prefFile, existingGlobal);
-        // Merge per-repo preferences — skip workspaceIds that already have a file
-        const repos = prefs.repos ?? {};
-        for (const [workspaceId, repoPrefs] of Object.entries(repos)) {
-            const repoPrefsPath = getRepoDataPath(dataDir, workspaceId, PREFERENCES_FILE_NAME);
-            if (fs.existsSync(repoPrefsPath)) { continue; }
-            atomicWriteJson(repoPrefsPath, repoPrefs);
-        }
     } catch (err: any) {
         result.errors.push(`Failed to merge preferences: ${err.message}`);
+    }
+
+    // 6. Merge schedule files
+    if (payload.scheduleHistory) {
+        result.importedScheduleFiles = mergeScheduleFiles(dataDir, payload.scheduleHistory, result.errors);
     }
 
     return result;
@@ -372,4 +383,125 @@ function mergeBlobFiles(dataDir: string, blobs: ImageBlobEntry[], errors: string
         }
     }
     return written;
+}
+
+// ============================================================================
+// Per-repo preferences helpers
+// ============================================================================
+
+/**
+ * Write per-repo preferences to disk (replace mode — overwrite).
+ * Returns the number of files successfully written.
+ */
+function writeRepoPreferences(dataDir: string, snapshots: RepoPreferencesSnapshot[], errors: string[]): number {
+    let written = 0;
+    for (const snap of snapshots) {
+        if (!snap.repoId) { continue; }
+        const filePath = getRepoDataPath(dataDir, snap.repoId, PREFERENCES_FILE_NAME);
+        try {
+            atomicWriteJson(filePath, snap.preferences);
+            written++;
+        } catch (err: any) {
+            errors.push(`Failed to write repo preferences for ${snap.repoId}: ${err.message}`);
+        }
+    }
+    return written;
+}
+
+/**
+ * Merge per-repo preferences — shallow-merge (payload wins for conflicting keys).
+ * Returns the number of files successfully written.
+ */
+function mergeRepoPreferences(dataDir: string, snapshots: RepoPreferencesSnapshot[], errors: string[]): number {
+    let written = 0;
+    for (const snap of snapshots) {
+        if (!snap.repoId) { continue; }
+        const filePath = getRepoDataPath(dataDir, snap.repoId, PREFERENCES_FILE_NAME);
+        try {
+            let existing: Record<string, unknown> = {};
+            if (fs.existsSync(filePath)) {
+                existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            }
+            const merged = { ...existing, ...snap.preferences };
+            atomicWriteJson(filePath, merged);
+            written++;
+        } catch (err: any) {
+            errors.push(`Failed to merge repo preferences for ${snap.repoId}: ${err.message}`);
+        }
+    }
+    return written;
+}
+
+// ============================================================================
+// Schedule file helpers
+// ============================================================================
+
+/**
+ * Write schedule files to disk (replace mode — overwrite).
+ * Returns the number of repo schedule sets successfully written.
+ */
+function writeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], errors: string[]): number {
+    let written = 0;
+    for (const snap of snapshots) {
+        if (!snap.repoId) { continue; }
+        try {
+            const schedulesPath = getRepoDataPath(dataDir, snap.repoId, 'schedules.json');
+            const runsPath = getRepoDataPath(dataDir, snap.repoId, 'schedule-runs.json');
+            atomicWriteJson(schedulesPath, snap.schedules);
+            atomicWriteJson(runsPath, snap.scheduleRuns);
+            written++;
+        } catch (err: any) {
+            errors.push(`Failed to write schedule files for ${snap.repoId}: ${err.message}`);
+        }
+    }
+    return written;
+}
+
+/**
+ * Merge schedule files — combine arrays, dedup by `id` field.
+ * Returns the number of repo schedule sets successfully written.
+ */
+function mergeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], errors: string[]): number {
+    let written = 0;
+    for (const snap of snapshots) {
+        if (!snap.repoId) { continue; }
+        try {
+            const schedulesPath = getRepoDataPath(dataDir, snap.repoId, 'schedules.json');
+            const runsPath = getRepoDataPath(dataDir, snap.repoId, 'schedule-runs.json');
+
+            // Merge schedules
+            const mergedSchedules = mergeArraysById(schedulesPath, snap.schedules);
+            atomicWriteJson(schedulesPath, mergedSchedules);
+
+            // Merge schedule runs
+            const mergedRuns = mergeArraysById(runsPath, snap.scheduleRuns);
+            atomicWriteJson(runsPath, mergedRuns);
+
+            written++;
+        } catch (err: any) {
+            errors.push(`Failed to merge schedule files for ${snap.repoId}: ${err.message}`);
+        }
+    }
+    return written;
+}
+
+/**
+ * Read an existing JSON array file, combine with incoming items, dedup by `id`.
+ */
+function mergeArraysById(filePath: string, incoming: unknown[]): unknown[] {
+    let existing: unknown[] = [];
+    if (fs.existsSync(filePath)) {
+        try {
+            const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            existing = Array.isArray(raw) ? raw : [];
+        } catch { /* treat corrupt as empty */ }
+    }
+    const seenIds = new Set(existing.map((item: any) => item?.id).filter(Boolean));
+    for (const item of incoming) {
+        const id = (item as any)?.id;
+        if (id && seenIds.has(id)) { continue; }
+        if (id) { seenIds.add(id); }
+        existing.push(item);
+    }
+    return existing;
 }

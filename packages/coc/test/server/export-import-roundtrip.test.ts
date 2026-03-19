@@ -129,10 +129,10 @@ describe('Export/Import Round-Trip Fidelity — Section 8', () => {
     // ========================================================================
 
     it('preference values are preserved through round-trip', async () => {
-        // Write preferences to disk before export
+        // Write preferences to disk before export (using global wrapper format)
         fs.writeFileSync(
             path.join(dataDir, 'preferences.json'),
-            JSON.stringify({ lastModel: 'gpt-4-turbo', lastDepth: 'deep', customPref: 'preserved' }),
+            JSON.stringify({ global: { lastModel: 'gpt-4-turbo', lastDepth: 'deep', customPref: 'preserved' } }),
             'utf-8',
         );
 
@@ -146,9 +146,9 @@ describe('Export/Import Round-Trip Fidelity — Section 8', () => {
         const prefsPath = path.join(dataDir, 'preferences.json');
         expect(fs.existsSync(prefsPath)).toBe(true);
         const restored = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
-        expect(restored.lastModel).toBe('gpt-4-turbo');
-        expect(restored.lastDepth).toBe('deep');
-        expect(restored.customPref).toBe('preserved');
+        expect(restored.global.lastModel).toBe('gpt-4-turbo');
+        expect(restored.global.lastDepth).toBe('deep');
+        expect(restored.global.customPref).toBe('preserved');
     });
 
     // ========================================================================
@@ -182,7 +182,7 @@ describe('Export/Import Round-Trip Fidelity — Section 8', () => {
     // ========================================================================
 
     it('queue history is preserved through round-trip', async () => {
-        writeJSON(path.join(dataDir, 'queues', 'repo-abc123.json'), {
+        writeJSON(path.join(dataDir, 'repos', 'abc123', 'queues.json'), {
             version: 3,
             repoRootPath: '/projects/repo',
             repoId: 'abc123',

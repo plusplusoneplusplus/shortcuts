@@ -159,14 +159,34 @@ describe('DataWiper', () => {
             const wiper = new DataWiper(dataDir, store);
             const summary = await wiper.getDryRunSummary();
 
-            expect(summary.deletedBlobs).toBe(2);
+            // Blobs are still deleted but no longer tracked in WipeResult
+            expect(summary.deletedSchedules).toBe(0);
+            expect(summary.deletedGitOps).toBe(0);
         });
 
-        it('should return deletedBlobs: 0 when blobs dir does not exist', async () => {
+        it('should count schedule and git-ops files', async () => {
+            const repoDir = path.join(dataDir, 'repos', 'abc123');
+            fs.mkdirSync(repoDir, { recursive: true });
+            writeJSON(path.join(repoDir, 'schedules.json'), []);
+            writeJSON(path.join(repoDir, 'schedule-runs.json'), []);
+            writeJSON(path.join(repoDir, 'git-ops.json'), {});
+            writeJSON(path.join(repoDir, 'preferences.json'), {});
+
             const wiper = new DataWiper(dataDir, store);
             const summary = await wiper.getDryRunSummary();
 
-            expect(summary.deletedBlobs).toBe(0);
+            expect(summary.deletedSchedules).toBe(2);
+            expect(summary.deletedGitOps).toBe(1);
+            expect(summary.deletedRepoPreferences).toBe(1);
+        });
+
+        it('should return zero schedule/git-ops counts when repos dir does not exist', async () => {
+            const wiper = new DataWiper(dataDir, store);
+            const summary = await wiper.getDryRunSummary();
+
+            expect(summary.deletedSchedules).toBe(0);
+            expect(summary.deletedGitOps).toBe(0);
+            expect(summary.deletedRepoPreferences).toBe(0);
         });
 
         it('should not delete blob files during dry run', async () => {
@@ -313,7 +333,7 @@ describe('DataWiper', () => {
             const wiper = new DataWiper(dataDir, store);
             const result = await wiper.wipeData({ includeWikis: false });
 
-            expect(result.deletedBlobs).toBe(2);
+            // Blob files are deleted even though deletedBlobs is no longer in WipeResult
             expect(fs.existsSync(blob1)).toBe(false);
             expect(fs.existsSync(blob2)).toBe(false);
         });
@@ -322,8 +342,24 @@ describe('DataWiper', () => {
             const wiper = new DataWiper(dataDir, store);
             const result = await wiper.wipeData({ includeWikis: false });
 
-            expect(result.deletedBlobs).toBe(0);
             expect(result.errors).toEqual([]);
+        });
+
+        it('should delete schedule and git-ops files from repos/', async () => {
+            const repoDir = path.join(dataDir, 'repos', 'abc123');
+            fs.mkdirSync(repoDir, { recursive: true });
+            writeJSON(path.join(repoDir, 'schedules.json'), []);
+            writeJSON(path.join(repoDir, 'schedule-runs.json'), []);
+            writeJSON(path.join(repoDir, 'git-ops.json'), {});
+
+            const wiper = new DataWiper(dataDir, store);
+            const result = await wiper.wipeData({ includeWikis: false });
+
+            expect(result.deletedSchedules).toBe(2);
+            expect(result.deletedGitOps).toBe(1);
+            expect(fs.existsSync(path.join(repoDir, 'schedules.json'))).toBe(false);
+            expect(fs.existsSync(path.join(repoDir, 'schedule-runs.json'))).toBe(false);
+            expect(fs.existsSync(path.join(repoDir, 'git-ops.json'))).toBe(false);
         });
 
         it('should handle non-existent wiki directory gracefully', async () => {

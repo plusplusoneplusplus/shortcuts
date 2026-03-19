@@ -94,8 +94,8 @@ describe('exportAllData (coc-server)', () => {
     });
 
     it('includes queue history when queue files exist', async () => {
-        const queuesDir = path.join(dataDir, 'queues');
-        writeJSON(path.join(queuesDir, 'repo-abc.json'), {
+        const repoDir = path.join(dataDir, 'repos', 'repo-abc');
+        writeJSON(path.join(repoDir, 'queues.json'), {
             repoRootPath: '/some/repo',
             repoId: 'repo-abc',
             pending: [],
@@ -109,12 +109,11 @@ describe('exportAllData (coc-server)', () => {
     });
 
     it('skips corrupt queue files gracefully', async () => {
-        const queuesDir = path.join(dataDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
-        fs.writeFileSync(path.join(queuesDir, 'repo-corrupt.json'), 'NOT VALID JSON', 'utf-8');
+        const repoDir = path.join(dataDir, 'repos', 'repo-corrupt');
+        fs.mkdirSync(repoDir, { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'queues.json'), 'NOT VALID JSON', 'utf-8');
 
         const payload = await exportAllData({ store, dataDir });
-        // Corrupt file is skipped — count stays at 0
         expect(payload.metadata.queueFileCount).toBe(0);
     });
 
@@ -138,7 +137,25 @@ describe('exportAllData (coc-server)', () => {
 
         const payload = await exportAllData({ store, dataDir });
         expect((payload.preferences as any).global?.theme).toBe('light');
-        expect((payload.preferences as any).repos?.['ws-abc']?.lastModel).toBe('gpt-4');
+        // Per-repo prefs now in repoPreferences array
+        expect(payload.repoPreferences).toHaveLength(1);
+        expect(payload.repoPreferences![0].repoId).toBe('ws-abc');
+        expect(payload.repoPreferences![0].preferences.lastModel).toBe('gpt-4');
+        expect(payload.metadata.repoPreferenceCount).toBe(1);
+    });
+
+    it('includes schedule data from repos/*/schedules.json', async () => {
+        const repoDir = path.join(dataDir, 'repos', 'ws-abc');
+        fs.mkdirSync(repoDir, { recursive: true });
+        writeJSON(path.join(repoDir, 'schedules.json'), [{ id: 's1', cron: '0 * * * *' }]);
+        writeJSON(path.join(repoDir, 'schedule-runs.json'), [{ id: 'r1', scheduleId: 's1' }]);
+
+        const payload = await exportAllData({ store, dataDir });
+        expect(payload.scheduleHistory).toHaveLength(1);
+        expect(payload.scheduleHistory![0].repoId).toBe('ws-abc');
+        expect(payload.scheduleHistory![0].schedules).toHaveLength(1);
+        expect(payload.scheduleHistory![0].scheduleRuns).toHaveLength(1);
+        expect(payload.metadata.scheduleFileCount).toBe(1);
     });
 
     it('includes serverVersion when provided', async () => {
