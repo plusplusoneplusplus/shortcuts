@@ -84,6 +84,9 @@ export {
     getWorkingDirectory,
 } from './repo-utils';
 
+// Path utilities
+export { getRepoDataPath } from './paths';
+
 // Process API handlers
 export {
     registerApiRoutes,
