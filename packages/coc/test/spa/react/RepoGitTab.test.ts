@@ -196,6 +196,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setWorkingChangesRefreshKey(k => k + 1)');
         });
 
+        it('clears actionError on refresh (regression: stale action banners should dismiss)', () => {
+            const refreshBlock = source.match(/const refreshAll = useCallback[\s\S]*?\}, \[refreshing/);
+            expect(refreshBlock).toBeTruthy();
+            expect(refreshBlock![0]).toContain('setActionError(null)');
+        });
+
         it('passes refreshKey to WorkingTree', () => {
             expect(source).toContain('refreshKey={workingChangesRefreshKey}');
         });

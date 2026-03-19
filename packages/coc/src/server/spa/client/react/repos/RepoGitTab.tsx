@@ -212,6 +212,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (refreshing) return;
         setRefreshing(true);
         setRefreshError(null);
+        setActionError(null);
         setSkip(0);
         setWorkingChangesRefreshKey(k => k + 1);
         const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
