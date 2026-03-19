@@ -19,6 +19,7 @@ import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
+import { useQueue } from '../context/QueueContext';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
@@ -37,6 +38,7 @@ export interface CommitDetailProps {
 }
 
 export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDetailProps) {
+    const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [diffLoading, setDiffLoading] = useState(true);
     const [diffError, setDiffError] = useState<string | null>(null);
@@ -121,6 +123,27 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
             void askAI(id, { commandId, customQuestion });
         },
         [askAI],
+    );
+
+    const handleAskAIDiff = useCallback(
+        (selection: DiffCommentSelection, selectedText: string) => {
+            const lineRange = (selection.newLineStart && selection.newLineEnd)
+                ? `${selection.newLineStart}-${selection.newLineEnd}`
+                : `${selection.diffLineStart}-${selection.diffLineEnd}`;
+            const contextStr = [
+                'Context from code review:',
+                `- Commit: ${hash}`,
+                ...(filePath ? [`- File: ${filePath}`] : []),
+                `- Lines ${lineRange}:`,
+                '```',
+                selectedText,
+                '```',
+                '',
+                '',
+            ].join('\n');
+            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr });
+        },
+        [hash, filePath, workspaceId, queueDispatch],
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
@@ -299,6 +322,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                                 comments={comments}
                                 onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
                                 onAddComment={filePath ? handleAddComment : undefined}
+                                onAskAI={filePath ? handleAskAIDiff : undefined}
                                 onCommentClick={filePath ? handleCommentClick : undefined}
                                 data-testid="diff-content"
                             />
@@ -312,6 +336,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                                 comments={comments}
                                 onLinesReady={(lines) => { setDiffLines(lines); if (filePath) runRelocation(lines); }}
                                 onAddComment={filePath ? handleAddComment : undefined}
+                                onAskAI={filePath ? handleAskAIDiff : undefined}
                                 onCommentClick={filePath ? handleCommentClick : undefined}
                                 data-testid="diff-content"
                             />

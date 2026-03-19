@@ -19,6 +19,7 @@ import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
+import { useQueue } from '../context/QueueContext';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
@@ -42,6 +43,7 @@ type PopupState = {
 } | null;
 
 export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTreeFileDiffProps) {
+    const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -113,6 +115,26 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
         [askAI],
     );
 
+    const handleAskAIDiff = useCallback(
+        (selection: DiffCommentSelection, selectedText: string) => {
+            const lineRange = (selection.newLineStart && selection.newLineEnd)
+                ? `${selection.newLineStart}-${selection.newLineEnd}`
+                : `${selection.diffLineStart}-${selection.diffLineEnd}`;
+            const contextStr = [
+                'Context from code review:',
+                `- File: ${filePath}`,
+                `- Lines ${lineRange}:`,
+                '```',
+                selectedText,
+                '```',
+                '',
+                '',
+            ].join('\n');
+            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr });
+        },
+        [filePath, workspaceId, queueDispatch],
+    );
+
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
         const dc = comment as DiffComment;
         const lineIdx = dc.selection?.diffLineStart;
@@ -173,6 +195,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                                 comments={comments}
                                 onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                 onAddComment={handleAddComment}
+                                onAskAI={handleAskAIDiff}
                                 onCommentClick={handleCommentClick}
                                 data-testid="working-tree-file-diff-content"
                             />
@@ -186,6 +209,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                                 comments={comments}
                                 onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                 onAddComment={handleAddComment}
+                                onAskAI={handleAskAIDiff}
                                 onCommentClick={handleCommentClick}
                                 data-testid="working-tree-file-diff-content"
                             />

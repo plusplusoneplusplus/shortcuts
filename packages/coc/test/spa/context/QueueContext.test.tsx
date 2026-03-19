@@ -20,6 +20,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         showDialog: false,
         dialogInitialFolderPath: null,
         dialogInitialWorkspaceId: null,
+        dialogInitialPrompt: null,
         dialogMode: 'task',
         showHistory: false,
         isFollowUpStreaming: false,
@@ -123,12 +124,32 @@ describe('queueReducer', () => {
             expect(result.dialogInitialWorkspaceId).toBe('ws-1');
         });
 
+        it('OPEN_DIALOG sets dialogInitialPrompt when provided', () => {
+            const state = makeState();
+            const result = queueReducer(state, { type: 'OPEN_DIALOG', mode: 'ask', initialPrompt: 'Context from code review:\n- File: foo.ts\n' });
+            expect(result.showDialog).toBe(true);
+            expect(result.dialogInitialPrompt).toBe('Context from code review:\n- File: foo.ts\n');
+            expect(result.dialogMode).toBe('ask');
+        });
+
+        it('OPEN_DIALOG leaves dialogInitialPrompt null when not provided', () => {
+            const state = makeState();
+            const result = queueReducer(state, { type: 'OPEN_DIALOG', mode: 'ask' });
+            expect(result.dialogInitialPrompt).toBeNull();
+        });
+
         it('CLOSE_DIALOG sets showDialog=false and clears context', () => {
             const state = makeState({ showDialog: true, dialogInitialFolderPath: '/tasks', dialogInitialWorkspaceId: 'ws-1' });
             const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
             expect(result.showDialog).toBe(false);
             expect(result.dialogInitialFolderPath).toBe(null);
             expect(result.dialogInitialWorkspaceId).toBe(null);
+        });
+
+        it('CLOSE_DIALOG clears dialogInitialPrompt', () => {
+            const state = makeState({ showDialog: true, dialogInitialPrompt: 'some prompt' });
+            const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
+            expect(result.dialogInitialPrompt).toBeNull();
         });
     });
 

@@ -77,4 +77,46 @@ describe('DiffContextMenu', () => {
         });
         expect(onClose).toHaveBeenCalledOnce();
     });
+
+    it('does not render "Ask AI" item when onAskAI is not provided', () => {
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+            />
+        );
+        expect(screen.queryByText(/Ask AI/)).toBeNull();
+    });
+
+    it('renders "Ask AI" item when onAskAI is provided', () => {
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+                onAskAI={vi.fn()}
+            />
+        );
+        expect(screen.getByText(/Ask AI/)).toBeTruthy();
+    });
+
+    it('calls onAskAI when Ask AI menu item is clicked', async () => {
+        const onAskAI = vi.fn();
+        render(
+            <DiffContextMenu
+                visible={true}
+                position={{ x: 100, y: 50 }}
+                onAddComment={vi.fn()}
+                onClose={vi.fn()}
+                onAskAI={onAskAI}
+            />
+        );
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('context-menu-item-1'));
+        });
+        expect(onAskAI).toHaveBeenCalledOnce();
+    });
 });

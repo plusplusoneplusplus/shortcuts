@@ -24,6 +24,11 @@ export interface UnifiedDiffViewerProps {
         selectedText: string,
         position: { top: number; left: number }
     ) => void;
+    onAskAI?: (
+        selection: DiffCommentSelection,
+        selectedText: string,
+        position: { top: number; left: number }
+    ) => void;
     onCommentClick?: (comment: DiffComment, event: React.MouseEvent) => void;
 }
 
@@ -300,7 +305,7 @@ function getScrollableAncestor(el: HTMLElement): HTMLElement {
     return document.documentElement as HTMLElement;
 }
 
-export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, comments, onCommentClick }, ref) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, onAskAI, comments, onCommentClick }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -558,6 +563,11 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                         onAddComment?.(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
                     }
                 }}
+                onAskAI={onAskAI ? () => {
+                    if (toolbar.selection) {
+                        onAskAI(toolbar.selection, toolbar.selectedText, { top: toolbar.position.y, left: toolbar.position.x });
+                    }
+                } : undefined}
                 onClose={() => setToolbar(t => ({ ...t, visible: false }))}
             />
         )}

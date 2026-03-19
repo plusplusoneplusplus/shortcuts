@@ -82,6 +82,9 @@ export function EnqueueDialog() {
         if (queueState.dialogInitialWorkspaceId) {
             setWorkspaceId(queueState.dialogInitialWorkspaceId);
         }
+        if (queueState.dialogInitialPrompt) {
+            setPrompt(queueState.dialogInitialPrompt);
+        }
     }, [queueState.showDialog]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch folders when workspaceId changes

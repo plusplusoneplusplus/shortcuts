@@ -29,6 +29,8 @@ export interface QueueContextState {
     showDialog: boolean;
     dialogInitialFolderPath: string | null;
     dialogInitialWorkspaceId: string | null;
+    /** Pre-filled prompt text seeded into EnqueueDialog when it opens. */
+    dialogInitialPrompt: string | null;
     /** When 'ask', the dialog creates a read-only chat instead of a follow-prompt task. */
     dialogMode: 'task' | 'ask';
     showHistory: boolean;
@@ -76,6 +78,7 @@ const initialState: QueueContextState = {
     showDialog: false,
     dialogInitialFolderPath: null,
     dialogInitialWorkspaceId: null,
+    dialogInitialPrompt: null,
     dialogMode: 'task',
     showHistory: false,
     isFollowUpStreaming: false,
@@ -102,7 +105,7 @@ export type QueueAction =
     | { type: 'DRAIN_COMPLETE' }
     | { type: 'DRAIN_TIMEOUT' }
     | { type: 'TOGGLE_DIALOG' }
-    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' }
+    | { type: 'OPEN_DIALOG'; folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask'; initialPrompt?: string | null }
     | { type: 'CLOSE_DIALOG' }
     | { type: 'TOGGLE_HISTORY' }
     | { type: 'SET_FOLLOW_UP_STREAMING'; value: boolean; turnIndex: number | null }
@@ -183,9 +186,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         case 'TOGGLE_DIALOG':
             return { ...state, showDialog: !state.showDialog };
         case 'OPEN_DIALOG':
-            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null, dialogMode: action.mode ?? 'task' };
+            return { ...state, showDialog: true, dialogInitialFolderPath: action.folderPath ?? null, dialogInitialWorkspaceId: action.workspaceId ?? null, dialogInitialPrompt: action.initialPrompt ?? null, dialogMode: action.mode ?? 'task' };
         case 'CLOSE_DIALOG':
-            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null, dialogMode: 'task' };
+            return { ...state, showDialog: false, dialogInitialFolderPath: null, dialogInitialWorkspaceId: null, dialogInitialPrompt: null, dialogMode: 'task' };
         case 'TOGGLE_HISTORY':
             return { ...state, showHistory: !state.showHistory };
         case 'SET_FOLLOW_UP_STREAMING':

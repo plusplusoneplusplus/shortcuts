@@ -10,14 +10,19 @@ export interface DiffContextMenuProps {
     position: { x: number; y: number };
     onAddComment: () => void;
     onClose: () => void;
+    onAskAI?: () => void;
 }
 
-export function DiffContextMenu({ visible, position, onAddComment, onClose }: DiffContextMenuProps) {
+export function DiffContextMenu({ visible, position, onAddComment, onClose, onAskAI }: DiffContextMenuProps) {
     if (!visible) return null;
+    const items = [
+        { label: 'Add comment', icon: '💬', onClick: onAddComment },
+        ...(onAskAI ? [{ label: 'Ask AI', icon: '🤖', onClick: onAskAI }] : []),
+    ];
     return (
         <ContextMenu
             position={position}
-            items={[{ label: 'Add comment', icon: '💬', onClick: onAddComment }]}
+            items={items}
             onClose={onClose}
         />
     );
