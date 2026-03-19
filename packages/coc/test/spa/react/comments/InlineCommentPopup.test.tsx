@@ -2,12 +2,13 @@
  * Tests for InlineCommentPopup React component.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
     InlineCommentPopup,
     clampToViewport,
 } from '../../../../src/server/spa/client/react/tasks/comments/InlineCommentPopup';
+import { mockViewport } from '../../helpers/viewport-mock';
 
 describe('clampToViewport', () => {
     const vw = 1024;
@@ -75,6 +76,145 @@ describe('clampToViewport', () => {
         const result = clampToViewport({ top: 760, left: 1010 }, pw, ph, vw, vh, customMargin);
         expect(result.top).toBe(vh - ph - customMargin);
         expect(result.left).toBe(vw - pw - customMargin);
+    });
+});
+
+describe('InlineCommentPopup drag behaviour', () => {
+    let viewportCleanup: (() => void) | undefined;
+
+    afterEach(() => {
+        viewportCleanup?.();
+        viewportCleanup = undefined;
+    });
+
+    it('renders a drag handle on desktop', () => {
+        viewportCleanup = mockViewport(1280);
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+        expect(document.querySelector('[data-testid="drag-handle"]')).not.toBeNull();
+    });
+
+    it('does not render a drag handle on mobile (BottomSheet path)', () => {
+        viewportCleanup = mockViewport(375);
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+        expect(document.querySelector('[data-testid="drag-handle"]')).toBeNull();
+    });
+
+    it('dragging the handle moves the popup without closing it', () => {
+        viewportCleanup = mockViewport(1280);
+        const onCancel = vi.fn();
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={onCancel}
+            />
+        );
+
+        const handle = document.querySelector('[data-testid="drag-handle"]') as HTMLElement;
+        expect(handle).not.toBeNull();
+
+        const popup = screen.getByTestId('inline-comment-popup');
+        const initialTop = (popup as HTMLElement).style.top;
+        const initialLeft = (popup as HTMLElement).style.left;
+
+        // Simulate drag: mousedown on handle, mousemove, mouseup
+        act(() => {
+            fireEvent.mouseDown(handle, { clientX: 200, clientY: 100 });
+        });
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousemove', { clientX: 250, clientY: 130, bubbles: true }));
+        });
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        });
+
+        const newTop = (popup as HTMLElement).style.top;
+        const newLeft = (popup as HTMLElement).style.left;
+
+        // Position should have changed
+        expect(newTop).not.toBe(initialTop);
+        expect(newLeft).not.toBe(initialLeft);
+
+        // Popup should not have been closed
+        expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    it('popup stays within viewport after drag past the right/bottom edges', () => {
+        Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+        Object.defineProperty(window, 'innerHeight', { value: 768, configurable: true });
+        viewportCleanup = mockViewport(1280);
+
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+
+        const handle = document.querySelector('[data-testid="drag-handle"]') as HTMLElement;
+        const popup = screen.getByTestId('inline-comment-popup') as HTMLElement;
+
+        act(() => {
+            fireEvent.mouseDown(handle, { clientX: 200, clientY: 100 });
+        });
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousemove', { clientX: 9999, clientY: 9999, bubbles: true }));
+        });
+
+        const top = parseFloat(popup.style.top);
+        const left = parseFloat(popup.style.left);
+        expect(left).toBeLessThanOrEqual(1024 - 8);
+        expect(top).toBeLessThanOrEqual(768 - 8);
+
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        });
+    });
+
+    it('popup stays within viewport after drag past the left/top edges', () => {
+        Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+        Object.defineProperty(window, 'innerHeight', { value: 768, configurable: true });
+        viewportCleanup = mockViewport(1280);
+
+        render(
+            <InlineCommentPopup
+                position={{ top: 100, left: 200 }}
+                onSubmit={vi.fn()}
+                onCancel={vi.fn()}
+            />
+        );
+
+        const handle = document.querySelector('[data-testid="drag-handle"]') as HTMLElement;
+        const popup = screen.getByTestId('inline-comment-popup') as HTMLElement;
+
+        act(() => {
+            fireEvent.mouseDown(handle, { clientX: 200, clientY: 100 });
+        });
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousemove', { clientX: -9999, clientY: -9999, bubbles: true }));
+        });
+
+        const top = parseFloat(popup.style.top);
+        const left = parseFloat(popup.style.left);
+        expect(left).toBeGreaterThanOrEqual(8);
+        expect(top).toBeGreaterThanOrEqual(8);
+
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        });
     });
 });
 

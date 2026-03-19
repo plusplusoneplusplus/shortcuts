@@ -9,39 +9,10 @@ import type { TaskCommentCategory } from '../../../task-comments-types';
 import { ALL_CATEGORIES, CATEGORY_INFO } from '../../../task-comments-types';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { BottomSheet } from '../../shared/BottomSheet';
+import { useDraggable } from '../../hooks/useDraggable';
 
-const VIEWPORT_MARGIN = 8;
-
-/**
- * Clamp a popup rect so it stays fully inside the viewport.
- * Returns adjusted { top, left } values.
- */
-export function clampToViewport(
-    position: { top: number; left: number },
-    popupWidth: number,
-    popupHeight: number,
-    viewportWidth: number = window.innerWidth,
-    viewportHeight: number = window.innerHeight,
-    margin: number = VIEWPORT_MARGIN,
-): { top: number; left: number } {
-    let { top, left } = position;
-
-    if (left + popupWidth + margin > viewportWidth) {
-        left = viewportWidth - popupWidth - margin;
-    }
-    if (left < margin) {
-        left = margin;
-    }
-
-    if (top + popupHeight + margin > viewportHeight) {
-        top = viewportHeight - popupHeight - margin;
-    }
-    if (top < margin) {
-        top = margin;
-    }
-
-    return { top, left };
-}
+// Re-export for backward compatibility (tests and other consumers import from here).
+export { clampToViewport } from './viewportUtils';
 
 export interface InlineCommentPopupProps {
     position: { top: number; left: number };
@@ -52,20 +23,15 @@ export interface InlineCommentPopupProps {
 export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineCommentPopupProps) {
     const [text, setText] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<TaskCommentCategory>('general');
-    const [clampedPos, setClampedPos] = useState(position);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const popupRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useBreakpoint();
+    const { position: clampedPos, isDraggingRef, handleMouseDown: handleDragStart } = useDraggable(position, popupRef);
 
     useEffect(() => {
         setText('');
         setSelectedCategory('general');
         textareaRef.current?.focus();
-
-        if (popupRef.current) {
-            const rect = popupRef.current.getBoundingClientRect();
-            setClampedPos(clampToViewport(position, rect.width, rect.height));
-        }
     }, [position]);
 
     // Escape key closes
@@ -81,9 +47,10 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
         return () => document.removeEventListener('keydown', handler);
     }, [text]);
 
-    // Click outside closes
+    // Click outside closes — but not if the user is mid-drag
     useEffect(() => {
         const handler = (e: MouseEvent) => {
+            if (isDraggingRef.current) return;
             if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
                 onCancel();
             }
@@ -96,7 +63,7 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
             clearTimeout(timer);
             document.removeEventListener('mousedown', handler);
         };
-    }, [onCancel]);
+    }, [onCancel, isDraggingRef]);
 
     const handleSubmit = () => {
         const trimmed = text.trim();
@@ -165,11 +132,23 @@ export function InlineCommentPopup({ position, onSubmit, onCancel }: InlineComme
     return ReactDOM.createPortal(
         <div
             ref={popupRef}
-            className="fixed z-[10003] min-w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-3 flex flex-col gap-2 overflow-hidden resize"
+            className="fixed z-[10003] min-w-[300px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl flex flex-col overflow-hidden resize"
             style={{ top: clampedPos.top, left: clampedPos.left }}
             data-testid="inline-comment-popup"
         >
-            {popupContent}
+            {/* Drag handle */}
+            <div
+                className="flex items-center justify-center h-5 cursor-move select-none bg-[#f3f3f3] dark:bg-[#2d2d2d] border-b border-[#e0e0e0] dark:border-[#3c3c3c] rounded-t-lg flex-shrink-0"
+                onMouseDown={handleDragStart}
+                data-testid="drag-handle"
+                title="Drag to move"
+                aria-label="Drag to move"
+            >
+                <span className="text-[#848484] dark:text-[#6e6e6e] text-xs tracking-widest pointer-events-none">⠿</span>
+            </div>
+            <div className="p-3 flex flex-col gap-2">
+                {popupContent}
+            </div>
         </div>,
         document.body
     );
