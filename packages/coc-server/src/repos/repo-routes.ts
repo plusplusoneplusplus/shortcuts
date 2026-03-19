@@ -67,8 +67,10 @@ function parseRepoRequest(
  *
  * @param routes  - Shared route table
  * @param dataDir - CoC data directory (e.g. ~/.coc)
+ * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerRepoRoutes(routes: Route[], dataDir: string): void {
+export function registerRepoRoutes(routes: Route[], dataDir: string, service?: RepoTreeService): void {
+    const svc = service ?? new RepoTreeService(dataDir);
 
     // -- List repos ----------------------------------------------------------
 
@@ -77,8 +79,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
         pattern: '/api/repos',
         handler: async (_req, res) => {
             try {
-                const service = new RepoTreeService(dataDir);
-                const repos = await service.listRepos();
+                const repos = await svc.listRepos();
                 sendJson(res, repos);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -100,8 +101,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                 });
                 if (!parsed) return;
 
-                const service = new RepoTreeService(dataDir);
-                const repo = await service.resolveRepo(parsed.repoId);
+                const repo = await svc.resolveRepo(parsed.repoId);
                 if (!repo) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
@@ -111,8 +111,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                 const rawDepth = parseInt(String(parsedUrl.query.depth ?? '1'), 10);
                 const depth = Math.min(Math.max(isNaN(rawDepth) ? 1 : rawDepth, 1), 5);
                 const result = depth > 1
-                    ? await service.listDirectoryDeep(parsed.repoId, parsed.path, depth, { showIgnored })
-                    : await service.listDirectory(parsed.repoId, parsed.path, { showIgnored });
+                    ? await svc.listDirectoryDeep(parsed.repoId, parsed.path, depth, { showIgnored })
+                    : await svc.listDirectory(parsed.repoId, parsed.path, { showIgnored });
                 sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {
@@ -138,15 +138,14 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                 });
                 if (!parsed) return;
 
-                const service = new RepoTreeService(dataDir);
-                const repo = await service.resolveRepo(parsed.repoId);
+                const repo = await svc.resolveRepo(parsed.repoId);
                 if (!repo) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
 
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
-                const result = await service.listFilesRecursive(parsed.repoId, parsed.path, { showIgnored });
+                const result = await svc.listFilesRecursive(parsed.repoId, parsed.path, { showIgnored });
                 sendJson(res, result);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {
@@ -178,14 +177,13 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                 const limit = isNaN(rawLimit) ? 50 : Math.min(Math.max(rawLimit, 1), 200);
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
 
-                const service = new RepoTreeService(dataDir);
-                const repo = await service.resolveRepo(repoId);
+                const repo = await svc.resolveRepo(repoId);
                 if (!repo) {
                     send404(res, `Unknown repo: ${repoId}`);
                     return;
                 }
 
-                const result = await service.searchFiles(repoId, q, { limit, showIgnored });
+                const result = await svc.searchFiles(repoId, q, { limit, showIgnored });
                 sendJson(res, result);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
@@ -206,14 +204,13 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                 });
                 if (!parsed) return;
 
-                const service = new RepoTreeService(dataDir);
-                const repo = await service.resolveRepo(parsed.repoId);
+                const repo = await svc.resolveRepo(parsed.repoId);
                 if (!repo) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
 
-                const blob = await service.readBlob(parsed.repoId, parsed.path);
+                const blob = await svc.readBlob(parsed.repoId, parsed.path);
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(blob));
@@ -258,14 +255,13 @@ export function registerRepoRoutes(routes: Route[], dataDir: string): void {
                     return;
                 }
 
-                const service = new RepoTreeService(dataDir);
-                const repo = await service.resolveRepo(parsed.repoId);
+                const repo = await svc.resolveRepo(parsed.repoId);
                 if (!repo) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
 
-                await service.writeBlob(parsed.repoId, parsed.path, body.content);
+                await svc.writeBlob(parsed.repoId, parsed.path, body.content);
                 sendJson(res, { success: true });
             } catch (err) {
                 if (err instanceof Error && err.message.includes('Path traversal')) {

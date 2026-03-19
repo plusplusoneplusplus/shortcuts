@@ -87,6 +87,7 @@ let dataDir: string;
 let server: http.Server;
 let baseUrl: string;
 let mockSvc: Partial<IPullRequestsService>;
+let mockResolveRepo: ReturnType<typeof vi.fn>;
 
 function makeServer(dir: string): http.Server {
     const routes: Route[] = [];
@@ -125,7 +126,7 @@ beforeEach(async () => {
     };
 
     (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-        resolveRepo: vi.fn().mockResolvedValue(mockRepoInfo),
+        resolveRepo: mockResolveRepo = vi.fn().mockResolvedValue(mockRepoInfo),
     }));
     (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(mockSvc);
 
@@ -188,9 +189,7 @@ describe('GET /api/repos/:id/pull-requests', () => {
     });
 
     it('returns 404 when repo not found', async () => {
-        (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-            resolveRepo: vi.fn().mockResolvedValue(null),
-        }));
+        mockResolveRepo.mockResolvedValueOnce(null);
         const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests`);
         expect(res.status).toBe(404);
         const body = await res.json() as { error: string };
@@ -236,9 +235,7 @@ describe('GET /api/repos/:id/pull-requests/:prId', () => {
     });
 
     it('returns 404 when repo not found', async () => {
-        (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-            resolveRepo: vi.fn().mockResolvedValue(null),
-        }));
+        mockResolveRepo.mockResolvedValueOnce(null);
         const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42`);
         expect(res.status).toBe(404);
     });
@@ -276,9 +273,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/threads', () => {
     });
 
     it('returns 404 when repo not found', async () => {
-        (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-            resolveRepo: vi.fn().mockResolvedValue(null),
-        }));
+        mockResolveRepo.mockResolvedValueOnce(null);
         const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/threads`);
         expect(res.status).toBe(404);
     });
@@ -302,9 +297,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/reviewers', () => {
     });
 
     it('returns 404 when repo not found', async () => {
-        (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-            resolveRepo: vi.fn().mockResolvedValue(null),
-        }));
+        mockResolveRepo.mockResolvedValueOnce(null);
         const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/reviewers`);
         expect(res.status).toBe(404);
     });
@@ -338,9 +331,7 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff', () => {
     });
 
     it('returns 404 when repo not found', async () => {
-        (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-            resolveRepo: vi.fn().mockResolvedValue(null),
-        }));
+        mockResolveRepo.mockResolvedValueOnce(null);
         const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/diff`);
         expect(res.status).toBe(404);
     });

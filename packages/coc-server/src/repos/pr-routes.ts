@@ -47,8 +47,10 @@ function isNoAdoCredentials(svc: unknown): svc is AdoNoCredentialsSentinel {
  *
  * @param routes  - Shared route table
  * @param dataDir - CoC data directory (e.g. ~/.coc)
+ * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerPrRoutes(routes: Route[], dataDir: string): void {
+export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService): void {
+    const svc = service ?? new RepoTreeService(dataDir);
 
     // -- List PRs -------------------------------------------------------------
 
@@ -58,13 +60,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
         handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
-                const repo = await new RepoTreeService(dataDir).resolveRepo(repoId);
+                const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc || isNoAdoCredentials(svc)) {
-                    if (isNoAdoCredentials(svc)) {
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
                         return sendJson(res, { error: 'no-ado-credentials' }, 401);
                     }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
@@ -76,7 +78,7 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 const top = Math.min(+(query.top ?? 25), 100);
                 const skip = +(query.skip ?? 0);
 
-                const prs = await svc.listPullRequests(repoId, { status, top, skip });
+                const prs = await prSvc.listPullRequests(repoId, { status, top, skip });
 
                 // Apply server-side author and title filters
                 let filtered = prs;
@@ -113,20 +115,20 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
 
-                const repo = await new RepoTreeService(dataDir).resolveRepo(repoId);
+                const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc || isNoAdoCredentials(svc)) {
-                    if (isNoAdoCredentials(svc)) {
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
                         return sendJson(res, { error: 'no-ado-credentials' }, 401);
                     }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
 
-                const pr = await svc.getPullRequest(repoId, prId);
+                const pr = await prSvc.getPullRequest(repoId, prId);
                 sendJson(res, pr);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
@@ -150,20 +152,20 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
 
-                const repo = await new RepoTreeService(dataDir).resolveRepo(repoId);
+                const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc || isNoAdoCredentials(svc)) {
-                    if (isNoAdoCredentials(svc)) {
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
                         return sendJson(res, { error: 'no-ado-credentials' }, 401);
                     }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
 
-                const threads = await svc.getThreads(repoId, prId);
+                const threads = await prSvc.getThreads(repoId, prId);
                 sendJson(res, { threads });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
@@ -187,20 +189,20 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
 
-                const repo = await new RepoTreeService(dataDir).resolveRepo(repoId);
+                const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc || isNoAdoCredentials(svc)) {
-                    if (isNoAdoCredentials(svc)) {
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
                         return sendJson(res, { error: 'no-ado-credentials' }, 401);
                     }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
 
-                const reviewers = await svc.getReviewers(repoId, prId);
+                const reviewers = await prSvc.getReviewers(repoId, prId);
                 sendJson(res, { reviewers });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
@@ -224,26 +226,26 @@ export function registerPrRoutes(routes: Route[], dataDir: string): void {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
 
-                const repo = await new RepoTreeService(dataDir).resolveRepo(repoId);
+                const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const svc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!svc || isNoAdoCredentials(svc)) {
-                    if (isNoAdoCredentials(svc)) {
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
                         return sendJson(res, { error: 'no-ado-credentials' }, 401);
                     }
                     const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
                     return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
                 }
 
-                if (typeof svc.getDiff !== 'function') {
+                if (typeof prSvc.getDiff !== 'function') {
                     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
                     res.end('');
                     return;
                 }
 
-                const diff = await svc.getDiff(repoId, prId);
+                const diff = await prSvc.getDiff(repoId, prId);
                 res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
                 res.end(diff);
             } catch (err) {

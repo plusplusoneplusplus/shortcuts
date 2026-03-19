@@ -25,7 +25,7 @@ import { registerAdminRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerDiffCommentsRoutes } from './diff-comments-handler';
 import { registerWikiRoutes } from './wiki';
-import { registerMemoryRoutes, registerRepoRoutes, registerInstructionRoutes, registerProviderRoutes, registerPrRoutes, registerLogsRoutes, registerModelRoutes } from '@plusplusoneplusplus/coc-server';
+import { registerMemoryRoutes, registerRepoRoutes, registerInstructionRoutes, registerProviderRoutes, registerPrRoutes, registerLogsRoutes, registerModelRoutes, RepoTreeService } from '@plusplusoneplusplus/coc-server';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
@@ -227,8 +227,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Build API routes
     const routes: Route[] = [];
     registerApiRoutes(routes, store, bridge, dataDir, () => wsServer);
-    registerRepoRoutes(routes, dataDir);
-    registerPrRoutes(routes, dataDir);
+    const repoTreeService = new RepoTreeService(dataDir);
+    registerRepoRoutes(routes, dataDir, repoTreeService);
+    registerPrRoutes(routes, dataDir, repoTreeService);
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);
