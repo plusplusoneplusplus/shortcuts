@@ -215,10 +215,26 @@ describe('GitOpsStore', () => {
         expect(latest).toBeDefined();
 
         // Verify file is valid JSON
-        const filePath = path.join(tmpDir, 'git-ops', 'ws-1.json');
+        const filePath = path.join(tmpDir, 'repos', 'ws-1', 'git-ops.json');
         const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
         expect(Array.isArray(data)).toBe(true);
         expect(data.length).toBe(10); // default maxJobs
+    });
+
+    // --- Path layout ---
+
+    it('should write job data at repos/<workspaceId>/git-ops.json', async () => {
+        const store = new GitOpsStore({ dataDir: tmpDir });
+        await store.create(makeJob({ id: 'path-test', workspaceId: 'ws-abc123' }));
+
+        const filePath = path.join(tmpDir, 'repos', 'ws-abc123', 'git-ops.json');
+        const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+        expect(Array.isArray(data)).toBe(true);
+        expect(data[0].id).toBe('path-test');
+
+        // Old path should NOT exist
+        const oldPath = path.join(tmpDir, 'git-ops', 'ws-abc123.json');
+        await expect(fs.access(oldPath)).rejects.toThrow();
     });
 
     // --- Persistence across instances ---

@@ -4,7 +4,7 @@
  * Tracks running / completed / failed git operations (pull, push, fetch, rebase-autosquash) per workspace
  * so that the UI can recover status after a page refresh or server restart.
  *
- * Storage layout: `<dataDir>/git-ops/<workspaceId>.json` — one file per workspace
+ * Storage layout: `<dataDir>/repos/<workspaceId>/git-ops.json` — one file per workspace
  * containing an array of the last N job records (default 10).
  *
  * Follows the same atomic-write and write-queue patterns as FileProcessStore.
@@ -17,6 +17,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { withRetry } from '../runtime/retry';
 import { getLogger } from '../logger';
+import { getRepoDataPath } from '../paths';
 
 // ============================================================================
 // Types
@@ -49,7 +50,7 @@ export interface GitOpsStoreOptions {
 // ============================================================================
 
 export class GitOpsStore {
-    private readonly opsDir: string;
+    private readonly dataDir: string;
     private readonly maxJobs: number;
     private writeQueue: Promise<void> = Promise.resolve();
 
@@ -57,8 +58,7 @@ export class GitOpsStore {
     private static readonly RETRYABLE_FS_ERRORS = new Set(['EACCES', 'EBUSY', 'EPERM', 'ENOLCK', 'EIO']);
 
     constructor(options?: GitOpsStoreOptions) {
-        const dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc');
-        this.opsDir = path.join(dataDir, 'git-ops');
+        this.dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc');
         this.maxJobs = options?.maxJobsPerWorkspace ?? 10;
     }
 
@@ -111,16 +111,21 @@ export class GitOpsStore {
      */
     async markStaleRunningJobs(): Promise<number> {
         let count = 0;
-        await fs.mkdir(this.opsDir, { recursive: true }).catch(() => {});
-        let files: string[];
+        const reposDir = path.join(this.dataDir, 'repos');
+        let entries: string[];
         try {
-            files = await fs.readdir(this.opsDir);
+            entries = await fs.readdir(reposDir);
         } catch {
             return 0;
         }
-        for (const file of files) {
-            if (!file.endsWith('.json')) continue;
-            const workspaceId = file.replace(/\.json$/, '');
+        for (const entry of entries) {
+            const filePath = path.join(reposDir, entry, 'git-ops.json');
+            try {
+                await fs.access(filePath);
+            } catch {
+                continue; // no git-ops file for this workspace
+            }
+            const workspaceId = entry;
             await this.enqueueWrite(async () => {
                 const jobs = await this.readWorkspaceJobs(workspaceId);
                 let changed = false;
@@ -144,8 +149,7 @@ export class GitOpsStore {
     // --- Internal helpers ---
 
     private workspaceFilePath(workspaceId: string): string {
-        const safe = workspaceId.replace(/[^a-zA-Z0-9\-_]/g, '_');
-        return path.join(this.opsDir, `${safe}.json`);
+        return getRepoDataPath(this.dataDir, workspaceId, 'git-ops.json');
     }
 
     private async readWorkspaceJobs(workspaceId: string): Promise<GitOpJob[]> {
@@ -158,8 +162,8 @@ export class GitOpsStore {
     }
 
     private async writeWorkspaceJobs(workspaceId: string, jobs: GitOpJob[]): Promise<void> {
-        await fs.mkdir(this.opsDir, { recursive: true });
         const filePath = this.workspaceFilePath(workspaceId);
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
         const tmpPath = filePath + '.tmp';
         await this.retryAtomicWrite(tmpPath, async () => {
             await fs.writeFile(tmpPath, JSON.stringify(jobs, null, 2), 'utf-8');

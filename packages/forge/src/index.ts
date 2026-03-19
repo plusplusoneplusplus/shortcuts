@@ -1277,3 +1277,9 @@ export { AdoWorkItemsAdapter } from './ado/ado-work-items-adapter';
 export { createAdoPullRequestsAdapter } from './ado/create-ado-adapter';
 
 export { GitHubPullRequestsAdapter, GitHubIssuesAdapter, createGitHubPullRequestsAdapter } from './github';
+
+// ============================================================================
+// Path Utilities
+// ============================================================================
+
+export { getRepoDataPath } from './paths';
