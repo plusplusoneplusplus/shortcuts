@@ -4,7 +4,7 @@
  * Persistence coordinator that routes per-repo queue state to and from
  * the correct per-repo TaskQueueManager instance managed by
  * MultiRepoQueueExecutorBridge. Reuses the existing PersistedQueueState
- * file format and per-repo file paths (`~/.coc/queues/repo-<hash>.json`).
+ * file format and per-repo file paths (`~/.coc/repos/<workspaceId>/queues.json`).
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -40,7 +40,6 @@ export interface MultiRepoQueuePersistenceOptions {
 export class MultiRepoQueuePersistence {
     private readonly bridge: MultiRepoQueueExecutorBridge;
     private readonly dataDir: string;
-    private readonly queuesDir: string;
     private readonly restartPolicy: RestartPolicy;
     private readonly maxPersistedHistory: number;
     private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -51,7 +50,6 @@ export class MultiRepoQueuePersistence {
     constructor(bridge: MultiRepoQueueExecutorBridge, dataDir: string, options?: MultiRepoQueuePersistenceOptions) {
         this.bridge = bridge;
         this.dataDir = dataDir;
-        this.queuesDir = path.join(dataDir, 'queues');
         this.restartPolicy = options?.restartPolicy ?? 'fail';
         this.maxPersistedHistory = options?.maxPersistedHistory ?? MAX_PERSISTED_HISTORY_DEFAULT;
 
@@ -73,19 +71,21 @@ export class MultiRepoQueuePersistence {
      * via bridge.getOrCreateBridge().
      */
     restore(): void {
-        // Ensure queues directory exists
-        if (!fs.existsSync(this.queuesDir)) {
-            fs.mkdirSync(this.queuesDir, { recursive: true });
+        const reposDir = path.join(this.dataDir, 'repos');
+        if (!fs.existsSync(reposDir)) {
+            fs.mkdirSync(reposDir, { recursive: true });
+            return;
         }
 
-        const files = fs.readdirSync(this.queuesDir)
-            .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+        const repoIds = fs.readdirSync(reposDir);
+        const filePaths = repoIds
+            .map(id => path.join(reposDir, id, 'queues.json'))
+            .filter(f => fs.existsSync(f));
 
         let totalRestored = 0;
         let totalHistory = 0;
 
-        for (const file of files) {
-            const filePath = path.join(this.queuesDir, file);
+        for (const filePath of filePaths) {
             const { restored, historyCount } = this.restoreRepoQueue(filePath);
             totalRestored += restored;
             totalHistory += historyCount;
@@ -93,7 +93,7 @@ export class MultiRepoQueuePersistence {
 
         if (totalRestored > 0 || totalHistory > 0) {
             process.stderr.write(
-                `[MultiRepoQueuePersistence] Restored ${totalRestored} pending task(s) across ${files.length} repo(s), ${totalHistory} history entry/entries\n`
+                `[MultiRepoQueuePersistence] Restored ${totalRestored} pending task(s) across ${filePaths.length} repo(s), ${totalHistory} history entry/entries\n`
             );
         }
     }

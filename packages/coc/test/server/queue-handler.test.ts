@@ -1582,9 +1582,9 @@ describe('Queue Handler', () => {
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: repoRoot,
@@ -1815,9 +1815,9 @@ describe('Queue Handler', () => {
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: repoRoot,
@@ -1887,9 +1887,9 @@ describe('Queue Handler', () => {
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             const regStore = new FileProcessStore({ dataDir });
             await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: repoRoot,
@@ -1937,9 +1937,9 @@ describe('Queue Handler', () => {
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: repoRoot,
@@ -2004,9 +2004,9 @@ describe('Queue Handler', () => {
             const crypto = require('crypto');
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             await store.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: repoRoot,
@@ -2091,9 +2091,9 @@ describe('Queue Handler', () => {
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             const regStore = new FileProcessStore({ dataDir });
             await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: repoRoot,
@@ -2158,9 +2158,9 @@ describe('Queue Handler', () => {
             const repoId = crypto.createHash('sha256').update(repoRoot).digest('hex').substring(0, 16);
             const regStore = new FileProcessStore({ dataDir });
             await regStore.registerWorkspace({ id: repoId, name: 'Test', rootPath: repoRoot });
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify({
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify({
                 version: 3,
                 savedAt: new Date().toISOString(),
                 repoRootPath: repoRoot,

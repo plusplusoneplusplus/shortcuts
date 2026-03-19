@@ -56,7 +56,7 @@ describe('executeWipeData', () => {
         await store.registerWorkspace({ id: 'ws1', name: 'WS', rootPath: '/tmp/ws' });
 
         writeJSON(path.join(dataDir, 'preferences.json'), { lastModel: 'gpt-4' });
-        writeJSON(path.join(dataDir, 'queues', 'repo-abc.json'), { version: 2, pending: [] });
+        writeJSON(path.join(dataDir, 'repos', 'abc', 'queues.json'), { version: 2, pending: [] });
 
         const exitCode = await executeWipeData({
             confirm: true,
@@ -74,7 +74,7 @@ describe('executeWipeData', () => {
         expect(workspaces).toHaveLength(0);
 
         expect(fs.existsSync(path.join(dataDir, 'preferences.json'))).toBe(false);
-        expect(fs.existsSync(path.join(dataDir, 'queues', 'repo-abc.json'))).toBe(false);
+        expect(fs.existsSync(path.join(dataDir, 'repos', 'abc', 'queues.json'))).toBe(false);
     });
 
     it('should show dry-run without deleting', async () => {

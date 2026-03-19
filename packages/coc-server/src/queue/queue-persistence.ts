@@ -6,8 +6,8 @@
  * On startup, persisted state is restored — pending tasks are re-enqueued
  * and previously-running tasks are marked as failed.
  *
- * Stores one file per repository: `~/.coc/queues/repo-<hash>.json`
- * where <hash> is the first 16 chars of the SHA-256 of the repo root path.
+ * Stores one file per repository: `~/.coc/repos/<workspaceId>/queues.json`
+ * where <workspaceId> is derived from the repo root path.
  *
  * Uses atomic writes (temp file + rename) consistent with FileProcessStore.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -18,6 +18,7 @@ import * as path from 'path';
 import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/forge';
 import { ImageBlobStore } from './image-blob-store';
+import { getRepoDataPath } from '../paths';
 
 // ============================================================================
 // Types
@@ -43,7 +44,7 @@ export const MAX_PERSISTED_HISTORY_DEFAULT = 100;
 
 /** Get the per-repo queue file path using a workspace ID. */
 export function getRepoQueueFilePath(dataDir: string, workspaceId: string): string {
-    return path.join(dataDir, 'queues', `repo-${workspaceId}.json`);
+    return getRepoDataPath(dataDir, workspaceId, 'queues.json');
 }
 
 /**
@@ -229,7 +230,6 @@ export function restoreRepoQueueState(
 
 export class QueuePersistence {
     private readonly dataDir: string;
-    private readonly queuesDir: string;
     private readonly queueManager: TaskQueueManager;
     private readonly restartPolicy: RestartPolicy;
     private readonly maxPersistedHistory: number;
@@ -243,15 +243,9 @@ export class QueuePersistence {
     constructor(queueManager: TaskQueueManager, dataDir: string, options?: QueuePersistenceOptions) {
         this.queueManager = queueManager;
         this.dataDir = dataDir;
-        this.queuesDir = path.join(dataDir, 'queues');
         this.restartPolicy = options?.restartPolicy ?? 'fail';
         this.maxPersistedHistory = options?.maxPersistedHistory ?? MAX_PERSISTED_HISTORY_DEFAULT;
         this.resolveWorkspaceId = options?.resolveWorkspaceId ?? (() => { throw new Error('resolveWorkspaceId is required'); });
-
-        // Ensure queues directory exists
-        if (!fs.existsSync(this.queuesDir)) {
-            fs.mkdirSync(this.queuesDir, { recursive: true });
-        }
 
         this.changeListener = () => {
             this.dirty = true;
@@ -265,18 +259,18 @@ export class QueuePersistence {
      * Called synchronously before executor starts.
      */
     restore(): void {
-        if (!fs.existsSync(this.queuesDir)) {
-            return;
-        }
+        const reposDir = path.join(this.dataDir, 'repos');
+        if (!fs.existsSync(reposDir)) { return; }
 
-        const files = fs.readdirSync(this.queuesDir)
-            .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+        const repoIds = fs.readdirSync(reposDir);
+        const filePaths = repoIds
+            .map(id => path.join(reposDir, id, 'queues.json'))
+            .filter(f => fs.existsSync(f));
 
         let totalRestored = 0;
         let totalHistory = 0;
 
-        for (const file of files) {
-            const filePath = path.join(this.queuesDir, file);
+        for (const filePath of filePaths) {
             const { restored, historyCount } = this.restoreRepoQueue(filePath);
             totalRestored += restored;
             totalHistory += historyCount;
@@ -284,7 +278,7 @@ export class QueuePersistence {
 
         if (totalRestored > 0 || totalHistory > 0) {
             process.stderr.write(
-                `[QueuePersistence] Restored ${totalRestored} pending task(s) across ${files.length} repo(s), ${totalHistory} history entry/entries\n`
+                `[QueuePersistence] Restored ${totalRestored} pending task(s) across ${filePaths.length} repo(s), ${totalHistory} history entry/entries\n`
             );
         }
     }
@@ -424,29 +418,26 @@ export class QueuePersistence {
     // ========================================================================
 
     private cleanupStaleFiles(activeRepos: Map<string, unknown>): void {
-        if (!fs.existsSync(this.queuesDir)) { return; }
-
-        // Build set of active repo file basenames
-        const activeFiles = new Set<string>();
+        // Build set of active workspace IDs
+        const activeIds = new Set<string>();
         for (const rootPath of activeRepos.keys()) {
-            const repoId = this.resolveWorkspaceId(rootPath);
-            activeFiles.add(`repo-${repoId}.json`);
+            activeIds.add(this.resolveWorkspaceId(rootPath));
         }
 
-        const files = fs.readdirSync(this.queuesDir)
-            .filter(f => f.startsWith('repo-') && f.endsWith('.json'));
+        const reposDir = path.join(this.dataDir, 'repos');
+        if (!fs.existsSync(reposDir)) { return; }
 
-        for (const file of files) {
-            if (!activeFiles.has(file)) {
-                const filePath = path.join(this.queuesDir, file);
-                try {
-                    fs.unlinkSync(filePath);
-                    process.stderr.write(
-                        `[QueuePersistence] Deleted empty queue file: ${file}\n`
-                    );
-                } catch {
-                    // Non-fatal
-                }
+        for (const id of fs.readdirSync(reposDir)) {
+            if (activeIds.has(id)) { continue; }
+            const filePath = path.join(reposDir, id, 'queues.json');
+            if (!fs.existsSync(filePath)) { continue; }
+            try {
+                fs.unlinkSync(filePath);
+                process.stderr.write(
+                    `[QueuePersistence] Deleted empty queue file: repos/${id}/queues.json\n`
+                );
+            } catch {
+                // Non-fatal
             }
         }
     }

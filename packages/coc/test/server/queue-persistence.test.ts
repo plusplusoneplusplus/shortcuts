@@ -91,9 +91,9 @@ afterEach(() => {
 
 
 describe('getRepoQueueFilePath', () => {
-    it('returns path under queues/ directory using workspace ID directly', () => {
+    it('returns path under repos/ directory using workspace ID directly', () => {
         const fp = getRepoQueueFilePath('/data', 'ws-test');
-        expect(fp).toBe(path.join('/data', 'queues', 'repo-ws-test.json'));
+        expect(fp).toBe(path.join('/data', 'repos', 'ws-test', 'queues.json'));
     });
 });
 
@@ -103,15 +103,16 @@ describe('getRepoQueueFilePath', () => {
 
 describe('QueuePersistence', () => {
     describe('constructor', () => {
-        it('creates queues/ directory on instantiation', () => {
+        it('can be instantiated without any pre-existing directory', () => {
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
-            expect(fs.existsSync(path.join(dataDir, 'queues'))).toBe(true);
+            // Constructor no longer creates any directory — just verify it succeeds
+            expect(persistence).toBeDefined();
         });
 
-        it('is idempotent if queues/ already exists', () => {
-            fs.mkdirSync(path.join(dataDir, 'queues'), { recursive: true });
+        it('is idempotent if repos/ already exists', () => {
+            fs.mkdirSync(path.join(dataDir, 'repos'), { recursive: true });
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
-            expect(fs.existsSync(path.join(dataDir, 'queues'))).toBe(true);
+            expect(persistence).toBeDefined();
         });
     });
 
@@ -133,7 +134,7 @@ describe('QueuePersistence', () => {
             await flushSave();
 
             const repoId = wsIdFor('/path/to/repo1');
-            const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
+            const filePath = path.join(dataDir, 'repos', repoId, 'queues.json');
             expect(fs.existsSync(filePath)).toBe(true);
 
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -156,7 +157,7 @@ describe('QueuePersistence', () => {
             await flushSave();
 
             const repoId = wsIdFor(process.cwd());
-            const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
+            const filePath = path.join(dataDir, 'repos', repoId, 'queues.json');
             expect(fs.existsSync(filePath)).toBe(true);
 
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -187,13 +188,13 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const queuesDir = path.join(dataDir, 'queues');
-            const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
-            expect(files).toHaveLength(2);
+            const reposDir = path.join(dataDir, 'repos');
+            const ids = fs.readdirSync(reposDir);
+            expect(ids).toHaveLength(2);
 
             // Verify each file has the correct repoRootPath
-            for (const file of files) {
-                const state = JSON.parse(fs.readFileSync(path.join(queuesDir, file), 'utf-8'));
+            for (const id of ids) {
+                const state = JSON.parse(fs.readFileSync(path.join(reposDir, id, 'queues.json'), 'utf-8'));
                 expect(['/repo/alpha', '/repo/beta']).toContain(state.repoRootPath);
                 expect(state.pending).toHaveLength(1);
             }
@@ -219,11 +220,11 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const queuesDir = path.join(dataDir, 'queues');
-            const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
-            expect(files).toHaveLength(1);
+            const reposDir = path.join(dataDir, 'repos');
+            const ids = fs.readdirSync(reposDir);
+            expect(ids).toHaveLength(1);
 
-            const state = JSON.parse(fs.readFileSync(path.join(queuesDir, files[0]), 'utf-8'));
+            const state = JSON.parse(fs.readFileSync(path.join(reposDir, ids[0], 'queues.json'), 'utf-8'));
             expect(state.pending).toHaveLength(2);
         });
     });
@@ -234,16 +235,15 @@ describe('QueuePersistence', () => {
 
     describe('restore', () => {
         it('restores tasks from a single repo file', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/restored/repo1';
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
             ]);
             const repoId = wsIdFor(rootPath);
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(state),
             );
 
@@ -254,16 +254,15 @@ describe('QueuePersistence', () => {
         });
 
         it('restores tasks from multiple repo files', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             for (const rootPath of ['/restored/repo1', '/restored/repo2']) {
                 const state = makeRepoState(rootPath, [
                     makeTask(`t-${rootPath}`, 'queued', rootPath),
                 ]);
                 const repoId = wsIdFor(rootPath);
+                const repoDir = path.join(dataDir, 'repos', repoId);
+                fs.mkdirSync(repoDir, { recursive: true });
                 fs.writeFileSync(
-                    path.join(queuesDir, `repo-${repoId}.json`),
+                    path.join(repoDir, 'queues.json'),
                     JSON.stringify(state),
                 );
             }
@@ -275,16 +274,15 @@ describe('QueuePersistence', () => {
         });
 
         it('marks previously-running tasks as failed', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/running/repo';
             const state = makeRepoState(rootPath, [
                 makeTask('t-run', 'running', rootPath),
             ]);
             const repoId = wsIdFor(rootPath);
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(state),
             );
 
@@ -300,16 +298,15 @@ describe('QueuePersistence', () => {
         });
 
         it('restores history entries', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/hist/repo';
             const state = makeRepoState(rootPath, [], [
                 makeTask('t-done', 'completed', rootPath),
             ]);
             const repoId = wsIdFor(rootPath);
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(state),
             );
 
@@ -321,10 +318,10 @@ describe('QueuePersistence', () => {
         });
 
         it('skips corrupt files gracefully', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
+            const repoDir = path.join(dataDir, 'repos', 'badfile12345678');
+            fs.mkdirSync(repoDir, { recursive: true });
 
-            fs.writeFileSync(path.join(queuesDir, 'repo-badfile12345678.json'), 'not json');
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), 'not json');
 
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             // Should not throw
@@ -333,20 +330,18 @@ describe('QueuePersistence', () => {
         });
 
         it('skips files with wrong version', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const state = { version: 999, savedAt: '', repoRootPath: '/x', repoId: 'abc', pending: [], history: [] };
-            fs.writeFileSync(path.join(queuesDir, 'repo-1234567890abcdef.json'), JSON.stringify(state));
+            const repoDir = path.join(dataDir, 'repos', '1234567890abcdef');
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state));
 
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
             expect(queueManager.getQueued()).toHaveLength(0);
         });
 
-        it('does nothing when queues/ directory is missing', () => {
-            // Don't create the queues dir manually; constructor will create it
-            // but it won't have any files
+        it('does nothing when repos/ directory is missing', () => {
+            // Don't create the repos dir — restore should handle gracefully
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
             expect(queueManager.getQueued()).toHaveLength(0);
@@ -364,7 +359,9 @@ describe('QueuePersistence', () => {
             // Manually create a repo file that has no corresponding tasks
             const orphanPath = '/orphan/repo';
             const repoId = wsIdFor(orphanPath);
-            const orphanFile = path.join(dataDir, 'queues', `repo-${repoId}.json`);
+            const orphanDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(orphanDir, { recursive: true });
+            const orphanFile = path.join(orphanDir, 'queues.json');
             fs.writeFileSync(orphanFile, JSON.stringify(makeRepoState(orphanPath, [makeTask('t1', 'queued', orphanPath)])));
 
             // Enqueue a task for a *different* repo so the save triggers cleanup
@@ -382,7 +379,7 @@ describe('QueuePersistence', () => {
 
             // The active repo file should exist
             const activeRepoId = wsIdFor('/active/repo');
-            expect(fs.existsSync(path.join(dataDir, 'queues', `repo-${activeRepoId}.json`))).toBe(true);
+            expect(fs.existsSync(path.join(dataDir, 'repos', activeRepoId, 'queues.json'))).toBe(true);
         });
     });
 
@@ -408,7 +405,7 @@ describe('QueuePersistence', () => {
             await vi.advanceTimersByTimeAsync(0);
 
             const repoId = wsIdFor('/dispose/repo');
-            const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
+            const filePath = path.join(dataDir, 'repos', repoId, 'queues.json');
             expect(fs.existsSync(filePath)).toBe(true);
         });
     });
@@ -501,7 +498,7 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
+            const filePath = path.join(dataDir, 'repos', repoId, 'queues.json');
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(true);
         });
@@ -519,7 +516,7 @@ describe('QueuePersistence', () => {
             await flushSave();
 
             const repoId = wsIdFor('/active/repo');
-            const filePath = path.join(dataDir, 'queues', `repo-${repoId}.json`);
+            const filePath = path.join(dataDir, 'repos', repoId, 'queues.json');
             const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             expect(state.isPaused).toBe(false);
         });
@@ -545,27 +542,26 @@ describe('QueuePersistence', () => {
 
             await flushSave();
 
-            const alphaFile = path.join(dataDir, 'queues', `repo-${alphaId}.json`);
+            const alphaFile = path.join(dataDir, 'repos', alphaId, 'queues.json');
             const alphaState = JSON.parse(fs.readFileSync(alphaFile, 'utf-8'));
             expect(alphaState.isPaused).toBe(true);
 
             const betaId = wsIdFor('/repo/beta');
-            const betaFile = path.join(dataDir, 'queues', `repo-${betaId}.json`);
+            const betaFile = path.join(dataDir, 'repos', betaId, 'queues.json');
             const betaState = JSON.parse(fs.readFileSync(betaFile, 'utf-8'));
             expect(betaState.isPaused).toBe(false);
         });
 
         it('restores per-repo pause state on startup', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/paused/restored';
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
             ], [], true);  // isPaused = true
             const repoId = wsIdFor(rootPath);
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(state),
             );
 
@@ -576,16 +572,15 @@ describe('QueuePersistence', () => {
         });
 
         it('does not pause repo when isPaused is false', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/active/restored';
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'queued', rootPath),
             ], [], false);  // isPaused = false
             const repoId = wsIdFor(rootPath);
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(state),
             );
 
@@ -596,22 +591,23 @@ describe('QueuePersistence', () => {
         });
 
         it('restores multiple repos with independent pause states', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             // Repo A paused
             const rootA = '/multi/repoA';
             const repoAId = wsIdFor(rootA);
+            const repoDirA = path.join(dataDir, 'repos', repoAId);
+            fs.mkdirSync(repoDirA, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoAId}.json`),
+                path.join(repoDirA, 'queues.json'),
                 JSON.stringify(makeRepoState(rootA, [makeTask('t1', 'queued', rootA)], [], true)),
             );
 
             // Repo B active
             const rootB = '/multi/repoB';
             const repoBId = wsIdFor(rootB);
+            const repoDirB = path.join(dataDir, 'repos', repoBId);
+            fs.mkdirSync(repoDirB, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoBId}.json`),
+                path.join(repoDirB, 'queues.json'),
                 JSON.stringify(makeRepoState(rootB, [makeTask('t2', 'queued', rootB)], [], false)),
             );
 
@@ -623,9 +619,6 @@ describe('QueuePersistence', () => {
         });
 
         it('migrates v2 to v3 with isPaused defaulting to false', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             // Write a v2 file (no isPaused field)
             const rootPath = '/v2/repo';
             const repoId = wsIdFor(rootPath);
@@ -637,8 +630,10 @@ describe('QueuePersistence', () => {
                 pending: [makeTask('t1', 'queued', rootPath)],
                 history: [],
             };
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(v2State),
             );
 
@@ -651,9 +646,6 @@ describe('QueuePersistence', () => {
         });
 
         it('skips files with future versions', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/future/repo';
             const repoId = wsIdFor(rootPath);
             const futureState = {
@@ -665,8 +657,10 @@ describe('QueuePersistence', () => {
                 history: [],
                 isPaused: false,
             };
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(futureState),
             );
 
@@ -736,21 +730,18 @@ describe('QueuePersistence', () => {
             await flushSave();
 
             // Verify repo-A file has isPaused: true
-            const repoAFile = path.join(dataDir, 'queues', `repo-${repoAId}.json`);
+            const repoAFile = path.join(dataDir, 'repos', repoAId, 'queues.json');
             const repoAState = JSON.parse(fs.readFileSync(repoAFile, 'utf-8'));
             expect(repoAState.isPaused).toBe(true);
 
             // Verify repo-B file has isPaused: false
             const repoBId = wsIdFor('/pause/repo-B');
-            const repoBFile = path.join(dataDir, 'queues', `repo-${repoBId}.json`);
+            const repoBFile = path.join(dataDir, 'repos', repoBId, 'queues.json');
             const repoBState = JSON.parse(fs.readFileSync(repoBFile, 'utf-8'));
             expect(repoBState.isPaused).toBe(false);
         });
 
         it('restores per-repo paused state on startup', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             // Create persisted state with repo-A paused
             const repoAPath = '/restore/repo-A';
             const repoBPath = '/restore/repo-B';
@@ -758,15 +749,19 @@ describe('QueuePersistence', () => {
             const repoAId = wsIdFor(repoAPath);
             const repoBId = wsIdFor(repoBPath);
 
+            const repoDirA = path.join(dataDir, 'repos', repoAId);
+            fs.mkdirSync(repoDirA, { recursive: true });
             const stateA = makeRepoState(repoAPath, [makeTask('t1', 'queued', repoAPath)], [], true);
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoAId}.json`),
+                path.join(repoDirA, 'queues.json'),
                 JSON.stringify(stateA)
             );
 
+            const repoDirB = path.join(dataDir, 'repos', repoBId);
+            fs.mkdirSync(repoDirB, { recursive: true });
             const stateB = makeRepoState(repoBPath, [makeTask('t2', 'queued', repoBPath)], [], false);
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoBId}.json`),
+                path.join(repoDirB, 'queues.json'),
                 JSON.stringify(stateB)
             );
 
@@ -837,9 +832,6 @@ describe('QueuePersistence', () => {
         });
 
         it('migrates v2 to v3 with isPaused defaulting to false', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/migrate/repo';
             const repoId = wsIdFor(rootPath);
 
@@ -854,8 +846,10 @@ describe('QueuePersistence', () => {
                 // No isPaused field
             };
 
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(v2State)
             );
 
@@ -876,9 +870,6 @@ describe('QueuePersistence', () => {
         });
 
         it('handles missing isPaused field gracefully', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/graceful/repo';
             const repoId = wsIdFor(rootPath);
 
@@ -886,8 +877,10 @@ describe('QueuePersistence', () => {
             const state = makeRepoState(rootPath, [makeTask('t1', 'queued', rootPath)]);
             delete (state as any).isPaused;  // Simulate corrupt data
 
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, `repo-${repoId}.json`),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify(state)
             );
 
@@ -967,15 +960,14 @@ describe('QueuePersistence', () => {
 
     describe('G2: RestartPolicy', () => {
         it('default (fail) marks running tasks as failed on restore', () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/g2/fail';
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'running', rootPath),
             ]);
             const repoId = wsIdFor(rootPath);
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state));
 
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
             persistence.restore();
@@ -986,15 +978,14 @@ describe('QueuePersistence', () => {
         });
 
         it("restartPolicy 'requeue' re-enqueues running tasks at high priority", () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/g2/requeue';
             const state = makeRepoState(rootPath, [
                 makeTask('t1', 'running', rootPath),
             ]);
             const repoId = wsIdFor(rootPath);
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state));
 
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor, restartPolicy: 'requeue' });
             persistence.restore();
@@ -1005,14 +996,13 @@ describe('QueuePersistence', () => {
         });
 
         it("restartPolicy 'requeue-if-retriable' requeues when retries remain", () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/g2/retriable';
             const task = { ...makeTask('t1', 'running', rootPath), retryCount: 0, config: { retryAttempts: 2 } };
             const state = makeRepoState(rootPath, [task]);
             const repoId = wsIdFor(rootPath);
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state));
 
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor, restartPolicy: 'requeue-if-retriable' });
             persistence.restore();
@@ -1021,14 +1011,13 @@ describe('QueuePersistence', () => {
         });
 
         it("restartPolicy 'requeue-if-retriable' fails task when no retries remain", () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-
             const rootPath = '/g2/no-retries';
             const task = { ...makeTask('t1', 'running', rootPath), retryCount: 2, config: { retryAttempts: 2 } };
             const state = makeRepoState(rootPath, [task]);
             const repoId = wsIdFor(rootPath);
-            fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state));
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state));
 
             persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor, restartPolicy: 'requeue-if-retriable' });
             persistence.restore();

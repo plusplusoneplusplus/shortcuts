@@ -82,10 +82,12 @@ describe('DataWiper', () => {
         });
 
         it('should count queue files', async () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            writeJSON(path.join(queuesDir, 'repo-abc123.json'), { version: 2, pending: [] });
-            writeJSON(path.join(queuesDir, 'repo-def456.json'), { version: 2, pending: [] });
+            const repoAbcDir = path.join(dataDir, 'repos', 'abc123');
+            const repoDefDir = path.join(dataDir, 'repos', 'def456');
+            fs.mkdirSync(repoAbcDir, { recursive: true });
+            fs.mkdirSync(repoDefDir, { recursive: true });
+            writeJSON(path.join(repoAbcDir, 'queues.json'), { version: 2, pending: [] });
+            writeJSON(path.join(repoDefDir, 'queues.json'), { version: 2, pending: [] });
 
             const wiper = new DataWiper(dataDir, store);
             const summary = await wiper.getDryRunSummary();
@@ -227,9 +229,9 @@ describe('DataWiper', () => {
         });
 
         it('should delete queue files', async () => {
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            const queueFile = path.join(queuesDir, 'repo-abc123.json');
+            const repoDir = path.join(dataDir, 'repos', 'abc123');
+            fs.mkdirSync(repoDir, { recursive: true });
+            const queueFile = path.join(repoDir, 'queues.json');
             writeJSON(queueFile, { version: 2, pending: [] });
 
             const wiper = new DataWiper(dataDir, store);
@@ -341,10 +343,10 @@ describe('DataWiper', () => {
                 id: 'p1', type: 'clarification', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date(),
             });
 
-            // Create a queue file that we'll make unreadable won't fail on delete
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            writeJSON(path.join(queuesDir, 'repo-abc123.json'), { version: 2 });
+            // Create a queue file
+            const repoDir = path.join(dataDir, 'repos', 'abc123');
+            fs.mkdirSync(repoDir, { recursive: true });
+            writeJSON(path.join(repoDir, 'queues.json'), { version: 2 });
 
             const wiper = new DataWiper(dataDir, store);
             const result = await wiper.wipeData({ includeWikis: false });

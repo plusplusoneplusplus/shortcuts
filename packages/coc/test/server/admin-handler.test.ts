@@ -271,10 +271,10 @@ describe('Admin Handler', () => {
             const srv = await startServer();
 
             // Create queue files
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
+            const repoDir = path.join(dataDir, 'repos', 'abc123');
+            fs.mkdirSync(repoDir, { recursive: true });
             fs.writeFileSync(
-                path.join(queuesDir, 'repo-abc123.json'),
+                path.join(repoDir, 'queues.json'),
                 JSON.stringify({ version: 2, pending: [] }),
                 'utf-8',
             );
@@ -290,7 +290,7 @@ describe('Admin Handler', () => {
             expect(wipeRes.status).toBe(200);
             const result = JSON.parse(wipeRes.body);
             expect(result.deletedQueues).toBe(1);
-            expect(fs.existsSync(path.join(queuesDir, 'repo-abc123.json'))).toBe(false);
+            expect(fs.existsSync(path.join(repoDir, 'queues.json'))).toBe(false);
         });
 
         it('should preserve config.yaml', async () => {

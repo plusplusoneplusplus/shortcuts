@@ -55,11 +55,13 @@ describe('DataWiper', () => {
     afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
     it('dry-run returns correct counts without deleting', async () => {
-        // Create queue files
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir);
-        fs.writeFileSync(path.join(queuesDir, 'repo-abc.json'), '{}');
-        fs.writeFileSync(path.join(queuesDir, 'repo-def.json'), '{}');
+        // Create queue files under repos/<id>/queues.json
+        const repoAbcDir = path.join(tmpDir, 'repos', 'abc');
+        const repoDefDir = path.join(tmpDir, 'repos', 'def');
+        fs.mkdirSync(repoAbcDir, { recursive: true });
+        fs.mkdirSync(repoDefDir, { recursive: true });
+        fs.writeFileSync(path.join(repoAbcDir, 'queues.json'), '{}');
+        fs.writeFileSync(path.join(repoDefDir, 'queues.json'), '{}');
 
         // Create blob file
         const blobsDir = path.join(tmpDir, 'blobs');
@@ -81,15 +83,15 @@ describe('DataWiper', () => {
         expect(result.deletedPreferences).toBe(true);
 
         // Files should not be deleted in dry-run
-        expect(fs.existsSync(path.join(queuesDir, 'repo-abc.json'))).toBe(true);
+        expect(fs.existsSync(path.join(repoAbcDir, 'queues.json'))).toBe(true);
         expect(fs.existsSync(path.join(blobsDir, 'task1.images.json'))).toBe(true);
         expect(fs.existsSync(path.join(tmpDir, 'preferences.json'))).toBe(true);
     });
 
     it('wipeData deletes queue files, blobs and preferences', async () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir);
-        fs.writeFileSync(path.join(queuesDir, 'repo-xyz.json'), '{}');
+        const repoXyzDir = path.join(tmpDir, 'repos', 'xyz');
+        fs.mkdirSync(repoXyzDir, { recursive: true });
+        fs.writeFileSync(path.join(repoXyzDir, 'queues.json'), '{}');
 
         const blobsDir = path.join(tmpDir, 'blobs');
         fs.mkdirSync(blobsDir);
@@ -102,7 +104,7 @@ describe('DataWiper', () => {
         const result = await wiper.wipeData({ includeWikis: false });
 
         expect(result.errors).toHaveLength(0);
-        expect(fs.existsSync(path.join(queuesDir, 'repo-xyz.json'))).toBe(false);
+        expect(fs.existsSync(path.join(repoXyzDir, 'queues.json'))).toBe(false);
         expect(fs.existsSync(path.join(blobsDir, 'task2.images.json'))).toBe(false);
         expect(fs.existsSync(path.join(tmpDir, 'preferences.json'))).toBe(false);
     });

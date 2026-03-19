@@ -95,8 +95,8 @@ function seedPersistence(dataDir: string, task: Record<string, unknown>, rootPat
         .update(path.resolve(cwd))
         .digest('hex')
         .substring(0, 16);
-    const queuesDir = path.join(dataDir, 'queues');
-    fs.mkdirSync(queuesDir, { recursive: true });
+    const repoDir = path.join(dataDir, 'repos', repoId);
+    fs.mkdirSync(repoDir, { recursive: true });
     const state = {
         version: 3,
         savedAt: new Date().toISOString(),
@@ -107,7 +107,7 @@ function seedPersistence(dataDir: string, task: Record<string, unknown>, rootPat
         isPaused: false,
     };
     fs.writeFileSync(
-        path.join(queuesDir, `repo-${repoId}.json`),
+        path.join(repoDir, 'queues.json'),
         JSON.stringify(state),
         'utf-8',
     );

@@ -90,8 +90,8 @@ export class DataWiper {
         }
 
         // 3. Count queue files
-        const queuesDir = path.join(this.dataDir, 'queues');
-        const queueFiles = this.listQueueFiles(queuesDir);
+        const reposDir = path.join(this.dataDir, 'repos');
+        const queueFiles = this.listQueueFiles(reposDir);
         result.deletedQueues = queueFiles.length;
 
         // 3b. Count blob files
@@ -183,14 +183,19 @@ export class DataWiper {
         return result;
     }
 
-    private listQueueFiles(queuesDir: string): string[] {
+    private listQueueFiles(reposDir: string): string[] {
         try {
-            if (!fs.existsSync(queuesDir) || !fs.statSync(queuesDir).isDirectory()) {
+            if (!fs.existsSync(reposDir) || !fs.statSync(reposDir).isDirectory()) {
                 return [];
             }
-            return fs.readdirSync(queuesDir)
-                .filter(f => f.startsWith('repo-') && f.endsWith('.json'))
-                .map(f => path.join(queuesDir, f));
+            const results: string[] = [];
+            for (const id of fs.readdirSync(reposDir)) {
+                const filePath = path.join(reposDir, id, 'queues.json');
+                if (fs.existsSync(filePath)) {
+                    results.push(filePath);
+                }
+            }
+            return results;
         } catch {
             return [];
         }

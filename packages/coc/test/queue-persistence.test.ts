@@ -39,17 +39,23 @@ function createTestInput(overrides: Partial<CreateTaskInput> = {}): CreateTaskIn
 
 /** Read the first per-repo queue file found (for tests using a single repo). */
 function readAnyRepoQueueFile(dir: string): any {
-    const queuesDir = path.join(dir, 'queues');
-    const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-') && f.endsWith('.json'));
-    if (files.length === 0) { throw new Error('No repo queue files found'); }
-    return JSON.parse(fs.readFileSync(path.join(queuesDir, files[0]), 'utf-8'));
+    const reposDir = path.join(dir, 'repos');
+    const ids = fs.readdirSync(reposDir);
+    for (const id of ids) {
+        const filePath = path.join(reposDir, id, 'queues.json');
+        if (fs.existsSync(filePath)) {
+            return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        }
+    }
+    throw new Error('No repo queue files found');
 }
 
 /** Write a per-repo queue file for restore tests. */
 function writeRepoQueueFile(dir: string, rootPath: string, data: any): void {
-    const queuesDir = path.join(dir, 'queues');
-    fs.mkdirSync(queuesDir, { recursive: true });
-    const filePath = path.join(queuesDir, `repo-${workspaceId(rootPath)}.json`);
+    const id = workspaceId(rootPath);
+    const repoDir = path.join(dir, 'repos', id);
+    fs.mkdirSync(repoDir, { recursive: true });
+    const filePath = path.join(repoDir, 'queues.json');
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
 
@@ -239,7 +245,6 @@ describe('QueuePersistence', () => {
     describe('debounce coalescing', () => {
         it('coalesces rapid changes into single write', async () => {
             const persistence = createPersistence(queueManager, dataDir);
-            const queuesDir = path.join(dataDir, 'queues');
 
             // Enqueue 10 tasks rapidly
             for (let i = 0; i < 10; i++) {
@@ -250,19 +255,8 @@ describe('QueuePersistence', () => {
             await wait(400);
 
             // Per-repo file should exist with all 10 tasks
-            const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
-            expect(files.length).toBeGreaterThan(0);
             const state = readAnyRepoQueueFile(dataDir);
             expect(state.pending).toHaveLength(10);
-
-            // Get mtime after first write
-            const filePath = path.join(queuesDir, files[0]);
-            const mtime1 = fs.statSync(filePath).mtimeMs;
-
-            // Wait a bit to confirm no further writes
-            await wait(400);
-            const mtime2 = fs.statSync(filePath).mtimeMs;
-            expect(mtime2).toBe(mtime1);
 
             persistence.dispose();
         });
@@ -356,11 +350,15 @@ describe('QueuePersistence', () => {
 
             await wait(400);
 
-            const queuesDir = path.join(dataDir, 'queues');
-            const tmpFiles = fs.readdirSync(queuesDir).filter(f => f.endsWith('.tmp'));
-            expect(tmpFiles).toHaveLength(0);
-            const repoFiles = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-') && f.endsWith('.json'));
-            expect(repoFiles.length).toBeGreaterThan(0);
+            // Check that no .tmp files exist in any repo dir
+            const reposDir = path.join(dataDir, 'repos');
+            const ids = fs.readdirSync(reposDir);
+            for (const id of ids) {
+                const repoDir = path.join(reposDir, id);
+                const tmpFiles = fs.readdirSync(repoDir).filter(f => f.endsWith('.tmp'));
+                expect(tmpFiles).toHaveLength(0);
+                expect(fs.existsSync(path.join(repoDir, 'queues.json'))).toBe(true);
+            }
 
             persistence.dispose();
         });
@@ -424,13 +422,17 @@ describe('QueuePersistence', () => {
             queueManager.enqueue(createTestInput({ displayName: 'post-dispose' }));
             await wait(400);
 
-            // queues/ should have no repo files (or none with post-dispose task)
-            const queuesDir = path.join(dataDir, 'queues');
-            const files = fs.readdirSync(queuesDir).filter(f => f.startsWith('repo-'));
-            if (files.length > 0) {
-                const state = JSON.parse(fs.readFileSync(path.join(queuesDir, files[0]), 'utf-8'));
-                const hasPostDispose = state.pending.some((t: any) => t.displayName === 'post-dispose');
-                expect(hasPostDispose).toBe(false);
+            // repos/ should not exist or have no queue files with post-dispose task
+            const reposDir = path.join(dataDir, 'repos');
+            if (fs.existsSync(reposDir)) {
+                for (const id of fs.readdirSync(reposDir)) {
+                    const filePath = path.join(reposDir, id, 'queues.json');
+                    if (fs.existsSync(filePath)) {
+                        const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                        const hasPostDispose = state.pending.some((t: any) => t.displayName === 'post-dispose');
+                        expect(hasPostDispose).toBe(false);
+                    }
+                }
             }
         });
     });

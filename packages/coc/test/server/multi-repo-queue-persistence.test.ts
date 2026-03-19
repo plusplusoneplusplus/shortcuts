@@ -88,15 +88,13 @@ function makeTask(id: string, status: string, workingDirectory?: string) {
     };
 }
 
-/** Write a repo state file to the queues directory. */
+/** Write a repo state file to the repos directory. */
 function writeRepoFile(rootPath: string, state: unknown): void {
-    const queuesDir = path.join(dataDir, 'queues');
-    if (!fs.existsSync(queuesDir)) {
-        fs.mkdirSync(queuesDir, { recursive: true });
-    }
     const id = wsId(rootPath);
     bridge.registerRepoId(id, rootPath);
     const filePath = getRepoQueueFilePath(dataDir, id);
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); }
     fs.writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8');
 }
 
@@ -149,10 +147,10 @@ describe('MultiRepoQueuePersistence', () => {
     // --------------------------------------------------------------------
 
     describe('restore', () => {
-        it('creates queues directory if missing', () => {
+        it('creates repos directory if missing', () => {
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);
             persistence.restore();
-            expect(fs.existsSync(path.join(dataDir, 'queues'))).toBe(true);
+            expect(fs.existsSync(path.join(dataDir, 'repos'))).toBe(true);
         });
 
         it('restores per-repo queues from multiple files', () => {
@@ -280,9 +278,10 @@ describe('MultiRepoQueuePersistence', () => {
         it('handles corrupt files gracefully', () => {
             const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-            const queuesDir = path.join(dataDir, 'queues');
-            fs.mkdirSync(queuesDir, { recursive: true });
-            const filePath = path.join(queuesDir, `repo-${wsId('/repo/bad')}.json`);
+            const id = wsId('/repo/bad');
+            const repoDir = path.join(dataDir, 'repos', id);
+            fs.mkdirSync(repoDir, { recursive: true });
+            const filePath = path.join(repoDir, 'queues.json');
             fs.writeFileSync(filePath, 'not valid json!!!', 'utf-8');
 
             persistence = new MultiRepoQueuePersistence(bridge, dataDir);

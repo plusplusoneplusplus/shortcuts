@@ -39,9 +39,9 @@ function resolveWorkspaceId(rootPath: string): string {
 // ============================================================================
 
 describe('getRepoQueueFilePath', () => {
-    it('returns expected path under queues directory', () => {
+    it('returns expected path under repos directory', () => {
         const result = getRepoQueueFilePath('/data', 'abc123');
-        expect(result.replace(/\\/g, '/')).toContain('/data/queues/repo-abc123.json');
+        expect(result.replace(/\\/g, '/')).toContain('/data/repos/abc123/queues.json');
     });
 
     it('is deterministic for same inputs', () => {
@@ -62,7 +62,7 @@ describe('atomicWriteJson', () => {
     afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
     it('writes file atomically and creates parent directory', () => {
-        const filePath = path.join(tmpDir, 'queues', 'repo-test.json');
+        const filePath = path.join(tmpDir, 'repos', 'test', 'queues.json');
         const state: PersistedQueueState = {
             version: 3,
             savedAt: new Date().toISOString(),
@@ -100,10 +100,10 @@ describe('QueuePersistence restore', () => {
     });
 
     it('restores queued tasks from a persisted file', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
         const repoId = 'repo1';
-        const filePath = path.join(queuesDir, `repo-${repoId}.json`);
+        const repoDir = path.join(tmpDir, 'repos', repoId);
+        fs.mkdirSync(repoDir, { recursive: true });
+        const filePath = path.join(repoDir, 'queues.json');
 
         const state: PersistedQueueState = {
             version: 3,
@@ -135,10 +135,10 @@ describe('QueuePersistence restore', () => {
     });
 
     it('marks previously-running tasks as failed (fail policy)', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
         const repoId = 'repo2';
-        const filePath = path.join(queuesDir, `repo-${repoId}.json`);
+        const repoDir = path.join(tmpDir, 'repos', repoId);
+        fs.mkdirSync(repoDir, { recursive: true });
+        const filePath = path.join(repoDir, 'queues.json');
 
         const state: PersistedQueueState = {
             version: 3,
@@ -179,10 +179,10 @@ describe('QueuePersistence restore', () => {
     });
 
     it('requeues previously-running tasks with requeue policy', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
         const repoId = 'repo3';
-        const filePath = path.join(queuesDir, `repo-${repoId}.json`);
+        const repoDir = path.join(tmpDir, 'repos', repoId);
+        fs.mkdirSync(repoDir, { recursive: true });
+        const filePath = path.join(repoDir, 'queues.json');
 
         const state: PersistedQueueState = {
             version: 3,
@@ -219,9 +219,9 @@ describe('QueuePersistence restore', () => {
     });
 
     it('skips corrupt queue files gracefully', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
-        fs.writeFileSync(path.join(queuesDir, 'repo-corrupt.json'), '{ invalid json', 'utf-8');
+        const repoDir = path.join(tmpDir, 'repos', 'corrupt');
+        fs.mkdirSync(repoDir, { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'queues.json'), '{ invalid json', 'utf-8');
 
         const qm = makeQueueManager();
         const persistence = new QueuePersistence(qm, tmpDir, { resolveWorkspaceId });
@@ -232,10 +232,10 @@ describe('QueuePersistence restore', () => {
     });
 
     it('skips files with unknown version', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
+        const repoDir = path.join(tmpDir, 'repos', 'r');
+        fs.mkdirSync(repoDir, { recursive: true });
         const state = { version: 99, savedAt: new Date().toISOString(), repoRootPath: '/r', repoId: 'r', pending: [], history: [], isPaused: false };
-        fs.writeFileSync(path.join(queuesDir, 'repo-r.json'), JSON.stringify(state), 'utf-8');
+        fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state), 'utf-8');
 
         const qm = makeQueueManager();
         const persistence = new QueuePersistence(qm, tmpDir, { resolveWorkspaceId });
@@ -245,9 +245,9 @@ describe('QueuePersistence restore', () => {
     });
 
     it('migrates v2 files to v3 (sets isPaused: false)', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
         const repoId = 'repo4';
+        const repoDir = path.join(tmpDir, 'repos', repoId);
+        fs.mkdirSync(repoDir, { recursive: true });
         const state = {
             version: 2,
             savedAt: new Date().toISOString(),
@@ -258,7 +258,7 @@ describe('QueuePersistence restore', () => {
             ],
             history: [],
         };
-        fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state), 'utf-8');
+        fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state), 'utf-8');
 
         const qm = makeQueueManager();
         const persistence = new QueuePersistence(qm, tmpDir, { resolveWorkspaceId });
@@ -268,9 +268,9 @@ describe('QueuePersistence restore', () => {
     });
 
     it('restores history tasks', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
         const repoId = 'repo5';
+        const repoDir = path.join(tmpDir, 'repos', repoId);
+        fs.mkdirSync(repoDir, { recursive: true });
         const state: PersistedQueueState = {
             version: 3,
             savedAt: new Date().toISOString(),
@@ -282,7 +282,7 @@ describe('QueuePersistence restore', () => {
             ],
             isPaused: false,
         };
-        fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state), 'utf-8');
+        fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state), 'utf-8');
 
         const qm = makeQueueManager();
         const persistence = new QueuePersistence(qm, tmpDir, { resolveWorkspaceId });
@@ -292,9 +292,9 @@ describe('QueuePersistence restore', () => {
     });
 
     it('restores paused repo state', () => {
-        const queuesDir = path.join(tmpDir, 'queues');
-        fs.mkdirSync(queuesDir, { recursive: true });
         const repoId = 'repo6';
+        const repoDir = path.join(tmpDir, 'repos', repoId);
+        fs.mkdirSync(repoDir, { recursive: true });
         const state: PersistedQueueState = {
             version: 3,
             savedAt: new Date().toISOString(),
@@ -304,7 +304,7 @@ describe('QueuePersistence restore', () => {
             history: [],
             isPaused: true,
         };
-        fs.writeFileSync(path.join(queuesDir, `repo-${repoId}.json`), JSON.stringify(state), 'utf-8');
+        fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state), 'utf-8');
 
         const qm = makeQueueManager();
         const persistence = new QueuePersistence(qm, tmpDir, { resolveWorkspaceId });
