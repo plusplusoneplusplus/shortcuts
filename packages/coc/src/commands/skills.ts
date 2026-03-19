@@ -23,6 +23,7 @@ import {
     getBundledSkills,
     installBundledSkills,
     DEFAULT_SKILLS_SETTINGS,
+    isWithinDirectory,
     setLogger,
 } from '@plusplusoneplusplus/forge';
 import { listInstalledSkills } from '@plusplusoneplusplus/coc-server';
@@ -250,9 +251,7 @@ export async function executeSkillDelete(
     const skillPath = path.join(installPath, name);
 
     // Security: ensure skill path is within install path
-    const resolvedSkillPath = path.resolve(skillPath);
-    const resolvedInstallPath = path.resolve(installPath);
-    if (!resolvedSkillPath.startsWith(resolvedInstallPath + path.sep)) {
+    if (!isWithinDirectory(skillPath, installPath)) {
         console.error('Invalid skill name:', name);
         return 1;
     }
