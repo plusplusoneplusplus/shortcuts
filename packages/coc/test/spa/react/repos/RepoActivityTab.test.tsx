@@ -118,7 +118,7 @@ describe('RepoActivityTab: selectTask keeps chat inline', () => {
 
     beforeAll(() => {
         const start = ACTIVITY_TAB_SOURCE.indexOf('const selectTask = useCallback');
-        const end = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen])', start);
+        const end = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId])', start);
         selectTaskBlock = ACTIVITY_TAB_SOURCE.substring(start, end + 60);
     });
 
@@ -663,7 +663,7 @@ describe('RepoActivityTab: unseen activity wiring', () => {
 
     it('calls markSeen in selectTask', () => {
         const selectTaskStart = ACTIVITY_TAB_SOURCE.indexOf('const selectTask = useCallback');
-        const selectTaskEnd = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen])', selectTaskStart);
+        const selectTaskEnd = ACTIVITY_TAB_SOURCE.indexOf('}, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId])', selectTaskStart);
         const selectTaskBlock = ACTIVITY_TAB_SOURCE.substring(selectTaskStart, selectTaskEnd + 70);
         expect(selectTaskBlock).toContain('markSeen(id)');
     });

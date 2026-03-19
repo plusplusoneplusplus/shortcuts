@@ -97,6 +97,18 @@ vi.mock('../../../../src/server/spa/client/react/shared/ResponsiveSidebar', () =
     ),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/NotificationContext', () => ({
+    useNotifications: () => ({
+        notifications: [],
+        unreadCount: 0,
+        addNotification: vi.fn(),
+        markAllRead: vi.fn(),
+        markReadByProcessId: vi.fn(),
+        clearAll: vi.fn(),
+    }),
+    NotificationProvider: ({ children }: any) => children,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/repos/repoGrouping', () => ({
     countTasks: () => 0,
 }));
