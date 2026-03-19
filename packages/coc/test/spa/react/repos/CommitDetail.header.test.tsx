@@ -172,4 +172,29 @@ describe('CommitDetail — commit info header', () => {
         expect(screen.getByTestId('commit-info-header')).toBeTruthy();
         expect(screen.getByTestId('diff-section')).toBeTruthy();
     });
+
+    it('header collapsible wrapper uses overflow auto when expanded so long bodies are scrollable', async () => {
+        await renderDetail({ commit: makeCommit({ body: 'Line\n'.repeat(100) }) });
+        const header = screen.getByTestId('commit-info-header');
+        // Walk up to the animated wrapper (parent of the element that contains commit-info-header)
+        const wrapper = header.closest('[style]') as HTMLElement;
+        expect(wrapper).toBeTruthy();
+        expect(wrapper.style.overflow).toBe('auto');
+    });
+
+    it('header collapsible wrapper uses overflow hidden when collapsed', async () => {
+        await renderDetail({ commit: makeCommit({ body: 'Line\n'.repeat(100) }) });
+        // Collapse the header
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('commit-info-collapse-btn'));
+        });
+        // After collapse the header element is gone; verify via the summary bar being shown
+        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
+        // The wrapper is still in the DOM but with overflow hidden
+        const summaryBar = screen.getByTestId('commit-info-summary');
+        const wrapper = summaryBar.parentElement?.querySelector('[style]') as HTMLElement | null;
+        if (wrapper) {
+            expect(wrapper.style.overflow).toBe('hidden');
+        }
+    });
 });

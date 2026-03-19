@@ -194,9 +194,9 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
                     {/* Full header — collapsible */}
                     <div
                         style={{
-                            maxHeight: headerCollapsed ? 0 : 500,
+                            maxHeight: headerCollapsed ? 0 : 600,
                             opacity: headerCollapsed ? 0 : 1,
-                            overflow: 'hidden',
+                            overflow: headerCollapsed ? 'hidden' : 'auto',
                             transition: 'max-height 180ms ease-in-out, opacity 180ms ease-in-out',
                         }}
                     >
