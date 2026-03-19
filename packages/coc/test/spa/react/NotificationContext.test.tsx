@@ -76,6 +76,22 @@ describe('notificationReducer', () => {
         expect(result.notifications).toHaveLength(3);
     });
 
+    it('MARK_READ_BY_PROCESS_ID marks matching notification as read', () => {
+        const proc1: NotificationEntry = { id: 'n1', type: 'success', title: 'a', detail: '', timestamp: 100, read: false, processId: 'proc-1' };
+        const proc2: NotificationEntry = { id: 'n2', type: 'error', title: 'b', detail: '', timestamp: 200, read: false, processId: 'proc-2' };
+        const state = { notifications: [proc1, proc2] };
+        const result = notificationReducer(state, { type: 'MARK_READ_BY_PROCESS_ID', processId: 'proc-1' });
+        expect(result.notifications.find(n => n.id === 'n1')?.read).toBe(true);
+        expect(result.notifications.find(n => n.id === 'n2')?.read).toBe(false);
+    });
+
+    it('MARK_READ_BY_PROCESS_ID is a no-op for unknown processId', () => {
+        const proc1: NotificationEntry = { id: 'n1', type: 'success', title: 'a', detail: '', timestamp: 100, read: false, processId: 'proc-1' };
+        const state = { notifications: [proc1] };
+        const result = notificationReducer(state, { type: 'MARK_READ_BY_PROCESS_ID', processId: 'unknown' });
+        expect(result.notifications[0].read).toBe(false);
+    });
+
     it('CLEAR_ALL empties notifications', () => {
         const state = { notifications: [makeEntry('a'), makeEntry('b')] };
         const result = notificationReducer(state, { type: 'CLEAR_ALL' });
@@ -112,6 +128,25 @@ describe('NotificationProvider', () => {
 
         act(() => { result.current.markAllRead(); });
         expect(result.current.unreadCount).toBe(0);
+    });
+
+    it('markReadByProcessId marks only the matching notification as read', () => {
+        const { result } = renderHook(() => useNotifications(), { wrapper });
+
+        act(() => {
+            result.current.addNotification({ type: 'success', title: 'a', detail: '', processId: 'proc-1' });
+            result.current.addNotification({ type: 'error', title: 'b', detail: '', processId: 'proc-2' });
+        });
+
+        expect(result.current.unreadCount).toBe(2);
+
+        act(() => { result.current.markReadByProcessId('proc-1'); });
+
+        const proc1 = result.current.notifications.find(n => n.processId === 'proc-1');
+        const proc2 = result.current.notifications.find(n => n.processId === 'proc-2');
+        expect(proc1?.read).toBe(true);
+        expect(proc2?.read).toBe(false);
+        expect(result.current.unreadCount).toBe(1);
     });
 
     it('markAllRead sets all read: true, entries remain', () => {

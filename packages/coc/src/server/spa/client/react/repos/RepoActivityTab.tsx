@@ -18,6 +18,7 @@ import { ActivityDetailPane } from './ActivityDetailPane';
 import { useUnseenActivity } from '../hooks/useUnseenActivity';
 import { usePinnedChats } from '../hooks/usePinnedChats';
 import { useArchivedChats } from '../hooks/useArchivedChats';
+import { useNotifications } from '../context/NotificationContext';
 
 export interface RepoActivityTabProps {
     workspaceId: string;
@@ -141,6 +142,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
 
     // Track unseen activity for completed tasks
     const { unseenTaskIds, markSeen, markAllSeen, markTasksSeen, markUnseen } = useUnseenActivity(workspaceId, history, selectedTaskId);
+    const { markReadByProcessId } = useNotifications();
     // Track pinned chats (persisted server-side)
     const { pinnedChatIds, pinChat, unpinChat } = usePinnedChats(workspaceId);
     // Track archived chats (persisted server-side)
@@ -158,12 +160,19 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             return;
         }
         markSeen(id);
+        markReadByProcessId(id);
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id, repoId: workspaceId });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(id);
         if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen]);
+    }, [queueDispatch, workspaceId, isMobile, selectedTaskId, markSeen, markReadByProcessId]);
+
+    // Auto-dismiss notification when a deep-linked task is viewed via hash URL
+    useEffect(() => {
+        if (!selectedTaskId) return;
+        markReadByProcessId(selectedTaskId);
+    }, [selectedTaskId, markReadByProcessId]);
 
     // Scroll selected task card into view
     useEffect(() => {

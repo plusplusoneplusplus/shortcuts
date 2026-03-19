@@ -25,6 +25,7 @@ const mockCtx: NotificationContextValue = {
     unreadCount: 0,
     addNotification: vi.fn(),
     markAllRead: vi.fn(),
+    markReadByProcessId: vi.fn(),
     clearAll: vi.fn(),
 };
 
@@ -38,6 +39,7 @@ function setMockCtx(overrides: Partial<NotificationContextValue>) {
         unreadCount: 0,
         addNotification: vi.fn(),
         markAllRead: vi.fn(),
+        markReadByProcessId: vi.fn(),
         clearAll: vi.fn(),
         ...overrides,
     });

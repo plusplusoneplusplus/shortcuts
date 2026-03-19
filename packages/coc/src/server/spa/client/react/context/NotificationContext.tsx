@@ -21,6 +21,7 @@ export interface NotificationContextValue {
     unreadCount: number;
     addNotification: (entry: Omit<NotificationEntry, 'id' | 'read' | 'timestamp'>) => void;
     markAllRead: () => void;
+    markReadByProcessId: (processId: string) => void;
     clearAll: () => void;
 }
 
@@ -33,6 +34,7 @@ interface State {
 type Action =
     | { type: 'ADD'; entry: NotificationEntry }
     | { type: 'MARK_ALL_READ' }
+    | { type: 'MARK_READ_BY_PROCESS_ID'; processId: string }
     | { type: 'CLEAR_ALL' };
 
 let nextId = 1;
@@ -50,6 +52,12 @@ export function notificationReducer(state: State, action: Action): State {
         case 'MARK_ALL_READ':
             return {
                 notifications: state.notifications.map(n => (n.read ? n : { ...n, read: true })),
+            };
+        case 'MARK_READ_BY_PROCESS_ID':
+            return {
+                notifications: state.notifications.map(n =>
+                    n.processId === action.processId ? { ...n, read: true } : n
+                ),
             };
         case 'CLEAR_ALL':
             return { notifications: [] };
@@ -85,13 +93,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     );
 
     const markAllRead = useCallback(() => dispatch({ type: 'MARK_ALL_READ' }), []);
+    const markReadByProcessId = useCallback(
+        (processId: string) => dispatch({ type: 'MARK_READ_BY_PROCESS_ID', processId }),
+        [],
+    );
     const clearAll = useCallback(() => dispatch({ type: 'CLEAR_ALL' }), []);
 
     const unreadCount = state.notifications.filter(n => !n.read).length;
 
     return (
         <NotificationContext.Provider
-            value={{ notifications: state.notifications, unreadCount, addNotification, markAllRead, clearAll }}
+            value={{ notifications: state.notifications, unreadCount, addNotification, markAllRead, markReadByProcessId, clearAll }}
         >
             {children}
         </NotificationContext.Provider>
