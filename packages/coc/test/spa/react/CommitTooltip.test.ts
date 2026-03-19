@@ -153,8 +153,8 @@ describe('CommitTooltip', () => {
             expect(source).toContain('window.innerWidth');
         });
 
-        it('uses z-50 for stacking', () => {
-            expect(source).toContain('z-50');
+        it('uses z-[10003] for stacking above floating dialogs', () => {
+            expect(source).toContain('z-[10003]');
         });
     });
 

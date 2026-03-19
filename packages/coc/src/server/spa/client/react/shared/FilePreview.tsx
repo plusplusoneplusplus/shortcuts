@@ -229,7 +229,7 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
             </span>
             {visible && ReactDOM.createPortal(
                 <div
-                    className="fixed z-50 w-[500px] max-h-[350px] overflow-auto rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-xl"
+                    className="fixed z-[10003] w-[500px] max-h-[350px] overflow-auto rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-xl"
                     style={{ top: pos.top, left: pos.left }}
                     onMouseEnter={handleTooltipEnter}
                     onMouseLeave={handleTooltipLeave}

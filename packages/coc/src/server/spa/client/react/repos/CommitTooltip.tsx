@@ -58,7 +58,7 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave }
     return (
         <div
             ref={tooltipRef}
-            className="fixed z-50 w-[480px] max-w-[calc(100vw-32px)] max-h-[300px] overflow-y-auto bg-white dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#555] rounded-lg shadow-lg p-3 select-text cursor-text"
+            className="fixed z-[10003] w-[480px] max-w-[calc(100vw-32px)] max-h-[300px] overflow-y-auto bg-white dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#555] rounded-lg shadow-lg p-3 select-text cursor-text"
             style={{ top: position.top, left: position.left }}
             data-testid="commit-tooltip"
             onMouseEnter={onMouseEnter}

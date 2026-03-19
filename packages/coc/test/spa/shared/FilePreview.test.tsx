@@ -368,7 +368,7 @@ describe('FilePreview', () => {
                 // Tooltip should not appear
                 await new Promise(r => setTimeout(r, 50));
                 expect(document.querySelector('.file-preview-lines')).toBeNull();
-                expect(document.querySelector('[class*="fixed z-50"]')).toBeNull();
+                expect(document.querySelector('[class*="fixed z-[10003]"]')).toBeNull();
             } finally {
                 restore();
             }

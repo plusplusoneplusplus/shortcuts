@@ -89,7 +89,7 @@ describe('ConversationMetadataPopover', () => {
             fireEvent.click(trigger);
         });
 
-        const popover = document.querySelector('.fixed.z-50');
+        const popover = document.querySelector('[class*="z-[10003]"]');
         expect(popover).not.toBeNull();
         expect(popover?.parentElement).toBe(document.body);
     });
@@ -162,7 +162,7 @@ describe('ConversationMetadataPopover', () => {
             fireEvent.click(trigger);
         });
 
-        const popover = document.querySelector('.fixed.z-50') as HTMLElement;
+        const popover = document.querySelector('[class*="z-[10003]"]') as HTMLElement;
         expect(popover).not.toBeNull();
         expect(popover.style.top).toBeDefined();
         expect(popover.style.left).toBeDefined();
