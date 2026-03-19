@@ -1,6 +1,6 @@
 import type { ClientConversationTurn, ClientToolCall } from '../types/dashboard';
 
-const CREATE_TOOL_NAMES = new Set(['create', 'write_file']);
+const CREATE_TOOL_NAMES = new Set(['create', 'write_file', 'create_file']);
 
 /** File extensions considered "plan/doc" files worth pinning */
 export const PINNED_EXTENSIONS = ['.md', '.txt', '.yaml', '.yml', '.json'];
@@ -12,7 +12,7 @@ export interface CreatedFileRecord {
 }
 
 /**
- * Scan all turns for completed create/write_file tool calls.
+ * Scan all turns for completed create/write_file/create_file tool calls.
  * Uses turn.timeline (has status) with fallback to turn.toolCalls
  * for historical turns loaded without timeline data.
  */

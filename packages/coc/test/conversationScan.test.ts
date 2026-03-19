@@ -74,6 +74,15 @@ describe('scanTurnsForCreatedFiles', () => {
         expect(results[0].filePath).toBe('/tmp/notes.txt');
     });
 
+    it('detects create_file tool name (Copilot CLI agent)', () => {
+        const turns = [
+            makeTurn([{ toolName: 'create_file', args: { path: '/home/user/.copilot/session-state/abc123/plan.md' } }]),
+        ];
+        const results = scanTurnsForCreatedFiles(turns);
+        expect(results).toHaveLength(1);
+        expect(results[0].filePath).toBe('/home/user/.copilot/session-state/abc123/plan.md');
+    });
+
     it('filters out non-pinned extensions (.js, .png)', () => {
         const turns = [
             makeTurn([
