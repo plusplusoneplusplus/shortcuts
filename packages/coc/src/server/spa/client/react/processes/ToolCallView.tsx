@@ -458,7 +458,10 @@ export function ToolCallView({
                     'tool-call-header flex items-center gap-2 px-2.5 py-1.5 cursor-pointer select-none',
                     hasDetails && 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
                 )}
-                onClick={() => hasDetails && setExpanded(!expanded)}
+                onClick={(e) => {
+                    if ((e.target as HTMLElement).closest?.('.file-path-link')) return;
+                    hasDetails && setExpanded(!expanded);
+                }}
                 onMouseEnter={!isMobile ? handleHeaderMouseEnter : undefined}
                 onMouseLeave={!isMobile ? handleHeaderMouseLeave : undefined}
             >
