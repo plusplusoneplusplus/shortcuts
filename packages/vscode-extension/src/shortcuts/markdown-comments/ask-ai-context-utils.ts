@@ -7,7 +7,7 @@
 
 import { normalizeLineEndings } from '../shared';
 
-type AICommandMode = 'comment' | 'interactive' | 'background' | 'queued';
+export type AICommandMode = 'comment' | 'interactive' | 'background' | 'queued';
 
 interface AskAIContextLike {
     selectedText: string;

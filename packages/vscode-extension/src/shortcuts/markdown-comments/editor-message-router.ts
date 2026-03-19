@@ -19,17 +19,12 @@ import { getPromptFiles } from '../shared/prompt-files-utils';
 import { getSkills } from '../shared/skill-files-utils';
 import { getWorkspaceRoot } from '../shared/workspace-utils';
 import { handleAIClarification } from './ai-clarification-handler';
-import { normalizeAskAIContextForDocument } from './ask-ai-context-utils';
+import { normalizeAskAIContextForDocument, AICommandMode } from './ask-ai-context-utils';
 import { CommentsManager } from './comments-manager';
 import { isExternalUrl, parseLineFragment, resolveFilePath } from './file-path-utils';
 import { PromptGenerator } from './prompt-generator';
 import { ClarificationContext, isUserComment, MermaidContext } from './types';
 import { EditorHost, MessageContext, DispatchResult } from './editor-host';
-
-/**
- * Mode for AI command execution
- */
-type AICommandMode = 'comment' | 'interactive' | 'background' | 'queued';
 
 /**
  * Context data for AI clarification requests from the webview
