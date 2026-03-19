@@ -3,7 +3,7 @@
  *
  * Persistent AI process storage using JSON files in a configurable data directory.
  * Per-workspace subdirectory layout: repos/<workspaceId>/processes/index.json + repos/<workspaceId>/processes/<id>.json
- * Cross-workspace ID lookups via repos/_id-map.json.
+ * Cross-workspace ID lookups via index scan across per-workspace index.json files.
  * Empty workspaceId maps to repos/_default/processes/.
  *
  * No VS Code dependencies - designed for the standalone pipeline server.
@@ -60,7 +60,6 @@ export class FileProcessStore implements ProcessStore {
     private readonly dataDir: string;
     private readonly maxProcesses: number;
     private readonly processesDir: string;
-    private readonly idMapPath: string;
     private readonly workspacesPath: string;
     private readonly wikisPath: string;
     private writeQueue: Promise<void>;
@@ -75,7 +74,6 @@ export class FileProcessStore implements ProcessStore {
         this.dataDir = options?.dataDir ?? getDefaultDataDir();
         this.maxProcesses = options?.maxProcesses ?? 500;
         this.processesDir = path.join(this.dataDir, 'repos');
-        this.idMapPath = path.join(this.processesDir, '_id-map.json');
         this.workspacesPath = path.join(this.dataDir, 'workspaces.json');
         this.wikisPath = path.join(this.dataDir, 'wikis.json');
         this.writeQueue = Promise.resolve();
@@ -108,11 +106,7 @@ export class FileProcessStore implements ProcessStore {
             };
             // Write per-process file first (orphan on crash is harmless)
             await this.writeProcessFile(workspaceId, process.id, entry);
-            // Add to _id-map.json before pruning so new ID is present
-            const idMap = await this.readIdMap();
-            idMap[process.id] = workspaceId;
-            await this.writeIdMap(idMap);
-            // Append to workspace index, prune (removes old IDs from _id-map), then write back
+            // Append to workspace index, prune, then write back
             const index = await this.readIndex(workspaceId);
             index.push(this.toIndexEntry(entry));
             const pruned = await this.pruneWorkspaceIfNeeded(workspaceId, index);
@@ -123,14 +117,13 @@ export class FileProcessStore implements ProcessStore {
 
     async getProcess(id: string, workspaceId?: string): Promise<AIProcess | undefined> {
         if (workspaceId !== undefined) {
-            // Direct path — skip _id-map.json lookup
+            // Direct path — workspaceId hint provided
             const entry = await this.readProcessFile(workspaceId, id);
             if (!entry) return undefined;
             return deserializeProcess(entry.process);
         }
-        // Look up workspaceId via _id-map.json
-        const idMap = await this.readIdMap();
-        const wsId = idMap[id];
+        // Scan workspace index files to find owning workspace
+        const wsId = await this.findWorkspaceIdForProcess(id);
         if (wsId === undefined) return undefined;
         const entry = await this.readProcessFile(wsId, id);
         if (!entry) return undefined;
@@ -246,19 +239,10 @@ export class FileProcessStore implements ProcessStore {
         return !!(filter?.parentProcessId || filter?.status || filter?.type || filter?.since);
     }
 
-    /** Atomically remove the given ids from _id-map.json. Must be called inside enqueueWrite. */
-    private async removeFromIdMap(ids: string[]): Promise<void> {
-        if (ids.length === 0) { return; }
-        const idMap = await this.readIdMap();
-        for (const id of ids) { delete idMap[id]; }
-        await this.writeIdMap(idMap);
-    }
-
     async updateProcess(id: string, updates: Partial<AIProcess>): Promise<void> {
         let updated: AIProcess | undefined;
         await this.enqueueWrite(async () => {
-            const idMap = await this.readIdMap();
-            const workspaceId = idMap[id];
+            const workspaceId = await this.findWorkspaceIdForProcess(id);
             if (workspaceId === undefined) { return; }
 
             const entry = await this.readProcessFile(workspaceId, id);
@@ -289,8 +273,7 @@ export class FileProcessStore implements ProcessStore {
     async removeProcess(id: string): Promise<void> {
         let removed: AIProcess | undefined;
         await this.enqueueWrite(async () => {
-            const idMap = await this.readIdMap();
-            const workspaceId = idMap[id];
+            const workspaceId = await this.findWorkspaceIdForProcess(id);
             if (workspaceId === undefined) { return; }
 
             const entry = await this.readProcessFile(workspaceId, id);
@@ -300,9 +283,6 @@ export class FileProcessStore implements ProcessStore {
             const index = await this.readIndex(workspaceId);
             const filtered = index.filter(e => e.id !== id);
             await this.writeIndex(workspaceId, filtered);
-            // Remove from _id-map.json
-            delete idMap[id];
-            await this.writeIdMap(idMap);
         });
         if (removed) {
             this.onProcessChange?.({ type: 'process-removed', process: removed });
@@ -317,8 +297,6 @@ export class FileProcessStore implements ProcessStore {
                 ? [filter.workspaceId]
                 : await this.listWorkspaceDirs();
 
-            const deletedIds: string[] = [];
-
             await Promise.all(workspaceDirs.map(async (wsId) => {
                 if (!hasExtra) {
                     // Fast path: wipe entire workspace dir
@@ -329,7 +307,6 @@ export class FileProcessStore implements ProcessStore {
                         fs.unlink(this.indexPathFor(wsId)).catch(() => {}),
                     ]);
                     try { await fs.rmdir(this.workspaceDirFor(wsId)); } catch { /* best effort */ }
-                    deletedIds.push(...allIds);
                     count += allIds.length;
                 } else {
                     // Filter-based path
@@ -365,14 +342,9 @@ export class FileProcessStore implements ProcessStore {
                         await this.writeIndex(wsId, remaining);
                     }
 
-                    deletedIds.push(...toDelete);
                     count += toDelete.length;
                 }
             }));
-
-            if (deletedIds.length > 0) {
-                await this.removeFromIdMap(deletedIds);
-            }
         });
         this.onProcessChange?.({ type: 'processes-cleared' });
         return count;
@@ -519,7 +491,7 @@ export class FileProcessStore implements ProcessStore {
 
         // Stat meta files in parallel
         const metaSizes = await Promise.all(
-            [this.idMapPath, this.workspacesPath, this.wikisPath].map(async (filePath) => {
+            [this.workspacesPath, this.wikisPath].map(async (filePath) => {
                 try {
                     const stat = await fs.stat(filePath);
                     return stat.size;
@@ -622,23 +594,6 @@ export class FileProcessStore implements ProcessStore {
         });
     }
 
-    private async readIdMap(): Promise<Record<string, string>> {
-        try {
-            const data = await fs.readFile(this.idMapPath, 'utf-8');
-            return JSON.parse(data) as Record<string, string>;
-        } catch {
-            return {};
-        }
-    }
-
-    private async writeIdMap(map: Record<string, string>): Promise<void> {
-        const tmpPath = this.idMapPath + '.tmp';
-        await this.retryAtomicWrite(tmpPath, async () => {
-            await fs.writeFile(tmpPath, JSON.stringify(map, null, 2), 'utf-8');
-            await fs.rename(tmpPath, this.idMapPath);
-        });
-    }
-
     private async readProcessFile(workspaceId: string, id: string): Promise<StoredProcessEntry | undefined> {
         try {
             const data = await fs.readFile(this.processFilePathFor(workspaceId, id), 'utf-8');
@@ -684,6 +639,21 @@ export class FileProcessStore implements ProcessStore {
             all.push(...entries);
         }
         return all;
+    }
+
+    /**
+     * Scan per-workspace index.json files to find the workspaceId that owns the given process id.
+     * Returns undefined if not found in any workspace.
+     */
+    private async findWorkspaceIdForProcess(id: string): Promise<string | undefined> {
+        const workspaceDirs = await this.listWorkspaceDirs();
+        for (const wsId of workspaceDirs) {
+            const entries = await this.readIndex(wsId);
+            if (entries.some(e => e.id === id)) {
+                return wsId;
+            }
+        }
+        return undefined;
     }
 
     private toIndexEntry(entry: StoredProcessEntry): ProcessIndexEntry {
@@ -748,9 +718,6 @@ export class FileProcessStore implements ProcessStore {
 
             // Delete pruned process files
             await Promise.all(prunedEntries.map(e => this.deleteProcessFile(workspaceId, e.id)));
-
-            // Remove pruned IDs from _id-map.json
-            await this.removeFromIdMap(prunedEntries.map(e => e.id));
         }
 
         return [...nonTerminal, ...keptTerminal];

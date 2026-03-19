@@ -2,7 +2,7 @@
  * FileProcessStore Tests — Per-Workspace Layout
  *
  * Validates per-workspace directory layout (repos/<workspaceId>/processes/<id>.json),
- * _id-map.json semantics, and the getProcess(id, workspaceId?) hint parameter.
+ * index-scan semantics, and the getProcess(id, workspaceId?) hint parameter.
  * All tests use a temp directory cleaned up in afterEach.
  */
 
@@ -70,44 +70,24 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(ids).toEqual(['p1', 'p2', 'p3']);
     });
 
-    // 3. Layout — addProcess updates _id-map.json
-    it('should update _id-map.json with workspaceId mapping after addProcess', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
-
-        const idMapPath = path.join(tmpDir, 'repos', '_id-map.json');
-        const raw = await fs.readFile(idMapPath, 'utf-8');
-        const idMap: Record<string, string> = JSON.parse(raw);
-        expect(idMap['p1']).toBe('ws-a');
-    });
-
-    // 4. getProcess with workspaceId hint — hits correct file directly (no _id-map needed)
+    // 3. getProcess with workspaceId hint — hits correct file directly
     it('should retrieve process via direct path when workspaceId hint is provided', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
-
-        // Delete _id-map to prove direct path doesn't need it
-        await fs.unlink(path.join(tmpDir, 'repos', '_id-map.json'));
 
         const result = await store.getProcess('p1', 'ws-a');
         expect(result).toBeDefined();
         expect(result!.id).toBe('p1');
     });
 
-    // 5. getProcess without hint — uses _id-map.json lookup
-    it('should use _id-map.json lookup when no workspaceId hint is given', async () => {
+    // 4. getProcess without hint — uses index scan
+    it('should find process via index scan when no workspaceId hint is given', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
 
-        // Works with _id-map present
         const result = await store.getProcess('p1');
         expect(result).toBeDefined();
         expect(result!.id).toBe('p1');
-
-        // Delete _id-map — lookup without hint now fails
-        await fs.unlink(path.join(tmpDir, 'repos', '_id-map.json'));
-        const resultNoMap = await store.getProcess('p1');
-        expect(resultNoMap).toBeUndefined();
     });
 
     // 6. getProcess — returns undefined for unknown id
@@ -176,8 +156,8 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(done.map(p => p.id).sort()).toEqual(['a-done', 'b-done']);
     });
 
-    // 11. updateProcess — updates file and preserves workspaceId in _id-map
-    it('should update process file while leaving _id-map workspace mapping unchanged', async () => {
+    // 11. updateProcess — updates file and returns updated values
+    it('should update process file and return updated values', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('p1', {
             status: 'running',
@@ -189,14 +169,10 @@ describe('FileProcessStore — per-workspace layout', () => {
         const updated = await store.getProcess('p1', 'ws-a');
         expect(updated!.status).toBe('completed');
         expect(updated!.result).toBe('done');
-
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'repos', '_id-map.json'), 'utf-8');
-        const idMap: Record<string, string> = JSON.parse(idMapRaw);
-        expect(idMap['p1']).toBe('ws-a');
     });
 
-    // 12. clearProcesses with workspaceId — removes dir and map entries
-    it('should remove workspace dir and _id-map entries when clearing by workspaceId', async () => {
+    // 12. clearProcesses with workspaceId — removes dir
+    it('should remove workspace dir when clearing by workspaceId', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         for (const id of ['a1', 'a2', 'a3']) {
             await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
@@ -210,12 +186,6 @@ describe('FileProcessStore — per-workspace layout', () => {
         // ws-a dir should be gone
         const wsAExists = await fs.access(path.join(tmpDir, 'repos', 'ws-a', 'processes')).then(() => true, () => false);
         expect(wsAExists).toBe(false);
-
-        // _id-map should only have ws-b entries
-        const idMapRaw2 = await fs.readFile(path.join(tmpDir, 'repos', '_id-map.json'), 'utf-8');
-        const idMap: Record<string, string> = JSON.parse(idMapRaw2);
-        expect(Object.keys(idMap).sort()).toEqual(['b1', 'b2']);
-        expect(idMap['b1']).toBe('ws-b');
 
         // ws-b files still intact
         for (const id of ['b1', 'b2']) {

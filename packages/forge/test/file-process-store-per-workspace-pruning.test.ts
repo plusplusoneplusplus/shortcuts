@@ -1,7 +1,7 @@
 /**
  * FileProcessStore Per-Workspace Pruning Tests
  *
- * Tests for pruneWorkspaceIfNeeded: per-workspace cap, id-map cleanup,
+ * Tests for pruneWorkspaceIfNeeded: per-workspace cap,
  * file deletion, onPrune callback, and cross-workspace isolation.
  */
 
@@ -117,29 +117,6 @@ describe('FileProcessStore per-workspace pruning', () => {
         }
     });
 
-    it('pruned IDs are removed from _id-map.json', async () => {
-        const maxProcesses = 3;
-        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses });
-
-        // Add 4 processes (the 4th triggers pruning of the oldest)
-        for (let i = 0; i < 4; i++) {
-            await store.addProcess(makeProcess(`p${i}`, {
-                status: 'completed',
-                startTime: new Date(1000 + i * 1000),
-            }));
-        }
-
-        const idMapPath = path.join(tmpDir, 'repos', '_id-map.json');
-        const idMap = JSON.parse(await fs.readFile(idMapPath, 'utf-8')) as Record<string, string>;
-
-        // p0 was oldest and should be pruned
-        expect(idMap['p0']).toBeUndefined();
-        // p1..p3 should remain in the map
-        expect(idMap['p1']).toBeDefined();
-        expect(idMap['p2']).toBeDefined();
-        expect(idMap['p3']).toBeDefined();
-    });
-
     it('process files are deleted for pruned entries', async () => {
         const maxProcesses = 3;
         const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses });
@@ -219,12 +196,6 @@ describe('FileProcessStore per-workspace pruning', () => {
         // Workspace B index is intact
         const wsBProcesses = await store.getAllProcesses({ workspaceId: 'ws-b' });
         expect(wsBProcesses).toHaveLength(2);
-
-        // _id-map still has B's IDs
-        const idMapPath = path.join(tmpDir, 'repos', '_id-map.json');
-        const idMap = JSON.parse(await fs.readFile(idMapPath, 'utf-8')) as Record<string, string>;
-        expect(idMap['b-0']).toBe('ws-b');
-        expect(idMap['b-1']).toBe('ws-b');
     });
 
     it('no pruning occurs when under the cap', async () => {
