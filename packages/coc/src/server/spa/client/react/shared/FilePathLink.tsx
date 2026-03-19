@@ -7,6 +7,7 @@
 import React from 'react';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { shortenFilePath } from './file-path-utils';
+import { cn } from './cn';
 
 export interface FilePathLinkProps {
     path: string;
@@ -20,7 +21,7 @@ export function FilePathLink({ path, className, shorten = true }: FilePathLinkPr
     const normalized = toForwardSlashes(path);
     return (
         <span
-            className={`file-path-link truncate max-w-[260px] ${className ?? ''}`}
+            className={cn('file-path-link truncate max-w-[260px]', className)}
             data-full-path={normalized}
             title={normalized}
         >

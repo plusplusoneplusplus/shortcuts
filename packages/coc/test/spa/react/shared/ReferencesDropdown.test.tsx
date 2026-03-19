@@ -77,7 +77,21 @@ describe('ReferencesDropdown', () => {
     it('popover has max-width and scroll constraints', () => {
         render(<ReferencesDropdown planPath="/plan.md" />);
         fireEvent.click(screen.getByTestId('references-dropdown-btn'));
-        const popover = document.querySelector('.max-w-\\[320px\\]');
+        const popover = document.querySelector('.max-w-\\[520px\\]');
         expect(popover).not.toBeNull();
+    });
+
+    it('popover uses wider min-width after change', () => {
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+        const popover = document.querySelector('.min-w-\\[300px\\]');
+        expect(popover).not.toBeNull();
+    });
+
+    it('FilePathLink inside dropdown receives wider max-w className', () => {
+        render(<ReferencesDropdown planPath="/plan.md" />);
+        fireEvent.click(screen.getByTestId('references-dropdown-btn'));
+        const link = document.querySelector('[data-full-path="/plan.md"]');
+        expect(link?.className).toContain('max-w-[460px]');
     });
 });

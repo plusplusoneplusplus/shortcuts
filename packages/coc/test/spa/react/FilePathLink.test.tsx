@@ -39,6 +39,14 @@ describe('FilePathLink', () => {
         expect(span?.textContent).toBe('/Users/alice/code/foo.ts');
     });
 
+    it('caller className can override max-w (both classes present in output)', () => {
+        const { container } = render(<FilePathLink path="/tmp/test.ts" className="max-w-[460px]" />);
+        const span = container.querySelector('.file-path-link');
+        // Both default and override classes are present; cn() concatenates them
+        expect(span?.className).toContain('max-w-[260px]');
+        expect(span?.className).toContain('max-w-[460px]');
+    });
+
     it('applies custom className', () => {
         const { container } = render(<FilePathLink path="/tmp/test.ts" className="text-red" />);
         const span = container.querySelector('.file-path-link');
