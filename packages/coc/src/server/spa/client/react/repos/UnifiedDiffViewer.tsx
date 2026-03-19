@@ -42,6 +42,76 @@ export interface DiffLine {
     content: string;
 }
 
+/** A single token in an intra-line diff result. */
+export interface IntraLinePart {
+    text: string;
+    changed: boolean;
+}
+
+/** Split a line into word/non-word tokens for diff granularity. */
+function tokenizeLine(line: string): string[] {
+    return line.match(/\w+|\W+/g) ?? [];
+}
+
+/**
+ * Compute word-level intra-line diff between two strings using LCS.
+ * Returns `[partsA, partsB]` where each part carries a `changed` flag.
+ * Consecutive tokens with the same `changed` state are merged.
+ * Skipped for very long lines (> 300 tokens) to avoid O(m*n) perf issues.
+ */
+export function computeIntraLineDiff(a: string, b: string): [IntraLinePart[], IntraLinePart[]] {
+    const tokA = tokenizeLine(a);
+    const tokB = tokenizeLine(b);
+
+    // Safety cap to avoid quadratic perf on huge lines
+    if (tokA.length === 0 && tokB.length === 0) return [[], []];
+    if (tokA.length > 300 || tokB.length > 300) {
+        return [
+            [{ text: a, changed: true }],
+            [{ text: b, changed: true }],
+        ];
+    }
+
+    const m = tokA.length, n = tokB.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            dp[i][j] = tokA[i - 1] === tokB[j - 1]
+                ? dp[i - 1][j - 1] + 1
+                : Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+    }
+
+    const aChanged = new Array<boolean>(m).fill(true);
+    const bChanged = new Array<boolean>(n).fill(true);
+    let i = m, j = n;
+    while (i > 0 && j > 0) {
+        if (tokA[i - 1] === tokB[j - 1]) {
+            aChanged[i - 1] = false;
+            bChanged[j - 1] = false;
+            i--; j--;
+        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+            i--;
+        } else {
+            j--;
+        }
+    }
+
+    const buildParts = (toks: string[], changed: boolean[]): IntraLinePart[] => {
+        const parts: IntraLinePart[] = [];
+        let k = 0;
+        while (k < toks.length) {
+            const c = changed[k];
+            let text = toks[k++];
+            while (k < toks.length && changed[k] === c) text += toks[k++];
+            parts.push({ text, changed: c });
+        }
+        return parts;
+    };
+
+    return [buildParts(tokA, aChanged), buildParts(tokB, bChanged)];
+}
+
 export interface SideBySideLine {
     left: {
         type: 'removed' | 'context' | 'empty';
@@ -56,6 +126,10 @@ export interface SideBySideLine {
         originalIndex: number | null;
     };
     hunkHeader?: string;
+    /** Intra-line parts for the left (removed) side — set only for 1:1 paired rows. */
+    leftParts?: IntraLinePart[];
+    /** Intra-line parts for the right (added) side — set only for 1:1 paired rows. */
+    rightParts?: IntraLinePart[];
 }
 
 const LINE_CLASSES: Record<LineType, string> = {
@@ -177,6 +251,15 @@ export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
             for (let k = 0; k < pairCount; k++) {
                 const rem = removedGroup[k];
                 const add = addedGroup[k];
+                let leftParts: IntraLinePart[] | undefined;
+                let rightParts: IntraLinePart[] | undefined;
+                if (rem && add) {
+                    const [lp, rp] = computeIntraLineDiff(rem.content.slice(1), add.content.slice(1));
+                    if (lp.some(p => p.changed) || rp.some(p => p.changed)) {
+                        leftParts = lp;
+                        rightParts = rp;
+                    }
+                }
                 result.push({
                     left: rem
                         ? { type: 'removed', content: rem.content, lineNumber: rem.oldLine ?? null, originalIndex: rem.index }
@@ -184,6 +267,8 @@ export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
                     right: add
                         ? { type: 'added', content: add.content, lineNumber: add.newLine ?? null, originalIndex: add.index }
                         : { type: 'empty', content: '', lineNumber: null, originalIndex: null },
+                    leftParts,
+                    rightParts,
                 });
             }
             continue;
@@ -193,6 +278,24 @@ export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
     }
 
     return result;
+}
+
+/**
+ * Build a map from diff-line `originalIndex` → `IntraLinePart[]` for all
+ * paired changed lines in a side-by-side result.  Used by the unified viewer
+ * so it can share the same intra-line computation without duplicating logic.
+ */
+export function buildIntraLinePartsMap(sxsLines: SideBySideLine[]): Map<number, IntraLinePart[]> {
+    const map = new Map<number, IntraLinePart[]>();
+    for (const row of sxsLines) {
+        if (row.leftParts && row.left.originalIndex !== null) {
+            map.set(row.left.originalIndex, row.leftParts);
+        }
+        if (row.rightParts && row.right.originalIndex !== null) {
+            map.set(row.right.originalIndex, row.rightParts);
+        }
+    }
+    return map;
 }
 
 /**
@@ -309,6 +412,8 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
+    const sxsLines = useMemo(() => computeSideBySideLines(diffLines), [diffLines]);
+    const intraLinePartsMap = useMemo(() => buildIntraLinePartsMap(sxsLines), [sxsLines]);
     const editStarts = useMemo(() => computeEditStarts(diffLines), [diffLines]);
     const lineCommentMap = useMemo(
         () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
@@ -466,7 +571,11 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                 const { type, oldLine, newLine } = diffLines[i];
                 if ((type === 'added' || type === 'removed' || type === 'context') && line.length > 0) {
                     const content = line.slice(1);
-                    const html = highlightLine(content, languages[i]);
+                    const intraParts = (type === 'added' || type === 'removed') ? intraLinePartsMap.get(i) : undefined;
+                    const markClass = type === 'removed'
+                        ? 'bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]'
+                        : 'bg-[#34c759] dark:bg-[#166534] rounded-[2px]';
+                    const html = intraParts ? null : highlightLine(content, languages[i]);
                     return (
                         <div
                             key={i}
@@ -505,8 +614,15 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                                     })()}
                                 </span>
                             )}
-                            <span className="px-1 flex-1 min-w-0">
-                                <span dangerouslySetInnerHTML={{ __html: html }} />
+                            <span className="px-1 flex-1 min-w-0 whitespace-pre-wrap break-words font-mono">
+                                {intraParts
+                                    ? intraParts.map((part, pi) =>
+                                        part.changed
+                                            ? <mark key={pi} className={markClass}>{part.text}</mark>
+                                            : <span key={pi}>{part.text}</span>
+                                      )
+                                    : <span dangerouslySetInnerHTML={{ __html: html! }} />
+                                }
                             </span>
                         </div>
                     );

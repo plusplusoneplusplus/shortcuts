@@ -18,6 +18,7 @@ import {
     type UnifiedDiffViewerHandle,
     type DiffLine,
     type SideBySideLine,
+    type IntraLinePart,
 } from './UnifiedDiffViewer';
 import { DiffContextMenu } from '../tasks/comments/DiffContextMenu';
 import type { DiffComment, DiffCommentSelection } from '../../diff-comment-types';
@@ -294,7 +295,13 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         )}
                         <span className="px-1 flex-1 min-w-0 whitespace-pre-wrap break-words">
                             {row.left.type !== 'empty' && row.left.originalIndex !== null
-                                ? <span dangerouslySetInnerHTML={{ __html: highlightLine(row.left.content.slice(1), languages[row.left.originalIndex]) }} />
+                                ? row.leftParts
+                                    ? row.leftParts.map((part: IntraLinePart, pi: number) =>
+                                        part.changed
+                                            ? <mark key={pi} className="bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]">{part.text}</mark>
+                                            : <span key={pi}>{part.text}</span>
+                                      )
+                                    : <span dangerouslySetInnerHTML={{ __html: highlightLine(row.left.content.slice(1), languages[row.left.originalIndex]) }} />
                                 : '\u00a0'}
                         </span>
                     </div>
@@ -334,7 +341,13 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         )}
                         <span className="px-1 flex-1 min-w-0 whitespace-pre-wrap break-words">
                             {row.right.type !== 'empty' && row.right.originalIndex !== null
-                                ? <span dangerouslySetInnerHTML={{ __html: highlightLine(row.right.content.slice(1), languages[row.right.originalIndex]) }} />
+                                ? row.rightParts
+                                    ? row.rightParts.map((part: IntraLinePart, pi: number) =>
+                                        part.changed
+                                            ? <mark key={pi} className="bg-[#34c759] dark:bg-[#166534] rounded-[2px]">{part.text}</mark>
+                                            : <span key={pi}>{part.text}</span>
+                                      )
+                                    : <span dangerouslySetInnerHTML={{ __html: highlightLine(row.right.content.slice(1), languages[row.right.originalIndex]) }} />
                                 : '\u00a0'}
                         </span>
                     </div>
