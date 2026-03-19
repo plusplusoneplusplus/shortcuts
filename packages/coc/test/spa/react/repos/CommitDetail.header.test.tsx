@@ -46,6 +46,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ 'data-testid': testId }: any) => (
         <div data-testid={testId ?? 'mock-diff-viewer'}>diff content</div>

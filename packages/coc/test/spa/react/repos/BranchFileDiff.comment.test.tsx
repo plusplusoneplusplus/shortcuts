@@ -27,6 +27,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
+}));
+
 // Mock UnifiedDiffViewer to expose controllable callback triggers
 vi.mock('../../../../src/server/spa/client/react/repos/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ onAddComment, onCommentClick, comments, 'data-testid': testId }: any) => (
