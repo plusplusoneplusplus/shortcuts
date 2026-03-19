@@ -77,7 +77,7 @@ export function MarkdownReviewDialog({
             onMinimize={handleMinimize}
             className="max-w-[95vw] w-[95vw] h-[92vh] p-0 gap-0"
         >
-            <div className="flex h-[92vh] flex-col">
+            <div className="flex h-full flex-col">
                 {isMobile ? (
                     /* Mobile: compact single-row header with title + minimize + close */
                     <div className="flex items-center justify-between px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]" style={{ minHeight: 44 }}>
