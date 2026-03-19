@@ -10,26 +10,15 @@ import { getLogger, LogCategory } from '../logger';
 import { parseGitHubApiResponse } from './github-api-utils';
 
 /**
- * Cache for gh CLI availability check
- */
-let ghCliAvailable: boolean | undefined;
-
-/**
  * Check if gh CLI is available
  */
 async function isGhCliAvailable(): Promise<boolean> {
-    if (ghCliAvailable !== undefined) {
-        return ghCliAvailable;
-    }
-
     try {
         await execAsync('gh --version');
-        ghCliAvailable = true;
+        return true;
     } catch {
-        ghCliAvailable = false;
+        return false;
     }
-
-    return ghCliAvailable;
 }
 
 /**
@@ -113,18 +102,20 @@ export async function installSkills(
 
 /**
  * Install a skill from GitHub
+ * Tries HTTP first (works for all public repos with no setup).
+ * Falls back to gh CLI only if HTTP fails (e.g. private repo).
  */
 async function installFromGitHub(
     github: { owner: string; repo: string; branch: string },
     skillPath: string,
     targetPath: string
 ): Promise<void> {
-    const useGhCli = await isGhCliAvailable();
-
-    if (useGhCli) {
-        await installFromGitHubWithGhCli(github, skillPath, targetPath);
-    } else {
+    try {
         await installFromGitHubWithHttp(github, skillPath, targetPath);
+    } catch (httpErr) {
+        const useGhCli = await isGhCliAvailable();
+        if (!useGhCli) throw httpErr;
+        await installFromGitHubWithGhCli(github, skillPath, targetPath);
     }
 }
 
