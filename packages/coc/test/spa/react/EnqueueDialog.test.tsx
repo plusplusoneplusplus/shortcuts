@@ -2075,7 +2075,7 @@ describe('EnqueueDialog ask mode', () => {
         });
     });
 
-    it('clicking the ▶ Run button on a task template immediately POSTs to /queue/tasks and closes dialog', async () => {
+    it('clicking a task template card selects it, then submitting POSTs to /queue/tasks with template settings', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
             if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
@@ -2115,12 +2115,19 @@ describe('EnqueueDialog ask mode', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Switch to Templates tab
+        // Switch to Templates tab and click the card to select it
         act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+        const card = await screen.findByTestId('template-card-tmpl-run-1');
+        await act(async () => { fireEvent.click(card); });
 
-        // Click the ▶ Run button (not the card itself)
-        const runBtn = await screen.findByTestId('template-run-tmpl-run-1');
-        await act(async () => { fireEvent.click(runBtn); });
+        // Card should show visual selection (checkmark)
+        await waitFor(() => {
+            expect(screen.getByTestId('template-selected-tmpl-run-1')).toBeTruthy();
+        });
+
+        // Click Enqueue to submit with template settings
+        const enqueueBtn = screen.getByRole('button', { name: /Enqueue/i });
+        await act(async () => { fireEvent.click(enqueueBtn); });
 
         await waitFor(() => {
             expect(postBody).not.toBeNull();
@@ -2134,7 +2141,7 @@ describe('EnqueueDialog ask mode', () => {
         expect(postBody.displayName).toBe('Skill: impl');
     });
 
-    it('clicking the ▶ Run button on an ask-mode template POSTs with mode:ask', async () => {
+    it('clicking an ask-mode template card then submitting POSTs with mode:ask', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
             if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
@@ -2165,19 +2172,22 @@ describe('EnqueueDialog ask mode', () => {
 
         render(
             <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
-                <DialogOpener workspaceId="ws1" />
+                <DialogOpener workspaceId="ws1" mode="ask" />
                 <EnqueueDialog />
             </Wrap>
         );
 
         await waitFor(() => {
-            expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
+            expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy();
         });
 
         act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
+        const card = await screen.findByTestId('template-card-tmpl-ask-1');
+        await act(async () => { fireEvent.click(card); });
 
-        const runBtn = await screen.findByTestId('template-run-tmpl-ask-1');
-        await act(async () => { fireEvent.click(runBtn); });
+        // Click Ask to submit with template settings
+        const askBtn = screen.getByRole('button', { name: /^Ask$/i });
+        await act(async () => { fireEvent.click(askBtn); });
 
         await waitFor(() => {
             expect(postBody).not.toBeNull();
@@ -2188,7 +2198,7 @@ describe('EnqueueDialog ask mode', () => {
         expect(postBody.config).toBeUndefined();
     });
 
-    it('clicking the card itself still pre-fills and switches to Advanced tab (not a run)', async () => {
+    it('clicking a template card stays on the Templates tab and shows visual selection — no immediate POST', async () => {
         fetchSpy.mockImplementation((url: string) => {
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
@@ -2233,9 +2243,14 @@ describe('EnqueueDialog ask mode', () => {
             typeof c[0] === 'string' && c[0].includes('/queue/tasks') && c[1]?.method === 'POST'
         );
         expect(postCalls).toHaveLength(0);
+
+        // Should show visual selection checkmark (stays on Templates tab)
+        await waitFor(() => {
+            expect(screen.getByTestId('template-selected-tmpl-prefill-1')).toBeTruthy();
+        });
     });
 
-    it('clicking ▶ Run with a non-empty prompt uses the typed prompt instead of the fallback', async () => {
+    it('selecting a template then submitting uses the typed prompt instead of the fallback', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
             if (typeof url === 'string' && url.includes('/queue/tasks') && opts?.method === 'POST') {
@@ -2275,20 +2290,22 @@ describe('EnqueueDialog ask mode', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Type a prompt before switching to Templates
+        // Type a prompt, then switch to Templates tab and select a template
         const textarea = screen.getByPlaceholderText(/Enter your prompt/);
         fireEvent.change(textarea, { target: { value: 'my custom task prompt' } });
 
-        // Switch to Templates tab and click ▶ Run
         act(() => { fireEvent.click(screen.getByText(/^Templates/)); });
-        const runBtn = await screen.findByTestId('template-run-tmpl-prompt-1');
-        await act(async () => { fireEvent.click(runBtn); });
+        const card = await screen.findByTestId('template-card-tmpl-prompt-1');
+        await act(async () => { fireEvent.click(card); });
+
+        // Submit — the typed prompt must be used, not the fallback
+        const enqueueBtn = screen.getByRole('button', { name: /Enqueue/i });
+        await act(async () => { fireEvent.click(enqueueBtn); });
 
         await waitFor(() => {
             expect(postBody).not.toBeNull();
         });
 
-        // The user's typed prompt must be used, not the fallback
         expect(postBody.payload.prompt).toBe('my custom task prompt');
     });
 });

@@ -54,6 +54,7 @@ export function EnqueueDialog() {
     const [folderPath, setFolderPath] = useState<string>('');
     const [skills, setSkills] = useState<SkillOption[]>([]);
     const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [minimized, setMinimized] = useState(false);
     const { images, addFromPaste, removeImage, clearImages } = useImagePaste();
@@ -131,6 +132,7 @@ export function EnqueueDialog() {
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
+        setSelectedTemplateId(null);
         persistModel(isAskMode ? 'ask' : 'task', value);
     }, [persistModel, isAskMode]);
 
@@ -138,6 +140,7 @@ export function EnqueueDialog() {
         setSelectedSkills(prev =>
             prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
         );
+        setSelectedTemplateId(null);
     }, []);
 
     const handleSelectTemplate = useCallback((t: import('../hooks/useSkillTemplates').SkillTemplate) => {
@@ -146,55 +149,8 @@ export function EnqueueDialog() {
         if (t.mode !== (isAskMode ? 'ask' : 'task')) {
             queueDispatch({ type: 'SET_DIALOG_MODE', mode: t.mode });
         }
-        setActiveTab('advanced');
+        setSelectedTemplateId(t.id);
     }, [isAskMode, queueDispatch]);
-
-    const handleRunTemplate = useCallback(async (t: import('../hooks/useSkillTemplates').SkillTemplate) => {
-        const effectiveMode = t.mode;
-        const effectiveModel = t.model || '';
-        const effectiveSkills = t.skills;
-        const effectivePrompt = prompt.trim();
-        const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
-
-        let body: any;
-        if (effectiveMode === 'ask') {
-            body = {
-                type: 'chat', priority: 'normal',
-                payload: {
-                    kind: 'chat', mode: 'ask',
-                    prompt: effectivePrompt || `Ask: ${effectiveSkills.join(', ')}`,
-                    workspaceId: workspaceId || undefined,
-                    workingDirectory: ws?.rootPath || undefined,
-                    ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
-                },
-            };
-        } else {
-            const displayName = effectiveSkills.length === 1
-                ? `Skill: ${effectiveSkills[0]}`
-                : `Skills: ${effectiveSkills.join(', ')}`;
-            body = {
-                type: 'chat', priority: 'normal', displayName,
-                payload: {
-                    kind: 'chat', mode: 'autopilot',
-                    prompt: effectivePrompt || `Use the ${effectiveSkills.join(', ')} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
-                    workingDirectory: ws?.rootPath || folderPath || '',
-                    ...(effectiveSkills.length > 0 ? { context: { skills: effectiveSkills } } : {}),
-                },
-            };
-        }
-        if (effectiveModel) body.config = { model: effectiveModel };
-
-        setSubmitting(true);
-        try {
-            await fetch(getApiBase() + '/queue/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            queueDispatch({ type: 'CLOSE_DIALOG' });
-        } catch { /* ignore */ }
-        finally { setSubmitting(false); }
-    }, [prompt, appState.workspaces, workspaceId, folderPath, queueDispatch]);
 
     const handleSaveTemplate = useCallback(() => {
         const mode = isAskMode ? 'ask' : 'task';
@@ -402,8 +358,8 @@ export function EnqueueDialog() {
                     currentModel={model}
                     currentMode={isAskMode ? 'ask' : 'task'}
                     currentSkills={selectedSkills}
+                    selectedTemplateId={selectedTemplateId}
                     onSelect={handleSelectTemplate}
-                    onRun={handleRunTemplate}
                     onSave={handleSaveTemplate}
                     onDelete={deleteTemplate}
                 />

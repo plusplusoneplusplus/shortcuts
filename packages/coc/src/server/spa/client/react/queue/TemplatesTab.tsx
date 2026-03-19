@@ -1,6 +1,7 @@
 /**
  * TemplatesTab — displays saved (model, mode, skills) templates.
- * Clicking a card applies those settings and switches to the Advanced tab.
+ * Clicking a card applies those settings and stays on the Templates tab,
+ * showing the card visually selected (blue ring + checkmark).
  * The "Save current" button saves the current Advanced configuration as a new template.
  */
 
@@ -13,8 +14,8 @@ interface TemplatesTabProps {
     currentModel: string;
     currentMode: 'ask' | 'task';
     currentSkills: string[];
+    selectedTemplateId: string | null;
     onSelect: (template: SkillTemplate) => void;
-    onRun: (template: SkillTemplate) => void;
     onSave: () => void;
     onDelete: (id: string) => void;
 }
@@ -24,8 +25,8 @@ export function TemplatesTab({
     loaded,
     currentModel,
     currentSkills,
+    selectedTemplateId,
     onSelect,
-    onRun,
     onSave,
     onDelete,
 }: TemplatesTabProps) {
@@ -62,34 +63,37 @@ export function TemplatesTab({
                 </div>
             ) : (
                 <div className="flex flex-col gap-2 overflow-y-auto max-h-[360px]">
-                    {templates.map(t => (
+                    {templates.map(t => {
+                        const isSelected = t.id === selectedTemplateId;
+                        return (
                         <button
                             key={t.id}
                             type="button"
                             onClick={() => onSelect(t)}
-                            className="text-left w-full rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:border-[#0078d4] hover:bg-[#f0f7ff] dark:hover:bg-[#1e3a5f] transition-colors px-3 py-2 relative group"
+                            className={`text-left w-full rounded border transition-colors px-3 py-2 relative group ${
+                                isSelected
+                                    ? 'border-[#0078d4] ring-2 ring-[#0078d4]/30 bg-[#f0f7ff] dark:bg-[#1e3a5f]'
+                                    : 'border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:border-[#0078d4] hover:bg-[#f0f7ff] dark:hover:bg-[#1e3a5f]'
+                            }`}
                             data-testid={`template-card-${t.id}`}
                         >
-                            {/* Run button */}
-                            <span
-                                role="button"
-                                tabIndex={0}
-                                onClick={e => { e.stopPropagation(); onRun(t); }}
-                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onRun(t); } }}
-                                className="absolute top-1.5 right-6 text-[#0078d4] opacity-0 group-hover:opacity-100 transition-opacity px-1 text-xs leading-none"
-                                title="Run this template"
-                                data-testid={`template-run-${t.id}`}
-                            >
-                                ▶
-                            </span>
+                            {/* Selected checkmark */}
+                            {isSelected && (
+                                <span
+                                    className="absolute top-1.5 right-1.5 text-[#0078d4] text-xs leading-none"
+                                    data-testid={`template-selected-${t.id}`}
+                                >
+                                    ✓
+                                </span>
+                            )}
 
-                            {/* Delete button */}
+                            {/* Delete button — shifts left when selected to make room for checkmark */}
                             <span
                                 role="button"
                                 tabIndex={0}
                                 onClick={e => { e.stopPropagation(); onDelete(t.id); }}
                                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onDelete(t.id); } }}
-                                className="absolute top-1.5 right-1.5 text-[#848484] hover:text-[#cc3333] opacity-0 group-hover:opacity-100 transition-opacity px-1 text-xs leading-none"
+                                className={`absolute top-1.5 text-[#848484] hover:text-[#cc3333] opacity-0 group-hover:opacity-100 transition-opacity px-1 text-xs leading-none ${isSelected ? 'right-6' : 'right-1.5'}`}
                                 title="Delete template"
                                 data-testid={`template-delete-${t.id}`}
                             >
@@ -134,7 +138,8 @@ export function TemplatesTab({
                                 </div>
                             )}
                         </button>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>
