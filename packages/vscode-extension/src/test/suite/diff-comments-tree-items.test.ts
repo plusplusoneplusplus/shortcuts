@@ -7,7 +7,8 @@ import * as assert from 'assert';
 import {
     DiffCommentCategoryItem,
     DiffCommentFileItem,
-    DiffCommentItem
+    DiffCommentItem,
+    formatCommentCountDescription
 } from '../../shortcuts/git-diff-comments/diff-comments-tree-provider';
 import { DiffComment, DiffGitContext, DiffSelection } from '../../shortcuts/git-diff-comments/types';
 
@@ -65,6 +66,32 @@ function createTestComment(
         gitContext
     };
 }
+
+suite('formatCommentCountDescription', () => {
+    test('should show only open count when no resolved', () => {
+        assert.strictEqual(formatCommentCountDescription(3, 0), '3 open');
+    });
+
+    test('should show open and resolved when both present', () => {
+        assert.strictEqual(formatCommentCountDescription(3, 2), '3 open, 2 resolved');
+    });
+
+    test('should show 0 open and resolved when all resolved', () => {
+        assert.strictEqual(formatCommentCountDescription(0, 4), '0 open, 4 resolved');
+    });
+
+    test('should show 0 open when both counts are zero', () => {
+        assert.strictEqual(formatCommentCountDescription(0, 0), '0 open');
+    });
+
+    test('should handle single open comment', () => {
+        assert.strictEqual(formatCommentCountDescription(1, 0), '1 open');
+    });
+
+    test('should handle single resolved comment', () => {
+        assert.strictEqual(formatCommentCountDescription(0, 1), '0 open, 1 resolved');
+    });
+});
 
 suite('DiffCommentCategoryItem', () => {
     test('should have contextValue with hasOpen when open comments exist', () => {

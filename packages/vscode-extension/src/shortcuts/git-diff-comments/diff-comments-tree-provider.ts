@@ -14,6 +14,13 @@ import { DiffComment, DiffGitContext } from './types';
  */
 export type CommentCategory = 'pending' | 'committed';
 
+export function formatCommentCountDescription(openCount: number, resolvedCount: number): string {
+    if (openCount === 0 && resolvedCount > 0) {
+        return `0 open, ${resolvedCount} resolved`;
+    }
+    return `${openCount} open${resolvedCount > 0 ? `, ${resolvedCount} resolved` : ''}`;
+}
+
 /**
  * Tree item representing a comment category group (Pending Changes or Committed)
  */
@@ -56,10 +63,7 @@ export class DiffCommentCategoryItem extends vscode.TreeItem {
     }
 
     private createDescription(): string {
-        if (this.openCount === 0 && this.resolvedCount > 0) {
-            return `0 open, ${this.resolvedCount} resolved`;
-        }
-        return `${this.openCount} open${this.resolvedCount > 0 ? `, ${this.resolvedCount} resolved` : ''}`;
+        return formatCommentCountDescription(this.openCount, this.resolvedCount);
     }
 
     private createTooltip(): string {
@@ -118,10 +122,7 @@ export class DiffCommentFileItem extends vscode.TreeItem {
     }
 
     private createDescription(): string {
-        if (this.openCount === 0 && this.resolvedCount > 0) {
-            return `0 open, ${this.resolvedCount} resolved`;
-        }
-        return `${this.openCount} open${this.resolvedCount > 0 ? `, ${this.resolvedCount} resolved` : ''}`;
+        return formatCommentCountDescription(this.openCount, this.resolvedCount);
     }
 
     private createTooltip(): vscode.MarkdownString {
