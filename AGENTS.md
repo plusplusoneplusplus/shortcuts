@@ -21,7 +21,7 @@ Three products plus shared infrastructure, all in one npm workspaces monorepo:
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
 | **forge** | `packages/forge/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session-per-request), DAG workflow engine (executeWorkflow, compileToWorkflow), task queue, runtime policies, process store, git CLI, utilities |
-| **coc-server** | `packages/coc-server/` | HTTP/WebSocket server: REST API, SSE streaming, SPA dashboard, wiki serving, process store at `~/.coc/` |
+| **coc-server** | `packages/coc-server/` | HTTP/WebSocket server: REST API, SSE streaming, SPA dashboard, wiki serving, process store at `~/.coc/`; per-repo data at `~/.coc/repos/<workspaceId>/` |
 
 **Key architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `src/shortcuts/ai-service/` = VS Code UI wrapper.
 
@@ -106,7 +106,26 @@ Pure Node.js AI engine — no VS Code deps. Published as `@plusplusoneplusplus/f
 
 HTTP/WebSocket server for AI dashboard and wiki serving. Published as `@plusplusoneplusplus/coc-server`.
 
-**Execution layer:** Process CRUD API, queue management, admin (time-limited crypto tokens for destructive ops), preferences (`~/.coc/preferences.json`), WebSocket (workspace-scoped events, file subscriptions), SSE per-process streaming, export/import.
+**Execution layer:** Process CRUD API, queue management, admin (time-limited crypto tokens for destructive ops), WebSocket (workspace-scoped events, file subscriptions), SSE per-process streaming, export/import.
+
+**Storage layout — `~/.coc/` (top-level, global):**
+- `config.yaml` — server configuration
+- `processes.json` — cross-repo process store (500-process retention)
+- `preferences.json` — global UI preferences (theme, etc.)
+- `memory/` — cross-repo and system memory (see Memory System section)
+- `skills/` — global skill definitions
+
+**Storage layout — `~/.coc/repos/<workspaceId>/` (per-repo):**
+- `queues.json` — queue state
+- `schedules.json` — schedule definitions
+- `schedule-runs.json` — schedule run history
+- `git-ops.json` — background git operations
+- `preferences.json` — per-repo UI preferences
+- `tasks/` — task and plan files
+
+Use `getRepoDataPath(dataDir, workspaceId, filename)` (exported from `@plusplusoneplusplus/coc-server`) as the canonical helper for building any per-repo file path. Do **not** construct these paths manually.
+
+**Convention — repo-scoped data:** All runtime data that is specific to a single repository must live under `~/.coc/repos/<workspaceId>/`. Do **NOT** add new top-level directories under `~/.coc/` for per-repo data. Use `getRepoDataPath(dataDir, workspaceId, filename)` from `@plusplusoneplusplus/coc-server` to resolve the path.
 
 **Wiki layer:** `WikiManager` registry, `WikiData` in-memory store, `ContextBuilder` (RAG-style retrieval), `ConversationSessionManager` (multi-turn AI), `FileWatcher`, deep-wiki integration (`dw-*` handlers for generation/exploration/ask).
 
