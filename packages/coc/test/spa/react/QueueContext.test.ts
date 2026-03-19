@@ -17,6 +17,7 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         dialogInitialFolderPath: null,
         dialogInitialWorkspaceId: null,
         dialogMode: 'task' as const,
+        dialogTriggerSource: null,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -445,6 +446,16 @@ describe('QueueContext reducer', () => {
             const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1' });
             expect(result.dialogMode).toBe('task');
         });
+
+        it('sets dialogTriggerSource when provided', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1', mode: 'ask', triggerSource: 'diff-ask-ai' });
+            expect(result.dialogTriggerSource).toBe('diff-ask-ai');
+        });
+
+        it('defaults dialogTriggerSource to null when not provided', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_DIALOG', workspaceId: 'ws1' });
+            expect(result.dialogTriggerSource).toBeNull();
+        });
     });
 
     // ── Dialog and history toggles ─────────────────────────────────
@@ -467,6 +478,12 @@ describe('QueueContext reducer', () => {
             const state = makeState({ showDialog: true, dialogMode: 'ask' });
             const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
             expect(result.dialogMode).toBe('task');
+        });
+
+        it('CLOSE_DIALOG resets dialogTriggerSource to null', () => {
+            const state = makeState({ showDialog: true, dialogTriggerSource: 'diff-ask-ai' });
+            const result = queueReducer(state, { type: 'CLOSE_DIALOG' });
+            expect(result.dialogTriggerSource).toBeNull();
         });
 
         it('TOGGLE_HISTORY toggles showHistory', () => {

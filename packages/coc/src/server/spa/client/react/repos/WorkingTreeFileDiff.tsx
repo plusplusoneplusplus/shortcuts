@@ -130,7 +130,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage }: WorkingTre
                 '',
                 '',
             ].join('\n');
-            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr });
+            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr, triggerSource: 'diff-ask-ai' });
         },
         [filePath, workspaceId, queueDispatch],
     );

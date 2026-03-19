@@ -20,6 +20,7 @@ import { useSlashCommands } from '../repos/useSlashCommands';
 import { SlashCommandMenu } from '../repos/SlashCommandMenu';
 import { useSkillTemplates } from '../hooks/useSkillTemplates';
 import { TemplatesTab } from './TemplatesTab';
+import { useFloatingChats } from '../context/FloatingChatsContext';
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -41,6 +42,7 @@ export function EnqueueDialog() {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { isMobile } = useBreakpoint();
+    const { floatChat } = useFloatingChats();
     const isAskMode = queueState.dialogMode === 'ask';
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
@@ -229,11 +231,22 @@ export function EnqueueDialog() {
                 };
                 if (model) body.config = { model };
             }
-            await fetch(getApiBase() + '/queue/tasks', {
+            const res = await fetch(getApiBase() + '/queue/tasks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
+            if (queueState.dialogTriggerSource === 'diff-ask-ai') {
+                const created = await res.json().catch(() => null);
+                if (created?.id) {
+                    floatChat({
+                        taskId: created.id,
+                        workspaceId: workspaceId || undefined,
+                        title: (effectivePrompt || 'Ask AI').slice(0, 60),
+                        status: 'running',
+                    });
+                }
+            }
             setPrompt('');
             setSelectedSkills([]);
             persistSkill(isAskMode ? 'ask' : 'task', effectiveSkills);
@@ -251,7 +264,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogTriggerSource]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt);
