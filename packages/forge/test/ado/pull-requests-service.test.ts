@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AdoPullRequestsService, AdoPullRequestError, AdoPullRequestNotFoundError } from '../../src/ado/pull-requests-service';
 import type { WebApi } from 'azure-devops-node-api';
+import { setLogger, nullLogger } from '../../src/logger';
+import type { Logger } from '../../src/logger';
 
 function makeMockGitApi(overrides: Record<string, unknown> = {}) {
     return {
@@ -24,11 +26,18 @@ describe('AdoPullRequestsService', () => {
     let gitApi: ReturnType<typeof makeMockGitApi>;
     let connection: ReturnType<typeof makeMockConnection>;
     let service: AdoPullRequestsService;
+    let mockLogger: Logger;
 
     beforeEach(() => {
         gitApi = makeMockGitApi();
         connection = makeMockConnection(gitApi);
         service = new AdoPullRequestsService(connection);
+        mockLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+        setLogger(mockLogger);
+    });
+
+    afterEach(() => {
+        setLogger(nullLogger);
     });
 
     // ── listPullRequests ─────────────────────────────────────
@@ -182,5 +191,53 @@ describe('AdoPullRequestsService', () => {
 
         await expect(failService.listPullRequests('repo-id', {})).rejects.toThrow(AdoPullRequestError);
         await expect(failService.listPullRequests('repo-id', {})).rejects.toThrow('Failed to get Git API client');
+    });
+
+    // ── logging ──────────────────────────────────────────────
+
+    it('logs debug before and after listPullRequests', async () => {
+        const prs = [{ pullRequestId: 1 }];
+        gitApi.getPullRequests.mockResolvedValue(prs);
+
+        await service.listPullRequests('repo-id', { status: 1 }, 'proj', 10, 5);
+
+        const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(debugCalls.some(m => m.includes('listPullRequests') && m.includes('repo-id') && m.includes('proj'))).toBe(true);
+        expect(debugCalls.some(m => m.includes('listPullRequests') && m.includes('1 PR'))).toBe(true);
+    });
+
+    it('logs error when listPullRequests throws', async () => {
+        gitApi.getPullRequests.mockRejectedValue(new Error('timeout'));
+
+        await expect(service.listPullRequests('repo-id', {})).rejects.toThrow(AdoPullRequestError);
+
+        const errorCalls = (mockLogger.error as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(errorCalls.some(m => m.includes('listPullRequests failed') && m.includes('repo-id') && m.includes('timeout'))).toBe(true);
+    });
+
+    it('logs warn when getPullRequestById returns not found', async () => {
+        gitApi.getPullRequestById.mockResolvedValue(undefined);
+
+        await expect(service.getPullRequestById(99)).rejects.toThrow(AdoPullRequestNotFoundError);
+
+        const warnCalls = (mockLogger.warn as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(warnCalls.some(m => m.includes('99') && m.includes('not found'))).toBe(true);
+    });
+
+    it('logs debug when getGitApi initializes successfully', async () => {
+        await service.listPullRequests('repo-id', {});
+
+        const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(debugCalls.some(m => m.includes('Git API client initialized'))).toBe(true);
+    });
+
+    it('logs error when getGitApi fails', async () => {
+        const failConn = { getGitApi: vi.fn().mockRejectedValue(new Error('auth error')) } as unknown as WebApi;
+        const failService = new AdoPullRequestsService(failConn);
+
+        await expect(failService.listPullRequests('repo-id', {})).rejects.toThrow();
+
+        const errorCalls = (mockLogger.error as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(errorCalls.some(m => m.includes('Git API client') && m.includes('auth error'))).toBe(true);
     });
 });
