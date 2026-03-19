@@ -20,6 +20,8 @@ import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import {
     readPreferences,
     writePreferences,
+    readRepoPreferences,
+    writeRepoPreferences,
     validatePreferences,
     validatePerRepoPreferences,
     validateGlobalPreferences,
@@ -106,10 +108,9 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips per-repo preferences', () => {
-        const data: PreferencesFile = { repos: { 'repo-1': { lastModel: 'claude-sonnet-4.6' } } };
-        writePreferences(tmpDir, data);
-        const result = readPreferences(tmpDir);
-        expect(result.repos?.['repo-1']?.lastModel).toBe('claude-sonnet-4.6');
+        writeRepoPreferences(tmpDir, 'repo-1', { lastModel: 'claude-sonnet-4.6' });
+        const result = readRepoPreferences(tmpDir, 'repo-1');
+        expect(result.lastModel).toBe('claude-sonnet-4.6');
     });
 
     it('round-trips global preferences', () => {
@@ -122,14 +123,16 @@ describe('readPreferences / writePreferences', () => {
     it('round-trips full PreferencesFile', () => {
         const data: PreferencesFile = {
             global: { theme: 'dark', reposSidebarCollapsed: true },
-            repos: { 'repo-1': { lastModel: 'gpt-4', lastDepth: 'deep' } },
         };
         writePreferences(tmpDir, data);
         const result = readPreferences(tmpDir);
         expect(result.global?.theme).toBe('dark');
         expect(result.global?.reposSidebarCollapsed).toBe(true);
-        expect(result.repos?.['repo-1']?.lastModel).toBe('gpt-4');
-        expect(result.repos?.['repo-1']?.lastDepth).toBe('deep');
+
+        writeRepoPreferences(tmpDir, 'repo-1', { lastModel: 'gpt-4', lastDepth: 'deep' });
+        const repoResult = readRepoPreferences(tmpDir, 'repo-1');
+        expect(repoResult.lastModel).toBe('gpt-4');
+        expect(repoResult.lastDepth).toBe('deep');
     });
 
     it('creates data directory if needed', () => {
@@ -151,14 +154,16 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('strips unknown keys in repos during read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'repo-1', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'repo-1': { lastModel: 'gpt-5.4', unknownKey: 42 } } }),
+            repoPrefsPath,
+            JSON.stringify({ lastModel: 'gpt-5.4', unknownKey: 42 }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['repo-1']).toEqual({ lastModel: 'gpt-5.4' });
-        expect((prefs.repos?.['repo-1'] as any)?.unknownKey).toBeUndefined();
+        const prefs = readRepoPreferences(tmpDir, 'repo-1');
+        expect(prefs).toEqual({ lastModel: 'gpt-5.4' });
+        expect((prefs as any)?.unknownKey).toBeUndefined();
     });
 
     it('strips unknown keys in global during read', () => {
@@ -179,16 +184,16 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('overwrites existing file', () => {
-        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'first' } } });
-        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'second' } } });
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastModel).toBe('second');
+        writeRepoPreferences(tmpDir, 'r', { lastModel: 'first' });
+        writeRepoPreferences(tmpDir, 'r', { lastModel: 'second' });
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.lastModel).toBe('second');
     });
 
     it('handles empty lastModel string in repos', () => {
-        writePreferences(tmpDir, { repos: { 'r': { lastModel: '' } } });
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastModel).toBe('');
+        writeRepoPreferences(tmpDir, 'r', { lastModel: '' });
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.lastModel).toBe('');
     });
 
     it('strips invalid theme in global on read', () => {
@@ -202,111 +207,113 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips lastDepth through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastDepth: 'deep' } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastDepth).toBe('deep');
+        writeRepoPreferences(tmpDir, 'r', { lastDepth: 'deep' });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastDepth).toBe('deep');
     });
 
     it('round-trips lastDepth normal through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastModel: 'gpt-5.4', lastDepth: 'normal' } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastDepth).toBe('normal');
+        writeRepoPreferences(tmpDir, 'r', { lastModel: 'gpt-5.4', lastDepth: 'normal' });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastDepth).toBe('normal');
     });
 
     it('strips invalid lastDepth in repos on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'r': { lastDepth: 'shallow' } } }),
+            repoPrefsPath,
+            JSON.stringify({ lastDepth: 'shallow' }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastDepth).toBeUndefined();
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.lastDepth).toBeUndefined();
     });
 
     it('round-trips lastEffort through write and read', () => {
         for (const level of ['low', 'medium', 'high'] as const) {
-            const data: PreferencesFile = { repos: { 'r': { lastEffort: level } } };
-            writePreferences(tmpDir, data);
-            const loaded = readPreferences(tmpDir);
-            expect(loaded.repos?.['r']?.lastEffort).toBe(level);
+            writeRepoPreferences(tmpDir, 'r', { lastEffort: level });
+            const loaded = readRepoPreferences(tmpDir, 'r');
+            expect(loaded.lastEffort).toBe(level);
         }
     });
 
     it('strips invalid lastEffort in repos on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'r': { lastEffort: 'extreme' } } }),
+            repoPrefsPath,
+            JSON.stringify({ lastEffort: 'extreme' }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastEffort).toBeUndefined();
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.lastEffort).toBeUndefined();
     });
 
     it('round-trips lastSkills through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastSkills: { task: ['impl'], ask: ['go-deep'] } } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'] });
+        writeRepoPreferences(tmpDir, 'r', { lastSkills: { task: ['impl'], ask: ['go-deep'] } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'] });
     });
 
     it('round-trips lastSkills with all three modes', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastSkills: { task: ['impl'], ask: ['go-deep'], plan: ['speckit'] } } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'], plan: ['speckit'] });
+        writeRepoPreferences(tmpDir, 'r', { lastSkills: { task: ['impl'], ask: ['go-deep'], plan: ['speckit'] } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'], plan: ['speckit'] });
     });
 
     it('round-trips lastSkills with multi-skill combinations', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastSkills: { task: ['impl', 'code-review'], plan: ['draft', 'speckit'] } } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastSkills).toEqual({ task: ['impl', 'code-review'], plan: ['draft', 'speckit'] });
+        writeRepoPreferences(tmpDir, 'r', { lastSkills: { task: ['impl', 'code-review'], plan: ['draft', 'speckit'] } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastSkills).toEqual({ task: ['impl', 'code-review'], plan: ['draft', 'speckit'] });
     });
 
     it('round-trips lastModels through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastModels: { task: 'gpt-4', ask: 'claude-3' } } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
+        writeRepoPreferences(tmpDir, 'r', { lastModels: { task: 'gpt-4', ask: 'claude-3' } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
     });
 
     it('round-trips lastModels with all three modes', () => {
-        const data: PreferencesFile = { repos: { 'r': { lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', plan: 'gemini' });
+        writeRepoPreferences(tmpDir, 'r', { lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', plan: 'gemini' });
     });
 
     it('strips invalid lastModels in repos on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'r': { lastModels: 'not-an-object' } } }),
+            repoPrefsPath,
+            JSON.stringify({ lastModels: 'not-an-object' }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastModels).toBeUndefined();
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.lastModels).toBeUndefined();
     });
 
     it('coerces legacy single-string lastSkills to array on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'r': { lastSkills: { task: 'impl', ask: 'go-deep' } } } }),
+            repoPrefsPath,
+            JSON.stringify({ lastSkills: { task: 'impl', ask: 'go-deep' } }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'] });
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'] });
     });
 
     it('drops empty string values from lastSkills on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'r': { lastSkills: { task: '' } } } }),
+            repoPrefsPath,
+            JSON.stringify({ lastSkills: { task: '' } }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.lastSkills).toBeUndefined();
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.lastSkills).toBeUndefined();
     });
 
     it('round-trips recentFollowPrompts through write and read', () => {
@@ -314,74 +321,72 @@ describe('readPreferences / writePreferences', () => {
             { type: 'prompt' as const, name: 'review', path: 'review.prompt.md', timestamp: 1000 },
             { type: 'skill' as const, name: 'impl', description: 'Implement', timestamp: 900 },
         ];
-        writePreferences(tmpDir, { repos: { 'r': { recentFollowPrompts: entries } } });
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.recentFollowPrompts).toEqual(entries);
+        writeRepoPreferences(tmpDir, 'r', { recentFollowPrompts: entries });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.recentFollowPrompts).toEqual(entries);
     });
 
     it('strips invalid recentFollowPrompts entries on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
+            repoPrefsPath,
             JSON.stringify({
-                repos: { 'r': {
-                    recentFollowPrompts: [
-                        { type: 'prompt', name: 'valid', timestamp: 1000 },
-                        { type: 'invalid', name: 'bad', timestamp: 900 },
-                    ],
-                } },
+                recentFollowPrompts: [
+                    { type: 'prompt', name: 'valid', timestamp: 1000 },
+                    { type: 'invalid', name: 'bad', timestamp: 900 },
+                ],
             }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.recentFollowPrompts!.length).toBe(1);
-        expect(prefs.repos?.['r']?.recentFollowPrompts![0].name).toBe('valid');
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.recentFollowPrompts!.length).toBe(1);
+        expect(prefs.recentFollowPrompts![0].name).toBe('valid');
     });
 
     it('round-trips pinnedChats through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { pinnedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.pinnedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
+        writeRepoPreferences(tmpDir, 'r', { pinnedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.pinnedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
     });
 
     it('strips invalid pinnedChats entries on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'r': { pinnedChats: { ws1: ['valid', 42, ''], ws2: [null] } } } }),
+            repoPrefsPath,
+            JSON.stringify({ pinnedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.pinnedChats).toEqual({ ws1: ['valid'] });
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.pinnedChats).toEqual({ ws1: ['valid'] });
     });
 
     it('round-trips archivedChats through write and read', () => {
-        const data: PreferencesFile = { repos: { 'r': { archivedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } } } };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['r']?.archivedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
+        writeRepoPreferences(tmpDir, 'r', { archivedChats: { ws1: ['id-a', 'id-b'], ws2: ['id-c'] } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.archivedChats).toEqual({ ws1: ['id-a', 'id-b'], ws2: ['id-c'] });
     });
 
     it('strips invalid archivedChats entries on read', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
         fs.writeFileSync(
-            path.join(tmpDir, PREFERENCES_FILE_NAME),
-            JSON.stringify({ repos: { 'r': { archivedChats: { ws1: ['valid', 42, ''], ws2: [null] } } } }),
+            repoPrefsPath,
+            JSON.stringify({ archivedChats: { ws1: ['valid', 42, ''], ws2: [null] } }),
             'utf-8'
         );
-        const prefs = readPreferences(tmpDir);
-        expect(prefs.repos?.['r']?.archivedChats).toEqual({ ws1: ['valid'] });
+        const prefs = readRepoPreferences(tmpDir, 'r');
+        expect(prefs.archivedChats).toEqual({ ws1: ['valid'] });
     });
 
     it('multiple repos are stored independently', () => {
-        const data: PreferencesFile = {
-            repos: {
-                'repo-a': { lastModel: 'gpt-4' },
-                'repo-b': { lastModel: 'claude-3' },
-            },
-        };
-        writePreferences(tmpDir, data);
-        const loaded = readPreferences(tmpDir);
-        expect(loaded.repos?.['repo-a']?.lastModel).toBe('gpt-4');
-        expect(loaded.repos?.['repo-b']?.lastModel).toBe('claude-3');
+        writeRepoPreferences(tmpDir, 'repo-a', { lastModel: 'gpt-4' });
+        writeRepoPreferences(tmpDir, 'repo-b', { lastModel: 'claude-3' });
+        const loadedA = readRepoPreferences(tmpDir, 'repo-a');
+        const loadedB = readRepoPreferences(tmpDir, 'repo-b');
+        expect(loadedA.lastModel).toBe('gpt-4');
+        expect(loadedB.lastModel).toBe('claude-3');
     });
 });
 
@@ -866,7 +871,7 @@ describe('Preferences REST API', () => {
     });
 
     it('GET does not return per-repo preferences', async () => {
-        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'gpt-4' } } });
+        writeRepoPreferences(tmpDir, 'r', { lastModel: 'gpt-4' });
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({});
@@ -918,10 +923,10 @@ describe('Preferences REST API', () => {
     });
 
     it('PUT does not overwrite existing per-repo prefs', async () => {
-        writePreferences(tmpDir, { repos: { 'r': { lastModel: 'gpt-4' } } });
+        writeRepoPreferences(tmpDir, 'r', { lastModel: 'gpt-4' });
         await putJSON(`${baseUrl}/api/preferences`, { theme: 'dark' });
-        const file = readPreferences(tmpDir);
-        expect(file.repos?.['r']?.lastModel).toBe('gpt-4');
+        const repoPrefs = readRepoPreferences(tmpDir, 'r');
+        expect(repoPrefs.lastModel).toBe('gpt-4');
     });
 
     // -- PATCH /api/preferences --

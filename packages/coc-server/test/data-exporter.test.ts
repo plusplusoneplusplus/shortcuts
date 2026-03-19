@@ -120,10 +120,25 @@ describe('exportAllData (coc-server)', () => {
 
     it('includes preferences when preferences file exists', async () => {
         const prefFile = path.join(dataDir, 'preferences.json');
-        fs.writeFileSync(prefFile, JSON.stringify({ theme: 'dark' }), 'utf-8');
+        fs.writeFileSync(prefFile, JSON.stringify({ global: { theme: 'dark' } }), 'utf-8');
 
         const payload = await exportAllData({ store, dataDir });
-        expect((payload.preferences as any).theme).toBe('dark');
+        expect((payload.preferences as any).global?.theme).toBe('dark');
+    });
+
+    it('includes per-repo preferences from repos/*/preferences.json', async () => {
+        // Write global prefs
+        const prefFile = path.join(dataDir, 'preferences.json');
+        fs.writeFileSync(prefFile, JSON.stringify({ global: { theme: 'light' } }), 'utf-8');
+
+        // Write per-repo prefs
+        const repoDir = path.join(dataDir, 'repos', 'ws-abc');
+        fs.mkdirSync(repoDir, { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'preferences.json'), JSON.stringify({ lastModel: 'gpt-4' }), 'utf-8');
+
+        const payload = await exportAllData({ store, dataDir });
+        expect((payload.preferences as any).global?.theme).toBe('light');
+        expect((payload.preferences as any).repos?.['ws-abc']?.lastModel).toBe('gpt-4');
     });
 
     it('includes serverVersion when provided', async () => {

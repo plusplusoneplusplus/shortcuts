@@ -47,9 +47,30 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
 
     // Gather preferences (raw JSON to preserve all fields regardless of schema)
     const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
-    const preferences = fs.existsSync(prefFile)
+    const globalPrefs = fs.existsSync(prefFile)
         ? JSON.parse(fs.readFileSync(prefFile, 'utf-8'))
         : {};
+
+    // Gather per-repo preferences from repos/*/preferences.json
+    const repoPreferences: Record<string, unknown> = {};
+    const reposDir = path.join(dataDir, 'repos');
+    if (fs.existsSync(reposDir) && fs.statSync(reposDir).isDirectory()) {
+        for (const id of fs.readdirSync(reposDir)) {
+            const repoPrefFile = path.join(reposDir, id, PREFERENCES_FILE_NAME);
+            try {
+                if (fs.existsSync(repoPrefFile)) {
+                    repoPreferences[id] = JSON.parse(fs.readFileSync(repoPrefFile, 'utf-8'));
+                }
+            } catch {
+                // Skip corrupt per-repo preference files
+            }
+        }
+    }
+
+    const preferences = {
+        ...(globalPrefs.global !== undefined ? { global: globalPrefs.global } : {}),
+        ...(Object.keys(repoPreferences).length > 0 ? { repos: repoPreferences } : {}),
+    };
 
     // Gather server config (optional, injected from CLI layer)
     const configPath = path.join(dataDir, 'config.yaml');

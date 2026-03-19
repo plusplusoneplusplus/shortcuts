@@ -21,6 +21,7 @@ import type {
 import { validateExportPayload } from './export-import-types';
 import { PREFERENCES_FILE_NAME } from './preferences-handler';
 import { getRepoQueueFilePath } from './queue/queue-persistence';
+import { getRepoDataPath } from './paths';
 import { atomicWriteJson } from './shared/fs-utils';
 
 // ============================================================================
@@ -113,7 +114,19 @@ async function replaceImport(
 
     // 7. Restore preferences
     try {
-        atomicWriteJson(path.join(dataDir, PREFERENCES_FILE_NAME), payload.preferences ?? {});
+        const prefs = payload.preferences as any ?? {};
+        // Write global preferences
+        const globalData: Record<string, unknown> = {};
+        if (prefs.global !== undefined) {
+            globalData.global = prefs.global;
+        }
+        atomicWriteJson(path.join(dataDir, PREFERENCES_FILE_NAME), globalData);
+        // Write per-repo preferences
+        const repos = prefs.repos ?? {};
+        for (const [workspaceId, repoPrefs] of Object.entries(repos)) {
+            const repoPrefsPath = getRepoDataPath(dataDir, workspaceId, PREFERENCES_FILE_NAME);
+            atomicWriteJson(repoPrefsPath, repoPrefs);
+        }
     } catch (err: any) {
         result.errors.push(`Failed to write preferences: ${err.message}`);
     }
@@ -193,12 +206,24 @@ async function mergeImport(
 
     // 5. Merge preferences
     try {
+        const prefs = payload.preferences as any ?? {};
+        // Merge global preferences
         const prefFile = path.join(dataDir, PREFERENCES_FILE_NAME);
-        let existing: Record<string, unknown> = {};
+        let existingGlobal: Record<string, unknown> = {};
         if (fs.existsSync(prefFile)) {
-            existing = JSON.parse(fs.readFileSync(prefFile, 'utf-8'));
+            existingGlobal = JSON.parse(fs.readFileSync(prefFile, 'utf-8'));
         }
-        atomicWriteJson(prefFile, { ...existing, ...(payload.preferences as any) });
+        if (prefs.global !== undefined) {
+            existingGlobal.global = { ...(existingGlobal.global as any ?? {}), ...prefs.global };
+        }
+        atomicWriteJson(prefFile, existingGlobal);
+        // Merge per-repo preferences — skip workspaceIds that already have a file
+        const repos = prefs.repos ?? {};
+        for (const [workspaceId, repoPrefs] of Object.entries(repos)) {
+            const repoPrefsPath = getRepoDataPath(dataDir, workspaceId, PREFERENCES_FILE_NAME);
+            if (fs.existsSync(repoPrefsPath)) { continue; }
+            atomicWriteJson(repoPrefsPath, repoPrefs);
+        }
     } catch (err: any) {
         result.errors.push(`Failed to merge preferences: ${err.message}`);
     }

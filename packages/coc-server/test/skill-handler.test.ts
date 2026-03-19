@@ -374,19 +374,17 @@ describe('registerSkillRoutes', () => {
             fs.writeFileSync(path.join(dir, 'SKILL.md'), `# ${name}\nA skill`);
         }
 
-        // Create preferences with usage data
+        // Create preferences with usage data in per-repo path
         const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-prefs-'));
-        const prefs = {
-            repos: {
-                [workspaceId]: {
-                    skillUsageMap: {
-                        'gamma-skill': '2025-01-03T00:00:00.000Z',
-                        'alpha-skill': '2025-01-01T00:00:00.000Z',
-                    },
-                },
+        const repoPrefsDir = path.join(dataDir, 'repos', workspaceId);
+        fs.mkdirSync(repoPrefsDir, { recursive: true });
+        const repoPrefs = {
+            skillUsageMap: {
+                'gamma-skill': '2025-01-03T00:00:00.000Z',
+                'alpha-skill': '2025-01-01T00:00:00.000Z',
             },
         };
-        fs.writeFileSync(path.join(dataDir, 'preferences.json'), JSON.stringify(prefs));
+        fs.writeFileSync(path.join(repoPrefsDir, 'preferences.json'), JSON.stringify(repoPrefs));
 
         // Re-register routes with dataDir
         const sortedRoutes: Route[] = [];

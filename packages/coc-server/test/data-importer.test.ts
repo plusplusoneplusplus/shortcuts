@@ -167,4 +167,50 @@ describe('importData (coc-server)', () => {
         // Should have captured errors without throwing
         expect(Array.isArray(result.errors)).toBe(true);
     });
+
+    // ---- Per-repo preferences -----------------------------------------------
+
+    it('replace mode writes per-repo prefs to repos/<id>/preferences.json', async () => {
+        const payload = makePayload({
+            preferences: {
+                global: { theme: 'dark' },
+                repos: {
+                    'ws-abc': { lastModel: 'gpt-4' },
+                    'ws-def': { lastModel: 'claude-3' },
+                },
+            },
+        });
+
+        await importData(payload, { store, dataDir, mode: 'replace', wiper });
+        const repoPrefsAbc = path.join(dataDir, 'repos', 'ws-abc', 'preferences.json');
+        const repoPrefsDef = path.join(dataDir, 'repos', 'ws-def', 'preferences.json');
+        expect(fs.existsSync(repoPrefsAbc)).toBe(true);
+        expect(fs.existsSync(repoPrefsDef)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(repoPrefsAbc, 'utf-8')).lastModel).toBe('gpt-4');
+        expect(JSON.parse(fs.readFileSync(repoPrefsDef, 'utf-8')).lastModel).toBe('claude-3');
+    });
+
+    it('merge mode does not overwrite existing per-repo preferences', async () => {
+        // Pre-seed per-repo prefs
+        const repoDir = path.join(dataDir, 'repos', 'ws-abc');
+        fs.mkdirSync(repoDir, { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'preferences.json'), JSON.stringify({ lastModel: 'existing' }));
+
+        const payload = makePayload({
+            preferences: {
+                repos: {
+                    'ws-abc': { lastModel: 'imported' },
+                    'ws-new': { lastModel: 'new-model' },
+                },
+            },
+        });
+
+        await importData(payload, { store, dataDir, mode: 'merge', wiper });
+        // Existing per-repo prefs are not overwritten
+        expect(JSON.parse(fs.readFileSync(path.join(repoDir, 'preferences.json'), 'utf-8')).lastModel).toBe('existing');
+        // New per-repo prefs are written
+        const newRepoPrefs = path.join(dataDir, 'repos', 'ws-new', 'preferences.json');
+        expect(fs.existsSync(newRepoPrefs)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(newRepoPrefs, 'utf-8')).lastModel).toBe('new-model');
+    });
 });

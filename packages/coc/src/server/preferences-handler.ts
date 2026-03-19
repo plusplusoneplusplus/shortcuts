@@ -11,7 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBodyOrReject } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBodyOrReject, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -87,10 +87,9 @@ export interface PerRepoPreferences {
 /** backward-compat alias */
 export type UserPreferences = PerRepoPreferences;
 
-/** Top-level structure of the preferences file on disk. */
+/** Top-level structure of the global preferences file on disk. */
 export interface PreferencesFile {
     global?: GlobalPreferences;
-    repos?: Record<string, PerRepoPreferences>;
 }
 
 // ============================================================================
@@ -270,7 +269,7 @@ export function validatePreferences(raw: unknown): PerRepoPreferences {
 // ============================================================================
 
 /**
- * Read the full preferences file from disk.
+ * Read the global preferences file from disk.
  * Returns an empty object when the file doesn't exist or is invalid.
  */
 export function readPreferences(dataDir: string): PreferencesFile {
@@ -294,16 +293,6 @@ export function readPreferences(dataDir: string): PreferencesFile {
             }
         }
 
-        if (typeof obj.repos === 'object' && obj.repos !== null && !Array.isArray(obj.repos)) {
-            const repos: Record<string, PerRepoPreferences> = {};
-            for (const [key, value] of Object.entries(obj.repos as Record<string, unknown>)) {
-                repos[key] = validatePerRepoPreferences(value);
-            }
-            if (Object.keys(repos).length > 0) {
-                result.repos = repos;
-            }
-        }
-
         return result;
     } catch {
         return {};
@@ -311,12 +300,43 @@ export function readPreferences(dataDir: string): PreferencesFile {
 }
 
 /**
- * Write the full preferences file to disk atomically (write-then-rename).
+ * Write the global preferences file to disk atomically (write-then-rename).
  * Creates the data directory if it doesn't exist.
  */
 export function writePreferences(dataDir: string, data: PreferencesFile): void {
     fs.mkdirSync(dataDir, { recursive: true });
     const filePath = path.join(dataDir, PREFERENCES_FILE_NAME);
+    const tmpPath = filePath + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+/**
+ * Read per-repo preferences from disk.
+ * Returns an empty object when the file doesn't exist or is invalid.
+ */
+export function readRepoPreferences(dataDir: string, workspaceId: string): PerRepoPreferences {
+    const filePath = getRepoDataPath(dataDir, workspaceId, PREFERENCES_FILE_NAME);
+    try {
+        if (!fs.existsSync(filePath)) {
+            return {};
+        }
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        return validatePerRepoPreferences(parsed);
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Write per-repo preferences to disk atomically (write-then-rename).
+ * Creates the parent directory if it doesn't exist.
+ */
+export function writeRepoPreferences(dataDir: string, workspaceId: string, data: PerRepoPreferences): void {
+    const filePath = getRepoDataPath(dataDir, workspaceId, PREFERENCES_FILE_NAME);
+    const dir = path.dirname(filePath);
+    fs.mkdirSync(dir, { recursive: true });
     const tmpPath = filePath + '.tmp';
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmpPath, filePath);
@@ -403,8 +423,7 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
         pattern: /^\/api\/workspaces\/([^/]+)\/preferences$/,
         handler: async (_req, res, match) => {
             const repoId = decodeURIComponent(match![1]);
-            const file = readPreferences(dataDir);
-            sendJSON(res, 200, file.repos?.[repoId] ?? {});
+            sendJSON(res, 200, readRepoPreferences(dataDir, repoId));
         },
     });
 
@@ -420,9 +439,7 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
 
             const repoId = decodeURIComponent(match![1]);
             const repoPrefs = validatePerRepoPreferences(body);
-            const existing = readPreferences(dataDir);
-            const repos = { ...(existing.repos ?? {}), [repoId]: repoPrefs };
-            writePreferences(dataDir, { ...existing, repos });
+            writeRepoPreferences(dataDir, repoId, repoPrefs);
             sendJSON(res, 200, repoPrefs);
         },
     });
@@ -438,8 +455,7 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             if (body === null) return;
 
             const repoId = decodeURIComponent(match![1]);
-            const existing = readPreferences(dataDir);
-            const existingRepo = existing.repos?.[repoId] ?? {};
+            const existingRepo = readRepoPreferences(dataDir, repoId);
             const patch = validatePerRepoPreferences(body);
             const merged: PerRepoPreferences = { ...existingRepo, ...patch };
 
@@ -478,8 +494,7 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
                 delete merged.archivedChats;
             }
 
-            const repos = { ...(existing.repos ?? {}), [repoId]: merged };
-            writePreferences(dataDir, { ...existing, repos });
+            writeRepoPreferences(dataDir, repoId, merged);
             sendJSON(res, 200, merged);
         },
     });
@@ -500,13 +515,11 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
 
             const repoId = decodeURIComponent(match![1]);
             const skillName: string = body.skillName;
-            const existing = readPreferences(dataDir);
-            const existingRepo = existing.repos?.[repoId] ?? {};
+            const existingRepo = readRepoPreferences(dataDir, repoId);
             const timestamp = new Date().toISOString();
             const usageMap = { ...(existingRepo.skillUsageMap ?? {}), [skillName]: timestamp };
             const merged: PerRepoPreferences = { ...existingRepo, skillUsageMap: usageMap };
-            const repos = { ...(existing.repos ?? {}), [repoId]: merged };
-            writePreferences(dataDir, { ...existing, repos });
+            writeRepoPreferences(dataDir, repoId, merged);
             sendJSON(res, 200, { skillName, timestamp });
         },
     });

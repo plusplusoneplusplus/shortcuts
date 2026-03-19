@@ -103,6 +103,12 @@ export class DataWiper {
         const prefsPath = path.join(this.dataDir, 'preferences.json');
         result.deletedPreferences = fs.existsSync(prefsPath);
 
+        // Count per-repo preference files
+        const repoPrefsFiles = this.listRepoPreferencesFiles(reposDir);
+        if (repoPrefsFiles.length > 0) {
+            result.deletedPreferences = true;
+        }
+
         // 5. Record preserved files
         const configYaml = path.join(this.dataDir, 'config.yaml');
         if (fs.existsSync(configYaml)) {
@@ -161,9 +167,18 @@ export class DataWiper {
         // Delete preferences
         if (result.deletedPreferences) {
             try {
-                fs.unlinkSync(prefsPath);
+                if (fs.existsSync(prefsPath)) {
+                    fs.unlinkSync(prefsPath);
+                }
             } catch (err: any) {
                 result.errors.push(`Failed to delete preferences: ${err.message}`);
+            }
+            for (const filePath of repoPrefsFiles) {
+                try {
+                    fs.unlinkSync(filePath);
+                } catch (err: any) {
+                    result.errors.push(`Failed to delete repo preferences ${filePath}: ${err.message}`);
+                }
             }
         }
 
@@ -209,6 +224,24 @@ export class DataWiper {
             return fs.readdirSync(blobsDir)
                 .filter(f => f.endsWith('.images.json'))
                 .map(f => path.join(blobsDir, f));
+        } catch {
+            return [];
+        }
+    }
+
+    private listRepoPreferencesFiles(reposDir: string): string[] {
+        try {
+            if (!fs.existsSync(reposDir) || !fs.statSync(reposDir).isDirectory()) {
+                return [];
+            }
+            const results: string[] = [];
+            for (const id of fs.readdirSync(reposDir)) {
+                const filePath = path.join(reposDir, id, 'preferences.json');
+                if (fs.existsSync(filePath)) {
+                    results.push(filePath);
+                }
+            }
+            return results;
         } catch {
             return [];
         }

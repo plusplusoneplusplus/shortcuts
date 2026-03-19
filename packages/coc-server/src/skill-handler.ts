@@ -20,6 +20,7 @@ import { sendJSON } from './api-handler';
 import { handleAPIError, notFound, badRequest } from './errors';
 import { resolveWorkspaceOrFail } from './shared/handler-utils';
 import { createSkillRouteHandlers } from './skill-route-handlers';
+import { getRepoDataPath } from './paths';
 import type { Route } from './types';
 
 // ============================================================================
@@ -258,10 +259,10 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             let skills = listInstalledSkills(installPath);
             if (dataDir) {
                 try {
-                    const prefsPath = path.join(dataDir, 'preferences.json');
-                    if (fs.existsSync(prefsPath)) {
-                        const raw = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
-                        const usageMap = raw?.repos?.[id]?.skillUsageMap;
+                    const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');
+                    if (fs.existsSync(repoPrefsPath)) {
+                        const raw = JSON.parse(fs.readFileSync(repoPrefsPath, 'utf-8'));
+                        const usageMap = raw?.skillUsageMap;
                         if (usageMap && typeof usageMap === 'object') {
                             skills = sortSkillsByUsage(skills, usageMap);
                         }

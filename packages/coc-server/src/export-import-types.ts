@@ -105,7 +105,8 @@ export interface CoCExportPayload {
     workspaces: WorkspaceInfo[];
     wikis: WikiInfo[];
     queueHistory: QueueSnapshot[];
-    preferences: UserPreferences;
+    /** Preferences blob: `{ global?: GlobalPreferences; repos?: Record<string, PerRepoPreferences> }`. */
+    preferences: Record<string, unknown>;
     /** Optional snapshot of the server configuration at export time. */
     serverConfig?: CLIConfig;
     /** Externalized image blobs per task. Optional for backward compat with pre-feature exports. */

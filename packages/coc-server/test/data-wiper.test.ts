@@ -109,6 +109,23 @@ describe('DataWiper', () => {
         expect(fs.existsSync(path.join(tmpDir, 'preferences.json'))).toBe(false);
     });
 
+    it('wipeData deletes per-repo preferences.json files', async () => {
+        const repoAbcDir = path.join(tmpDir, 'repos', 'abc');
+        const repoDefDir = path.join(tmpDir, 'repos', 'def');
+        fs.mkdirSync(repoAbcDir, { recursive: true });
+        fs.mkdirSync(repoDefDir, { recursive: true });
+        fs.writeFileSync(path.join(repoAbcDir, 'preferences.json'), '{}');
+        fs.writeFileSync(path.join(repoDefDir, 'preferences.json'), '{}');
+
+        const store = createMockStore();
+        const wiper = new DataWiper(tmpDir, store);
+        const result = await wiper.wipeData({ includeWikis: false });
+
+        expect(result.deletedPreferences).toBe(true);
+        expect(fs.existsSync(path.join(repoAbcDir, 'preferences.json'))).toBe(false);
+        expect(fs.existsSync(path.join(repoDefDir, 'preferences.json'))).toBe(false);
+    });
+
     it('preserves config.yaml', async () => {
         const configPath = path.join(tmpDir, 'config.yaml');
         fs.writeFileSync(configPath, 'model: gpt-4\n');
