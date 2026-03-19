@@ -940,10 +940,18 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         )}
         {enqueueToast && (
             <div
-                className="fixed bottom-4 right-4 z-[10010] px-4 py-2.5 rounded-md shadow-lg text-xs text-white bg-[#0078d4] dark:bg-[#1a6bbf] max-w-xs"
+                className="fixed bottom-4 right-4 z-[10010] px-4 py-2.5 rounded-md shadow-lg text-xs text-white bg-[#0078d4] dark:bg-[#1a6bbf] max-w-xs flex items-center gap-2"
                 data-testid="enqueue-toast"
             >
-                {enqueueToast}
+                <span className="flex-1">{enqueueToast}</span>
+                <button
+                    onClick={() => setEnqueueToast(null)}
+                    data-testid="enqueue-toast-close"
+                    aria-label="Close notification"
+                    className="ml-2 text-white/80 hover:text-white text-sm leading-none"
+                >
+                    ×
+                </button>
             </div>
         )}
         <BranchPickerModal

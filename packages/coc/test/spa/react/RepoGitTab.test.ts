@@ -765,6 +765,23 @@ describe('RepoGitTab', () => {
         it('shows enqueueToast conditionally', () => {
             expect(source).toContain('{enqueueToast && (');
         });
+
+        it('toast close button has data-testid="enqueue-toast-close"', () => {
+            expect(source).toContain('data-testid="enqueue-toast-close"');
+        });
+
+        it('toast close button calls setEnqueueToast(null) on click', () => {
+            expect(source).toContain('onClick={() => setEnqueueToast(null)}');
+        });
+
+        it('toast close button has accessible aria-label', () => {
+            expect(source).toContain('aria-label="Close notification"');
+        });
+
+        it('toast uses flex layout to align message and close button', () => {
+            expect(source).toContain('flex items-center gap-2');
+            expect(source).toContain('data-testid="enqueue-toast"');
+        });
     });
 
     describe('branch picker integration', () => {
