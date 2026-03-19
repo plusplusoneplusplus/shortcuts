@@ -400,7 +400,7 @@ export class ProcessWebSocketServer {
             return undefined;
         }
         if ('process' in message && message.process) {
-            return (message.process as ProcessSummary).workspaceId;
+            return message.process.workspaceId;
         }
         if (
             message.type === 'tasks-changed' ||
