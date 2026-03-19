@@ -1,7 +1,7 @@
 /**
  * FileProcessStore Tests — Per-Workspace Layout
  *
- * Validates per-workspace directory layout (processes/<workspaceId>/<id>.json),
+ * Validates per-workspace directory layout (repos/<workspaceId>/processes/<id>.json),
  * _id-map.json semantics, and the getProcess(id, workspaceId?) hint parameter.
  * All tests use a temp directory cleaned up in afterEach.
  */
@@ -49,7 +49,7 @@ describe('FileProcessStore — per-workspace layout', () => {
         const p = makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } });
         await store.addProcess(p);
 
-        const filePath = path.join(tmpDir, 'processes', 'ws-a', 'p1.json');
+        const filePath = path.join(tmpDir, 'repos', 'ws-a', 'processes', 'p1.json');
         const raw = await fs.readFile(filePath, 'utf-8');
         const entry: StoredProcessEntry = JSON.parse(raw);
         expect(entry.workspaceId).toBe('ws-a');
@@ -63,7 +63,7 @@ describe('FileProcessStore — per-workspace layout', () => {
             await store.addProcess(makeProcess(id, { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
         }
 
-        const indexPath = path.join(tmpDir, 'processes', 'ws-a', 'index.json');
+        const indexPath = path.join(tmpDir, 'repos', 'ws-a', 'processes', 'index.json');
         const raw = await fs.readFile(indexPath, 'utf-8');
         const index: Array<{ id: string }> = JSON.parse(raw);
         const ids = index.map(e => e.id).sort();
@@ -75,7 +75,7 @@ describe('FileProcessStore — per-workspace layout', () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
 
-        const idMapPath = path.join(tmpDir, 'processes', '_id-map.json');
+        const idMapPath = path.join(tmpDir, 'repos', '_id-map.json');
         const raw = await fs.readFile(idMapPath, 'utf-8');
         const idMap: Record<string, string> = JSON.parse(raw);
         expect(idMap['p1']).toBe('ws-a');
@@ -87,7 +87,7 @@ describe('FileProcessStore — per-workspace layout', () => {
         await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
 
         // Delete _id-map to prove direct path doesn't need it
-        await fs.unlink(path.join(tmpDir, 'processes', '_id-map.json'));
+        await fs.unlink(path.join(tmpDir, 'repos', '_id-map.json'));
 
         const result = await store.getProcess('p1', 'ws-a');
         expect(result).toBeDefined();
@@ -105,7 +105,7 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(result!.id).toBe('p1');
 
         // Delete _id-map — lookup without hint now fails
-        await fs.unlink(path.join(tmpDir, 'processes', '_id-map.json'));
+        await fs.unlink(path.join(tmpDir, 'repos', '_id-map.json'));
         const resultNoMap = await store.getProcess('p1');
         expect(resultNoMap).toBeUndefined();
     });
@@ -190,7 +190,7 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(updated!.status).toBe('completed');
         expect(updated!.result).toBe('done');
 
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
+        const idMapRaw = await fs.readFile(path.join(tmpDir, 'repos', '_id-map.json'), 'utf-8');
         const idMap: Record<string, string> = JSON.parse(idMapRaw);
         expect(idMap['p1']).toBe('ws-a');
     });
@@ -208,12 +208,12 @@ describe('FileProcessStore — per-workspace layout', () => {
         await store.clearProcesses({ workspaceId: 'ws-a' });
 
         // ws-a dir should be gone
-        const wsAExists = await fs.access(path.join(tmpDir, 'processes', 'ws-a')).then(() => true, () => false);
+        const wsAExists = await fs.access(path.join(tmpDir, 'repos', 'ws-a', 'processes')).then(() => true, () => false);
         expect(wsAExists).toBe(false);
 
         // _id-map should only have ws-b entries
-        const idMapRaw = await fs.readFile(path.join(tmpDir, 'processes', '_id-map.json'), 'utf-8');
-        const idMap: Record<string, string> = JSON.parse(idMapRaw);
+        const idMapRaw2 = await fs.readFile(path.join(tmpDir, 'repos', '_id-map.json'), 'utf-8');
+        const idMap: Record<string, string> = JSON.parse(idMapRaw2);
         expect(Object.keys(idMap).sort()).toEqual(['b1', 'b2']);
         expect(idMap['b1']).toBe('ws-b');
 
@@ -252,7 +252,7 @@ describe('FileProcessStore — per-workspace layout', () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
         await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: '' } }));
 
-        const filePath = path.join(tmpDir, 'processes', '_default', 'p1.json');
+        const filePath = path.join(tmpDir, 'repos', '_default', 'processes', 'p1.json');
         const raw = await fs.readFile(filePath, 'utf-8');
         const entry: StoredProcessEntry = JSON.parse(raw);
         expect(entry.workspaceId).toBe('');

@@ -48,14 +48,14 @@ describe('FileProcessStore flush handlers and write-queue', () => {
 
         // All files must exist
         for (let i = 0; i < n; i++) {
-            const filePath = path.join(tmpDir, 'processes', 'ws-a', `p${i}.json`);
+            const filePath = path.join(tmpDir, 'repos', 'ws-a', 'processes', `p${i}.json`);
             const exists = await fs.access(filePath).then(() => true, () => false);
             expect(exists).toBe(true);
         }
 
         // index.json must have exactly n entries
         const indexRaw = await fs.readFile(
-            path.join(tmpDir, 'processes', 'ws-a', 'index.json'),
+            path.join(tmpDir, 'repos', 'ws-a', 'processes', 'index.json'),
             'utf-8'
         );
         const index: unknown[] = JSON.parse(indexRaw);

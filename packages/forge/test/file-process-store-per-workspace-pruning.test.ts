@@ -129,7 +129,7 @@ describe('FileProcessStore per-workspace pruning', () => {
             }));
         }
 
-        const idMapPath = path.join(tmpDir, 'processes', '_id-map.json');
+        const idMapPath = path.join(tmpDir, 'repos', '_id-map.json');
         const idMap = JSON.parse(await fs.readFile(idMapPath, 'utf-8')) as Record<string, string>;
 
         // p0 was oldest and should be pruned
@@ -152,7 +152,7 @@ describe('FileProcessStore per-workspace pruning', () => {
         }
 
         // p0 was oldest and should have its file deleted
-        const prunedFile = path.join(tmpDir, 'processes', '_default', 'p0.json');
+        const prunedFile = path.join(tmpDir, 'repos', '_default', 'processes', 'p0.json');
         const exists = await fs.access(prunedFile).then(() => true, () => false);
         expect(exists).toBe(false);
     });
@@ -221,7 +221,7 @@ describe('FileProcessStore per-workspace pruning', () => {
         expect(wsBProcesses).toHaveLength(2);
 
         // _id-map still has B's IDs
-        const idMapPath = path.join(tmpDir, 'processes', '_id-map.json');
+        const idMapPath = path.join(tmpDir, 'repos', '_id-map.json');
         const idMap = JSON.parse(await fs.readFile(idMapPath, 'utf-8')) as Record<string, string>;
         expect(idMap['b-0']).toBe('ws-b');
         expect(idMap['b-1']).toBe('ws-b');

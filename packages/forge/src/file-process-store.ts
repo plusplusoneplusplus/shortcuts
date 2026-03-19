@@ -2,9 +2,9 @@
  * File-based ProcessStore Implementation
  *
  * Persistent AI process storage using JSON files in a configurable data directory.
- * Per-workspace subdirectory layout: processes/<workspaceId>/index.json + processes/<workspaceId>/<id>.json
- * Cross-workspace ID lookups via processes/_id-map.json.
- * Empty workspaceId maps to processes/_default/.
+ * Per-workspace subdirectory layout: repos/<workspaceId>/processes/index.json + repos/<workspaceId>/processes/<id>.json
+ * Cross-workspace ID lookups via repos/_id-map.json.
+ * Empty workspaceId maps to repos/_default/processes/.
  *
  * No VS Code dependencies - designed for the standalone pipeline server.
  */
@@ -26,7 +26,7 @@ import {
 import { withRetry } from './runtime/retry';
 import { getLogger } from './logger';
 
-/** On-disk shape for individual process files (processes/<workspaceId>/<id>.json) */
+/** On-disk shape for individual process files (repos/<workspaceId>/processes/<id>.json) */
 export interface StoredProcessEntry {
     workspaceId: string;
     process: SerializedAIProcess;
@@ -74,7 +74,7 @@ export class FileProcessStore implements ProcessStore {
     constructor(options?: FileProcessStoreOptions) {
         this.dataDir = options?.dataDir ?? getDefaultDataDir();
         this.maxProcesses = options?.maxProcesses ?? 500;
-        this.processesDir = path.join(this.dataDir, 'processes');
+        this.processesDir = path.join(this.dataDir, 'repos');
         this.idMapPath = path.join(this.processesDir, '_id-map.json');
         this.workspacesPath = path.join(this.dataDir, 'workspaces.json');
         this.wikisPath = path.join(this.dataDir, 'wikis.json');
@@ -85,7 +85,7 @@ export class FileProcessStore implements ProcessStore {
     // --- Per-workspace directory helpers ---
 
     private workspaceDirFor(workspaceId: string): string {
-        return path.join(this.processesDir, workspaceId || '_default');
+        return path.join(this.processesDir, workspaceId || '_default', 'processes');
     }
 
     private indexPathFor(workspaceId: string): string {

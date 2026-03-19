@@ -179,15 +179,15 @@ describe('FileProcessStore - Retry on atomic writes (per-workspace paths)', () =
         }
 
         // Check ws-a dir for .tmp files
-        const wsADir = path.join(tmpDir, 'processes', 'ws-a');
+        const wsADir = path.join(tmpDir, 'repos', 'ws-a', 'processes');
         const wsATmpFiles = await actualFs.readdir(wsADir).then(
             files => files.filter(f => f.endsWith('.tmp')),
             () => [] as string[]
         );
         expect(wsATmpFiles).toEqual([]);
 
-        // Check processes dir for _id-map.json.tmp
-        const processesDir = path.join(tmpDir, 'processes');
+        // Check repos dir for _id-map.json.tmp
+        const processesDir = path.join(tmpDir, 'repos');
         const processesTmpFiles = await actualFs.readdir(processesDir).then(
             files => files.filter(f => f.endsWith('.tmp')),
             () => [] as string[]
