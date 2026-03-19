@@ -121,16 +121,10 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-        // Log every completed request (static 404s at debug to avoid noise)
         res.on('finish', () => {
             const durationMs = Date.now() - startTime;
             const log = getServerLogger();
-            const isStaticNotFound = res.statusCode === 404 && !rawPathname.startsWith('/api/');
-            if (isStaticNotFound) {
-                log.debug({ method, path: rawPathname, status: res.statusCode, durationMs }, 'request');
-            } else {
-                log.info({ method, path: rawPathname, status: res.statusCode, durationMs }, 'request');
-            }
+            log.debug({ method, path: rawPathname, status: res.statusCode, durationMs }, 'request');
         });
 
         // Handle CORS preflight
