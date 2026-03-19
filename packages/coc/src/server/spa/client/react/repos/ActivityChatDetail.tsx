@@ -432,7 +432,7 @@ export function ActivityChatDetail({ taskId, onBack, workspaceId, isPopOut = fal
     };
 
     return (
-        <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail">
+        <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
             <ChatHeader
                 task={task}
                 metadataProcess={metadataProcess}

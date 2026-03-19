@@ -857,6 +857,24 @@ describe('ActivityChatDetail', () => {
         });
     });
 
+    describe('data-ws-id on container root (References dropdown click fix)', () => {
+        it('stamps data-ws-id on the activity-chat-detail root when workspaceId is provided', () => {
+            // The root div must propagate workspaceId as data-ws-id so that
+            // the global file-path-preview.ts click delegation can pick it up
+            // for FilePathLink elements in ChatHeader (e.g. ReferencesDropdown).
+            expect(source).toMatch(/data-testid="activity-chat-detail"[^>]*data-ws-id|data-ws-id[^>]*data-testid="activity-chat-detail"/);
+        });
+
+        it('uses workspaceId for data-ws-id spread on container', () => {
+            const containerBlock = source.substring(
+                source.indexOf('data-testid="activity-chat-detail"') - 20,
+                source.indexOf('data-testid="activity-chat-detail"') + 120,
+            );
+            expect(containerBlock).toContain('workspaceId');
+            expect(containerBlock).toContain('data-ws-id');
+        });
+    });
+
     describe('plan doc header pill', () => {
         it('derives planPath from context.files[0] with fallback to planFilePath', () => {
             const planPathBlock = source.substring(
