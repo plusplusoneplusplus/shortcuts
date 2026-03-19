@@ -6,7 +6,7 @@
  * compatible with the extension's comment storage format.
  *
  * Storage layout:
- *   {dataDir}/tasks-comments/{workspaceId}/{sha256(filePath)}.json
+ *   {dataDir}/repos/{workspaceId}/tasks-comments/{sha256(filePath)}.json
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -15,7 +15,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBodyOrReject, atomicWriteJSON } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBodyOrReject, atomicWriteJSON, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
 import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import {
     DEFAULT_AI_COMMANDS,
@@ -148,18 +148,18 @@ const DEFAULT_SETTINGS: CommentsStorage['settings'] = {
  * Mirrors extension's CommentsManager but for server-side use.
  */
 export class TaskCommentsManager {
-    private readonly commentsRoot: string;
+    private readonly dataDir: string;
 
     /**
      * @param dataDir - Root data directory (e.g. ~/.coc)
      */
     constructor(dataDir: string) {
-        this.commentsRoot = path.join(dataDir, COMMENTS_DIR_NAME);
+        this.dataDir = dataDir;
     }
 
     /** Get comments directory for a workspace. */
     private getWorkspaceDir(workspaceId: string): string {
-        return path.join(this.commentsRoot, workspaceId);
+        return getRepoDataPath(this.dataDir, workspaceId, COMMENTS_DIR_NAME);
     }
 
     /**

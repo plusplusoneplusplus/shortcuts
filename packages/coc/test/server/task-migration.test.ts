@@ -219,7 +219,7 @@ describe('task-migration', () => {
         }
 
         function createCommentFile(workspaceId: string, filePath: string, comment: any): void {
-            const dir = path.join(dataDir, 'tasks-comments', workspaceId);
+            const dir = path.join(dataDir, 'repos', workspaceId, 'tasks-comments');
             fs.mkdirSync(dir, { recursive: true });
             const hash = hashPath(filePath);
             fs.writeFileSync(path.join(dir, `${hash}.json`), JSON.stringify(comment));
@@ -240,7 +240,7 @@ describe('task-migration', () => {
             expect(result.remapped).toBe(1);
             expect(result.errors).toHaveLength(0);
 
-            const dir = path.join(dataDir, 'tasks-comments', 'ws-1');
+            const dir = path.join(dataDir, 'repos', 'ws-1', 'tasks-comments');
             const newHash = hashPath(newPath);
             expect(fs.existsSync(path.join(dir, `${newHash}.json`))).toBe(true);
 

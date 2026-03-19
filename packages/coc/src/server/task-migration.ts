@@ -11,7 +11,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getErrorMessage } from '@plusplusoneplusplus/coc-server';
+import { getErrorMessage, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
 
 export interface MigrationResult {
     migrated: boolean;
@@ -169,7 +169,7 @@ export async function migrateCommentHashes(options: {
     dryRun?: boolean;
 }): Promise<{ remapped: number; errors: string[] }> {
     const { dataDir, workspaceId, oldPrefix, dryRun = false } = options;
-    const commentsDir = path.join(dataDir, 'tasks-comments', workspaceId);
+    const commentsDir = getRepoDataPath(dataDir, workspaceId, 'tasks-comments');
     const result = { remapped: 0, errors: [] as string[] };
 
     if (!fs.existsSync(commentsDir)) {

@@ -270,14 +270,14 @@ describe('TaskCommentsManager', () => {
 
         it('creates workspace directory if not exists', async () => {
             await manager.addComment('new-workspace', 'task.md', makeCommentData());
-            const wsDir = path.join(tmpDir, 'tasks-comments', 'new-workspace');
+            const wsDir = path.join(tmpDir, 'repos', 'new-workspace', 'tasks-comments');
             expect(fs.existsSync(wsDir)).toBe(true);
         });
 
         it('stores settings alongside comments', async () => {
             await manager.addComment('ws1', 'task.md', makeCommentData());
             const hash = manager.hashFilePath('task.md');
-            const file = path.join(tmpDir, 'tasks-comments', 'ws1', `${hash}.json`);
+            const file = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments', `${hash}.json`);
             const content = JSON.parse(fs.readFileSync(file, 'utf8'));
             expect(content.settings).toEqual({
                 showResolved: true,
@@ -296,7 +296,7 @@ describe('TaskCommentsManager', () => {
         it('writes formatted JSON (pretty-printed)', async () => {
             await manager.addComment('ws1', 'task.md', makeCommentData());
             const hash = manager.hashFilePath('task.md');
-            const file = path.join(tmpDir, 'tasks-comments', 'ws1', `${hash}.json`);
+            const file = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments', `${hash}.json`);
             const raw = fs.readFileSync(file, 'utf8');
             expect(raw).toContain('\n'); // pretty-printed
         });
@@ -318,7 +318,7 @@ describe('TaskCommentsManager', () => {
     describe('Error Handling', () => {
         it('handles corrupted JSON gracefully', async () => {
             const hash = manager.hashFilePath('task.md');
-            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            const wsDir = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments');
             fs.mkdirSync(wsDir, { recursive: true });
             fs.writeFileSync(path.join(wsDir, `${hash}.json`), '{{invalid json', 'utf8');
             const comments = await manager.getComments('ws1', 'task.md');
@@ -327,7 +327,7 @@ describe('TaskCommentsManager', () => {
 
         it('handles missing comments field in storage', async () => {
             const hash = manager.hashFilePath('task.md');
-            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            const wsDir = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments');
             fs.mkdirSync(wsDir, { recursive: true });
             fs.writeFileSync(path.join(wsDir, `${hash}.json`), JSON.stringify({ settings: {} }), 'utf8');
             const comments = await manager.getComments('ws1', 'task.md');
@@ -369,7 +369,7 @@ describe('TaskCommentsManager', () => {
 
         it('skips corrupted JSON files', async () => {
             await manager.addComment('ws1', 'good.md', makeCommentData({ filePath: 'good.md' }));
-            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            const wsDir = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments');
             fs.writeFileSync(path.join(wsDir, 'bad.json'), '{{broken', 'utf8');
             const counts = await manager.getCommentCounts('ws1');
             expect(counts['good.md']).toBe(1);
@@ -377,7 +377,7 @@ describe('TaskCommentsManager', () => {
         });
 
         it('skips files with empty comments array', async () => {
-            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            const wsDir = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments');
             fs.mkdirSync(wsDir, { recursive: true });
             fs.writeFileSync(path.join(wsDir, 'empty.json'), JSON.stringify({ comments: [], settings: {} }), 'utf8');
             const counts = await manager.getCommentCounts('ws1');
@@ -471,7 +471,7 @@ describe('TaskCommentsManager', () => {
             // Manually write a file under the legacy hash key
             const legacyPath = '.vscode/tasks/feature/plan.md';
             const legacyHash = manager.hashFilePath(legacyPath);
-            const wsDir = path.join(tmpDir, 'tasks-comments', 'ws1');
+            const wsDir = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments');
             fs.mkdirSync(wsDir, { recursive: true });
             const legacyStorage = {
                 comments: [{
@@ -524,7 +524,7 @@ describe('TaskCommentsManager', () => {
 
             // Now the new hash file should exist; verify by checking new path directly
             const newHash = manager.hashFilePath('feature/plan.md');
-            const newFile = path.join(tmpDir, 'tasks-comments', 'ws1', `${newHash}.json`);
+            const newFile = path.join(tmpDir, 'repos', 'ws1', 'tasks-comments', `${newHash}.json`);
             expect(fs.existsSync(newFile)).toBe(true);
 
             // Reading should now return from the new hash file
@@ -944,7 +944,7 @@ describe('Task Comments REST API', () => {
     describe('File Persistence', () => {
         it('comments persist to disk after POST', async () => {
             await postJSON(commentsUrl(), makeCommentData());
-            const commentsDir = path.join(tmpDir, 'tasks-comments', WS_ID);
+            const commentsDir = path.join(tmpDir, 'repos', WS_ID, 'tasks-comments');
             expect(fs.existsSync(commentsDir)).toBe(true);
             const files = fs.readdirSync(commentsDir);
             expect(files.length).toBe(1);

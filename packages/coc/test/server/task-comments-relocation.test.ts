@@ -162,7 +162,7 @@ function writeCommentsFile(
 ): void {
     const manager = new TaskCommentsManager(dataDir);
     const hash = manager.hashFilePath(taskPath);
-    const wsDir = path.join(dataDir, 'tasks-comments', wsId);
+    const wsDir = path.join(dataDir, 'repos', wsId, 'tasks-comments');
     fs.mkdirSync(wsDir, { recursive: true });
     const storage: CommentsStorage = {
         comments,
@@ -179,7 +179,7 @@ function readCommentsFile(
 ): TaskComment[] {
     const manager = new TaskCommentsManager(dataDir);
     const hash = manager.hashFilePath(taskPath);
-    const file = path.join(dataDir, 'tasks-comments', wsId, `${hash}.json`);
+    const file = path.join(dataDir, 'repos', wsId, 'tasks-comments', `${hash}.json`);
     const content = fs.readFileSync(file, 'utf8');
     const storage: CommentsStorage = JSON.parse(content);
     return storage.comments;
@@ -399,7 +399,7 @@ describe('Task Comments Anchor Relocation', () => {
         // Note the mtime before the GET
         const manager = new TaskCommentsManager(dataDir);
         const hash = manager.hashFilePath(taskPath);
-        const storageFile = path.join(dataDir, 'tasks-comments', wsId, `${hash}.json`);
+        const storageFile = path.join(dataDir, 'repos', wsId, 'tasks-comments', `${hash}.json`);
         const statBefore = fs.statSync(storageFile);
 
         // Small delay to make mtime difference detectable
