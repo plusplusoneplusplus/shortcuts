@@ -58,8 +58,8 @@ function DialogToggler() {
 describe('EnqueueDialog global mounting', () => {
     beforeEach(() => {
         global.fetch = vi.fn().mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/queue')) {
                 return Promise.resolve({

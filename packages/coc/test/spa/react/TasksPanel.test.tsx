@@ -1350,8 +1350,8 @@ describe('TasksPanel — GenerateTaskDialog (now in RepoDetail)', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (url.includes('queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            if (url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
         });
@@ -1606,8 +1606,8 @@ describe('TasksPanel — search input', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (url.includes('queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            if (url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
         });
@@ -1698,8 +1698,8 @@ describe('TasksPanel — search debounce', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (url.includes('queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            if (url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
         });
@@ -1856,8 +1856,8 @@ describe('TasksPanel — search results', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'task1.plan.md': 3 }) });
             }
-            if (url.includes('queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            if (url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
         });
@@ -1977,8 +1977,8 @@ describe('TasksPanel — keyboard shortcuts', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (url.includes('queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) });
+            if (url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve(mockTree) });
         });

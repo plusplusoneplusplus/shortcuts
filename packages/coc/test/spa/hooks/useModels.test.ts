@@ -1,5 +1,5 @@
 /**
- * Tests for useModels hook — fetch /api/queue/models, loading states, error handling.
+ * Tests for useModels hook — fetch /api/models, loading states, error handling.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -31,7 +31,10 @@ describe('useModels', () => {
     it('returns loading=false and models after successful fetch', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
-            json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+            json: () => Promise.resolve([
+                { id: 'gpt-4', name: 'GPT-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128_000 } } },
+                { id: 'claude-3', name: 'Claude 3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 200_000 } } },
+            ]),
         });
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
@@ -40,18 +43,18 @@ describe('useModels', () => {
         expect(result.current.models[1].id).toBe('claude-3');
     });
 
-    it('fetches GET /api/queue/models', async () => {
-        mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ models: [] }) });
+    it('fetches GET /api/models', async () => {
+        mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
         renderHook(() => useModels());
         await waitFor(() => {
             expect(mockFetch).toHaveBeenCalledWith(
-                expect.stringContaining('/queue/models')
+                expect.stringContaining('/api/models')
             );
         });
     });
 
     it('returns empty models array when API returns empty array', async () => {
-        mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ models: [] }) });
+        mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
@@ -71,13 +74,27 @@ describe('useModels', () => {
         expect(result.current.models).toEqual([]);
     });
 
-    it('maps model IDs to ModelInfo objects with tokenLimit', async () => {
+    it('maps capabilities to tokenLimit', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
-            json: () => Promise.resolve({ models: ['gpt-4o'] }),
+            json: () => Promise.resolve([
+                { id: 'gpt-4o', name: 'GPT-4o', capabilities: { supports: { vision: true, reasoningEffort: false }, limits: { max_context_window_tokens: 128_000 } } },
+            ]),
         });
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
-        expect(result.current.models[0]).toMatchObject({ id: 'gpt-4o', tokenLimit: 0 });
+        expect(result.current.models[0]).toMatchObject({ id: 'gpt-4o', tokenLimit: 128_000, name: 'GPT-4o' });
+    });
+
+    it('defaults tokenLimit to 0 when capabilities are missing', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: () => Promise.resolve([
+                { id: 'custom-model', name: 'Custom' },
+            ]),
+        });
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0]).toMatchObject({ id: 'custom-model', tokenLimit: 0 });
     });
 });

@@ -55,12 +55,12 @@ describe('FollowPromptDialog', () => {
         expect(screen.getByText('Run Skill')).toBeDefined();
     });
 
-    it('populates model select from /api/queue/models', async () => {
+    it('populates model select from /api/models', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'gpt-3.5'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'gpt-3.5', name: 'gpt-3.5', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/preferences')) {
@@ -211,10 +211,10 @@ describe('FollowPromptDialog', () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-sonnet'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/skills')) {

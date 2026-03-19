@@ -199,13 +199,16 @@ export async function activate(context: vscode.ExtensionContext) {
         extensionLogger.info(LogCategory.EXTENSION, 'Shortcuts extension activating', { workspaceRoot });
 
         // Initialize pipeline-core logger bridge to route logs to VS Code output channel
-        const { setLogger } = await import('@plusplusoneplusplus/forge');
+        const { setLogger, modelMetadataStore, getCopilotSDKService } = await import('@plusplusoneplusplus/forge');
         setLogger({
             debug: (cat, msg) => extensionLogger.debug(cat as LogCategory, msg),
             info: (cat, msg) => extensionLogger.info(cat as LogCategory, msg),
             warn: (cat, msg) => extensionLogger.warn(cat as LogCategory, msg),
             error: (cat, msg, err) => extensionLogger.error(cat as LogCategory, msg, err),
         });
+
+        // Warm up model metadata store so model pickers show live SDK models
+        modelMetadataStore.initialize(getCopilotSDKService()).catch(() => { /* ignore */ });
 
         // Initialize configuration and theme managers
         const configurationManager = new ConfigurationManager(workspaceRoot, context);

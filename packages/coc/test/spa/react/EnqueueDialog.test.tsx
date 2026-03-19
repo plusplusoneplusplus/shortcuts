@@ -136,7 +136,7 @@ describe('EnqueueDialog', () => {
         global.fetch = fetchSpy;
         // Default: models endpoint returns empty
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/tasks')) {
@@ -188,7 +188,7 @@ describe('EnqueueDialog', () => {
 
     it('filters out .git folders from folder select options', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/tasks')) {
@@ -245,7 +245,7 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/tasks')) {
@@ -310,7 +310,7 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -341,7 +341,7 @@ describe('EnqueueDialog', () => {
 
     it('fetches skills when workspace is selected and shows skill selector', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -401,7 +401,7 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -465,7 +465,7 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -519,7 +519,7 @@ describe('EnqueueDialog', () => {
 
     it('pre-selects workspace when dialogInitialWorkspaceId is set', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -559,7 +559,7 @@ describe('EnqueueDialog', () => {
 
     it('enables Enqueue button when skill is selected but prompt is empty', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -627,7 +627,7 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -684,7 +684,7 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -737,8 +737,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: ['gpt-4', 'claude-sonnet'] }) });
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -796,7 +796,7 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -836,8 +836,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: ['gpt-4', 'claude-sonnet'] }) });
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -874,7 +874,7 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/tasks')) {
@@ -914,7 +914,7 @@ describe('EnqueueDialog', () => {
 
     it('persists selected skill to preferences via PATCH on submit', async () => {
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -996,7 +996,7 @@ describe('EnqueueDialog', () => {
 
     it('restores last-used skill from preferences when skills load', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/preferences')) {
@@ -1045,7 +1045,7 @@ describe('EnqueueDialog', () => {
 
     it('does not restore skill if it is not in available skills list', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/preferences')) {
@@ -1214,7 +1214,7 @@ describe('EnqueueDialog', () => {
 describe('EnqueueDialog minimize behavior', () => {
     beforeEach(() => {
         global.fetch = vi.fn().mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1397,7 +1397,7 @@ describe('EnqueueDialog minimize behavior', () => {
 
     it('minimize button is hidden while submitting', async () => {
         const fetchSpy = vi.fn().mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             // Simulate slow submit
@@ -1439,7 +1439,7 @@ describe('EnqueueDialog slash commands', () => {
                 capturePosts?.push({ body: JSON.parse(opts.body || '{}'), url });
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
@@ -1699,8 +1699,9 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         } = opts;
 
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: availableModels }) });
+            if (typeof url === 'string' && url.includes('/api/models')) {
+                const modelInfos = availableModels.map(id => ({ id, name: id, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }));
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(modelInfos) });
             }
             if (typeof url === 'string' && url.includes('/preferences') && (!opts || opts.method !== 'PATCH')) {
                 return Promise.resolve({
@@ -1939,7 +1940,7 @@ describe('EnqueueDialog ask mode', () => {
         fetchSpy = vi.fn();
         global.fetch = fetchSpy;
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -1993,7 +1994,7 @@ describe('EnqueueDialog ask mode', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -2043,7 +2044,7 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -2097,7 +2098,7 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -2156,7 +2157,7 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -2205,7 +2206,7 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -2257,7 +2258,7 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/queue/models')) {
+            if (typeof url === 'string' && url.includes('/api/models')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });

@@ -80,7 +80,7 @@ describe('GET /api/models', () => {
         expect(body).toEqual(THREE_MODELS);
     });
 
-    it('falls back to static list when store is empty', async () => {
+    it('falls back to dynamic list from model registry when store is empty', async () => {
         const store: ModelStore = { getAll: () => [] };
         server = makeServer(store);
         await startServer();
@@ -90,10 +90,10 @@ describe('GET /api/models', () => {
         expect(status).toBe(200);
         const models = body as ModelInfo[];
         expect(models.length).toBeGreaterThan(0);
-        // Fallback should include known models
+        // Fallback should include models from the current static registry
         const ids = models.map((m: ModelInfo) => m.id);
-        expect(ids).toContain('gpt-4o');
-        expect(ids).toContain('gpt-4o-mini');
+        expect(ids).toContain('claude-sonnet-4.6');
+        expect(ids).toContain('claude-haiku-4.5');
     });
 
     it('returns 500 when store.getAll() throws', async () => {

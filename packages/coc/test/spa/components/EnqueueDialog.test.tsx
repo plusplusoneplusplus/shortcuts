@@ -24,7 +24,7 @@ beforeEach(() => {
     // Default responses for inner fetches (models, preferences, templates, etc.)
     mockFetch.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+        json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
     });
 });
 
@@ -128,7 +128,7 @@ describe('EnqueueDialog', () => {
     it('submit POSTs to /api/queue/tasks with correct prompt', async () => {
         // Setup fetch: models, preferences GET, templates GET, then queue tasks POST
         mockFetch
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ models: ['gpt-4'] }) }) // /queue/models
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) }) // /api/models
             .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }); // preferences/others
 
         renderDialog();

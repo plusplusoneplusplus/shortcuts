@@ -125,10 +125,10 @@ async function getSecondModelValue(page: import('@playwright/test').Page): Promi
 
 test.describe('Preferences (007)', () => {
 
-    // Mock /api/queue/models so Run Skill and Update Document dialogs have model options
+    // Mock /api/models so Run Skill and Update Document dialogs have model options
     test.beforeEach(async ({ page }) => {
-        await page.route('**/api/queue/models', route =>
-            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: ['gpt-4', 'claude-3-5-sonnet', 'gemini-2.0'] }) }),
+        await page.route('**/api/models', route =>
+            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3-5-sonnet', name: 'claude-3-5-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'gemini-2.0', name: 'gemini-2.0', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) }),
         );
     });
 

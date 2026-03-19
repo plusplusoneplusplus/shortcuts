@@ -12,6 +12,7 @@
 import * as vscode from 'vscode';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import { AIBackendType, AIModelConfig, DEFAULT_MODEL_ID, ModelDefinition, getAllModels, isValidModelId } from './types';
+import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 
 /**
  * Get the configured AI backend from VS Code settings.
@@ -69,6 +70,17 @@ export function getSDKRequestTimeoutSetting(): number {
  * @returns Array of AIModelConfig objects with display information
  */
 export function getAvailableModels(): AIModelConfig[] {
+    // Prefer live SDK models; fall back to static registry
+    const live = modelMetadataStore.getCachedModels()
+        .filter(m => m.policy?.state !== 'disabled');
+    if (live.length > 0) {
+        return live.map((m, index) => ({
+            id: m.id,
+            label: m.name,
+            description: undefined,
+            isDefault: index === 0,
+        }));
+    }
     return getAllModels().map((model: ModelDefinition, index: number) => ({
         id: model.id,
         label: model.label,

@@ -86,10 +86,10 @@ beforeEach(() => {
 
     // Default fetch: models + tasks
     mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/queue/models')) {
+        if (url.includes('/api/models')) {
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve({ models: [] }),
+                json: () => Promise.resolve([]),
             });
         }
         if (url.includes('/tasks')) {
@@ -313,12 +313,12 @@ describe('GenerateTaskDialog', () => {
         );
     });
 
-    it('populates model select from /api/queue/models', async () => {
+    it('populates model select from /api/models', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {
@@ -350,10 +350,10 @@ describe('GenerateTaskDialog', () => {
 
     it('populates folder select from workspace tasks API', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: [] }),
+                    json: () => Promise.resolve([]),
                 });
             }
             if (url.includes('/workspaces/ws-1/tasks')) {
@@ -399,10 +399,10 @@ describe('GenerateTaskDialog', () => {
 
     it('filters out .git folders from folder select', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: [] }),
+                    json: () => Promise.resolve([]),
                 });
             }
             if (url.includes('/workspaces/ws-1/tasks')) {
@@ -470,10 +470,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {
@@ -503,10 +503,10 @@ describe('GenerateTaskDialog', () => {
 
     it('persists model selection when user changes model', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {
@@ -553,10 +553,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {
@@ -605,10 +605,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {
@@ -660,10 +660,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {
@@ -951,10 +951,10 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['claude-haiku-4.5', 'claude-sonnet-4', 'claude-opus-4'] }),
+                    json: () => Promise.resolve([{ id: 'claude-haiku-4.5', name: 'claude-haiku-4.5', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet-4', name: 'claude-sonnet-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-opus-4', name: 'claude-opus-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {
@@ -1022,10 +1022,10 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/queue/models')) {
+            if (url.includes('/api/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ models: ['gpt-4', 'claude-3'] }),
+                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
                 });
             }
             if (url.includes('/tasks')) {

@@ -10,7 +10,7 @@
  */
 
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/forge';
-import { getActiveModels } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody, ImageBlobStore, truncateDisplayName } from '@plusplusoneplusplus/coc-server';
 import type { Route } from '@plusplusoneplusplus/coc-server';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
@@ -424,7 +424,12 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
         method: 'GET',
         pattern: '/api/queue/models',
         handler: async (_req, res) => {
-            const models = getActiveModels().map(model => model.id);
+            // Prefer live SDK data; fall back to static registry if not yet initialized
+            const live = modelMetadataStore.getCachedModels()
+                .filter(m => m.policy?.state !== 'disabled');
+            const models = live.length > 0
+                ? live.map(m => m.id)
+                : getActiveModels().map(m => m.id);
             sendJSON(res, 200, { models });
         },
     });
