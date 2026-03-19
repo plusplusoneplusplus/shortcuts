@@ -211,7 +211,7 @@ export function FloatingDialog({
         };
     };
 
-    const showHeader = !!(title || onMinimize || true); // always show header for close button
+    const showHeader = true; // always show header for close button
     const closeDisabled = !!disableClose;
 
     return ReactDOM.createPortal(
