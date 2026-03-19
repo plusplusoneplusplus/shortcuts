@@ -119,7 +119,7 @@ export function BranchFileDiff({ workspaceId, filePath }: BranchFileDiffProps) {
                 '',
                 '',
             ].join('\n');
-            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr, triggerSource: 'diff-ask-ai' });
+            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt: contextStr, launchMode: 'floating-chat' });
         },
         [filePath, workspaceId, queueDispatch],
     );

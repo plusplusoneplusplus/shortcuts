@@ -72,6 +72,10 @@ vi.mock('../../../../src/server/spa/client/react/repos/DiffMiniMap', () => ({
     DiffMiniMap: () => <div data-testid="diff-minimap" />,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
+}));
+
 import { CommitDetail } from '../../../../src/server/spa/client/react/repos/CommitDetail';
 import { CommitFileContent } from '../../../../src/server/spa/client/react/repos/CommitFileContent';
 import { BranchFileDiff } from '../../../../src/server/spa/client/react/repos/BranchFileDiff';

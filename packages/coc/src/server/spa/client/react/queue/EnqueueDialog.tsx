@@ -236,7 +236,7 @@ export function EnqueueDialog() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
-            if (queueState.dialogTriggerSource === 'diff-ask-ai') {
+            if (queueState.dialogLaunchMode === 'floating-chat') {
                 const created = await res.json().catch(() => null);
                 if (created?.id) {
                     floatChat({
@@ -264,7 +264,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogTriggerSource]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, appState.workspaces, queueDispatch, clearImages, persistSkill, slashCommands, isAskMode, floatChat, queueState.dialogLaunchMode]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt);

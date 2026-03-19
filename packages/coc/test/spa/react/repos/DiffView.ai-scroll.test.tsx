@@ -61,6 +61,10 @@ vi.mock('../../../../src/server/spa/client/react/shared', async (importOriginal)
     };
 });
 
+vi.mock('../../../../src/server/spa/client/react/context/QueueContext', () => ({
+    useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
+}));
+
 import { CommitDetail } from '../../../../src/server/spa/client/react/repos/CommitDetail';
 import { BranchFileDiff } from '../../../../src/server/spa/client/react/repos/BranchFileDiff';
 import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/repos/WorkingTreeFileDiff';
