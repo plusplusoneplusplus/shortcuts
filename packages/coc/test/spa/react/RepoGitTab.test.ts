@@ -751,6 +751,38 @@ describe('RepoGitTab', () => {
             expect(source).toContain('Use Skill');
         });
 
+        it('contextMenuItems includes Ask AI item for commit type', () => {
+            expect(source).toContain("label: 'Ask AI'");
+        });
+
+        it('contextMenuItems includes Queue Task item for commit type', () => {
+            expect(source).toContain("label: 'Queue Task'");
+        });
+
+        it('Ask AI dispatches OPEN_DIALOG with mode ask and floating-chat', () => {
+            expect(source).toContain("mode: 'ask'");
+            expect(source).toContain("launchMode: 'floating-chat'");
+            expect(source).toContain("type: 'OPEN_DIALOG'");
+        });
+
+        it('Queue Task dispatches OPEN_DIALOG with mode task and floating-chat', () => {
+            expect(source).toContain("mode: 'task'");
+        });
+
+        it('Ask AI and Queue Task use commit hash and subject in initialPrompt', () => {
+            expect(source).toContain('commit.hash');
+            expect(source).toContain('commit.subject');
+            expect(source).toContain('initialPrompt');
+        });
+
+        it('imports useQueue from QueueContext', () => {
+            expect(source).toContain("import { useQueue } from '../context/QueueContext'");
+        });
+
+        it('destructures queueDispatch from useQueue', () => {
+            expect(source).toContain('dispatch: queueDispatch');
+        });
+
         it('passes onCommitContextMenu to CommitList', () => {
             expect(source).toContain('onCommitContextMenu={handleCommitContextMenu}');
         });

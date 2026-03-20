@@ -30,6 +30,7 @@ import { WorkingTreeAllComments } from './WorkingTreeAllComments';
 import { BranchPickerModal } from './BranchPickerModal';
 import { AmendMessageModal } from './AmendMessageModal';
 import { useApp } from '../context/AppContext';
+import { useQueue } from '../context/QueueContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
@@ -49,6 +50,7 @@ type RightPanelView =
 
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const { state, dispatch } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
         minWidth: 160,
@@ -652,6 +654,23 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 icon: '🍒',
                 onClick: () => handleCherryPick(commit),
             });
+            items.push({ label: '', separator: true, onClick: () => {} });
+            items.push({
+                label: 'Ask AI',
+                icon: '🤖',
+                onClick: () => {
+                    const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
+                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
+                },
+            });
+            items.push({
+                label: 'Queue Task',
+                icon: '📋',
+                onClick: () => {
+                    const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
+                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
+                },
+            });
         }
 
         if (skills.length > 0) {
@@ -670,7 +689,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu]);
+    }, [contextMenu, skills, handleEnqueueSkill, handleSelect, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId]);
 
     // Keyboard shortcut: R to refresh when focused in left panel
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
