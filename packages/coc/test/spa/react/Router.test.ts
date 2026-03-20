@@ -1019,6 +1019,42 @@ describe('handleHash git dispatch simulation', () => {
         const dispatches = simulateGitHash('#repos/r1/git');
         expect(dispatches).toContainEqual({ type: 'CLEAR_GIT_FILE_PATH' });
     });
+
+    it('dispatches SET_GIT_COMMIT_HASH with "branch-range" for #repos/r1/git/branch-range', () => {
+        const dispatches = simulateGitHash('#repos/r1/git/branch-range');
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
+        expect(dispatches).toContainEqual({ type: 'CLEAR_GIT_FILE_PATH' });
+    });
+
+    it('dispatches SET_GIT_FILE_PATH for #repos/r1/git/branch-range/<filePath>', () => {
+        const encoded = encodeURIComponent('src/utils.ts');
+        const dispatches = simulateGitHash(`#repos/r1/git/branch-range/${encoded}`);
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
+        expect(dispatches).toContainEqual({ type: 'SET_GIT_FILE_PATH', filePath: 'src/utils.ts' });
+    });
+});
+
+// ─── branch-range deep links ────────────────────────────────────
+
+describe('branch-range deep links', () => {
+    it('parseGitCommitDeepLink returns "branch-range" for branch-range URL', () => {
+        expect(parseGitCommitDeepLink('#repos/r1/git/branch-range')).toBe('branch-range');
+    });
+
+    it('parseGitFileDeepLink parses branch-range file URL', () => {
+        const encoded = encodeURIComponent('src/index.ts');
+        const result = parseGitFileDeepLink(`#repos/r1/git/branch-range/${encoded}`);
+        expect(result).toEqual({ commitHash: 'branch-range', filePath: 'src/index.ts' });
+    });
+
+    it('tabFromHash returns "repos" for branch-range URL', () => {
+        expect(tabFromHash('#repos/r1/git/branch-range')).toBe('repos');
+    });
+
+    it('tabFromHash returns "repos" for branch-range file URL', () => {
+        const encoded = encodeURIComponent('src/main.ts');
+        expect(tabFromHash(`#repos/r1/git/branch-range/${encoded}`)).toBe('repos');
+    });
 });
 
 // ─── wiki repo sub-tab deep-link ─────────────────────────────────

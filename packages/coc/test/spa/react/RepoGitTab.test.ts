@@ -661,6 +661,54 @@ describe('RepoGitTab', () => {
             expect(handleBlock![0]).toContain('workspaceId');
             expect(handleBlock![0]).toContain('dispatch');
         });
+
+        it('defines handleBranchRangeSelect callback', () => {
+            expect(source).toContain('const handleBranchRangeSelect = useCallback');
+        });
+
+        it('handleBranchRangeSelect updates location.hash with branch-range URL', () => {
+            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range'");
+        });
+
+        it('handleBranchRangeSelect dispatches SET_GIT_COMMIT_HASH with branch-range', () => {
+            expect(source).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' })");
+        });
+
+        it('handleBranchRangeSelect dispatches CLEAR_GIT_FILE_PATH', () => {
+            // handleBranchRangeSelect should clear file path when selecting the branch overview
+            const block = source.match(/const handleBranchRangeSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain("dispatch({ type: 'CLEAR_GIT_FILE_PATH' })");
+        });
+
+        it('handleFileSelect updates location.hash with branch-range file URL', () => {
+            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range/' + encodeURIComponent(filePath)");
+        });
+
+        it('handleFileSelect dispatches SET_GIT_COMMIT_HASH with branch-range', () => {
+            const block = source.match(/const handleFileSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' })");
+        });
+
+        it('handleFileSelect dispatches SET_GIT_FILE_PATH', () => {
+            const block = source.match(/const handleFileSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain("dispatch({ type: 'SET_GIT_FILE_PATH', filePath })");
+        });
+
+        it('restores branch-range view when initialCommitHash is branch-range', () => {
+            expect(source).toContain("initialCommitHash === 'branch-range'");
+            expect(source).toContain("setRightPanelView({ type: 'branch-range' })");
+        });
+
+        it('restores branch-file view when initialCommitHash is branch-range with file path', () => {
+            expect(source).toContain("setRightPanelView({ type: 'branch-file', filePath: initialFilePath })");
+        });
+
+        it('uses handleBranchRangeSelect for onBranchRangeSelect prop', () => {
+            expect(source).toContain('onBranchRangeSelect={handleBranchRangeSelect}');
+        });
     });
 
     describe('skill review context menu', () => {

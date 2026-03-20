@@ -160,22 +160,31 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setSkip(0);
         Promise.all([fetchCommits(), fetchBranchRange()])
             .then(([loaded, rangeInfo]) => {
-                const target = initialCommitHash
-                    ? loaded.find((c: GitCommitItem) => c.hash.startsWith(initialCommitHash))
-                    : null;
-                if (target && initialFilePath) {
-                    setRightPanelView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath });
-                } else if (target) {
-                    setRightPanelView({ type: 'commit', commit: target });
-                } else {
-                    // On mobile (<lg), start with list visible; on desktop default to branch-range
-                    // overview when ahead-of-base data is available, otherwise auto-select first commit.
-                    const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
-                    if (isDesktop && rangeInfo && rangeInfo.commitCount > 0) {
-                        setRightPanelView({ type: 'branch-range' });
+                if (initialCommitHash === 'branch-range') {
+                    // Restore branch-range deep link
+                    if (initialFilePath) {
+                        setRightPanelView({ type: 'branch-file', filePath: initialFilePath });
                     } else {
-                        const first = loaded.length > 0 ? loaded[0] : null;
-                        setRightPanelView(isDesktop && first ? { type: 'commit', commit: first } : null);
+                        setRightPanelView({ type: 'branch-range' });
+                    }
+                } else {
+                    const target = initialCommitHash
+                        ? loaded.find((c: GitCommitItem) => c.hash.startsWith(initialCommitHash))
+                        : null;
+                    if (target && initialFilePath) {
+                        setRightPanelView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath });
+                    } else if (target) {
+                        setRightPanelView({ type: 'commit', commit: target });
+                    } else {
+                        // On mobile (<lg), start with list visible; on desktop default to branch-range
+                        // overview when ahead-of-base data is available, otherwise auto-select first commit.
+                        const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+                        if (isDesktop && rangeInfo && rangeInfo.commitCount > 0) {
+                            setRightPanelView({ type: 'branch-range' });
+                        } else {
+                            const first = loaded.length > 0 ? loaded[0] : null;
+                            setRightPanelView(isDesktop && first ? { type: 'commit', commit: first } : null);
+                        }
                     }
                 }
             })
@@ -464,7 +473,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const handleFileSelect = useCallback((filePath: string) => {
         setRightPanelView({ type: 'branch-file', filePath });
-    }, []);
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range/' + encodeURIComponent(filePath);
+        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
+        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
+    }, [workspaceId, dispatch]);
+
+    const handleBranchRangeSelect = useCallback(() => {
+        setRightPanelView({ type: 'branch-range' });
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range';
+        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
+        dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
+    }, [workspaceId, dispatch]);
 
     const handleCommitFileSelect = useCallback((hash: string, filePath: string) => {
         setRightPanelView({ type: 'commit-file', hash, filePath });
@@ -793,7 +812,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             commits={commits}
             unpushedCount={unpushedCount}
             files={branchRangeFiles}
-            onFileSelect={(filePath) => setRightPanelView({ type: 'branch-file', filePath })}
+            onFileSelect={handleFileSelect}
             onAllCommentsClick={handleAllBranchCommentsClick}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
@@ -910,7 +929,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     onFileSelect={handleFileSelect}
                     selectedFile={selectedBranchFile}
                     onBranchContextMenu={handleBranchContextMenu}
-                    onBranchRangeSelect={() => setRightPanelView({ type: 'branch-range' })}
+                    onBranchRangeSelect={handleBranchRangeSelect}
                 />
                 <WorkingTree
                     workspaceId={workspaceId}
