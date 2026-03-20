@@ -141,6 +141,15 @@ async function patchApiResponses(page: Page): Promise<void> {
 export const test = base.extend<ServerFixture & { _context: ServerContext }>({
     _context: async ({}, use) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-e2e-'));
+
+        // Write memory-config.json so memory routes use the temp dir instead of ~/.coc/memory
+        const memoryDir = path.join(tmpDir, 'memory');
+        fs.mkdirSync(memoryDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(tmpDir, 'memory-config.json'),
+            JSON.stringify({ storageDir: memoryDir }),
+        );
+
         const store = new FileProcessStore({ dataDir: tmpDir });
         const mockAI = createE2EMockSDKService();
 

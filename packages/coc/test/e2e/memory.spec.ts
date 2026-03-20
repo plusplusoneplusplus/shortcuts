@@ -25,9 +25,6 @@
 
 import { test, expect } from './fixtures/server-fixture';
 import { request } from './fixtures/seed';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import type { Page } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
@@ -53,23 +50,6 @@ async function createEntry(
     });
     if (res.status !== 201) throw new Error(`POST /api/memory/entries → ${res.status}: ${res.body}`);
     return JSON.parse(res.body);
-}
-
-/**
- * Configure the memory storage to use an isolated temp directory.
- * This prevents tests from reading/writing to the user's real ~/.coc/memory.
- * Returns the temp dir path (caller is responsible for cleanup).
- */
-async function isolateMemoryStorage(serverUrl: string): Promise<string> {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-memory-'));
-    const storageDir = path.join(tmpDir, 'memory');
-    fs.mkdirSync(storageDir, { recursive: true });
-    const res = await request(`${serverUrl}/api/memory/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ storageDir }),
-    });
-    if (res.status !== 200) throw new Error(`PUT /api/memory/config → ${res.status}: ${res.body}`);
-    return tmpDir;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,20 +92,6 @@ test.describe('MemoryView – Tab navigation', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('MemoryEntriesPanel', () => {
-    let memTmpDir: string | null = null;
-
-    test.beforeEach(async ({ serverUrl }) => {
-        // Isolate memory storage so tests don't interfere with real ~/.coc/memory
-        memTmpDir = await isolateMemoryStorage(serverUrl);
-    });
-
-    test.afterEach(() => {
-        if (memTmpDir) {
-            fs.rmSync(memTmpDir, { recursive: true, force: true });
-            memTmpDir = null;
-        }
-    });
-
     test('M.5 shows empty state when no entries exist', async ({ page, serverUrl }) => {
         await gotoMemory(page, serverUrl);
         await expect(page.locator('[data-subtab="entries"]')).toBeVisible();
