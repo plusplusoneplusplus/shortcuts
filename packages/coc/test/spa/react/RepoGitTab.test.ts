@@ -870,6 +870,77 @@ describe('RepoGitTab', () => {
         });
     });
 
+    describe('branch-range Ask AI / Queue Task context menu', () => {
+        it('defines buildBranchContextPrompt helper', () => {
+            expect(source).toContain('const buildBranchContextPrompt = useCallback');
+        });
+
+        it('buildBranchContextPrompt includes branch name, base..head, commit count and stat', () => {
+            // Verify the prompt builder references all needed fields
+            expect(source).toContain('const buildBranchContextPrompt = useCallback');
+            expect(source).toContain('branchLabel');
+            expect(source).toContain('baseShort');
+            expect(source).toContain('headShort');
+            expect(source).toContain('commitCount');
+            expect(source).toContain('additions');
+            expect(source).toContain('deletions');
+        });
+
+        it('buildBranchContextPrompt has size guard at MAX_BRANCH_DIFF_CHARS', () => {
+            expect(source).toContain('MAX_BRANCH_DIFF_CHARS = 50_000');
+            expect(source).toContain('diff.length > MAX_BRANCH_DIFF_CHARS');
+        });
+
+        it('buildBranchContextPrompt omits diff when exceeding size limit', () => {
+            expect(source).toContain('Full diff omitted');
+        });
+
+        it('buildBranchContextPrompt wraps diff in <diff> block when under limit', () => {
+            expect(source).toContain('<diff>');
+            expect(source).toContain('</diff>');
+        });
+
+        it('defines handleBranchAskAI callback', () => {
+            expect(source).toContain('const handleBranchAskAI = useCallback');
+        });
+
+        it('handleBranchAskAI fetches branch-range diff', () => {
+            expect(source).toContain('/git/branch-range/diff');
+        });
+
+        it('handleBranchAskAI dispatches OPEN_DIALOG with floating-chat', () => {
+            expect(source).toContain('buildBranchContextPrompt(diff)');
+            expect(source).toContain("launchMode: 'floating-chat'");
+        });
+
+        it('contextMenuItems includes Ask AI and Queue Task for branch-range type', () => {
+            const branchBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
+            expect(branchBlock).toBeTruthy();
+            expect(branchBlock![1]).toContain("label: 'Ask AI'");
+            expect(branchBlock![1]).toContain("label: 'Queue Task'");
+        });
+
+        it('branch-range Ask AI calls handleBranchAskAI with ask mode', () => {
+            const branchBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
+            expect(branchBlock).toBeTruthy();
+            expect(branchBlock![1]).toContain("handleBranchAskAI('ask')");
+        });
+
+        it('branch-range Queue Task calls handleBranchAskAI with task mode', () => {
+            const branchBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
+            expect(branchBlock).toBeTruthy();
+            expect(branchBlock![1]).toContain("handleBranchAskAI('task')");
+        });
+
+        it('passes onAskAI callback to CommitDetail in branch-range view', () => {
+            expect(source).toContain('onAskAI={');
+        });
+
+        it('passes onQueueTask callback to CommitDetail in branch-range view', () => {
+            expect(source).toContain('onQueueTask={');
+        });
+    });
+
     describe('branch picker integration', () => {
         it('tracks branchPickerOpen state', () => {
             expect(source).toContain('branchPickerOpen');

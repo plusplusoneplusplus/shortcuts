@@ -87,5 +87,47 @@ describe('BranchCommitStrip', () => {
         it('uses formatRelativeTime for commit dates', () => {
             expect(source).toContain('formatRelativeTime(commit.date)');
         });
+
+        it('renders Ask AI button with data-testid', () => {
+            expect(source).toContain('data-testid="branch-range-ask-ai-btn"');
+        });
+
+        it('renders Queue Task button with data-testid', () => {
+            expect(source).toContain('data-testid="branch-range-queue-task-btn"');
+        });
+    });
+
+    describe('Ask AI / Queue Task props', () => {
+        it('accepts onAskAI optional prop', () => {
+            expect(source).toContain('onAskAI?: () => void');
+        });
+
+        it('accepts onQueueTask optional prop', () => {
+            expect(source).toContain('onQueueTask?: () => void');
+        });
+
+        it('conditionally renders Ask AI button when onAskAI is provided', () => {
+            expect(source).toContain('{onAskAI && (');
+        });
+
+        it('conditionally renders Queue Task button when onQueueTask is provided', () => {
+            expect(source).toContain('{onQueueTask && (');
+        });
+
+        it('Ask AI button calls onAskAI onClick', () => {
+            expect(source).toContain('onClick={onAskAI}');
+        });
+
+        it('Queue Task button calls onQueueTask onClick', () => {
+            expect(source).toContain('onClick={onQueueTask}');
+        });
+
+        it('Ask AI button has accessible title', () => {
+            expect(source).toContain('title="Ask AI about branch changes"');
+        });
+
+        it('Queue Task button has accessible title', () => {
+            expect(source).toContain('title="Queue task for branch changes"');
+        });
     });
 });

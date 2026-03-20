@@ -207,4 +207,30 @@ describe('CommitDetail', () => {
             expect(source).toMatch(/ref=\{scrollContainerRef\}[^>]*data-testid="diff-section"/);
         });
     });
+
+    describe('branch-range Ask AI / Queue Task passthrough', () => {
+        it('accepts optional onAskAI prop', () => {
+            expect(source).toContain('onAskAI?: () => void');
+        });
+
+        it('accepts optional onQueueTask prop', () => {
+            expect(source).toContain('onQueueTask?: () => void');
+        });
+
+        it('destructures onAskAI from props', () => {
+            expect(source).toContain('onAskAI');
+        });
+
+        it('destructures onQueueTask from props', () => {
+            expect(source).toContain('onQueueTask');
+        });
+
+        it('passes onAskAI to BranchCommitStrip', () => {
+            expect(source).toContain('onAskAI={onAskAI}');
+        });
+
+        it('passes onQueueTask to BranchCommitStrip', () => {
+            expect(source).toContain('onQueueTask={onQueueTask}');
+        });
+    });
 });

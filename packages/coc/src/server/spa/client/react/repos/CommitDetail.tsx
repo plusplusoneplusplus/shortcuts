@@ -62,9 +62,11 @@ export interface CommitDetailProps {
     unpushedCount?: number;
     onFileSelect?: (filePath: string) => void;
     onAllCommentsClick?: () => void;
+    onAskAI?: () => void;
+    onQueueTask?: () => void;
 }
 
-export function CommitDetail({ workspaceId, hash, filePath, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, filePath, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask }: CommitDetailProps) {
     const isRangeMode = !!range;
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
@@ -328,6 +330,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
                         branchRangeData={range}
                         onAllCommentsClick={onAllCommentsClick}
                         commentCount={branchCommentCount}
+                        onAskAI={onAskAI}
+                        onQueueTask={onQueueTask}
                     />
                 </div>
 

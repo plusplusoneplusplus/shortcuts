@@ -172,4 +172,12 @@ describe('RepoGitTab — CommitDetail range-mode integration', () => {
     it('preserves branch-range view during refresh', () => {
         expect(source).toMatch(/branch-range.*working-tree-file|working-tree-file.*branch-range/);
     });
+
+    it('passes onAskAI to CommitDetail in branch-range view', () => {
+        expect(source).toContain('onAskAI=');
+    });
+
+    it('passes onQueueTask to CommitDetail in branch-range view', () => {
+        expect(source).toContain('onQueueTask=');
+    });
 });
