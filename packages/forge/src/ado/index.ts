@@ -1,5 +1,13 @@
 export { AdoConnectionResult, AdoClientOptions } from './types';
 export { AdoConnectionFactory, getAdoConnectionFactory, resetAdoConnectionFactory } from './ado-connection-factory';
+export {
+    AdoSessionCache,
+    AdoAccountInfo,
+    readAdoSessionCache,
+    writeAdoSessionCache,
+    isTokenValid,
+} from './ado-session-cache';
+export { resolveAdoIdentity, resolveAndCacheAdoIdentity } from './ado-identity-resolver';
 export { AdoWorkItemsService, AdoWorkItemError, type PatchOp, type FieldPatch } from './workitems-service';
 export {
     AdoPullRequestsService,
