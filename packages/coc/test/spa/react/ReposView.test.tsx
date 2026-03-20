@@ -938,3 +938,34 @@ describe('ReposContext — async git-info', () => {
         expect(source).toContain('/git-info');
     });
 });
+
+// ============================================================================
+// RepoDetail source-level tests: ExplorerPanel keep-mounted
+// ============================================================================
+
+describe('RepoDetail — ExplorerPanel keep-mounted', () => {
+    let source: string;
+
+    beforeEach(() => {
+        const fs = require('fs');
+        const path = require('path');
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoDetail.tsx'),
+            'utf-8',
+        );
+    });
+
+    it('wraps ExplorerPanel in display:none div instead of conditional &&', () => {
+        // Must NOT use short-circuit conditional rendering
+        expect(source).not.toContain("activeSubTab === 'explorer' && <ExplorerPanel");
+        // Must use CSS display:none pattern
+        expect(source).toContain("activeSubTab === 'explorer' ? undefined : 'none'");
+    });
+
+    it('retains key={ws.id} on ExplorerPanel so repo switches still force remount', () => {
+        const explorerIdx = source.indexOf('<ExplorerPanel');
+        expect(explorerIdx).toBeGreaterThan(-1);
+        const explorerBlock = source.substring(explorerIdx, explorerIdx + 120);
+        expect(explorerBlock).toContain('key={ws.id}');
+    });
+});

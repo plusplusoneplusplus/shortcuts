@@ -460,7 +460,9 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
-                        {activeSubTab === 'explorer' && <ExplorerPanel key={ws.id} workspaceId={ws.id} />}
+                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            <ExplorerPanel key={ws.id} workspaceId={ws.id} />
+                        </div>
                         {activeSubTab === 'pull-requests' && (
                             <PullRequestsTab
                                 repoId={ws.id}
