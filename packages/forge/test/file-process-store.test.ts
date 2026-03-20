@@ -256,4 +256,33 @@ describe('FileProcessStore — per-workspace layout', () => {
         const stat = await fs.stat(nested);
         expect(stat.isDirectory()).toBe(true);
     });
+
+    // --- getProcessFilePath ---
+    describe('getProcessFilePath', () => {
+        it('should return the expected path for a normal workspace and process ID', () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            const result = store.getProcessFilePath('ws-a', 'proc-1');
+            const expected = path.join(tmpDir, 'repos', 'ws-a', 'processes', 'proc-1.json');
+            expect(result).toBe(expected);
+        });
+
+        it('should fall back to _default workspace when workspaceId is empty', () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            const result = store.getProcessFilePath('', 'proc-1');
+            expect(result).toContain(path.join('repos', '_default', 'processes'));
+            expect(result).toContain('proc-1.json');
+        });
+
+        it('should sanitize special characters in process ID', () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            const result = store.getProcessFilePath('ws-a', 'foo/bar:baz');
+            const expected = path.join(tmpDir, 'repos', 'ws-a', 'processes', 'foo_bar_baz.json');
+            expect(result).toBe(expected);
+        });
+
+        it('should conform to the ProcessStore interface', () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            expect(typeof store.getProcessFilePath).toBe('function');
+        });
+    });
 });
