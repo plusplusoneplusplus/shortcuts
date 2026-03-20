@@ -732,7 +732,8 @@ export function ActivityListPane({
                                                 "p-2 cursor-pointer border-l-2 border-l-amber-400 dark:border-l-amber-500",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
-                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
+                                                selectedHistoryIds.size > 0 && "select-none"
                                             )}
                                             onClick={e => {
                                                 if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
@@ -821,7 +822,8 @@ export function ActivityListPane({
                                                 "p-2 cursor-pointer",
                                                 isHistorySelected
                                                     ? "bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40"
-                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]"
+                                                    : selectedTaskId === task.id && "ring-2 ring-[#0078d4]",
+                                                selectedHistoryIds.size > 0 && "select-none"
                                             )}
                                             onClick={e => {
                                                 if (historyLongPressFired.current) { historyLongPressFired.current = false; return; }
