@@ -12,9 +12,11 @@ import type { BranchRangeInfo } from './BranchChanges';
 interface BranchCommitStripProps {
     commits: GitCommitItem[];
     branchRangeData: BranchRangeInfo;
+    onAllCommentsClick?: () => void;
+    commentCount?: number;
 }
 
-export function BranchCommitStrip({ commits, branchRangeData }: BranchCommitStripProps) {
+export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick, commentCount }: BranchCommitStripProps) {
     const branchLabel = branchRangeData.branchName || branchRangeData.headRef;
     const baseShort = branchRangeData.baseRef.replace(/^origin\//, '');
 
@@ -25,12 +27,24 @@ export function BranchCommitStrip({ commits, branchRangeData }: BranchCommitStri
                 className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] flex-shrink-0"
                 data-testid="branch-commit-strip-header"
             >
-                <div className="text-xs font-semibold text-[#616161] dark:text-[#999] truncate">
-                    {branchLabel}
-                    {' · '}
-                    {branchRangeData.commitCount} commit{branchRangeData.commitCount !== 1 ? 's' : ''}
-                    {' ahead of '}
-                    {baseShort}
+                <div className="flex items-center gap-1">
+                    <div className="text-xs font-semibold text-[#616161] dark:text-[#999] truncate flex-1">
+                        {branchLabel}
+                        {' · '}
+                        {branchRangeData.commitCount} commit{branchRangeData.commitCount !== 1 ? 's' : ''}
+                        {' ahead of '}
+                        {baseShort}
+                    </div>
+                    {onAllCommentsClick && (
+                        <button
+                            onClick={onAllCommentsClick}
+                            title="Show all branch comments"
+                            className="text-xs px-1.5 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] flex-shrink-0"
+                            data-testid="branch-range-all-comments-btn"
+                        >
+                            💬 {commentCount && commentCount > 0 ? commentCount : ''}
+                        </button>
+                    )}
                 </div>
                 <div className="text-xs text-[#848484] mt-0.5">
                     <span className="text-[#16825d]">+{branchRangeData.additions}</span>

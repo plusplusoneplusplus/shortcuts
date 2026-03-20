@@ -27,6 +27,7 @@ import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './WorkingTree';
 import { WorkingTreeFileDiff } from './WorkingTreeFileDiff';
 import { WorkingTreeAllComments } from './WorkingTreeAllComments';
+import { BranchRangeAllComments } from './BranchRangeAllComments';
 import { BranchPickerModal } from './BranchPickerModal';
 import { AmendMessageModal } from './AmendMessageModal';
 import { useApp } from '../context/AppContext';
@@ -46,6 +47,7 @@ type RightPanelView =
     | { type: 'branch-file'; filePath: string }
     | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
     | { type: 'working-tree-comments' }
+    | { type: 'branch-range-comments' }
     | { type: 'multi-commit'; commits: GitCommitItem[] };
 
 export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
@@ -235,8 +237,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     } else {
                         setRightPanelView(null);
                     }
-                } else if (rightPanelView?.type === 'branch-file' || rightPanelView?.type === 'branch-range' || rightPanelView?.type === 'working-tree-file' || rightPanelView?.type === 'working-tree-comments') {
-                    // Keep the branch-file / branch-range / working-tree-file / working-tree-comments view as-is during refresh
+                } else if (rightPanelView?.type === 'branch-file' || rightPanelView?.type === 'branch-range' || rightPanelView?.type === 'working-tree-file' || rightPanelView?.type === 'working-tree-comments' || rightPanelView?.type === 'branch-range-comments') {
+                    // Keep the branch-file / branch-range / working-tree-file / working-tree-comments / branch-range-comments view as-is during refresh
                 } else if (rightPanelView === null) {
                     // No prior selection — keep list visible (preserves mobile back state)
                 } else if (loaded.length > 0) {
@@ -477,6 +479,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     const handleAllWorkingCommentsClick = useCallback(() => {
         setRightPanelView({ type: 'working-tree-comments' });
+    }, []);
+
+    const handleAllBranchCommentsClick = useCallback(() => {
+        setRightPanelView({ type: 'branch-range-comments' });
     }, []);
 
     const handleMobileBack = useCallback(() => {
@@ -789,6 +795,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             unpushedCount={unpushedCount}
             files={branchRangeFiles}
             onFileSelect={(filePath) => setRightPanelView({ type: 'branch-file', filePath })}
+            onAllCommentsClick={handleAllBranchCommentsClick}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
         <BranchFileDiff
@@ -805,6 +812,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         />
     ) : rightPanelView?.type === 'working-tree-comments' ? (
         <WorkingTreeAllComments workspaceId={workspaceId} />
+    ) : rightPanelView?.type === 'branch-range-comments' ? (
+        <BranchRangeAllComments
+            workspaceId={workspaceId}
+            baseRef={branchRangeData!.baseRef}
+            headRef={branchRangeData!.headRef}
+            branchLabel={branchRangeData!.branchName || branchRangeData!.headRef}
+        />
     ) : rightPanelView?.type === 'multi-commit' ? (
         <div className="flex flex-col h-full p-4 gap-3" data-testid="git-multi-commit-panel">
             <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc]">

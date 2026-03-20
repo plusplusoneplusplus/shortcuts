@@ -12,9 +12,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { BranchCommitStrip } from './BranchCommitStrip';
 import { BranchAllFilesDiff } from './BranchAllFilesDiff';
+import { fetchApi } from '../hooks/useApi';
 import type { GitCommitItem } from './CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
+import type { DiffComment } from '../../diff-comment-types';
 
 const STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
 const DEFAULT_UPPER_HEIGHT = 160;
@@ -38,11 +40,13 @@ interface BranchRangeOverviewProps {
     unpushedCount: number;
     files: BranchRangeFile[];
     onFileSelect: (filePath: string) => void;
+    onAllCommentsClick?: () => void;
 }
 
-export function BranchRangeOverview({ workspaceId, branchRangeData, commits, unpushedCount, files, onFileSelect }: BranchRangeOverviewProps) {
+export function BranchRangeOverview({ workspaceId, branchRangeData, commits, unpushedCount, files, onFileSelect, onAllCommentsClick }: BranchRangeOverviewProps) {
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
     const [isDragging, setIsDragging] = useState(false);
+    const [branchCommentCount, setBranchCommentCount] = useState(0);
     const containerRef = useRef<HTMLDivElement>(null);
     const startYRef = useRef(0);
     const startHeightRef = useRef(0);
@@ -69,6 +73,16 @@ export function BranchRangeOverview({ workspaceId, branchRangeData, commits, unp
             try { localStorage.setItem(STORAGE_KEY, String(upperHeight)); } catch { /* ignore */ }
         }
     }, [isDragging, upperHeight]);
+
+    // Fetch branch-range comment count for the badge in the commit strip header.
+    useEffect(() => {
+        fetchApi(
+            `/diff-comments/${encodeURIComponent(workspaceId)}` +
+            `?oldRef=${encodeURIComponent(branchRangeData.baseRef)}&newRef=${encodeURIComponent(branchRangeData.headRef)}`
+        )
+            .then((data: { comments?: DiffComment[] }) => setBranchCommentCount((data.comments ?? []).length))
+            .catch(() => setBranchCommentCount(0));
+    }, [workspaceId, branchRangeData.baseRef, branchRangeData.headRef]);
 
     // Global mouse/touch listeners while dragging
     useEffect(() => {
@@ -120,7 +134,12 @@ export function BranchRangeOverview({ workspaceId, branchRangeData, commits, unp
                 className="flex-shrink-0 overflow-hidden border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
                 data-testid="branch-range-overview-upper"
             >
-                <BranchCommitStrip commits={commits.slice(0, unpushedCount)} branchRangeData={branchRangeData} />
+                <BranchCommitStrip
+                    commits={commits.slice(0, unpushedCount)}
+                    branchRangeData={branchRangeData}
+                    onAllCommentsClick={onAllCommentsClick}
+                    commentCount={branchCommentCount}
+                />
             </div>
 
             {/* Draggable horizontal divider */}
