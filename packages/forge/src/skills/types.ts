@@ -5,7 +5,7 @@
 /**
  * Source type for skill installation
  */
-export type SkillSourceType = 'github' | 'local' | 'bundled';
+export type SkillSourceType = 'github' | 'local' | 'bundled' | 'clawhub';
 
 /**
  * Represents a discovered skill from a source
@@ -36,6 +36,11 @@ export interface ParsedSource {
     };
     /** For local: resolved absolute path */
     localPath?: string;
+    /** For ClawHub: parsed URL components */
+    clawhub?: {
+        owner: string;
+        slug: string;
+    };
 }
 
 /**

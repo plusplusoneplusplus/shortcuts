@@ -160,6 +160,10 @@ test.describe('SkillsBundledPanel', () => {
         await page.getByRole('button', { name: 'GitHub URL' }).click();
         await expect(page.locator('input[placeholder*="github.com"]')).toBeVisible({ timeout: 5_000 });
 
+        // Click "ClawHub" source button
+        await page.getByRole('button', { name: 'ClawHub' }).click();
+        await expect(page.locator('input[placeholder*="clawhub.ai"]')).toBeVisible({ timeout: 5_000 });
+
         // Click "Local Path" source button
         await page.getByRole('button', { name: 'Local Path' }).click();
         await expect(page.locator('input[placeholder*="/path/to/skills"]')).toBeVisible({ timeout: 5_000 });

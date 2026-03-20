@@ -9,6 +9,15 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { createSkillRouteHandlers } from '../src/skill-route-handlers';
 
+// Mock resolveClawHubToGitHub to avoid real HTTP requests
+vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
+    return {
+        ...actual,
+        resolveClawHubToGitHub: vi.fn(actual.resolveClawHubToGitHub),
+    };
+});
+
 // ============================================================================
 // Test Helpers
 // ============================================================================
@@ -131,6 +140,47 @@ describe('createSkillRouteHandlers', () => {
             await handleScan(req, res);
             expect(getStatusCode()).toBe(400);
         });
+
+        it('resolves ClawHub URL to GitHub before scanning', async () => {
+            const { resolveClawHubToGitHub } = await import('@plusplusoneplusplus/forge');
+            const mocked = vi.mocked(resolveClawHubToGitHub);
+            // Mock to return a local path-based source so the scan succeeds without network
+            const skillDir = path.join(sourceRoot, 'resolved-skill');
+            fs.mkdirSync(skillDir, { recursive: true });
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Resolved Skill');
+
+            mocked.mockResolvedValueOnce({
+                success: true,
+                source: { type: 'local', localPath: sourceRoot },
+            });
+
+            const { handleScan } = createSkillRouteHandlers({ installPath: installDir, sourceRoot });
+            const { res, getStatusCode, getBody } = createMockResponse();
+            const req = makeRequest('POST', '/scan', { url: 'clawhub.ai/owner/skill' });
+            await handleScan(req, res);
+            expect(mocked).toHaveBeenCalled();
+            expect(getStatusCode()).toBe(200);
+            expect(getBody().success).toBe(true);
+            mocked.mockRestore();
+        });
+
+        it('returns error when ClawHub resolution fails during scan', async () => {
+            const { resolveClawHubToGitHub } = await import('@plusplusoneplusplus/forge');
+            const mocked = vi.mocked(resolveClawHubToGitHub);
+            mocked.mockResolvedValueOnce({
+                success: false,
+                error: 'Could not find GitHub repository for this ClawHub skill. Please provide the GitHub URL directly.',
+            });
+
+            const { handleScan } = createSkillRouteHandlers({ installPath: installDir, sourceRoot });
+            const { res, getStatusCode, getBody } = createMockResponse();
+            const req = makeRequest('POST', '/scan', { url: 'clawhub.ai/owner/no-github' });
+            await handleScan(req, res);
+            expect(getStatusCode()).toBe(200);
+            expect(getBody().success).toBe(false);
+            expect(getBody().error).toContain('ClawHub');
+            mocked.mockRestore();
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -198,6 +248,51 @@ describe('createSkillRouteHandlers', () => {
             expect(getStatusCode()).toBe(200);
             expect(getBody().installed).toBeGreaterThan(0);
             expect(fs.existsSync(path.join(installDir, 'install-skill', 'SKILL.md'))).toBe(true);
+        });
+
+        it('resolves ClawHub URL to GitHub before installing', async () => {
+            const { resolveClawHubToGitHub } = await import('@plusplusoneplusplus/forge');
+            const mocked = vi.mocked(resolveClawHubToGitHub);
+
+            // Set up a local skill to serve as the resolved source
+            const skillDir = path.join(sourceRoot, 'ch-skill');
+            fs.mkdirSync(skillDir, { recursive: true });
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# CH Skill\nFrom ClawHub');
+
+            mocked.mockResolvedValueOnce({
+                success: true,
+                source: { type: 'local', localPath: sourceRoot },
+            });
+
+            const { handleInstall } = createSkillRouteHandlers({
+                installPath: installDir,
+                sourceRoot,
+                ensureInstallDir: true,
+            });
+            const { res, getStatusCode, getBody } = createMockResponse();
+            const req = makeRequest('POST', '/install', { url: 'clawhub.ai/owner/ch-skill', replace: true });
+            await handleInstall(req, res);
+            expect(mocked).toHaveBeenCalled();
+            expect(getStatusCode()).toBe(200);
+            expect(getBody().installed).toBeGreaterThan(0);
+            mocked.mockRestore();
+        });
+
+        it('returns error when ClawHub resolution fails during install', async () => {
+            const { resolveClawHubToGitHub } = await import('@plusplusoneplusplus/forge');
+            const mocked = vi.mocked(resolveClawHubToGitHub);
+            mocked.mockResolvedValueOnce({
+                success: false,
+                error: 'Could not find GitHub repository for this ClawHub skill. Please provide the GitHub URL directly.',
+            });
+
+            const { handleInstall } = createSkillRouteHandlers({ installPath: installDir, sourceRoot });
+            const { res, getStatusCode, getBody } = createMockResponse();
+            const req = makeRequest('POST', '/install', { url: 'clawhub.ai/owner/no-github', replace: true });
+            await handleInstall(req, res);
+            expect(getStatusCode()).toBe(400);
+            expect(getBody().error).toContain('ClawHub');
+            mocked.mockRestore();
         });
     });
 

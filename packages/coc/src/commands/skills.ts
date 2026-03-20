@@ -25,6 +25,7 @@ import {
     DEFAULT_SKILLS_SETTINGS,
     isWithinDirectory,
     setLogger,
+    resolveClawHubToGitHub,
 } from '@plusplusoneplusplus/forge';
 import { listInstalledSkills } from '@plusplusoneplusplus/coc-server';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
@@ -201,9 +202,21 @@ export async function executeSkillInstall(
         return 1;
     }
 
-    const isLocal = sourceResult.source.type === 'local';
+    // Resolve ClawHub sources to GitHub before scanning
+    let resolvedSource = sourceResult.source;
+    if (resolvedSource.type === 'clawhub') {
+        console.log('Resolving ClawHub → GitHub…');
+        const resolved = await resolveClawHubToGitHub(resolvedSource);
+        if (!resolved.success) {
+            console.error('Error:', resolved.error);
+            return 1;
+        }
+        resolvedSource = resolved.source;
+    }
+
+    const isLocal = resolvedSource.type === 'local';
     console.log(isLocal ? `Scanning local path: ${source}…` : `Scanning ${source}…`);
-    const scanResult = await scanForSkills(sourceResult.source, installPath);
+    const scanResult = await scanForSkills(resolvedSource, installPath);
     if (!scanResult.success || scanResult.skills.length === 0) {
         console.error(scanResult.error || 'No skills found at this path.');
         return 1;
@@ -221,7 +234,7 @@ export async function executeSkillInstall(
         }
     }
 
-    const result = await installSkills(skillsToInstall, sourceResult.source, installPath, async () => options.replace ?? false);
+    const result = await installSkills(skillsToInstall, resolvedSource, installPath, async () => options.replace ?? false);
 
     for (const detail of result.details) {
         if (detail.action === 'skipped') {

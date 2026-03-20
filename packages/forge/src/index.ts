@@ -1114,7 +1114,7 @@ export type {
     BundledSkill,
 } from './skills';
 
-export { SourceDetectionErrors } from './skills';
+export { SourceDetectionErrors, isClawHubUrl, parseClawHubUrl, resolveClawHubToGitHub } from './skills';
 
 // ============================================================================
 // ADO (Azure DevOps)

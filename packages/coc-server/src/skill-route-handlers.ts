@@ -17,6 +17,7 @@ import {
     getBundledSkills,
     installBundledSkills,
     isWithinDirectory,
+    resolveClawHubToGitHub,
 } from '@plusplusoneplusplus/forge';
 import { sendJSON } from './api-handler';
 import { handleAPIError, notFound, badRequest, internalError } from './errors';
@@ -57,7 +58,17 @@ export function createSkillRouteHandlers(opts: SkillRouteHandlerOptions): SkillR
             return sendJSON(res, 200, { success: false, error: sourceResult.error, skills: [] });
         }
 
-        const scanResult = await scanForSkills(sourceResult.source, installPath);
+        // Resolve ClawHub sources to GitHub before scanning
+        let source = sourceResult.source;
+        if (source.type === 'clawhub') {
+            const resolved = await resolveClawHubToGitHub(source);
+            if (!resolved.success) {
+                return sendJSON(res, 200, { success: false, error: resolved.error, skills: [] });
+            }
+            source = resolved.source;
+        }
+
+        const scanResult = await scanForSkills(source, installPath);
         sendJSON(res, 200, scanResult);
     }
 
@@ -96,16 +107,26 @@ export function createSkillRouteHandlers(opts: SkillRouteHandlerOptions): SkillR
             return handleAPIError(res, badRequest(sourceResult.error));
         }
 
+        // Resolve ClawHub sources to GitHub before installing
+        let source = sourceResult.source;
+        if (source.type === 'clawhub') {
+            const resolved = await resolveClawHubToGitHub(source);
+            if (!resolved.success) {
+                return handleAPIError(res, badRequest(resolved.error));
+            }
+            source = resolved.source;
+        }
+
         let skills = body.skillsToInstall;
         if (!Array.isArray(skills) || skills.length === 0) {
-            const scanResult = await scanForSkills(sourceResult.source, installPath);
+            const scanResult = await scanForSkills(source, installPath);
             if (!scanResult.success) {
                 return handleAPIError(res, badRequest(scanResult.error || 'Scan failed'));
             }
             skills = scanResult.skills;
         }
 
-        const result = await installSkills(skills, sourceResult.source, installPath, async () => replace);
+        const result = await installSkills(skills, source, installPath, async () => replace);
         sendJSON(res, 200, result);
     }
 

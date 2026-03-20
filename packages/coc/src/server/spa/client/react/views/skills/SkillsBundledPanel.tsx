@@ -17,7 +17,7 @@ export function SkillsBundledPanel() {
     const [loading, setLoading] = useState(true);
     const [installing, setInstalling] = useState(false);
     const [selectedBundled, setSelectedBundled] = useState<Set<string>>(new Set());
-    const [installSource, setInstallSource] = useState<'bundled' | 'github' | 'local'>('bundled');
+    const [installSource, setInstallSource] = useState<'bundled' | 'github' | 'clawhub' | 'local'>('bundled');
     const [sourceInput, setSourceInput] = useState('');
     const [scanResult, setScanResult] = useState<any>(null);
     const [scanning, setScanning] = useState(false);
@@ -136,6 +136,12 @@ export function SkillsBundledPanel() {
                     GitHub URL
                 </button>
                 <button
+                    className={`text-xs px-3 py-1.5 rounded ${installSource === 'clawhub' ? 'bg-[#0078d4] text-white' : 'bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]'}`}
+                    onClick={() => { setInstallSource('clawhub'); setScanResult(null); setSourceInput(''); }}
+                >
+                    ClawHub
+                </button>
+                <button
                     className={`text-xs px-3 py-1.5 rounded ${installSource === 'local' ? 'bg-[#0078d4] text-white' : 'bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]'}`}
                     onClick={() => { setInstallSource('local'); setScanResult(null); setSourceInput(''); }}
                 >
@@ -193,14 +199,14 @@ export function SkillsBundledPanel() {
                 </div>
             )}
 
-            {(installSource === 'github' || installSource === 'local') && (
+            {(installSource === 'github' || installSource === 'clawhub' || installSource === 'local') && (
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                         <input
                             type="text"
                             value={sourceInput}
                             onChange={(e) => setSourceInput(e.target.value)}
-                            placeholder={installSource === 'local' ? '/path/to/skills or ./my-skill' : 'https://github.com/user/repo'}
+                            placeholder={installSource === 'local' ? '/path/to/skills or ./my-skill' : installSource === 'clawhub' ? 'clawhub.ai/owner/skill-name' : 'https://github.com/user/repo'}
                             className="flex-1 text-sm px-2 py-1.5 border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]"
                         />
                         <button
