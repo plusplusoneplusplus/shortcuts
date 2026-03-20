@@ -46,8 +46,8 @@ describe('CommitDetail', () => {
             expect(source).toContain('workspaceId: string');
         });
 
-        it('accepts hash prop', () => {
-            expect(source).toContain('hash: string');
+        it('accepts hash prop (optional in range mode)', () => {
+            expect(source).toContain('hash?: string');
         });
 
         it('accepts optional filePath prop', () => {
@@ -98,8 +98,8 @@ describe('CommitDetail', () => {
     });
 
     describe('per-file diff support', () => {
-        it('builds diffUrl based on filePath presence', () => {
-            expect(source).toContain('const diffUrl = filePath');
+        it('builds diffUrl conditionally (null in range mode)', () => {
+            expect(source).toContain('const diffUrl = ');
         });
 
         it('constructs per-file diff URL with /files/:filePath/diff', () => {

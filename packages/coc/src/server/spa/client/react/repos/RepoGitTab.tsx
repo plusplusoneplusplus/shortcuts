@@ -22,7 +22,6 @@ import { CommitDetail } from './CommitDetail';
 
 import { BranchChanges } from './BranchChanges';
 import { BranchFileDiff } from './BranchFileDiff';
-import { BranchRangeOverview } from './BranchRangeOverview';
 import { GitPanelHeader } from './GitPanelHeader';
 import { WorkingTree } from './WorkingTree';
 import { WorkingTreeFileDiff } from './WorkingTreeFileDiff';
@@ -788,9 +787,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             commit={commits.find(c => c.hash === rightPanelView.hash)}
         />
     ) : rightPanelView?.type === 'branch-range' ? (
-        <BranchRangeOverview
+        <CommitDetail
             workspaceId={workspaceId}
-            branchRangeData={branchRangeData!}
+            range={branchRangeData!}
             commits={commits}
             unpushedCount={unpushedCount}
             files={branchRangeFiles}

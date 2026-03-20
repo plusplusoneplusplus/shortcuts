@@ -1,8 +1,9 @@
 /**
- * Tests for BranchRangeOverview component source structure.
+ * Tests for branch-range mode in CommitDetail (formerly BranchRangeOverview).
  *
- * Validates exports, props, resize behavior, rendering patterns,
- * and data-testid attributes.
+ * Validates that CommitDetail contains the range-mode props, resize behavior,
+ * rendering patterns, data-testid attributes, and RepoGitTab integration
+ * after the BranchRangeOverview → CommitDetail merge.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -10,29 +11,27 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchRangeOverview.tsx'
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'CommitDetail.tsx'
 );
 
 const REPO_GIT_TAB_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'
 );
 
-describe('BranchRangeOverview', () => {
+const OLD_COMPONENT_PATH = path.join(
+    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'BranchRangeOverview.tsx'
+);
+
+describe('CommitDetail — range mode (merged from BranchRangeOverview)', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
     });
 
-    describe('file existence', () => {
-        it('exists at expected path', () => {
-            expect(fs.existsSync(COMPONENT_PATH)).toBe(true);
-        });
-    });
-
-    describe('exports', () => {
-        it('exports BranchRangeOverview as a named export', () => {
-            expect(source).toContain('export function BranchRangeOverview');
+    describe('BranchRangeOverview is deleted', () => {
+        it('BranchRangeOverview.tsx no longer exists', () => {
+            expect(fs.existsSync(OLD_COMPONENT_PATH)).toBe(false);
         });
     });
 
@@ -58,29 +57,29 @@ describe('BranchRangeOverview', () => {
         });
     });
 
-    describe('component signature', () => {
-        it('accepts workspaceId prop', () => {
-            expect(source).toContain('workspaceId: string');
+    describe('component signature — range props', () => {
+        it('accepts optional range prop', () => {
+            expect(source).toContain('range?: BranchRangeInfo');
         });
 
-        it('accepts branchRangeData prop', () => {
-            expect(source).toContain('branchRangeData: BranchRangeInfo');
+        it('accepts optional commits prop', () => {
+            expect(source).toContain('commits?: GitCommitItem[]');
         });
 
-        it('accepts commits prop', () => {
-            expect(source).toContain('commits: GitCommitItem[]');
+        it('accepts optional unpushedCount prop', () => {
+            expect(source).toContain('unpushedCount?: number');
         });
 
-        it('accepts unpushedCount prop', () => {
-            expect(source).toContain('unpushedCount: number');
+        it('accepts optional files prop', () => {
+            expect(source).toContain('files?: BranchRangeFile[]');
         });
 
-        it('accepts files prop', () => {
-            expect(source).toContain('files: BranchRangeFile[]');
+        it('accepts optional onFileSelect callback', () => {
+            expect(source).toContain('onFileSelect?: (filePath: string) => void');
         });
 
-        it('accepts onFileSelect callback', () => {
-            expect(source).toContain('onFileSelect: (filePath: string) => void');
+        it('accepts optional onAllCommentsClick callback', () => {
+            expect(source).toContain('onAllCommentsClick?: () => void');
         });
     });
 
@@ -107,10 +106,6 @@ describe('BranchRangeOverview', () => {
     });
 
     describe('rendering', () => {
-        it('renders outer container with data-testid', () => {
-            expect(source).toContain('data-testid="branch-range-overview"');
-        });
-
         it('renders upper panel with data-testid', () => {
             expect(source).toContain('data-testid="branch-range-overview-upper"');
         });
@@ -128,39 +123,41 @@ describe('BranchRangeOverview', () => {
         });
 
         it('slices commits to unpushed range for BranchCommitStrip', () => {
-            expect(source).toContain('commits.slice(0, unpushedCount)');
+            expect(source).toMatch(/slice\(0,\s*unpushedCount/);
         });
     });
 });
 
-describe('RepoGitTab — BranchRangeOverview integration', () => {
+describe('RepoGitTab — CommitDetail range-mode integration', () => {
     let source: string;
 
     beforeAll(() => {
         source = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
     });
 
-    it('imports BranchRangeOverview', () => {
-        expect(source).toContain("import { BranchRangeOverview } from './BranchRangeOverview'");
+    it('does NOT import BranchRangeOverview (deleted)', () => {
+        expect(source).not.toContain("import { BranchRangeOverview }");
+    });
+
+    it('renders CommitDetail for branch-range view type', () => {
+        expect(source).toContain("rightPanelView?.type === 'branch-range'");
+        expect(source).toContain('<CommitDetail');
+    });
+
+    it('passes range prop (not branchRangeData) to CommitDetail', () => {
+        expect(source).toContain('range={branchRangeData!}');
+    });
+
+    it('passes unpushedCount to CommitDetail', () => {
+        expect(source).toContain('unpushedCount={unpushedCount}');
+    });
+
+    it('passes onFileSelect to CommitDetail that navigates to branch-file', () => {
+        expect(source).toContain("type: 'branch-file', filePath");
     });
 
     it('includes branch-range in RightPanelView union', () => {
         expect(source).toContain("| { type: 'branch-range' }");
-    });
-
-    it('renders BranchRangeOverview for branch-range view type', () => {
-        expect(source).toContain("rightPanelView?.type === 'branch-range'");
-        expect(source).toContain('<BranchRangeOverview');
-    });
-
-    it('passes unpushedCount (not sliced array) to BranchRangeOverview from RepoGitTab', () => {
-        expect(source).toContain('unpushedCount={unpushedCount}');
-        // RepoGitTab itself must not slice — slicing is delegated to BranchRangeOverview
-        expect(source).not.toContain('commits.slice(0, unpushedCount)');
-    });
-
-    it('passes onFileSelect to BranchRangeOverview that navigates to branch-file', () => {
-        expect(source).toContain("type: 'branch-file', filePath");
     });
 
     it('sets branch-range as default view when branch range has commits on desktop', () => {

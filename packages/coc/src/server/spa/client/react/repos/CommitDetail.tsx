@@ -20,24 +20,52 @@ import { CommentSidebar } from '../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../context/QueueContext';
+import { BranchCommitStrip } from './BranchCommitStrip';
+import { BranchAllFilesDiff } from './BranchAllFilesDiff';
+import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { DiffCommentSelection, DiffComment } from '../../diff-comment-types';
 import type { AnyComment } from '../../shared-comment-types';
 import type { TaskCommentCategory } from '../../task-comments-types';
 import type { GitCommitItem } from './CommitList';
+import type { BranchRangeInfo } from './BranchChanges';
 type PopupState = {
     position: { top: number; left: number };
     selection: DiffCommentSelection;
     selectedText: string;
 } | null;
 
-export interface CommitDetailProps {
-    workspaceId: string;
-    hash: string;
-    filePath?: string;
-    commit?: GitCommitItem;
+const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
+const DEFAULT_UPPER_HEIGHT = 160;
+const MIN_UPPER_HEIGHT = 80;
+
+function loadUpperHeight(): number {
+    try {
+        const stored = localStorage.getItem(RANGE_STORAGE_KEY);
+        if (stored !== null) {
+            const parsed = Number(stored);
+            if (Number.isFinite(parsed) && parsed >= MIN_UPPER_HEIGHT) return parsed;
+        }
+    } catch { /* ignore */ }
+    return DEFAULT_UPPER_HEIGHT;
 }
 
-export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDetailProps) {
+export interface CommitDetailProps {
+    workspaceId: string;
+    // Single-commit mode
+    hash?: string;
+    filePath?: string;
+    commit?: GitCommitItem;
+    // Range mode (mutually exclusive with hash)
+    range?: BranchRangeInfo;
+    commits?: GitCommitItem[];
+    files?: BranchRangeFile[];
+    unpushedCount?: number;
+    onFileSelect?: (filePath: string) => void;
+    onAllCommentsClick?: () => void;
+}
+
+export function CommitDetail({ workspaceId, hash, filePath, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick }: CommitDetailProps) {
+    const isRangeMode = !!range;
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [diffLoading, setDiffLoading] = useState(true);
@@ -54,11 +82,21 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     const [headerCollapsed, setHeaderCollapsed] = useState(false);
     const [manualOverride, setManualOverride] = useState(false);
 
-    const diffUrl = filePath
-        ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
-        : `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`;
+    // Range-mode state (draggable split panel + branch comment count)
+    const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
+    const [isDragging, setIsDragging] = useState(false);
+    const [branchCommentCount, setBranchCommentCount] = useState(0);
+    const rangeContainerRef = useRef<HTMLDivElement>(null);
+    const startYRef = useRef(0);
+    const startHeightRef = useRef(0);
 
-    const diffContext = filePath
+    const diffUrl = (!isRangeMode && hash)
+        ? (filePath
+            ? `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/files/${encodeURIComponent(filePath)}/diff`
+            : `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`)
+        : null;
+
+    const diffContext = (!isRangeMode && filePath && hash)
         ? { repositoryId: workspaceId, filePath, oldRef: `${hash}^`, newRef: hash }
         : null;
 
@@ -66,7 +104,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
-    // Commit-level comments (only active when !filePath)
+    // Commit-level comments (only active when !filePath and !rangeMode)
     const {
         comments: allCommitComments,
         loading: allCommentsLoading,
@@ -74,10 +112,11 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         unresolveComment: unresolveCommitComment,
         deleteComment: deleteCommitComment,
         updateComment: updateCommitComment,
-    } = useAllCommitComments(filePath ? '' : workspaceId, filePath ? '' : hash);
+    } = useAllCommitComments((!isRangeMode && !filePath) ? workspaceId : '', (!isRangeMode && !filePath && hash) ? hash : '');
 
-    // Always fetch diff on mount / hash / filePath change
+    // Fetch diff on mount / hash / filePath change (single-commit mode only)
     useEffect(() => {
+        if (!diffUrl) { setDiffLoading(false); return; }
         setDiffLoading(true);
         setDiffError(null);
         setDiff(null);
@@ -88,6 +127,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     }, [diffUrl]);
 
     const handleRetryDiff = useCallback(() => {
+        if (!diffUrl) return;
         setDiffLoading(true);
         setDiffError(null);
         fetchApi(diffUrl)
@@ -186,7 +226,7 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
     }, []);
 
     const handleCopyHash = useCallback(() => {
-        copyToClipboard(commit?.hash ?? hash).then(() => {
+        copyToClipboard(commit?.hash ?? hash ?? '').then(() => {
             setHashCopied(true);
             setTimeout(() => setHashCopied(false), 2000);
         });
@@ -196,6 +236,127 @@ export function CommitDetail({ workspaceId, hash, filePath, commit }: CommitDeta
         if (!commit?.date) return '';
         try { return new Date(commit.date).toLocaleString(); } catch { return commit.date; }
     })();
+
+    // --- Range-mode helpers ---
+    const getMaxUpperHeight = useCallback(() => {
+        if (!rangeContainerRef.current) return 400;
+        return Math.floor(rangeContainerRef.current.clientHeight * 0.5);
+    }, []);
+
+    const onDragMove = useCallback((clientY: number) => {
+        const delta = clientY - startYRef.current;
+        const maxHeight = getMaxUpperHeight();
+        const newHeight = Math.min(Math.max(startHeightRef.current + delta, MIN_UPPER_HEIGHT), maxHeight);
+        setUpperHeight(newHeight);
+    }, [getMaxUpperHeight]);
+
+    const onDragEnd = useCallback(() => {
+        setIsDragging(false);
+    }, []);
+
+    // Persist height when drag ends
+    useEffect(() => {
+        if (isRangeMode && !isDragging) {
+            try { localStorage.setItem(RANGE_STORAGE_KEY, String(upperHeight)); } catch { /* ignore */ }
+        }
+    }, [isRangeMode, isDragging, upperHeight]);
+
+    // Fetch branch-range comment count
+    useEffect(() => {
+        if (!isRangeMode || !range) return;
+        fetchApi(
+            `/diff-comments/${encodeURIComponent(workspaceId)}` +
+            `?oldRef=${encodeURIComponent(range.baseRef)}&newRef=${encodeURIComponent(range.headRef)}`
+        )
+            .then((data: { comments?: DiffComment[] }) => setBranchCommentCount((data.comments ?? []).length))
+            .catch(() => setBranchCommentCount(0));
+    }, [isRangeMode, workspaceId, range?.baseRef, range?.headRef]);
+
+    // Global mouse/touch listeners while dragging
+    useEffect(() => {
+        if (!isDragging) return;
+        const handleMouseMove = (e: MouseEvent) => { e.preventDefault(); onDragMove(e.clientY); };
+        const handleMouseUp = () => onDragEnd();
+        const handleTouchMove = (e: TouchEvent) => {
+            if (e.touches.length === 1) { e.preventDefault(); onDragMove(e.touches[0].clientY); }
+        };
+        const handleTouchEnd = () => onDragEnd();
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchEnd);
+        };
+    }, [isDragging, onDragMove, onDragEnd]);
+
+    const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        startYRef.current = e.clientY;
+        startHeightRef.current = upperHeight;
+        setIsDragging(true);
+    }, [upperHeight]);
+
+    const handleDividerTouchStart = useCallback((e: React.TouchEvent) => {
+        if (e.touches.length !== 1) return;
+        startYRef.current = e.touches[0].clientY;
+        startHeightRef.current = upperHeight;
+        setIsDragging(true);
+    }, [upperHeight]);
+
+    // --- Range mode rendering ---
+    if (isRangeMode && range) {
+        return (
+            <div
+                ref={rangeContainerRef}
+                className={`commit-detail flex flex-col h-full overflow-hidden${isDragging ? ' select-none' : ''}`}
+                data-testid="commit-detail"
+            >
+                {/* Upper panel — commit strip */}
+                <div
+                    style={{ height: upperHeight, minHeight: MIN_UPPER_HEIGHT }}
+                    className="flex-shrink-0 overflow-hidden border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    data-testid="branch-range-overview-upper"
+                >
+                    <BranchCommitStrip
+                        commits={(rangeCommits ?? []).slice(0, unpushedCount ?? 0)}
+                        branchRangeData={range}
+                        onAllCommentsClick={onAllCommentsClick}
+                        commentCount={branchCommentCount}
+                    />
+                </div>
+
+                {/* Draggable horizontal divider */}
+                <div
+                    className="h-1 flex-shrink-0 cursor-row-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors"
+                    onMouseDown={handleDividerMouseDown}
+                    onTouchStart={handleDividerTouchStart}
+                    data-testid="branch-range-overview-divider"
+                    role="separator"
+                    aria-orientation="horizontal"
+                    aria-label="Resize panels"
+                    tabIndex={0}
+                />
+
+                {/* Lower panel — all files diff */}
+                <div
+                    className="flex-1 min-h-0 overflow-y-auto"
+                    data-testid="branch-range-overview-lower"
+                >
+                    <BranchAllFilesDiff
+                        workspaceId={workspaceId}
+                        files={rangeFiles ?? []}
+                        onFileSelect={onFileSelect ?? (() => {})}
+                    />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="commit-detail flex flex-col h-full overflow-hidden" data-testid="commit-detail">
