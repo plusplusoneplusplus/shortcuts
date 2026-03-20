@@ -322,6 +322,22 @@ export function buildContextPrompt(turns: ConversationTurn[]): string {
     );
 }
 
+/**
+ * Build a prompt that asks the AI to summarize multiple conversation process files.
+ * Passes file paths (not content) so the AI reads them via tools.
+ */
+export function buildSummarizePrompt(filePaths: string[]): string {
+    const fileList = filePaths.map(fp => `- ${fp}`).join('\n');
+    return (
+        'Summarize the following conversation logs. Each file is a JSON process record ' +
+        'containing conversation turns. Read each file, then produce a concise summary ' +
+        'that highlights: key topics discussed, decisions made, action items, and any ' +
+        'unresolved questions.\n\n' +
+        'Conversation files:\n' +
+        fileList
+    );
+}
+
 export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecutorBridge, store?: ProcessStore, globalWorkspaceRootPath?: string): void {
 
     // Track global pause state so newly-created bridges inherit it
@@ -680,6 +696,80 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             // 201 if all succeeded, 207 (Multi-Status) if partial success
             const statusCode = enqueueErrors.length === 0 ? 201 : 207;
             sendJSON(res, statusCode, response);
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/summarize — Summarize multiple conversations
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/summarize',
+        handler: async (req, res) => {
+            if (!store) {
+                return sendError(res, 500, 'Process store not available');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            // Validate processIds
+            if (!Array.isArray(body.processIds)) {
+                return sendError(res, 400, 'Missing or invalid field: processIds (must be an array)');
+            }
+            if (body.processIds.length < 2) {
+                return sendError(res, 400, 'processIds must contain at least 2 items');
+            }
+            if (body.processIds.length > 20) {
+                return sendError(res, 400, 'processIds cannot exceed 20 items');
+            }
+            if (!body.processIds.every((id: any) => typeof id === 'string' && id.trim().length > 0)) {
+                return sendError(res, 400, 'Each processId must be a non-empty string');
+            }
+
+            // Validate workspaceId
+            if (typeof body.workspaceId !== 'string' || !body.workspaceId.trim()) {
+                return sendError(res, 400, 'Missing required field: workspaceId');
+            }
+
+            const workspaceId = body.workspaceId.trim();
+            const filePaths: string[] = body.processIds.map(
+                (id: string) => store!.getProcessFilePath!(workspaceId, id.trim())
+            );
+
+            const prompt = buildSummarizePrompt(filePaths);
+
+            const taskSpec = {
+                type: 'chat' as const,
+                priority: 'normal' as const,
+                payload: {
+                    kind: 'chat' as const,
+                    mode: 'ask' as const,
+                    prompt,
+                    workspaceId,
+                },
+                displayName: `Summarize ${body.processIds.length} conversations`,
+            };
+
+            const validation = validateAndParseTask(taskSpec);
+            if (!validation.valid) {
+                return sendError(res, 400, validation.error!);
+            }
+
+            try {
+                const taskId = await enqueueViaBridge(validation.input!);
+                process.stderr.write(
+                    `[Queue] summarize processIds=${body.processIds.length} taskId=${taskId}\n`
+                );
+                sendJSON(res, 201, { taskId });
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to enqueue summarize task';
+                return sendError(res, 400, message);
+            }
         },
     });
 
@@ -1356,7 +1446,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const id = decodeURIComponent(match![1]);
 
             // Skip known sub-routes
-            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk', 'repos', 'pause-marker'].includes(id)) {
+            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk', 'repos', 'pause-marker', 'summarize'].includes(id)) {
                 return sendError(res, 404, 'Task not found');
             }
 

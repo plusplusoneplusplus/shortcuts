@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
+import { buildSummarizePrompt } from '../../src/server/queue-handler';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import * as fs from 'fs';
@@ -2680,6 +2681,101 @@ describe('Queue Handler', () => {
                 t.payload?.workingDirectory === repoDir
             );
             expect(repoTasks).toHaveLength(0);
+        });
+    });
+
+    // ========================================================================
+    // buildSummarizePrompt
+    // ========================================================================
+
+    describe('buildSummarizePrompt', () => {
+        it('should include all file paths with 2 paths', () => {
+            const paths = ['/data/proc1.json', '/data/proc2.json'];
+            const prompt = buildSummarizePrompt(paths);
+            expect(prompt).toContain('- /data/proc1.json');
+            expect(prompt).toContain('- /data/proc2.json');
+            expect(prompt).toContain('Summarize the following conversation logs');
+            expect(prompt).toContain('Conversation files:');
+        });
+
+        it('should include all file paths with 5 paths', () => {
+            const paths = Array.from({ length: 5 }, (_, i) => `/data/proc${i}.json`);
+            const prompt = buildSummarizePrompt(paths);
+            for (const p of paths) {
+                expect(prompt).toContain(`- ${p}`);
+            }
+        });
+    });
+
+    // ========================================================================
+    // POST /api/queue/summarize
+    // ========================================================================
+
+    describe('POST /api/queue/summarize', () => {
+        it('should return 201 with taskId on success', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['id1', 'id2'],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBeDefined();
+            expect(typeof body.taskId).toBe('string');
+            expect(body.taskId.length).toBeGreaterThan(0);
+        });
+
+        it('should return 400 when processIds is missing', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('processIds');
+        });
+
+        it('should return 400 when processIds has fewer than 2 items', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['id1'],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('at least 2');
+        });
+
+        it('should return 400 when processIds exceeds 20 items', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: Array(21).fill('id'),
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('exceed 20');
+        });
+
+        it('should return 400 when workspaceId is missing', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['a', 'b'],
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('workspaceId');
+        });
+
+        it('should return 400 when a processId element is not a string', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['a', 123],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('non-empty string');
         });
     });
 });
