@@ -85,8 +85,8 @@ describe('Fix 1: key={ws.id} on workspace-dependent tab components', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoSchedulesTab key={ws.id}');
     });
 
-    it('RepoCopilotTab has key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoCopilotTab key={ws.id}');
+    it('RepoSettingsTab has key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoSettingsTab key={ws.id}');
     });
 
     it('ExplorerPanel has key={ws.id}', () => {

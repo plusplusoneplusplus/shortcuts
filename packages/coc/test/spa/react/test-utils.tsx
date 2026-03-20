@@ -28,7 +28,7 @@ function defaultAppState(): AppContextState {
         activeTab: 'repos',
         workspaces: [],
         selectedRepoId: null,
-        activeRepoSubTab: 'info',
+        activeRepoSubTab: 'settings',
         reposSidebarCollapsed: false,
         selectedWikiId: null,
         selectedWikiComponentId: null,

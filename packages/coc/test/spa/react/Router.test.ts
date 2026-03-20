@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseCopilotSection, VALID_COPILOT_SECTIONS } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 
 // ─── tabFromHash ─────────────────────────────────────────────────
@@ -83,8 +83,16 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('queue')).toBe(false);
     });
 
-    it('includes "info"', () => {
-        expect(VALID_REPO_SUB_TABS.has('info')).toBe(true);
+    it('does not include "info" (merged into Settings tab)', () => {
+        expect(VALID_REPO_SUB_TABS.has('info')).toBe(false);
+    });
+
+    it('does not include "copilot" (replaced by settings)', () => {
+        expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(false);
+    });
+
+    it('includes "settings"', () => {
+        expect(VALID_REPO_SUB_TABS.has('settings')).toBe(true);
     });
 
     it('includes "tasks"', () => {
@@ -111,10 +119,6 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('wiki')).toBe(true);
     });
 
-    it('includes "copilot"', () => {
-        expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(true);
-    });
-
     it('includes "workflow"', () => {
         expect(VALID_REPO_SUB_TABS.has('workflow')).toBe(true);
     });
@@ -131,12 +135,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
     });
 
-    it('does not include unknown tab', () => {
-        expect(VALID_REPO_SUB_TABS.has('settings')).toBe(false);
-    });
-
-    it('has exactly 11 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(11);
+    it('has exactly 10 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(10);
     });
 });
 
@@ -160,10 +160,10 @@ describe('repo sub-tab deep-link parsing', () => {
         expect(result.subTab).toBeNull();
     });
 
-    it('parses #repos/my-repo/info correctly', () => {
+    it('returns null subTab for #repos/my-repo/info (redirected to settings)', () => {
         const result = parseRepoDeepLink('#repos/my-repo/info');
         expect(result.repoId).toBe('my-repo');
-        expect(result.subTab).toBe('info');
+        expect(result.subTab).toBeNull();
     });
 
     it('parses #repos/my-repo/tasks correctly', () => {
@@ -196,10 +196,10 @@ describe('repo sub-tab deep-link parsing', () => {
         expect(result.subTab).toBeNull();
     });
 
-    it('returns null subTab for unknown sub-tab segment', () => {
+    it('parses #repos/my-repo/settings correctly', () => {
         const result = parseRepoDeepLink('#repos/my-repo/settings');
         expect(result.repoId).toBe('my-repo');
-        expect(result.subTab).toBeNull();
+        expect(result.subTab).toBe('settings');
     });
 
     it('handles URL-encoded repo IDs', () => {
@@ -1205,12 +1205,11 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 9 letters to sub-tabs', () => {
-        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(9);
+    it('REPO_TAB_SHORTCUTS maps 8 letters to sub-tabs', () => {
+        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(8);
     });
 
     it.each([
-        ['i', 'KeyI', 'info'],
         ['g', 'KeyG', 'git'],
         ['e', 'KeyE', 'explorer'],
         ['p', 'KeyP', 'tasks'],
@@ -1218,7 +1217,7 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         ['a', 'KeyA', 'activity'],
         ['w', 'KeyW', 'workflows'],
         ['s', 'KeyS', 'schedules'],
-        ['c', 'KeyC', 'copilot'],
+        ['c', 'KeyC', 'settings'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {
         const dispatches = simulateAltKeyHandler({ key: letter, code, altKey: true }, repoState);
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab });
@@ -1227,8 +1226,7 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
     it.each([
         ['å', 'KeyA', 'activity'],
         ['ê', 'KeyE', 'explorer'],
-        ['î', 'KeyI', 'info'],
-        ['©', 'KeyC', 'copilot'],
+        ['©', 'KeyC', 'settings'],
     ] as [string, string, string][])('macOS Option+key: e.key="%s" e.code="%s" dispatches SET_REPO_SUB_TAB %s', (key, code, tab) => {
         // On macOS, Option+letter produces a Unicode char in e.key but e.code reflects the physical key
         const dispatches = simulateAltKeyHandler({ key, code, altKey: true }, repoState);
@@ -1721,66 +1719,82 @@ describe('handleHash pull-requests dispatch simulation', () => {
     });
 });
 
-// ─── parseCopilotSection ──────────────────────────────────────────
+// ─── parseSettingsSection ──────────────────────────────────────────
 
-describe('parseCopilotSection', () => {
-    it('returns "mcp" for #repos/r1/copilot (no section)', () => {
-        expect(parseCopilotSection('#repos/r1/copilot')).toBe('mcp');
+describe('parseSettingsSection', () => {
+    it('returns "info" for #repos/r1/settings (no section)', () => {
+        expect(parseSettingsSection('#repos/r1/settings')).toBe('info');
     });
 
-    it('returns "mcp" for #repos/r1/copilot/mcp', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/mcp')).toBe('mcp');
+    it('returns "info" for #repos/r1/settings/info', () => {
+        expect(parseSettingsSection('#repos/r1/settings/info')).toBe('info');
     });
 
-    it('returns "skills" for #repos/r1/copilot/skills', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/skills')).toBe('skills');
+    it('returns "preferences" for #repos/r1/settings/preferences', () => {
+        expect(parseSettingsSection('#repos/r1/settings/preferences')).toBe('preferences');
     });
 
-    it('returns "instructions" for #repos/r1/copilot/instructions', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/instructions')).toBe('instructions');
+    it('returns "mcp" for #repos/r1/settings/mcp', () => {
+        expect(parseSettingsSection('#repos/r1/settings/mcp')).toBe('mcp');
     });
 
-    it('falls back to "mcp" for an unknown section', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/unknown')).toBe('mcp');
+    it('returns "skills" for #repos/r1/settings/skills', () => {
+        expect(parseSettingsSection('#repos/r1/settings/skills')).toBe('skills');
     });
 
-    it('falls back to "mcp" for a non-copilot hash', () => {
-        expect(parseCopilotSection('#repos/r1/git')).toBe('mcp');
+    it('returns "instructions" for #repos/r1/settings/instructions', () => {
+        expect(parseSettingsSection('#repos/r1/settings/instructions')).toBe('instructions');
     });
 
-    it('falls back to "mcp" for empty hash', () => {
-        expect(parseCopilotSection('')).toBe('mcp');
+    it('falls back to "info" for an unknown section', () => {
+        expect(parseSettingsSection('#repos/r1/settings/unknown')).toBe('info');
+    });
+
+    it('falls back to "info" for a non-settings hash', () => {
+        expect(parseSettingsSection('#repos/r1/git')).toBe('info');
+    });
+
+    it('falls back to "info" for empty hash', () => {
+        expect(parseSettingsSection('')).toBe('info');
     });
 
     it('URL-decodes the section', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/skill%73')).toBe('skills');
+        expect(parseSettingsSection('#repos/r1/settings/skill%73')).toBe('skills');
     });
 });
 
-// ─── VALID_COPILOT_SECTIONS ───────────────────────────────────────
+// ─── VALID_SETTINGS_SECTIONS ───────────────────────────────────────
 
-describe('VALID_COPILOT_SECTIONS', () => {
+describe('VALID_SETTINGS_SECTIONS', () => {
+    it('includes "info"', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('info')).toBe(true);
+    });
+
+    it('includes "preferences"', () => {
+        expect(VALID_SETTINGS_SECTIONS.has('preferences')).toBe(true);
+    });
+
     it('includes "mcp"', () => {
-        expect(VALID_COPILOT_SECTIONS.has('mcp')).toBe(true);
+        expect(VALID_SETTINGS_SECTIONS.has('mcp')).toBe(true);
     });
 
     it('includes "skills"', () => {
-        expect(VALID_COPILOT_SECTIONS.has('skills')).toBe(true);
+        expect(VALID_SETTINGS_SECTIONS.has('skills')).toBe(true);
     });
 
     it('includes "instructions"', () => {
-        expect(VALID_COPILOT_SECTIONS.has('instructions')).toBe(true);
+        expect(VALID_SETTINGS_SECTIONS.has('instructions')).toBe(true);
     });
 
     it('does not include unknown values', () => {
-        expect(VALID_COPILOT_SECTIONS.has('unknown')).toBe(false);
+        expect(VALID_SETTINGS_SECTIONS.has('unknown')).toBe(false);
     });
 });
 
-// ─── Copilot hash dispatching simulation ─────────────────────────
+// ─── Settings hash dispatching simulation ─────────────────────────
 
-describe('copilot section hash routing', () => {
-    function simulateCopilotHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
+describe('settings section hash routing', () => {
+    function simulateSettingsHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
         const dispatches: Array<{ type: string; [key: string]: any }> = [];
         const hash = rawHash.replace(/^#/, '');
         const tab = tabFromHash('#' + hash);
@@ -1791,51 +1805,61 @@ describe('copilot section hash routing', () => {
                 if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
                     dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
                 }
-                if (parts[2] === 'copilot') {
-                    dispatches.push({ type: 'SET_COPILOT_SECTION', section: parseCopilotSection('#' + hash) });
+                if (parts[2] === 'settings') {
+                    dispatches.push({ type: 'SET_SETTINGS_SECTION', section: parseSettingsSection('#' + hash) });
                 }
             }
         }
         return dispatches;
     }
 
-    it('dispatches SET_REPO_SUB_TAB copilot for #repos/r1/copilot', () => {
-        const dispatches = simulateCopilotHash('#repos/r1/copilot');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'copilot' });
+    it('dispatches SET_REPO_SUB_TAB settings for #repos/r1/settings', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings');
+        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
     });
 
-    it('dispatches SET_COPILOT_SECTION mcp for #repos/r1/copilot (default)', () => {
-        const dispatches = simulateCopilotHash('#repos/r1/copilot');
-        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'mcp' });
+    it('dispatches SET_SETTINGS_SECTION info for #repos/r1/settings (default)', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings');
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'info' });
     });
 
-    it('dispatches SET_COPILOT_SECTION skills for #repos/r1/copilot/skills', () => {
-        const dispatches = simulateCopilotHash('#repos/r1/copilot/skills');
-        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'skills' });
+    it('dispatches SET_SETTINGS_SECTION mcp for #repos/r1/settings/mcp', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings/mcp');
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'mcp' });
     });
 
-    it('dispatches SET_COPILOT_SECTION instructions for #repos/r1/copilot/instructions', () => {
-        const dispatches = simulateCopilotHash('#repos/r1/copilot/instructions');
-        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'instructions' });
+    it('dispatches SET_SETTINGS_SECTION skills for #repos/r1/settings/skills', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings/skills');
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'skills' });
     });
 
-    it('falls back to mcp for #repos/r1/copilot/invalid-section', () => {
-        const dispatches = simulateCopilotHash('#repos/r1/copilot/invalid-section');
-        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'mcp' });
+    it('dispatches SET_SETTINGS_SECTION instructions for #repos/r1/settings/instructions', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings/instructions');
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'instructions' });
     });
 
-    it('does not dispatch SET_COPILOT_SECTION for non-copilot tabs', () => {
-        const dispatches = simulateCopilotHash('#repos/r1/git');
-        expect(dispatches.find(d => d.type === 'SET_COPILOT_SECTION')).toBeUndefined();
+    it('dispatches SET_SETTINGS_SECTION preferences for #repos/r1/settings/preferences', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings/preferences');
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'preferences' });
     });
 
-    it('dispatches SET_SELECTED_REPO alongside copilot section action', () => {
-        const dispatches = simulateCopilotHash('#repos/my-repo/copilot/skills');
+    it('falls back to info for #repos/r1/settings/invalid-section', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/settings/invalid-section');
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'info' });
+    });
+
+    it('does not dispatch SET_SETTINGS_SECTION for non-settings tabs', () => {
+        const dispatches = simulateSettingsHash('#repos/r1/git');
+        expect(dispatches.find(d => d.type === 'SET_SETTINGS_SECTION')).toBeUndefined();
+    });
+
+    it('dispatches SET_SELECTED_REPO alongside settings section action', () => {
+        const dispatches = simulateSettingsHash('#repos/my-repo/settings/mcp');
         expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'my-repo' });
-        expect(dispatches).toContainEqual({ type: 'SET_COPILOT_SECTION', section: 'skills' });
+        expect(dispatches).toContainEqual({ type: 'SET_SETTINGS_SECTION', section: 'mcp' });
     });
 
-    it('copilot is in VALID_REPO_SUB_TABS', () => {
-        expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(true);
+    it('settings is in VALID_REPO_SUB_TABS', () => {
+        expect(VALID_REPO_SUB_TABS.has('settings')).toBe(true);
     });
 });

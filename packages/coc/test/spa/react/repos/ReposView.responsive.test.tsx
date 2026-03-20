@@ -19,7 +19,7 @@ const mockQueueDispatch = vi.fn();
 let mockAppState: Record<string, any> = {
     selectedRepoId: null,
     reposSidebarCollapsed: false,
-    activeRepoSubTab: 'info',
+    activeRepoSubTab: 'settings',
     workspaces: [],
 };
 
@@ -189,7 +189,7 @@ describe('ReposView — responsive layout', () => {
         mockAppState = {
             selectedRepoId: null,
             reposSidebarCollapsed: false,
-            activeRepoSubTab: 'info',
+            activeRepoSubTab: 'settings',
             workspaces: [],
         };
         location.hash = '';
@@ -355,7 +355,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         mockAppState = {
             selectedRepoId: 'repo-1',
             reposSidebarCollapsed: false,
-            activeRepoSubTab: 'info',
+            activeRepoSubTab: 'settings',
             workspaces: [],
             wikis: [],
         };
@@ -386,7 +386,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(9);
+        expect(tabs.length).toBe(8);
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');

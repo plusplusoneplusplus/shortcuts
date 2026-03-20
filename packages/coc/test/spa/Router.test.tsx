@@ -13,7 +13,7 @@ import {
     parseProcessDeepLink,
     parseWorkflowsDeepLink,
     parseGitCommitDeepLink,
-    parseCopilotSection,
+    parseSettingsSection,
     VALID_REPO_SUB_TABS,
 } from '../../src/server/spa/client/react/layout/Router';
 
@@ -152,19 +152,19 @@ describe('parseGitCommitDeepLink', () => {
     });
 });
 
-// ── parseCopilotSection ───────────────────────────────────────────────────────
+// ── parseSettingsSection ──────────────────────────────────────────────────────
 
-describe('parseCopilotSection', () => {
-    it('returns "mcp" for #repos/r1/copilot/mcp', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/mcp')).toBe('mcp');
+describe('parseSettingsSection', () => {
+    it('returns "mcp" for #repos/r1/settings/mcp', () => {
+        expect(parseSettingsSection('#repos/r1/settings/mcp')).toBe('mcp');
     });
 
-    it('returns "skills" for #repos/r1/copilot/skills', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/skills')).toBe('skills');
+    it('returns "skills" for #repos/r1/settings/skills', () => {
+        expect(parseSettingsSection('#repos/r1/settings/skills')).toBe('skills');
     });
 
-    it('returns default "mcp" for unknown section', () => {
-        expect(parseCopilotSection('#repos/r1/copilot/unknown')).toBe('mcp');
+    it('returns default "info" for unknown section', () => {
+        expect(parseSettingsSection('#repos/r1/settings/unknown')).toBe('info');
     });
 });
 
@@ -172,9 +172,14 @@ describe('parseCopilotSection', () => {
 
 describe('VALID_REPO_SUB_TABS', () => {
     it('includes expected tabs', () => {
-        expect(VALID_REPO_SUB_TABS.has('info')).toBe(true);
+        expect(VALID_REPO_SUB_TABS.has('settings')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('git')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('tasks')).toBe(true);
         expect(VALID_REPO_SUB_TABS.has('workflows')).toBe(true);
+    });
+
+    it('does not include removed tabs', () => {
+        expect(VALID_REPO_SUB_TABS.has('info')).toBe(false);
+        expect(VALID_REPO_SUB_TABS.has('copilot')).toBe(false);
     });
 });

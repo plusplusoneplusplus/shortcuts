@@ -10,7 +10,7 @@ import { ProcessesView } from '../processes/ProcessesView';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { lazy, Suspense } from 'react';
-import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, CopilotSection } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, SettingsSection } from '../types/dashboard';
 
 const MemoryView = lazy(() => import('../views/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ default: m.SkillsView })));
@@ -147,22 +147,27 @@ export function parseActivityDeepLink(hash: string): string | null {
     return null;
 }
 
-export const VALID_REPO_SUB_TABS: Set<string> = new Set(['info', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'copilot', 'workflow', 'explorer', 'activity', 'pull-requests']);
+export const VALID_REPO_SUB_TABS: Set<string> = new Set(['settings', 'git', 'workflows', 'tasks', 'schedules', 'wiki', 'workflow', 'explorer', 'activity', 'pull-requests']);
 
-export const VALID_COPILOT_SECTIONS: Set<string> = new Set(['mcp', 'skills', 'instructions']);
+export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(['info', 'preferences', 'mcp', 'skills', 'instructions']);
+/** @deprecated Use VALID_SETTINGS_SECTIONS */
+export const VALID_COPILOT_SECTIONS: Set<string> = VALID_SETTINGS_SECTIONS;
 
-export function parseCopilotSection(hash: string): CopilotSection {
+export function parseSettingsSection(hash: string): SettingsSection {
     const parts = hash.replace(/^#/, '').split('/');
-    if (parts[0] === 'repos' && parts[2] === 'copilot' && parts[3]) {
+    if (parts[0] === 'repos' && parts[2] === 'settings' && parts[3]) {
         const section = decodeURIComponent(parts[3]);
-        if (VALID_COPILOT_SECTIONS.has(section)) return section as CopilotSection;
+        if (VALID_SETTINGS_SECTIONS.has(section)) return section as SettingsSection;
     }
-    return 'mcp';
+    return 'info';
 }
 
-/** Maps Alt+<letter> to a repo sub-tab key. Used by the keyboard handler and tooltip hints. */
+/** @deprecated Use parseSettingsSection */
+export function parseCopilotSection(hash: string): SettingsSection {
+    return parseSettingsSection(hash);
+}
+
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
-    i: 'info',
     g: 'git',
     e: 'explorer',
     p: 'tasks',
@@ -170,7 +175,7 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     a: 'activity',
     w: 'workflows',
     s: 'schedules',
-    c: 'copilot',
+    c: 'settings',
 };
 
 
@@ -316,9 +321,24 @@ export function Router() {
                     } else if (parts[2] === 'pull-requests') {
                         dispatch({ type: 'CLEAR_SELECTED_PR' });
                     }
-                    // Copilot section deep-link: #repos/{id}/copilot/{section}
+                    // Settings section deep-link: #repos/{id}/settings/{section}
+                    if (parts[2] === 'settings') {
+                        dispatch({ type: 'SET_SETTINGS_SECTION', section: parseSettingsSection('#' + hash) });
+                    }
+                    // Backward compat: redirect old #repos/{id}/copilot/{section} → settings
                     if (parts[2] === 'copilot') {
-                        dispatch({ type: 'SET_COPILOT_SECTION', section: parseCopilotSection('#' + hash) });
+                        const section = parts[3] && VALID_SETTINGS_SECTIONS.has(parts[3]) ? parts[3] : 'mcp';
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+                        dispatch({ type: 'SET_SETTINGS_SECTION', section: section as SettingsSection });
+                        location.replace('#repos/' + parts[1] + '/settings/' + section);
+                        return;
+                    }
+                    // Backward compat: redirect old #repos/{id}/info → settings/info
+                    if (parts[2] === 'info') {
+                        dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+                        dispatch({ type: 'SET_SETTINGS_SECTION', section: 'info' });
+                        location.replace('#repos/' + parts[1] + '/settings/info');
+                        return;
                     }
                 }
             }
@@ -372,8 +392,7 @@ export function Router() {
                 if (tab) {
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
-                    const suffix = tab !== 'info' ? '/' + tab : '';
-                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + suffix;
+                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + '/' + tab;
                 }
                 return;
             }

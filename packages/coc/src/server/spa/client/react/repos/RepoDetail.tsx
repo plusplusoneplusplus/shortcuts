@@ -16,7 +16,7 @@ import { RepoActivityTab } from './RepoActivityTab';
 import { RepoSchedulesTab } from './RepoSchedulesTab';
 import { RepoGitTab } from './RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
-import { RepoCopilotTab } from './RepoCopilotTab';
+import { RepoSettingsTab } from './RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from './pull-requests/PullRequestsTab';
 import { WorkflowDetailView } from '../processes/dag';
@@ -42,16 +42,14 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'tasks', label: 'Plans', shortcut: 'Alt+P' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
-    { key: 'info', label: 'Info', shortcut: 'Alt+I' },
+    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
-    { key: 'copilot', label: 'Copilot', shortcut: 'Alt+C' },
 ];
 
 function getTabSuffix(tab: RepoSubTab, state: AppContextState): string {
-    if (tab === 'info') return '';
-    if (tab === 'copilot') return '/copilot/' + state.copilotSection;
+    if (tab === 'settings') return '/settings/' + state.settingsSection;
     if (tab === 'git') {
         if (state.selectedGitCommitHash) {
             const hash = encodeURIComponent(state.selectedGitCommitHash);
@@ -470,13 +468,12 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     />
                 ) : (
                     <div className={cn("h-full min-w-0", activeSubTab === 'activity' || activeSubTab === 'schedules' || activeSubTab === 'explorer' ? "overflow-hidden" : "overflow-y-auto")}>
-                        {activeSubTab === 'info' && <RepoInfoTab key={ws.id} repo={repo} />}
+                        {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} />}
                         {activeSubTab === 'workflows' && <WorkflowsTab key={ws.id} repo={repo} />}
                         {activeSubTab === 'activity' && <RepoActivityTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'git' && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
-                        {activeSubTab === 'copilot' && <RepoCopilotTab key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'explorer' && <ExplorerPanel key={ws.id} workspaceId={ws.id} />}
                         {activeSubTab === 'pull-requests' && (
                             <PullRequestsTab

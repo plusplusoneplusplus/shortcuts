@@ -34,13 +34,13 @@ describe('RepoDetail SUB_TABS', () => {
         expect(SUB_TABS[1].key).toBe('git');
     });
 
-    it('has exactly 9 entries', () => {
-        expect(SUB_TABS).toHaveLength(9);
+    it('has exactly 8 entries', () => {
+        expect(SUB_TABS).toHaveLength(8);
     });
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'info', 'explorer', 'workflows', 'schedules', 'copilot']);
+        expect(keys).toEqual(['activity', 'git', 'tasks', 'pull-requests', 'settings', 'explorer', 'workflows', 'schedules']);
     });
 
     it('does not include "wiki" entry in visible tabs', () => {
@@ -388,8 +388,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoSchedulesTab key={ws.id}');
     });
 
-    it('mounts a fresh RepoCopilotTab on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoCopilotTab key={ws.id}');
+    it('mounts a fresh RepoSettingsTab on every repo switch via key={ws.id}', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<RepoSettingsTab key={ws.id}');
     });
 
     it('mounts a fresh ExplorerPanel on every repo switch via key={ws.id}', () => {
@@ -400,8 +400,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toMatch(/<TasksPanel[\s\S]*?key=\{ws\.id\}/);
     });
 
-    it('mounts a fresh RepoInfoTab on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoInfoTab key={ws.id}');
+    it('no longer mounts a separate RepoInfoTab (merged into RepoSettingsTab)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('<RepoInfoTab');
     });
 
     it('mounts a fresh WorkflowsTab on every repo switch via key={ws.id}', () => {
@@ -586,12 +586,12 @@ describe('RepoDetail switchSubTab git deep-link', () => {
         expect(REPO_DETAIL_SOURCE).toContain("return '/git'");
     });
 
-    it('getTabSuffix preserves copilot section in URL', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("return '/copilot/' + state.copilotSection");
+    it('getTabSuffix preserves settings section in URL', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("return '/settings/' + state.settingsSection");
     });
 
-    it('getTabSuffix returns empty string for info tab', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("if (tab === 'info') return ''");
+    it('getTabSuffix does not have info tab shortcut', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain("if (tab === 'info') return ''");
     });
 });
 

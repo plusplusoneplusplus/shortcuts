@@ -16,7 +16,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeTab: 'repos',
         workspaces: [],
         selectedRepoId: null,
-        activeRepoSubTab: 'info',
+        activeRepoSubTab: 'settings',
         reposSidebarCollapsed: false,
         selectedWikiId: null,
         selectedWikiComponentId: null,
@@ -39,7 +39,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoWikiInitialComponentId: null,
         repoTabState: {},
         repoSubTabNavState: {},
-        copilotSection: 'mcp',
+        settingsSection: 'info',
         ...overrides,
     };
 }
@@ -274,10 +274,10 @@ describe('AppContext reducer', () => {
             expect(result.activeRepoSubTab).toBe('workflows');
         });
 
-        it('SET_REPO_SUB_TAB switches to info', () => {
+        it('SET_REPO_SUB_TAB switches to settings', () => {
             const state = makeState({ activeRepoSubTab: 'activity' });
-            const result = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'info' });
-            expect(result.activeRepoSubTab).toBe('info');
+            const result = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+            expect(result.activeRepoSubTab).toBe('settings');
         });
 
         it('SET_REPO_SUB_TAB switches to schedules', () => {
@@ -289,12 +289,12 @@ describe('AppContext reducer', () => {
     // ── Per-repo tab state persistence ─────────────────────────────
     describe('per-repo tab state', () => {
         it('restores last active sub-tab when switching back to a repo', () => {
-            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'info' });
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'settings' });
             // Switch to activity on repo-a
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-            // Switch to repo-b — saves repo-a's tab, defaults to info for repo-b
+            // Switch to repo-b — saves repo-a's tab, defaults to settings for repo-b
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
-            expect(state.activeRepoSubTab).toBe('info');
+            expect(state.activeRepoSubTab).toBe('settings');
             // Switch to wiki on repo-b
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
             // Switch back to repo-a — should restore activity
@@ -305,10 +305,10 @@ describe('AppContext reducer', () => {
             expect(state.activeRepoSubTab).toBe('wiki');
         });
 
-        it('defaults to info when visiting a repo for the first time', () => {
+        it('defaults to settings when visiting a repo for the first time', () => {
             const state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'activity' });
             const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-new' });
-            expect(result.activeRepoSubTab).toBe('info');
+            expect(result.activeRepoSubTab).toBe('settings');
         });
 
         it('SET_REPO_SUB_TAB records tab in repoTabState for the current repo', () => {
@@ -333,7 +333,7 @@ describe('AppContext reducer', () => {
         });
 
         it('explicit SET_REPO_SUB_TAB after SET_SELECTED_REPO overrides the restored tab', () => {
-            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'info' });
+            let state = makeState({ selectedRepoId: 'repo-a', activeRepoSubTab: 'settings' });
             state = appReducer(state, { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
             state = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
             // Router dispatches explicit sub-tab from deep-link
@@ -909,34 +909,40 @@ describe('AppContext reducer', () => {
         });
     });
 
-    // ── SET_COPILOT_SECTION ────────────────────────────────────────
-    describe('SET_COPILOT_SECTION', () => {
-        it('defaults copilotSection to "mcp"', () => {
+    // ── SET_SETTINGS_SECTION ────────────────────────────────────────
+    describe('SET_SETTINGS_SECTION', () => {
+        it('defaults settingsSection to "info"', () => {
             const state = makeState();
-            expect(state.copilotSection).toBe('mcp');
+            expect(state.settingsSection).toBe('info');
         });
 
-        it('updates copilotSection to "skills"', () => {
+        it('updates settingsSection to "skills"', () => {
             const state = makeState();
-            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'skills' });
-            expect(result.copilotSection).toBe('skills');
+            const result = appReducer(state, { type: 'SET_SETTINGS_SECTION', section: 'skills' });
+            expect(result.settingsSection).toBe('skills');
         });
 
-        it('updates copilotSection to "instructions"', () => {
+        it('updates settingsSection to "instructions"', () => {
             const state = makeState();
-            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'instructions' });
-            expect(result.copilotSection).toBe('instructions');
+            const result = appReducer(state, { type: 'SET_SETTINGS_SECTION', section: 'instructions' });
+            expect(result.settingsSection).toBe('instructions');
         });
 
-        it('updates copilotSection to "mcp"', () => {
-            const state = makeState({ copilotSection: 'skills' });
-            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'mcp' });
-            expect(result.copilotSection).toBe('mcp');
+        it('updates settingsSection to "mcp"', () => {
+            const state = makeState({ settingsSection: 'skills' });
+            const result = appReducer(state, { type: 'SET_SETTINGS_SECTION', section: 'mcp' });
+            expect(result.settingsSection).toBe('mcp');
+        });
+
+        it('updates settingsSection to "preferences"', () => {
+            const state = makeState();
+            const result = appReducer(state, { type: 'SET_SETTINGS_SECTION', section: 'preferences' });
+            expect(result.settingsSection).toBe('preferences');
         });
 
         it('returns same state reference when section is unchanged', () => {
-            const state = makeState({ copilotSection: 'skills' });
-            const result = appReducer(state, { type: 'SET_COPILOT_SECTION', section: 'skills' });
+            const state = makeState({ settingsSection: 'skills' });
+            const result = appReducer(state, { type: 'SET_SETTINGS_SECTION', section: 'skills' });
             expect(result).toBe(state);
         });
     });

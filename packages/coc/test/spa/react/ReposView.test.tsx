@@ -662,7 +662,7 @@ describe('RepoDetail', () => {
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
         const buttons = document.querySelectorAll('button');
         const tabLabels = Array.from(buttons).map(b => b.textContent?.trim());
-        expect(tabLabels).toContain('Info');
+        expect(tabLabels).toContain('Settings');
         expect(tabLabels).toContain('Workflows');
         expect(tabLabels).toContain('Activity');
     });

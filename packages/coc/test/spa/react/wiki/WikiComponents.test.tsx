@@ -60,7 +60,7 @@ describe('AppContext reducer — wiki actions', () => {
         activeTab: 'repos',
         workspaces: [],
         selectedRepoId: null,
-        activeRepoSubTab: 'info',
+        activeRepoSubTab: 'settings',
         selectedWikiId: null,
         selectedWikiComponentId: null,
         wikiView: 'list',
@@ -1393,7 +1393,7 @@ describe('useWebSocket wiki event dispatching', () => {
         const state: AppContextState = {
             processes: [], selectedId: null, workspace: '__all', statusFilter: '__all',
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
-            selectedRepoId: null, activeRepoSubTab: 'info',
+            selectedRepoId: null, activeRepoSubTab: 'settings',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
             wikiDetailInitialAdminTab: null,
@@ -1410,7 +1410,7 @@ describe('useWebSocket wiki event dispatching', () => {
         const state: AppContextState = {
             processes: [], selectedId: null, workspace: '__all', statusFilter: '__all',
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
-            selectedRepoId: null, activeRepoSubTab: 'info',
+            selectedRepoId: null, activeRepoSubTab: 'settings',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
             wikiDetailInitialAdminTab: null,
@@ -1426,7 +1426,7 @@ describe('useWebSocket wiki event dispatching', () => {
         const state: AppContextState = {
             processes: [], selectedId: null, workspace: '__all', statusFilter: '__all',
             searchQuery: '', expandedGroups: {}, activeTab: 'repos', workspaces: [],
-            selectedRepoId: null, activeRepoSubTab: 'info',
+            selectedRepoId: null, activeRepoSubTab: 'settings',
             selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list',
             wikiDetailInitialTab: null,
             wikiDetailInitialAdminTab: null,

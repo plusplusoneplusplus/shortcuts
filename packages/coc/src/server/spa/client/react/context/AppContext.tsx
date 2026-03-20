@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { DashboardTab, RepoSubTab, CopilotSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, TasksPanelNavState } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, TasksPanelNavState } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getApiBase } from '../utils/config';
 
@@ -63,8 +63,8 @@ export interface AppContextState {
     wikiTabState: Record<string, string>;
     /** Per-repo per-sub-tab navigation state, keyed by `${repoId}::${subTab}` (in-memory only). */
     repoSubTabNavState: Record<string, TasksPanelNavState>;
-    /** Currently active section within the Copilot tab (MCP / Skills / Instructions). */
-    copilotSection: CopilotSection;
+    /** Currently active section within the Settings tab (Info / Preferences / MCP / Skills / Instructions). */
+    settingsSection: SettingsSection;
 }
 
 const initialState: AppContextState = {
@@ -77,7 +77,7 @@ const initialState: AppContextState = {
     activeTab: 'repos',
     workspaces: [],
     selectedRepoId: null,
-    activeRepoSubTab: 'info',
+    activeRepoSubTab: 'settings',
     reposSidebarCollapsed: getInitialSidebarCollapsed(),
     selectedWikiId: null,
     selectedWikiComponentId: null,
@@ -105,7 +105,7 @@ const initialState: AppContextState = {
     repoTabState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
-    copilotSection: 'mcp',
+    settingsSection: 'info',
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ export type AppAction =
     | { type: 'SET_SELECTED_PR'; prId: number | string }
     | { type: 'CLEAR_SELECTED_PR' }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
-    | { type: 'SET_COPILOT_SECTION'; section: CopilotSection };
+    | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -217,7 +217,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             const savedTabState = state.selectedRepoId
                 ? { ...state.repoTabState, [state.selectedRepoId]: state.activeRepoSubTab }
                 : state.repoTabState;
-            const restoredTab = action.id ? (savedTabState[action.id] ?? 'info') : state.activeRepoSubTab;
+            const restoredTab = action.id ? (savedTabState[action.id] ?? 'settings') : state.activeRepoSubTab;
             return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, selectedWorkflowName: null, selectedWorkflowProcessId: null };
         }
         case 'SET_REPO_SUB_TAB': {
@@ -377,8 +377,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                     [`${action.repoId}::tasks`]: action.navState,
                 },
             };
-        case 'SET_COPILOT_SECTION':
-            return state.copilotSection === action.section ? state : { ...state, copilotSection: action.section };
+        case 'SET_SETTINGS_SECTION':
+            return state.settingsSection === action.section ? state : { ...state, settingsSection: action.section };
         default:
             return state;
     }

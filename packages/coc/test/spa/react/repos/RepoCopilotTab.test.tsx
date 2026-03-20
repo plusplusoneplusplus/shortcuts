@@ -355,27 +355,27 @@ describe('sidebar navigation', () => {
 // ── 13. Deep URL — section reflects context + updates hash ────────────────────
 
 describe('deep URL section routing', () => {
-    it('updates location.hash to copilot/skills when skills nav item is clicked', async () => {
+    it('updates location.hash to settings/skills when skills nav item is clicked', async () => {
         await act(async () => { await renderTab('ws-deep'); });
         await act(async () => {
             fireEvent.click(screen.getByTestId('nav-item-skills'));
         });
-        expect(location.hash).toBe('#repos/ws-deep/copilot/skills');
+        expect(location.hash).toBe('#repos/ws-deep/settings/skills');
     });
 
-    it('updates location.hash to copilot/instructions when instructions nav item is clicked', async () => {
+    it('updates location.hash to settings/instructions when instructions nav item is clicked', async () => {
         await act(async () => { await renderTab('ws-deep'); });
         await act(async () => {
             fireEvent.click(screen.getByTestId('nav-item-instructions'));
         });
-        expect(location.hash).toBe('#repos/ws-deep/copilot/instructions');
+        expect(location.hash).toBe('#repos/ws-deep/settings/instructions');
     });
 
-    it('updates location.hash to copilot/mcp when mcp nav item is clicked', async () => {
+    it('updates location.hash to settings/mcp when mcp nav item is clicked', async () => {
         await act(async () => { await renderTab('ws-deep'); });
         // Navigate away then back
         await act(async () => { fireEvent.click(screen.getByTestId('nav-item-skills')); });
         await act(async () => { fireEvent.click(screen.getByTestId('nav-item-mcp')); });
-        expect(location.hash).toBe('#repos/ws-deep/copilot/mcp');
+        expect(location.hash).toBe('#repos/ws-deep/settings/mcp');
     });
 });
