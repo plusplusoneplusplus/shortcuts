@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Button, SkillDetailPanel } from '../shared';
+import { Button, SkillListItem } from '../shared';
 import type { SkillInfo } from '../shared';
 import { useGlobalToast } from '../context/ToastContext';
 import { getApiBase } from '../utils/config';
@@ -95,69 +95,21 @@ export function AgentSkillsPanel({
             ) : (
                 <ul className="flex flex-col gap-2" data-testid="skills-list">
                     {skills.map(skill => (
-                        <li
+                        <SkillListItem
                             key={skill.name}
-                            className={`skill-item flex flex-col rounded border border-[#e0e0e0] dark:border-[#3c3c3c] hover:border-[#0078d4]/40 group${!isSkillEnabled(skill.name) ? ' opacity-60' : ''}`}
-                            data-testid={`skill-item-${skill.name}`}
-                        >
-                            <div
-                                className="flex items-start justify-between gap-3 p-3 cursor-pointer"
-                                onClick={() => onExpandSkill(skill.name)}
-                                data-testid={`skill-expand-${skill.name}`}
-                            >
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] flex items-center gap-2">
-                                        📄 {skill.name}
-                                        {skill.version && (
-                                            <span className="text-[10px] text-[#848484] bg-[#f3f3f3] dark:bg-[#333] px-1.5 py-0.5 rounded-full">v{skill.version}</span>
-                                        )}
-                                        <span className="text-[10px] text-[#848484]">{expandedSkill === skill.name ? '▾' : '▸'}</span>
-                                    </div>
-                                    {skill.description && (
-                                        <div className="text-xs text-[#616161] dark:text-[#999999] mt-0.5 truncate">{skill.description}</div>
-                                    )}
-                                </div>
-                                <div className="flex-shrink-0 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                    <label className="relative inline-flex items-center cursor-pointer" title={isSkillEnabled(skill.name) ? 'Enabled' : 'Disabled'}>
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={isSkillEnabled(skill.name)}
-                                            disabled={skillToggleSaving || skillsLoading}
-                                            onChange={(e) => onSkillToggle(skill.name, e.target.checked)}
-                                            data-testid={`skill-toggle-${skill.name}`}
-                                        />
-                                        <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                    </label>
-                                    {deleteConfirm === skill.name ? (
-                                        <span className="flex items-center gap-1 text-xs">
-                                            <span className="text-[#616161] dark:text-[#999]">Delete?</span>
-                                            <button
-                                                className="text-red-600 dark:text-red-400 hover:underline"
-                                                onClick={() => onDeleteSkill(skill.name)}
-                                                data-testid={`skill-delete-confirm-${skill.name}`}
-                                            >Yes</button>
-                                            <button
-                                                className="text-[#616161] dark:text-[#999] hover:underline"
-                                                onClick={() => onSetDeleteConfirm(null)}
-                                            >No</button>
-                                        </span>
-                                    ) : (
-                                        <button
-                                            className="opacity-0 group-hover:opacity-100 text-[#616161] dark:text-[#999] hover:text-red-600 dark:hover:text-red-400 transition-opacity text-base leading-none"
-                                            title={`Delete ${skill.name}`}
-                                            onClick={() => onSetDeleteConfirm(skill.name)}
-                                            data-testid={`skill-delete-btn-${skill.name}`}
-                                        >
-                                            🗑
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            {expandedSkill === skill.name && (
-                                <SkillDetailPanel detail={skillDetail} loading={detailLoading} />
-                            )}
-                        </li>
+                            skill={skill}
+                            isExpanded={expandedSkill === skill.name}
+                            isEnabled={isSkillEnabled(skill.name)}
+                            detail={skillDetail}
+                            detailLoading={detailLoading}
+                            deleteConfirm={deleteConfirm === skill.name}
+                            onExpand={() => onExpandSkill(skill.name)}
+                            onToggle={(enabled) => onSkillToggle(skill.name, enabled)}
+                            onDelete={() => onDeleteSkill(skill.name)}
+                            onSetDeleteConfirm={(c) => onSetDeleteConfirm(c ? skill.name : null)}
+                            toggleDisabled={skillToggleSaving || skillsLoading}
+                            testIdPrefix="skill"
+                        />
                     ))}
                 </ul>
             )}

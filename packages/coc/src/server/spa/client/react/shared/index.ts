@@ -36,3 +36,5 @@ export { FilterDropdown } from './FilterDropdown';
 export type { FilterDropdownProps, FilterItem } from './FilterDropdown';
 export { SkillDetailPanel } from './SkillDetailPanel';
 export type { SkillDetailPanelProps, SkillInfo } from './SkillDetailPanel';
+export { SkillListItem } from './SkillListItem';
+export type { SkillListItemProps } from './SkillListItem';

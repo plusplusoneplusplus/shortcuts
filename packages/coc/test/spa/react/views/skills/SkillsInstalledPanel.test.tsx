@@ -68,7 +68,7 @@ describe('SkillsInstalledPanel', () => {
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
         await waitFor(() => {
-            expect(screen.getByTestId('skills-delete-btn-alpha')).toBeTruthy();
+            expect(screen.getByTestId('skills-installed-delete-btn-alpha')).toBeTruthy();
         });
     });
 
@@ -82,38 +82,48 @@ describe('SkillsInstalledPanel', () => {
         });
     });
 
-    it('calls DELETE fetch when delete is confirmed', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
+    it('calls DELETE fetch when delete is confirmed via two-step inline delete', async () => {
         (fetchApi as ReturnType<typeof vi.fn>)
             .mockResolvedValueOnce({ skills: [makeSkill('my-skill')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] })
             .mockResolvedValueOnce(undefined); // DELETE response
         render(<SkillsInstalledPanel />);
         await waitFor(() => {
-            expect(screen.getByTestId('skills-delete-btn-my-skill')).toBeTruthy();
+            expect(screen.getByTestId('skills-installed-delete-btn-my-skill')).toBeTruthy();
         });
-        fireEvent.click(screen.getByTestId('skills-delete-btn-my-skill'));
+        // Step 1: click delete button to show confirm
+        fireEvent.click(screen.getByTestId('skills-installed-delete-btn-my-skill'));
+        await waitFor(() => {
+            expect(screen.getByTestId('skills-installed-delete-confirm-my-skill')).toBeTruthy();
+        });
+        // Step 2: click Yes to confirm delete
+        fireEvent.click(screen.getByTestId('skills-installed-delete-confirm-my-skill'));
         await waitFor(() => {
             expect(fetchApi).toHaveBeenCalledWith(
                 expect.stringContaining('/skills/my-skill'),
                 expect.objectContaining({ method: 'DELETE' })
             );
         });
-        vi.unstubAllGlobals();
     });
 
-    it('does not call DELETE when confirm is cancelled', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => false));
+    it('does not call DELETE when delete is cancelled via No button', async () => {
         (fetchApi as ReturnType<typeof vi.fn>)
             .mockResolvedValueOnce({ skills: [makeSkill('my-skill')] })
             .mockResolvedValueOnce({ globalDisabledSkills: [] });
         render(<SkillsInstalledPanel />);
         await waitFor(() => {
-            expect(screen.getByTestId('skills-delete-btn-my-skill')).toBeTruthy();
+            expect(screen.getByTestId('skills-installed-delete-btn-my-skill')).toBeTruthy();
         });
-        fireEvent.click(screen.getByTestId('skills-delete-btn-my-skill'));
-        // fetchApi should only have been called for initial loads (2 times)
+        // Step 1: click delete button to show confirm
+        fireEvent.click(screen.getByTestId('skills-installed-delete-btn-my-skill'));
+        await waitFor(() => {
+            expect(screen.getByText('Delete?')).toBeTruthy();
+        });
+        // Step 2: click No to cancel
+        fireEvent.click(screen.getByText('No'));
+        // Should not have called DELETE — only initial loads (2 calls)
         expect(fetchApi).toHaveBeenCalledTimes(2);
-        vi.unstubAllGlobals();
+        // Delete confirm prompt should be gone
+        expect(screen.getByTestId('skills-installed-delete-btn-my-skill')).toBeTruthy();
     });
 });

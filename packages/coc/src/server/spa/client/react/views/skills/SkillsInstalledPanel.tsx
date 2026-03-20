@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchApi } from '../../hooks/useApi';
-import { SkillDetailPanel } from '../../shared';
+import { SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
 
 
@@ -16,6 +16,7 @@ export function SkillsInstalledPanel() {
     const [skillDetail, setSkillDetail] = useState<SkillInfo | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
+    const [deleteConfirmName, setDeleteConfirmName] = useState<string | null>(null);
 
     const loadSkills = useCallback(() => {
         setLoading(true);
@@ -69,10 +70,10 @@ export function SkillsInstalledPanel() {
     }, [disabledSkills]);
 
     const handleDeleteSkill = useCallback((name: string) => {
-        if (!confirm(`Delete global skill "${name}"?`)) return;
         fetchApi(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
             .then(() => {
                 setSkills(prev => prev.filter(s => s.name !== name));
+                setDeleteConfirmName(null);
                 if (expandedSkill === name) {
                     setExpandedSkill(null);
                     setSkillDetail(null);
@@ -97,60 +98,22 @@ export function SkillsInstalledPanel() {
         <div className="p-3">
             <div className="text-xs text-[#848484] mb-2">{skills.length} global skill(s) installed</div>
             <ul className="flex flex-col gap-2">
-                {skills.map(skill => {
-                    const isEnabled = !disabledSkills.includes(skill.name);
-                    const isExpanded = expandedSkill === skill.name;
-                    return (
-                        <li key={skill.name} className="border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#2d2d2d]" data-testid={`skills-installed-item-${skill.name}`}>
-                            <div className="flex items-start justify-between px-3 py-2">
-                                <div
-                                    className="flex-1 min-w-0 cursor-pointer"
-                                    onClick={() => handleExpandSkill(skill.name)}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]">
-                                            🧩 {skill.name}
-                                        </span>
-                                        {skill.version && (
-                                            <span className="text-[10px] bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#1a73e8] dark:text-[#8ab4f8] px-1.5 py-0.5 rounded">
-                                                v{skill.version}
-                                            </span>
-                                        )}
-                                        <span className="text-[10px] text-[#848484]">
-                                            {isExpanded ? '▼' : '▶'}
-                                        </span>
-                                    </div>
-                                    {skill.description && (
-                                        <div className="text-xs text-[#616161] dark:text-[#999] mt-0.5 truncate">
-                                            {skill.description}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-2 ml-2 shrink-0">
-                                    <label className="inline-flex items-center gap-1 text-xs cursor-pointer" title={isEnabled ? 'Enabled' : 'Disabled'}>
-                                        <input
-                                            type="checkbox"
-                                            checked={isEnabled}
-                                            onChange={(e) => handleToggleSkill(skill.name, e.target.checked)}
-                                            className="accent-[#0078d4]"
-                                        />
-                                    </label>
-                                    <button
-                                        onClick={() => handleDeleteSkill(skill.name)}
-                                        className="text-xs text-[#f14c4c] hover:text-[#d32f2f] px-1"
-                                        title="Delete skill"
-                                        data-testid={`skills-delete-btn-${skill.name}`}
-                                    >
-                                        🗑
-                                    </button>
-                                </div>
-                            </div>
-                            {isExpanded && (
-                                <SkillDetailPanel detail={skillDetail} loading={detailLoading} />
-                            )}
-                        </li>
-                    );
-                })}
+                {skills.map(skill => (
+                    <SkillListItem
+                        key={skill.name}
+                        skill={skill}
+                        isExpanded={expandedSkill === skill.name}
+                        isEnabled={!disabledSkills.includes(skill.name)}
+                        detail={skillDetail}
+                        detailLoading={detailLoading}
+                        deleteConfirm={deleteConfirmName === skill.name}
+                        onExpand={() => handleExpandSkill(skill.name)}
+                        onToggle={(enabled) => handleToggleSkill(skill.name, enabled)}
+                        onDelete={() => handleDeleteSkill(skill.name)}
+                        onSetDeleteConfirm={(c) => setDeleteConfirmName(c ? skill.name : null)}
+                        testIdPrefix="skills-installed"
+                    />
+                ))}
             </ul>
         </div>
     );
