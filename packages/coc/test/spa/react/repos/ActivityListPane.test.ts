@@ -479,6 +479,68 @@ describe('ActivityListPane pinned chats', () => {
         it('deleteChatDirect helper defined for bulk delete', () => {
             expect(source).toContain('deleteChatDirect');
         });
+
+        describe('summarize chats bulk action', () => {
+            it('bulk context menu shows Summarize N chats item', () => {
+                const bulkBlock = source.substring(
+                    source.indexOf('contextMenu.bulkIds'),
+                    source.indexOf('contextMenu.bulkIds') + 3000,
+                );
+                expect(bulkBlock).toContain('Summarize');
+                expect(bulkBlock).toContain('`Summarize ${ids.length} chats`');
+            });
+
+            it('summarize calls POST /queue/summarize', () => {
+                const bulkBlock = source.substring(
+                    source.indexOf('contextMenu.bulkIds'),
+                    source.indexOf('contextMenu.bulkIds') + 3000,
+                );
+                expect(bulkBlock).toContain("'/queue/summarize'");
+            });
+
+            it('summarize sends processIds and workspaceId in body', () => {
+                const bulkBlock = source.substring(
+                    source.indexOf('contextMenu.bulkIds'),
+                    source.indexOf('contextMenu.bulkIds') + 3000,
+                );
+                expect(bulkBlock).toContain('processIds: ids');
+                expect(bulkBlock).toContain('workspaceId');
+            });
+
+            it('summarize is capped at 20 items', () => {
+                const bulkBlock = source.substring(
+                    source.indexOf('contextMenu.bulkIds'),
+                    source.indexOf('contextMenu.bulkIds') + 3000,
+                );
+                expect(bulkBlock).toContain('ids.length <= 20');
+            });
+
+            it('summarize uses 📝 icon', () => {
+                const bulkBlock = source.substring(
+                    source.indexOf('contextMenu.bulkIds'),
+                    source.indexOf('contextMenu.bulkIds') + 3000,
+                );
+                expect(bulkBlock).toContain('📝');
+            });
+
+            it('summarize navigates to new task via onSelectTask', () => {
+                const bulkBlock = source.substring(
+                    source.indexOf('contextMenu.bulkIds'),
+                    source.indexOf('contextMenu.bulkIds') + 3000,
+                );
+                expect(bulkBlock).toContain('onSelectTask(data.task.id)');
+            });
+
+            it('useMemo deps include workspaceId, onSelectTask, fetchQueue', () => {
+                // Find the contextMenuItems useMemo dependency array
+                const depsIdx = source.indexOf('closeContextMenu, deleteChatDirect');
+                expect(depsIdx).toBeGreaterThan(-1);
+                const depsBlock = source.substring(depsIdx, depsIdx + 200);
+                expect(depsBlock).toContain('workspaceId');
+                expect(depsBlock).toContain('onSelectTask');
+                expect(depsBlock).toContain('fetchQueue');
+            });
+        });
     });
 
     describe('mark-all-read button mobile visibility', () => {

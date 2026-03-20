@@ -449,6 +449,27 @@ export function ActivityListPane({
                 ...(anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
                 ...(anyUnarchived && onArchiveChat   ? [{ label: 'Archive',   icon: '📦', onClick: () => { ids.forEach(id => onArchiveChat!(id));   closeContextMenu(); } }] : []),
                 ...(anyArchived  && onUnarchiveChat  ? [{ label: 'Unarchive', icon: '📤', onClick: () => { ids.forEach(id => onUnarchiveChat!(id)); closeContextMenu(); } }] : []),
+                ...(ids.length <= 20 ? [{
+                    label: `Summarize ${ids.length} chats`,
+                    icon: '📝',
+                    onClick: async () => {
+                        closeContextMenu();
+                        try {
+                            const res = await fetch(getApiBase() + '/queue/summarize', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ processIds: ids, workspaceId }),
+                            });
+                            if (res.ok) {
+                                const data = await res.json();
+                                if (data.task?.id) {
+                                    onSelectTask(data.task.id);
+                                    fetchQueue();
+                                }
+                            }
+                        } catch { /* network error — silently ignored, matches existing patterns */ }
+                    },
+                }] : []),
                 { label: '', icon: '', separator: true, onClick: () => {} },
                 { label: `Delete ${ids.length} chats…`, icon: '🗑', onClick: () => {
                     if (confirm(`Delete ${ids.length} chats? This cannot be undone.`)) {
@@ -496,7 +517,7 @@ export function ActivityListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, closeContextMenu, deleteChatDirect]);
+    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
