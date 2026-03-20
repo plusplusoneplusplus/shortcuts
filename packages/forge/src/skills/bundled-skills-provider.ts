@@ -27,6 +27,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'go-deep',
         description: 'Advanced research and verification methodologies using multi-phase approaches and parallel sub-agents',
         relativePath: 'go-deep'
+    },
+    {
+        name: 'summarize-chats',
+        description: 'Summarize CoC conversation process records, highlighting key topics, decisions, action items, and unresolved questions',
+        relativePath: 'summarize-chats'
     }
 ];
 
