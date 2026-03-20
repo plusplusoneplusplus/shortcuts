@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import { importData } from '../src/data-importer';
 import { DataWiper } from '../src/data-wiper';
@@ -232,19 +233,23 @@ describe('importData (coc-server)', () => {
 
         const result = await importData(payload, { store, dataDir, mode: 'replace', wiper });
         expect(result.importedScheduleFiles).toBe(1);
-        const schedulesFile = path.join(dataDir, 'repos', 'ws-abc', 'schedules.json');
+        const schedulesDir = path.join(dataDir, 'repos', 'ws-abc', 'schedules');
+        expect(fs.existsSync(schedulesDir)).toBe(true);
+        expect(fs.existsSync(path.join(schedulesDir, 's1.yaml'))).toBe(true);
+        const parsed = yaml.load(fs.readFileSync(path.join(schedulesDir, 's1.yaml'), 'utf-8'));
+        expect((parsed as any).id).toBe('s1');
+        // schedule-runs still JSON
         const runsFile = path.join(dataDir, 'repos', 'ws-abc', 'schedule-runs.json');
-        expect(fs.existsSync(schedulesFile)).toBe(true);
         expect(fs.existsSync(runsFile)).toBe(true);
-        expect(JSON.parse(fs.readFileSync(schedulesFile, 'utf-8'))).toHaveLength(1);
         expect(JSON.parse(fs.readFileSync(runsFile, 'utf-8'))).toHaveLength(1);
     });
 
     it('merge mode deduplicates schedules by id', async () => {
         // Pre-seed schedule files
         const repoDir = path.join(dataDir, 'repos', 'ws-abc');
-        fs.mkdirSync(repoDir, { recursive: true });
-        fs.writeFileSync(path.join(repoDir, 'schedules.json'), JSON.stringify([{ id: 's1', cron: '0 * * * *' }]));
+        const schedulesDir = path.join(repoDir, 'schedules');
+        fs.mkdirSync(schedulesDir, { recursive: true });
+        fs.writeFileSync(path.join(schedulesDir, 's1.yaml'), 'id: s1\ncron: "0 * * * *"\n');
         fs.writeFileSync(path.join(repoDir, 'schedule-runs.json'), JSON.stringify([{ id: 'r1' }]));
 
         const payload = makePayload({
@@ -259,10 +264,13 @@ describe('importData (coc-server)', () => {
 
         const result = await importData(payload, { store, dataDir, mode: 'merge', wiper });
         expect(result.importedScheduleFiles).toBe(1);
-        const schedules = JSON.parse(fs.readFileSync(path.join(repoDir, 'schedules.json'), 'utf-8'));
+        expect(fs.existsSync(path.join(schedulesDir, 's1.yaml'))).toBe(true);
+        expect(fs.existsSync(path.join(schedulesDir, 's2.yaml'))).toBe(true);
+        // Total 2 yaml files
+        const yamlFiles = fs.readdirSync(schedulesDir).filter(f => f.endsWith('.yaml'));
+        expect(yamlFiles).toHaveLength(2);
         const runs = JSON.parse(fs.readFileSync(path.join(repoDir, 'schedule-runs.json'), 'utf-8'));
-        // s1 not duplicated, s2 added
-        expect(schedules).toHaveLength(2);
+        // r1 not duplicated, r2 added
         expect(runs).toHaveLength(2);
     });
 

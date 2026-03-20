@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import type {
     CoCExportPayload,
     ImageBlobEntry,
@@ -437,7 +438,9 @@ function mergeRepoPreferences(dataDir: string, snapshots: RepoPreferencesSnapsho
 // ============================================================================
 
 /**
- * Write schedule files to disk (replace mode — overwrite).
+ * Write schedule YAML files to disk (replace mode — overwrite entire dir).
+ * Each element of `snap.schedules` is written to `schedules/<id>.yaml`.
+ * `schedule-runs.json` is written as a flat JSON array (unchanged).
  * Returns the number of repo schedule sets successfully written.
  */
 function writeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], errors: string[]): number {
@@ -445,9 +448,21 @@ function writeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], erro
     for (const snap of snapshots) {
         if (!snap.repoId) { continue; }
         try {
-            const schedulesPath = getRepoDataPath(dataDir, snap.repoId, 'schedules.json');
+            const schedulesDir = getRepoDataPath(dataDir, snap.repoId, 'schedules');
+            // Ensure dir exists
+            fs.mkdirSync(schedulesDir, { recursive: true });
+
+            // Write each schedule as its own YAML file
+            for (const schedule of snap.schedules) {
+                const id = (schedule as any)?.id;
+                if (!id) { continue; } // skip items without id
+                const filePath = path.join(schedulesDir, `${id}.yaml`);
+                const content = yaml.dump(schedule, { lineWidth: -1 });
+                fs.writeFileSync(filePath, content, 'utf-8');
+            }
+
+            // Write schedule-runs.json (unchanged format)
             const runsPath = getRepoDataPath(dataDir, snap.repoId, 'schedule-runs.json');
-            atomicWriteJson(schedulesPath, snap.schedules);
             atomicWriteJson(runsPath, snap.scheduleRuns);
             written++;
         } catch (err: any) {
@@ -458,7 +473,8 @@ function writeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], erro
 }
 
 /**
- * Merge schedule files — combine arrays, dedup by `id` field.
+ * Merge schedule YAML files — add only schedules whose `id` is not already
+ * present on disk. `schedule-runs.json` is merged by id (unchanged logic).
  * Returns the number of repo schedule sets successfully written.
  */
 function mergeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], errors: string[]): number {
@@ -466,17 +482,35 @@ function mergeScheduleFiles(dataDir: string, snapshots: ScheduleSnapshot[], erro
     for (const snap of snapshots) {
         if (!snap.repoId) { continue; }
         try {
-            const schedulesPath = getRepoDataPath(dataDir, snap.repoId, 'schedules.json');
+            const schedulesDir = getRepoDataPath(dataDir, snap.repoId, 'schedules');
+            fs.mkdirSync(schedulesDir, { recursive: true });
+
+            // Collect existing ids from YAML files on disk
+            const existingIds = new Set<string>();
+            if (fs.existsSync(schedulesDir)) {
+                for (const file of fs.readdirSync(schedulesDir).filter(f => f.endsWith('.yaml'))) {
+                    try {
+                        const raw = fs.readFileSync(path.join(schedulesDir, file), 'utf-8');
+                        const parsed = yaml.load(raw) as any;
+                        if (parsed?.id) { existingIds.add(parsed.id); }
+                    } catch { /* skip */ }
+                }
+            }
+
+            // Write only schedules with new ids
+            for (const schedule of snap.schedules) {
+                const id = (schedule as any)?.id;
+                if (!id || existingIds.has(id)) { continue; }
+                const filePath = path.join(schedulesDir, `${id}.yaml`);
+                const content = yaml.dump(schedule, { lineWidth: -1 });
+                fs.writeFileSync(filePath, content, 'utf-8');
+                existingIds.add(id);
+            }
+
+            // Merge schedule-runs.json (reuse existing mergeArraysById helper)
             const runsPath = getRepoDataPath(dataDir, snap.repoId, 'schedule-runs.json');
-
-            // Merge schedules
-            const mergedSchedules = mergeArraysById(schedulesPath, snap.schedules);
-            atomicWriteJson(schedulesPath, mergedSchedules);
-
-            // Merge schedule runs
             const mergedRuns = mergeArraysById(runsPath, snap.scheduleRuns);
             atomicWriteJson(runsPath, mergedRuns);
-
             written++;
         } catch (err: any) {
             errors.push(`Failed to merge schedule files for ${snap.repoId}: ${err.message}`);

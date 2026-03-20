@@ -144,10 +144,12 @@ describe('exportAllData (coc-server)', () => {
         expect(payload.metadata.repoPreferenceCount).toBe(1);
     });
 
-    it('includes schedule data from repos/*/schedules.json', async () => {
+    it('includes schedule data from repos/*/schedules/*.yaml', async () => {
         const repoDir = path.join(dataDir, 'repos', 'ws-abc');
         fs.mkdirSync(repoDir, { recursive: true });
-        writeJSON(path.join(repoDir, 'schedules.json'), [{ id: 's1', cron: '0 * * * *' }]);
+        const schedulesDir = path.join(repoDir, 'schedules');
+        fs.mkdirSync(schedulesDir, { recursive: true });
+        fs.writeFileSync(path.join(schedulesDir, 's1.yaml'), 'id: s1\ncron: "0 * * * *"\n');
         writeJSON(path.join(repoDir, 'schedule-runs.json'), [{ id: 'r1', scheduleId: 's1' }]);
 
         const payload = await exportAllData({ store, dataDir });
@@ -161,5 +163,20 @@ describe('exportAllData (coc-server)', () => {
     it('includes serverVersion when provided', async () => {
         const payload = await exportAllData({ store, dataDir, serverVersion: '1.2.3' });
         expect(payload.serverVersion).toBe('1.2.3');
+    });
+
+    it('includes multiple schedule yaml files from same repo', async () => {
+        const repoDir = path.join(dataDir, 'repos', 'ws-multi');
+        const schedulesDir = path.join(repoDir, 'schedules');
+        fs.mkdirSync(schedulesDir, { recursive: true });
+        fs.writeFileSync(path.join(schedulesDir, 's1.yaml'), 'id: s1\ncron: "0 * * * *"\n');
+        fs.writeFileSync(path.join(schedulesDir, 's2.yaml'), 'id: s2\ncron: "*/5 * * * *"\n');
+        writeJSON(path.join(repoDir, 'schedule-runs.json'), [{ id: 'r1', scheduleId: 's1' }]);
+
+        const payload = await exportAllData({ store, dataDir });
+        expect(payload.scheduleHistory).toHaveLength(1);
+        const snap = payload.scheduleHistory![0];
+        expect(snap.schedules).toHaveLength(2);
+        expect(snap.scheduleRuns).toHaveLength(1);
     });
 });

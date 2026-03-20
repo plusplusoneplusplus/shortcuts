@@ -100,14 +100,24 @@ export class DataWiper {
         const queueFiles: string[] = [];
         const scheduleFiles: string[] = [];
         const scheduleRunFiles: string[] = [];
+        const scheduleDirs: string[] = [];
         const gitOpsFiles: string[] = [];
         const repoPrefsFiles: string[] = [];
 
         for (const repoDir of repoDirs) {
             const qf = path.join(repoDir, 'queues.json');
             if (fs.existsSync(qf)) { queueFiles.push(qf); }
-            const sf = path.join(repoDir, 'schedules.json');
-            if (fs.existsSync(sf)) { scheduleFiles.push(sf); }
+            // Collect individual schedule YAML files
+            const schedulesDir = path.join(repoDir, 'schedules');
+            if (fs.existsSync(schedulesDir) && fs.statSync(schedulesDir).isDirectory()) {
+                const yamlFiles = fs.readdirSync(schedulesDir)
+                    .filter(f => f.endsWith('.yaml'))
+                    .map(f => path.join(schedulesDir, f));
+                scheduleFiles.push(...yamlFiles);
+                // Track the directory itself for later rmdir
+                scheduleDirs.push(schedulesDir);
+            }
+            // schedule-runs.json is still a flat JSON file — unchanged
             const srf = path.join(repoDir, 'schedule-runs.json');
             if (fs.existsSync(srf)) { scheduleRunFiles.push(srf); }
             const gf = path.join(repoDir, 'git-ops.json');
@@ -191,6 +201,17 @@ export class DataWiper {
                 fs.unlinkSync(prefsPath);
             } catch (err: any) {
                 result.errors.push(`Failed to delete preferences: ${err.message}`);
+            }
+        }
+
+        // Remove now-empty schedules/ directories
+        for (const dir of scheduleDirs) {
+            try {
+                if (fs.existsSync(dir)) {
+                    fs.rmSync(dir, { recursive: true, force: true });
+                }
+            } catch (err: any) {
+                result.errors.push(`Failed to delete schedules dir ${dir}: ${err.message}`);
             }
         }
 

@@ -10,6 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import type {
     CoCExportPayload,
     ExportOptions,
@@ -172,8 +173,8 @@ function readRepoPrefsFiles(dataDir: string): RepoPreferencesSnapshot[] {
 }
 
 /**
- * Read per-repo schedule data from `dataDir/repos/` subdirectories.
- * Each repo may have `schedules.json` and/or `schedule-runs.json`.
+ * Read per-repo schedule data from `dataDir/repos/<id>/schedules/*.yaml`.
+ * Also reads `schedule-runs.json` (unchanged JSON format).
  * Corrupt or missing files are silently skipped.
  */
 function readScheduleFiles(dataDir: string): ScheduleSnapshot[] {
@@ -182,16 +183,17 @@ function readScheduleFiles(dataDir: string): ScheduleSnapshot[] {
     const snapshots: ScheduleSnapshot[] = [];
 
     for (const repoDir of repoDirs) {
-        const schedulesPath = path.join(repoDir, 'schedules.json');
+        const schedulesDir = path.join(repoDir, 'schedules');
         const runsPath = path.join(repoDir, 'schedule-runs.json');
 
-        const hasSchedules = fs.existsSync(schedulesPath);
+        const hasSchedulesDir =
+            fs.existsSync(schedulesDir) && fs.statSync(schedulesDir).isDirectory();
         const hasRuns = fs.existsSync(runsPath);
-        if (!hasSchedules && !hasRuns) { continue; }
+        if (!hasSchedulesDir && !hasRuns) { continue; }
 
         const repoId = path.basename(repoDir);
 
-        // Try to extract repoRootPath from sibling queues.json
+        // Try to extract repoRootPath from sibling queues.json (unchanged)
         let repoRootPath = '';
         const queueFile = path.join(repoDir, 'queues.json');
         try {
@@ -201,15 +203,25 @@ function readScheduleFiles(dataDir: string): ScheduleSnapshot[] {
             }
         } catch { /* ignore */ }
 
-        let schedules: unknown[] = [];
-        let scheduleRuns: unknown[] = [];
-
-        if (hasSchedules) {
-            try {
-                const raw = JSON.parse(fs.readFileSync(schedulesPath, 'utf-8'));
-                schedules = Array.isArray(raw) ? raw : [];
-            } catch { /* skip corrupt */ }
+        // Read schedule YAML files
+        const schedules: unknown[] = [];
+        if (hasSchedulesDir) {
+            const yamlFiles = fs.readdirSync(schedulesDir)
+                .filter(f => f.endsWith('.yaml'))
+                .sort(); // deterministic order
+            for (const file of yamlFiles) {
+                try {
+                    const raw = fs.readFileSync(path.join(schedulesDir, file), 'utf-8');
+                    const parsed = yaml.load(raw);
+                    if (parsed && typeof parsed === 'object') {
+                        schedules.push(parsed);
+                    }
+                } catch { /* skip corrupt */ }
+            }
         }
+
+        // Read schedule runs (still JSON)
+        let scheduleRuns: unknown[] = [];
         if (hasRuns) {
             try {
                 const raw = JSON.parse(fs.readFileSync(runsPath, 'utf-8'));
@@ -217,7 +229,10 @@ function readScheduleFiles(dataDir: string): ScheduleSnapshot[] {
             } catch { /* skip corrupt */ }
         }
 
-        snapshots.push({ repoId, repoRootPath, schedules, scheduleRuns });
+        // Only add snapshot if there is any data
+        if (schedules.length > 0 || scheduleRuns.length > 0) {
+            snapshots.push({ repoId, repoRootPath, schedules, scheduleRuns });
+        }
     }
 
     return snapshots;

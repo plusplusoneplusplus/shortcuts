@@ -62,7 +62,9 @@ describe('DataWiper', () => {
         fs.mkdirSync(repoDefDir, { recursive: true });
         fs.writeFileSync(path.join(repoAbcDir, 'queues.json'), '{}');
         fs.writeFileSync(path.join(repoDefDir, 'queues.json'), '{}');
-        fs.writeFileSync(path.join(repoAbcDir, 'schedules.json'), '[]');
+        fs.mkdirSync(path.join(repoAbcDir, 'schedules'), { recursive: true });
+        fs.writeFileSync(path.join(repoAbcDir, 'schedules', 's1.yaml'), 'id: s1\ncron: "0 * * * *"\n');
+        fs.writeFileSync(path.join(repoAbcDir, 'schedules', 's2.yaml'), 'id: s2\ncron: "*/5 * * * *"\n');
         fs.writeFileSync(path.join(repoAbcDir, 'schedule-runs.json'), '[]');
         fs.writeFileSync(path.join(repoDefDir, 'git-ops.json'), '{}');
         fs.writeFileSync(path.join(repoAbcDir, 'preferences.json'), '{}');
@@ -81,13 +83,14 @@ describe('DataWiper', () => {
 
         expect(result.deletedProcesses).toBe(3);
         expect(result.deletedQueues).toBe(2);
-        expect(result.deletedSchedules).toBe(2); // 1 schedules.json + 1 schedule-runs.json
+        expect(result.deletedSchedules).toBe(3); // 2 yaml files + 1 schedule-runs.json
         expect(result.deletedGitOps).toBe(1);
         expect(result.deletedRepoPreferences).toBe(1);
         expect(result.deletedPreferences).toBe(true);
 
         // Files should not be deleted in dry-run
         expect(fs.existsSync(path.join(repoAbcDir, 'queues.json'))).toBe(true);
+        expect(fs.existsSync(path.join(repoAbcDir, 'schedules'))).toBe(true);
         expect(fs.existsSync(path.join(blobsDir, 'task1.images.json'))).toBe(true);
         expect(fs.existsSync(path.join(tmpDir, 'preferences.json'))).toBe(true);
     });
@@ -96,7 +99,9 @@ describe('DataWiper', () => {
         const repoXyzDir = path.join(tmpDir, 'repos', 'xyz');
         fs.mkdirSync(repoXyzDir, { recursive: true });
         fs.writeFileSync(path.join(repoXyzDir, 'queues.json'), '{}');
-        fs.writeFileSync(path.join(repoXyzDir, 'schedules.json'), '[]');
+        const schedulesDir = path.join(repoXyzDir, 'schedules');
+        fs.mkdirSync(schedulesDir, { recursive: true });
+        fs.writeFileSync(path.join(schedulesDir, 's1.yaml'), 'id: s1\n');
         fs.writeFileSync(path.join(repoXyzDir, 'schedule-runs.json'), '[]');
         fs.writeFileSync(path.join(repoXyzDir, 'git-ops.json'), '{}');
         fs.writeFileSync(path.join(repoXyzDir, 'preferences.json'), '{}');
@@ -113,7 +118,7 @@ describe('DataWiper', () => {
 
         expect(result.errors).toHaveLength(0);
         expect(fs.existsSync(path.join(repoXyzDir, 'queues.json'))).toBe(false);
-        expect(fs.existsSync(path.join(repoXyzDir, 'schedules.json'))).toBe(false);
+        expect(fs.existsSync(schedulesDir)).toBe(false);
         expect(fs.existsSync(path.join(repoXyzDir, 'schedule-runs.json'))).toBe(false);
         expect(fs.existsSync(path.join(repoXyzDir, 'git-ops.json'))).toBe(false);
         expect(fs.existsSync(path.join(repoXyzDir, 'preferences.json'))).toBe(false);
@@ -161,5 +166,24 @@ describe('DataWiper', () => {
         expect(result.deletedGitOps).toBe(0);
         expect(result.deletedRepoPreferences).toBe(0);
         expect(result.deletedPreferences).toBe(false);
+    });
+
+    it('wipeData deletes schedules/ directory and all yaml files inside', async () => {
+        const repoDir = path.join(tmpDir, 'repos', 'repo1');
+        const schedDir = path.join(repoDir, 'schedules');
+        fs.mkdirSync(schedDir, { recursive: true });
+        fs.writeFileSync(path.join(schedDir, 'sched-a.yaml'), 'id: sched-a\n');
+        fs.writeFileSync(path.join(schedDir, 'sched-b.yaml'), 'id: sched-b\n');
+        fs.writeFileSync(path.join(repoDir, 'schedule-runs.json'), '[]');
+
+        const store = createMockStore();
+        const wiper = new DataWiper(tmpDir, store);
+        const result = await wiper.wipeData({ includeWikis: false });
+
+        expect(result.errors).toHaveLength(0);
+        // 2 yaml files + 1 schedule-runs.json
+        expect(result.deletedSchedules).toBe(3);
+        expect(fs.existsSync(schedDir)).toBe(false);
+        expect(fs.existsSync(path.join(repoDir, 'schedule-runs.json'))).toBe(false);
     });
 });
