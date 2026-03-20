@@ -14,7 +14,7 @@ import * as crypto from 'crypto';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
 import { getErrorMessage } from '@plusplusoneplusplus/coc-server';
-import { SchedulePersistence } from './schedule-persistence';
+import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 import type { ScheduleRunPersistence } from './schedule-run-persistence';
 import { loadRepoSchedules, getRepoScheduleDir } from './repo-schedule-loader';
 import type { RepoScheduleOverrideStore } from './repo-schedule-overrides';
@@ -246,14 +246,14 @@ export class ScheduleManager extends EventEmitter {
     // debounce timers for file watch events
     private readonly watchDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
     // Dependencies
-    private readonly persistence: SchedulePersistence;
+    private readonly persistence: ScheduleYamlPersistence;
     private readonly queueManager: TaskQueueManager | null;
     private runPersistence: ScheduleRunPersistence | null = null;
     private readonly overrideStore: RepoScheduleOverrideStore | null;
     private disposed = false;
 
     constructor(
-        persistence: SchedulePersistence,
+        persistence: ScheduleYamlPersistence,
         queueManager: TaskQueueManager | null = null,
         overrideStore: RepoScheduleOverrideStore | null = null,
     ) {

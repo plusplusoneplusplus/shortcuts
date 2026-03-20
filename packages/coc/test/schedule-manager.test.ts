@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { ScheduleManager, parseCron, nextCronTime, describeCron } from '../src/server/schedule-manager';
-import { SchedulePersistence } from '../src/server/schedule-persistence';
+import { ScheduleYamlPersistence } from '../src/server/schedule-yaml-persistence';
 
 // ============================================================================
 // Helpers
@@ -164,12 +164,12 @@ describe('describeCron', () => {
 
 describe('ScheduleManager', () => {
     let dataDir: string;
-    let persistence: SchedulePersistence;
+    let persistence: ScheduleYamlPersistence;
     let manager: ScheduleManager;
 
     beforeEach(() => {
         dataDir = createTempDir();
-        persistence = new SchedulePersistence(dataDir);
+        persistence = new ScheduleYamlPersistence(dataDir);
         manager = new ScheduleManager(persistence);
     });
 
@@ -206,6 +206,12 @@ describe('ScheduleManager', () => {
                 status: 'active',
             });
 
+            // YAML backend: one file per schedule under schedules/
+            const schedDir = path.join(dataDir, 'repos', REPO_ID, 'schedules');
+            const yamlFiles = fs.readdirSync(schedDir).filter(f => f.endsWith('.yaml'));
+            expect(yamlFiles).toHaveLength(1);
+
+            // loadAll() still returns the schedule
             const loaded = persistence.loadAll();
             expect(loaded.get(REPO_ID)).toHaveLength(1);
             expect(loaded.get(REPO_ID)![0].name).toBe('Persistent');
