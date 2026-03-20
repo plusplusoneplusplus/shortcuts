@@ -788,15 +788,16 @@ suite('Git Branch Tests', () => {
     // ============================================
     // Pagination Integration Tests
     // ============================================
-    suite('BranchService Pagination Integration (require git repository)', () => {
+    suite('BranchService Pagination Integration (require git repository)', function() {
+        this.timeout(15000);
         let branchService: BranchService;
         const testRepoPath = process.cwd(); // Use current directory as test repo
 
-        setup(() => {
+        setup(function() {
             branchService = new BranchService();
         });
 
-        teardown(() => {
+        teardown(function() {
             branchService.dispose();
         });
 

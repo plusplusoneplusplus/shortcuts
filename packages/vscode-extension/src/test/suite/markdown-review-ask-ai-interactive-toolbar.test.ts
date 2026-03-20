@@ -11,7 +11,7 @@ suite('Markdown Review Ask AI Interactive Toolbar Tests', () => {
     function readWebviewContentSource(): string {
         const sourcePath = path.resolve(
             __dirname,
-            '../../../src/shortcuts/markdown-comments/webview-content.ts'
+            '../../../packages/vscode-extension/src/shortcuts/markdown-comments/webview-content.ts'
         );
         return fs.readFileSync(sourcePath, 'utf8');
     }
