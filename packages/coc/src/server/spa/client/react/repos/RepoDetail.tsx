@@ -289,20 +289,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                             >
                                                 ✨ Generate Plan
                                             </button>
-                                            <button
-                                                className="w-full text-left px-4 py-3 text-sm hover:bg-[#0078d4]/10 text-[#1e1e1e] dark:text-[#cccccc]"
-                                                data-testid="repo-more-edit"
-                                                onClick={() => { setMoreMenuOpen(false); setEditOpen(true); }}
-                                            >
-                                                Edit
-                                            </button>
-                                            <button
-                                                className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-500/10"
-                                                data-testid="repo-more-remove"
-                                                onClick={() => { setMoreMenuOpen(false); handleRemove(); }}
-                                            >
-                                                Remove
-                                            </button>
+
                                         </div>
                                     </BottomSheet>
                                 )}
@@ -437,8 +424,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#0078d4] border-2 border-white dark:border-[#252526]" />
                                 )}
                             </Button>
-                            <Button variant="secondary" size="sm" id="repo-edit-btn" data-testid="repo-edit-btn" onClick={() => setEditOpen(true)}>Edit</Button>
-                            <Button variant="danger" size="sm" id="repo-remove-btn" data-testid="repo-remove-btn" onClick={handleRemove}>Remove</Button>
+
                         </div>
                     </>
                 )}
