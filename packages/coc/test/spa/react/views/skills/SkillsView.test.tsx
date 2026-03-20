@@ -64,7 +64,7 @@ describe('SkillsView', () => {
         );
     });
 
-    it('active tab button has highlighted border-b class', () => {
+    it('active tab button has highlighted left-border class', () => {
         (useApp as ReturnType<typeof vi.fn>).mockReturnValue(makeAppState('bundled'));
         render(<SkillsView />);
         const bundledBtn = screen.getAllByRole('button').find(b => b.textContent === 'Bundled')!;

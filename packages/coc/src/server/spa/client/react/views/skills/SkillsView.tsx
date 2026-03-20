@@ -28,17 +28,17 @@ export function SkillsView() {
     }, [dispatch]);
 
     return (
-        <div id="view-skills" className="flex flex-col h-full overflow-hidden">
-            {/* Sub-tab bar */}
-            <div className="flex items-center gap-1 px-3 pt-2 pb-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]">
+        <div id="view-skills" className="flex h-full overflow-hidden">
+            {/* Left tab sidebar */}
+            <div className="flex flex-col flex-shrink-0 w-36 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] py-2">
                 {SUB_TABS.map(({ id, label }) => (
                     <button
                         key={id}
                         className={cn(
-                            'h-8 px-3 rounded-t text-sm transition-colors border-b-2',
+                            'text-left px-4 py-2 text-sm transition-colors border-l-2',
                             activeSubTab === id
-                                ? 'border-[#0078d4] text-[#0078d4] font-medium'
-                                : 'border-transparent text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                                ? 'border-[#0078d4] text-[#0078d4] font-medium bg-white dark:bg-[#1e1e1e]'
+                                : 'border-transparent text-[#616161] dark:text-[#999999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a]',
                         )}
                         data-subtab={id}
                         onClick={() => switchSubTab(id)}
@@ -48,8 +48,8 @@ export function SkillsView() {
                 ))}
             </div>
 
-            {/* Sub-tab content */}
-            <div className="flex-1 overflow-auto">
+            {/* Right content area */}
+            <div className="flex-1 min-w-0 overflow-auto">
                 {activeSubTab === 'installed' && <SkillsInstalledPanel />}
                 {activeSubTab === 'bundled' && <SkillsBundledPanel />}
                 {activeSubTab === 'config' && <SkillsConfigPanel />}
