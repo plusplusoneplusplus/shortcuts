@@ -382,6 +382,24 @@ describe('RepoTreeService.listDirectory — gitignore integration', () => {
         expect(names).toContain('.gitignore');
     });
 
+    it('filters gitignored files (not just directories)', async () => {
+        if (!gitAvailable) return;
+
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), '*.log\ndist/\n');
+        fs.writeFileSync(path.join(repoDir, 'app.log'), 'log content');
+        fs.writeFileSync(path.join(repoDir, 'main.ts'), '');
+        fs.mkdirSync(path.join(repoDir, 'dist'));
+
+        const result = await service.listDirectory(REPO_ID, '.');
+        const names = result.entries.map(e => e.name);
+        expect(names).not.toContain('app.log');
+        expect(names).not.toContain('dist');
+        expect(names).toContain('main.ts');
+        expect(names).toContain('.gitignore');
+    });
+
     it('includes all entries when showIgnored is true', async () => {
         if (!gitAvailable) return;
 
@@ -396,6 +414,24 @@ describe('RepoTreeService.listDirectory — gitignore integration', () => {
         const names = result.entries.map(e => e.name);
         expect(names).toContain('dist');
         expect(names).toContain('src');
+    });
+});
+
+describe('RepoTreeService.listFilesRecursive — gitignore walk fallback', () => {
+    it('filters gitignored files in walk fallback (subdirectory path)', async () => {
+        if (!isGitAvailable()) return;
+
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), '*.log\n');
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), '');
+        fs.writeFileSync(path.join(repoDir, 'src', 'debug.log'), 'log');
+
+        // Scoped to subdirectory so rg fast-path is skipped and walk is used
+        const result = await service.listFilesRecursive(REPO_ID, 'src');
+        expect(result.files).toContain('src/index.ts');
+        expect(result.files).not.toContain('src/debug.log');
     });
 });
 

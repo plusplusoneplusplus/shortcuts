@@ -120,16 +120,45 @@ function assertInsideRepo(repoRoot: string, resolvedPath: string): void {
 }
 
 /**
- * Runs `git check-ignore --stdin` to determine which entries are gitignored.
+ * Spawns `git check-ignore --stdin` asynchronously and returns stdout.
+ * Resolves to empty string on error or timeout.
+ */
+function spawnGitCheckIgnore(repoRoot: string, input: string): Promise<string> {
+    return new Promise<string>((resolve) => {
+        let stdout = '';
+        let settled = false;
+        const settle = () => {
+            if (!settled) {
+                settled = true;
+                clearTimeout(timer);
+                resolve(stdout);
+            }
+        };
+        const child = childProcess.spawn('git', ['check-ignore', '--stdin'], {
+            cwd: repoRoot,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
+        child.stdin.on('error', () => {}); // ignore broken pipe errors
+        child.stdin.write(input, 'utf-8');
+        child.stdin.end();
+        const timer = setTimeout(() => { try { child.kill(); } catch {} settle(); }, 5000);
+        child.on('close', settle);
+        child.on('error', settle);
+    });
+}
+
+/**
+ * Runs `git check-ignore --stdin` asynchronously to determine which entries are gitignored.
  * Accepts entries as { name, isDir } pairs relative to `dirPath`.
  * Returns a Set of entry names that are ignored.
  * Falls back to an empty set if git is unavailable or the directory is not a git repo.
  */
-function getGitIgnoredNames(
+async function getGitIgnoredNames(
     repoRoot: string,
     dirPath: string,
     entries: Array<{ name: string; isDir: boolean }>,
-): Set<string> {
+): Promise<Set<string>> {
     if (entries.length === 0) return new Set();
     try {
         // Build relative paths from repoRoot, using forward slashes.
@@ -143,13 +172,7 @@ function getGitIgnoredNames(
             nameByLine.push(entry.name);
         }
         const input = lines.join('\n') + '\n';
-        const stdout = childProcess.execSync('git check-ignore --stdin', {
-            input,
-            cwd: repoRoot,
-            encoding: 'utf-8',
-            timeout: 5000,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
+        const stdout = await spawnGitCheckIgnore(repoRoot, input);
         // Parse output — each ignored line corresponds to the input path.
         // git outputs the matched paths (with possible trailing '/').
         const ignoredPaths = new Set<string>();
@@ -187,6 +210,67 @@ export class RepoTreeService {
             RepoTreeService.rgAvailable = false;
         }
         return RepoTreeService.rgAvailable;
+    }
+
+    /**
+     * Uses `rg --files --hidden --max-depth 1` to determine which file entries are gitignored.
+     * rg natively respects .gitignore, so files absent from its output are ignored.
+     * Directories are not handled here (rg --files never lists them).
+     * Returns null if rg is unavailable or encounters an error (caller should fall back).
+     */
+    private static async getIgnoredNamesViaRipgrep(
+        absPath: string,
+        entries: Array<{ name: string; isDir: boolean }>,
+    ): Promise<Set<string> | null> {
+        const available = await RepoTreeService.checkRipgrepAvailable();
+        if (!available) return null;
+        try {
+            const result = await execFileAsync('rg', ['--files', '--hidden', '--max-depth', '1', '--', absPath], {
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024,
+            });
+            const listedFiles = new Set(
+                result.stdout.split('\n')
+                    .map((l: string) => path.basename(l.trim()))
+                    .filter(Boolean),
+            );
+            // Anything not listed by rg is a gitignored file
+            const ignoredNames = new Set<string>();
+            for (const entry of entries) {
+                if (!entry.isDir && !listedFiles.has(entry.name)) {
+                    ignoredNames.add(entry.name);
+                }
+            }
+            return ignoredNames;
+        } catch (err: any) {
+            if (err.code === 1) return new Set(); // no files found — nothing ignored
+            return null; // rg error → fall back
+        }
+    }
+
+    /**
+     * Returns the set of entry names that should be hidden from directory listings.
+     * Primary path: rg for files (non-blocking) + async git check-ignore for dirs.
+     * Fallback: async git check-ignore for all entries when rg is unavailable.
+     */
+    private static async getIgnoredNames(
+        repoRoot: string,
+        absPath: string,
+        entries: Array<{ name: string; isDir: boolean }>,
+    ): Promise<Set<string>> {
+        if (entries.length === 0) return new Set();
+        const dirEntries = entries.filter(e => e.isDir);
+
+        const rgResult = await RepoTreeService.getIgnoredNamesViaRipgrep(absPath, entries);
+        if (rgResult === null) {
+            // rg unavailable — fall back to async git check-ignore for everything
+            return getGitIgnoredNames(repoRoot, absPath, entries);
+        }
+        // rg available — handle dirs via async git check-ignore, files already covered by rg
+        const dirIgnored = dirEntries.length > 0
+            ? await getGitIgnoredNames(repoRoot, absPath, dirEntries)
+            : new Set<string>();
+        return new Set([...rgResult, ...dirIgnored]);
     }
 
     private async listFilesWithRipgrep(
@@ -308,7 +392,7 @@ export class RepoTreeService {
         let filteredEntries = resolvedEntries;
         if (!showIgnored) {
             const entryInfos = resolvedEntries.map(e => ({ name: e.dirent.name, isDir: e.isDir }));
-            const ignoredNames = getGitIgnoredNames(repoRoot, absPath, entryInfos);
+            const ignoredNames = await RepoTreeService.getIgnoredNames(repoRoot, absPath, entryInfos);
             if (ignoredNames.size > 0) {
                 filteredEntries = resolvedEntries.filter(e => !ignoredNames.has(e.dirent.name));
             }
@@ -437,7 +521,7 @@ export class RepoTreeService {
             let filtered = resolved;
             if (!showIgnored) {
                 const entryInfos = resolved.map(e => ({ name: e.name, isDir: e.isDir }));
-                const ignoredNames = getGitIgnoredNames(repoRoot, dir, entryInfos);
+                const ignoredNames = await RepoTreeService.getIgnoredNames(repoRoot, dir, entryInfos);
                 if (ignoredNames.size > 0) {
                     filtered = resolved.filter(e => !ignoredNames.has(e.name));
                 }
