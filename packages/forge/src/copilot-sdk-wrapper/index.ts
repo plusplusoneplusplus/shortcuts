@@ -25,6 +25,8 @@ export {
     // Agent mode types
     AgentMode,
     DeliveryMode,
+    // Reasoning effort
+    ReasoningEffort,
     // Permission types
     PermissionRequest,
     PermissionRequestResult,

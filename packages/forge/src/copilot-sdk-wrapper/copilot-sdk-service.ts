@@ -26,6 +26,7 @@ import {
     Attachment,
     DeliveryMode,
     MCPServerConfig,
+    ReasoningEffort,
     SendMessageOptions,
     SystemMessageConfig,
     TokenUsage,
@@ -47,6 +48,7 @@ export {
     MCPRemoteServerConfig,
     MCPServerConfig,
     MCPControlOptions,
+    ReasoningEffort,
     SendMessageOptions,
     TokenUsage,
     SDKInvocationResult,
@@ -106,6 +108,8 @@ interface ISessionOptions {
     disabledSkills?: string[];
     /** System message configuration */
     systemMessage?: SystemMessageConfig;
+    /** Reasoning effort for models that support extended thinking */
+    reasoningEffort?: ReasoningEffort;
 }
 
 /**
@@ -523,6 +527,9 @@ export class CopilotSDKService {
             }
             if (options.systemMessage) {
                 sessionOptions.systemMessage = options.systemMessage;
+            }
+            if (options.reasoningEffort) {
+                sessionOptions.reasoningEffort = options.reasoningEffort;
             }
 
             // MCP control options (tool filtering)

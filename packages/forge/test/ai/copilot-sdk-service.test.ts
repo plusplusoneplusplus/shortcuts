@@ -2680,6 +2680,80 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
 });
 
 // ============================================================================
+// reasoningEffort session option forwarding
+// ============================================================================
+
+describe('CopilotSDKService - reasoningEffort session option', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('forwards reasoningEffort to createSession when provided', async () => {
+        const { MockCopilotClient, sessions, mockClient } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            loadDefaultMcpConfig: false,
+            reasoningEffort: 'high',
+        });
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+        dispatchEvent({ type: 'assistant.message', data: { content: 'reply', messageId: 'm1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const sessionOptions = mockClient.createSession.mock.calls[0][0];
+        expect(sessionOptions.reasoningEffort).toBe('high');
+    });
+
+    it('does not set reasoningEffort on session when not provided', async () => {
+        const { MockCopilotClient, sessions, mockClient } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'test',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            loadDefaultMcpConfig: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+        dispatchEvent({ type: 'assistant.message', data: { content: 'reply', messageId: 'm2' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const sessionOptions = mockClient.createSession.mock.calls[0][0];
+        expect(sessionOptions.reasoningEffort).toBeUndefined();
+    });
+});
+
+// ============================================================================
 // listModels() Tests
 // ============================================================================
 

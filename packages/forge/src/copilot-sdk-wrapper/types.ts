@@ -388,6 +388,12 @@ export interface SendMessageOptions {
     mode?: AgentMode;
 
     /**
+     * Reasoning effort level for models that support extended thinking (e.g. o-series, claude-3-7-sonnet).
+     * The SDK silently ignores this field for models that do not support it.
+     */
+    reasoningEffort?: ReasoningEffort;
+
+    /**
      * Controls when the message is dispatched.
      * Defaults to `'immediate'` when omitted.
      */
@@ -425,6 +431,12 @@ export interface ToolEvent {
  * - `autopilot`: AI executes autonomously
  */
 export type AgentMode = 'interactive' | 'plan' | 'autopilot';
+
+/**
+ * Reasoning effort level for models that support extended thinking.
+ * Mirrors the SDK's own type — defined locally to avoid a direct type dependency on @github/copilot-sdk.
+ */
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 /**
  * Controls when a message is dispatched to the Copilot session.
