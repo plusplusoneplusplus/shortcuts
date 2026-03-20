@@ -15,7 +15,14 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { getRepoDataPath } from '@plusplusoneplusplus/coc-server';
 import type { ScheduleEntry } from './schedule-manager';
-import type { PersistedScheduleState } from './schedule-persistence';
+
+/** Shape of the legacy JSON persistence file used by the old SchedulePersistence class. */
+interface PersistedScheduleState {
+    version: number;
+    savedAt: string;
+    repoId: string;
+    schedules: ScheduleEntry[];
+}
 
 // ============================================================================
 // Helpers
@@ -182,7 +189,6 @@ export class ScheduleYamlPersistence {
      * Scans every repo directory under `dataDir/repos/` for a legacy
      * `schedules.json` file.  For each one found:
      *   1. Parse the JSON and apply the same v1/v2/v3 migrations that
-     *      SchedulePersistence.loadAll() would apply.
      *   2. Write each schedule entry as a YAML file via saveSchedule().
      *   3. Only after all writes succeed, delete `schedules.json`.
      *
@@ -204,7 +210,7 @@ export class ScheduleYamlPersistence {
                 const raw = fs.readFileSync(jsonPath, 'utf-8');
                 const state = JSON.parse(raw) as PersistedScheduleState;
 
-                // Apply same forward-migrations as SchedulePersistence.loadAll()
+                // Apply same forward-migrations as the legacy JSON persistence class
                 const entries: ScheduleEntry[] = state.schedules ?? [];
                 if (state.version === 1) {
                     for (const s of entries) {

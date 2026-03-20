@@ -15,7 +15,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import { ScheduleManager } from '../../src/server/schedule-manager';
-import { SchedulePersistence } from '../../src/server/schedule-persistence';
+import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
 import { ScheduleRunPersistence } from '../../src/server/schedule-run-persistence';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
@@ -69,7 +69,7 @@ function postJSON(url: string, data: unknown) {
 
 describe('Two Schedules With Same Cron (Section 4)', () => {
     let dataDir: string;
-    let persistence: SchedulePersistence;
+    let persistence: ScheduleYamlPersistence;
     let runPersistence: ScheduleRunPersistence;
     let manager: ScheduleManager;
 
@@ -77,7 +77,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
 
     beforeEach(() => {
         dataDir = createTempDir();
-        persistence = new SchedulePersistence(dataDir);
+        persistence = new ScheduleYamlPersistence(dataDir);
         runPersistence = new ScheduleRunPersistence(dataDir);
     });
 

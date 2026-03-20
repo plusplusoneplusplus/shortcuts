@@ -44,7 +44,6 @@ import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { defaultIsExclusive } from './queue-executor-bridge';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
-import { SchedulePersistence } from './schedule-persistence';
 import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 import { ScheduleRunPersistence } from './schedule-run-persistence';
 import { ScheduleManager } from './schedule-manager';
@@ -677,10 +676,8 @@ export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments
 export type { DiffCommentsStorage } from './diff-comments-handler';
 export { registerAdminRoutes, resetWipeToken, DataWiper } from '@plusplusoneplusplus/coc-server';
 export type { AdminRouteOptions, WipeOptions, WipeResult } from '@plusplusoneplusplus/coc-server';
-export { SchedulePersistence, getRepoScheduleFilePath } from './schedule-persistence';
 export { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 export { ScheduleRunPersistence } from './schedule-run-persistence';
-export type { PersistedScheduleState } from './schedule-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
 export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule-manager';
 export { registerScheduleRoutes } from './schedule-handler';

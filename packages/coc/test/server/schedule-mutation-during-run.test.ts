@@ -22,7 +22,7 @@ import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import { ScheduleManager } from '../../src/server/schedule-manager';
-import { SchedulePersistence } from '../../src/server/schedule-persistence';
+import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
 import { ScheduleRunPersistence } from '../../src/server/schedule-run-persistence';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
@@ -93,7 +93,7 @@ function makeSchedule(overrides: Record<string, any> = {}) {
 
 describe('Schedule Modified While Running (Section 2)', () => {
     let dataDir: string;
-    let persistence: SchedulePersistence;
+    let persistence: ScheduleYamlPersistence;
     let runPersistence: ScheduleRunPersistence;
     let manager: ScheduleManager;
 
@@ -101,7 +101,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
 
     beforeEach(() => {
         dataDir = createTempDir();
-        persistence = new SchedulePersistence(dataDir);
+        persistence = new ScheduleYamlPersistence(dataDir);
         runPersistence = new ScheduleRunPersistence(dataDir);
     });
 

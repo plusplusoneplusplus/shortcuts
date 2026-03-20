@@ -104,7 +104,6 @@ src/
 │   ├── stale-task-detector.ts    # Detects and flags stale tasks
 │   ├── schedule-handler.ts       # Scheduled execution API
 │   ├── schedule-manager.ts       # Schedule lifecycle management
-│   ├── schedule-persistence.ts   # Persistent schedule storage — ~/.coc/schedules/repo-<workspaceId>.json
 │   ├── task-root-resolver.ts     # Resolves task root path from workspaceId (requires workspaceId in TaskRootOptions)
 │   ├── process-resume-handler.ts # Resume interrupted processes
 │   ├── prompt-handler.ts         # Prompt management API

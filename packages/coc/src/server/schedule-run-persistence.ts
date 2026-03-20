@@ -2,7 +2,7 @@
  * ScheduleRunPersistence
  *
  * Stores schedule run history per repository to disk.
- * Uses the same atomic-write + per-repo file pattern as SchedulePersistence.
+ * Uses the same atomic-write + per-repo file pattern as ScheduleYamlPersistence.
  *
  * Storage layout:
  *   ~/.coc/repos/<repoId>/schedule-runs.json

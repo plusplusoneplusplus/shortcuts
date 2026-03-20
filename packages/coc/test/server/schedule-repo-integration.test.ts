@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { ScheduleManager } from '../../src/server/schedule-manager';
-import { SchedulePersistence } from '../../src/server/schedule-persistence';
+import { ScheduleYamlPersistence } from '../../src/server/schedule-yaml-persistence';
 import { RepoScheduleOverrideStore } from '../../src/server/repo-schedule-overrides';
 
 function makeTmpDir(): string {
@@ -35,7 +35,7 @@ describe('ScheduleManager — repo schedules', () => {
         workspaceRoot = makeTmpDir();
         scheduleDir = path.join(workspaceRoot, '.github', 'schedule');
 
-        const persistence = new SchedulePersistence(dataDir);
+        const persistence = new ScheduleYamlPersistence(dataDir);
         const overrideStore = new RepoScheduleOverrideStore(dataDir);
         manager = new ScheduleManager(persistence, null, overrideStore);
     });
