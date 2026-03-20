@@ -61,6 +61,8 @@ export interface TaskExecutionConfig {
     retryAttempts?: number;
     /** Delay between retries in milliseconds */
     retryDelayMs?: number;
+    /** Reasoning effort level for models that support it. */
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
 }
 
 /**
