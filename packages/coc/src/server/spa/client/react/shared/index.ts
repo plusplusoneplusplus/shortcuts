@@ -34,3 +34,5 @@ export { TruncatedPath } from './TruncatedPath';
 export type { TruncatedPathProps } from './TruncatedPath';
 export { FilterDropdown } from './FilterDropdown';
 export type { FilterDropdownProps, FilterItem } from './FilterDropdown';
+export { SkillDetailPanel } from './SkillDetailPanel';
+export type { SkillDetailPanelProps, SkillInfo } from './SkillDetailPanel';
