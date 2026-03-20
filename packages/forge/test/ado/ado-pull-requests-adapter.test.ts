@@ -282,32 +282,41 @@ describe('AdoPullRequestsAdapter', () => {
     // ── logging ──────────────────────────────────────────────
 
     describe('logging', () => {
-        it('logs debug with resolved adoCriteria when listing PRs', async () => {
+        it('logs info with resolved adoCriteria when listing PRs', async () => {
             await adapter.listPullRequests('repo-id', { sourceBranch: 'feature', targetBranch: 'main' });
 
-            const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
-            expect(debugCalls.some(m => m.includes('listPullRequests') && m.includes('sourceRefName') && m.includes('targetRefName'))).toBe(true);
+            const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+            expect(infoCalls.some(m => m.includes('listPullRequests') && m.includes('sourceRefName') && m.includes('targetRefName'))).toBe(true);
         });
 
-        it('logs debug with result count after listing PRs', async () => {
+        it('logs info with result count after listing PRs', async () => {
             await adapter.listPullRequests('repo-id');
 
-            const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
-            expect(debugCalls.some(m => m.includes('listPullRequests') && m.includes('mapped') && m.includes('PR(s)'))).toBe(true);
+            const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+            expect(infoCalls.some(m => m.includes('listPullRequests') && m.includes('mapped') && m.includes('PR(s)'))).toBe(true);
         });
 
-        it('logs debug warning when criteria.status is provided (not mapped to ADO)', async () => {
+        it('logs info warning when criteria.status is provided (not mapped to ADO)', async () => {
             await adapter.listPullRequests('repo-id', { status: 'merged' });
 
-            const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
-            expect(debugCalls.some(m => m.includes('criteria.status') && m.includes('merged') && m.includes('not mapped'))).toBe(true);
+            const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+            expect(infoCalls.some(m => m.includes('criteria.status') && m.includes('merged') && m.includes('not mapped'))).toBe(true);
         });
 
-        it('logs debug with PR details when getting a single PR', async () => {
+        it('logs info with PR details when getting a single PR', async () => {
             await adapter.getPullRequest('repo-id', 42);
 
-            const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
-            expect(debugCalls.some(m => m.includes('getPullRequest') && m.includes('42'))).toBe(true);
+            const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+            expect(infoCalls.some(m => m.includes('getPullRequest') && m.includes('42'))).toBe(true);
+        });
+
+        it('does not use debug level for ADO operations (regression)', async () => {
+            (mockLogger.debug as ReturnType<typeof vi.fn>).mockClear();
+            await adapter.listPullRequests('repo-id');
+            await adapter.getPullRequest('repo-id', 42);
+
+            const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls;
+            expect(debugCalls.length).toBe(0);
         });
     });
 });

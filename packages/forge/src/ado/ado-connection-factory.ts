@@ -47,11 +47,11 @@ export class AdoConnectionFactory {
         }
 
         const authHandler = azdev.getBearerHandler(cache.token);
-        logger.debug(LogCategory.ADO, 'Using Azure CLI bearer token for authentication');
+        logger.info(LogCategory.ADO, 'Using Azure CLI bearer token for authentication');
 
         try {
             const connection = new azdev.WebApi(orgUrl, authHandler);
-            logger.debug(LogCategory.ADO, `Connected to Azure DevOps at ${orgUrl}`);
+            logger.info(LogCategory.ADO, `Connected to Azure DevOps at ${orgUrl}`);
             return { connected: true, connection, account: cache.account };
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -72,7 +72,7 @@ export class AdoConnectionFactory {
 
         const cached = await readAdoSessionCache(dataDir);
         if (cached && isTokenValid(cached)) {
-            logger.debug(LogCategory.ADO, 'Using cached ADO bearer token');
+            logger.info(LogCategory.ADO, 'Using cached ADO bearer token');
             return { success: true, token: cached.token, account: cached.account };
         }
 

@@ -195,15 +195,15 @@ describe('AdoPullRequestsService', () => {
 
     // ── logging ──────────────────────────────────────────────
 
-    it('logs debug before and after listPullRequests', async () => {
+    it('logs info before and after listPullRequests', async () => {
         const prs = [{ pullRequestId: 1 }];
         gitApi.getPullRequests.mockResolvedValue(prs);
 
         await service.listPullRequests('repo-id', { status: 1 }, 'proj', 10, 5);
 
-        const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
-        expect(debugCalls.some(m => m.includes('listPullRequests') && m.includes('repo-id') && m.includes('proj'))).toBe(true);
-        expect(debugCalls.some(m => m.includes('listPullRequests') && m.includes('1 PR'))).toBe(true);
+        const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(infoCalls.some(m => m.includes('listPullRequests') && m.includes('repo-id') && m.includes('proj'))).toBe(true);
+        expect(infoCalls.some(m => m.includes('listPullRequests') && m.includes('1 PR'))).toBe(true);
     });
 
     it('logs error when listPullRequests throws', async () => {
@@ -224,11 +224,11 @@ describe('AdoPullRequestsService', () => {
         expect(warnCalls.some(m => m.includes('99') && m.includes('not found'))).toBe(true);
     });
 
-    it('logs debug when getGitApi initializes successfully', async () => {
+    it('logs info when getGitApi initializes successfully', async () => {
         await service.listPullRequests('repo-id', {});
 
-        const debugCalls = (mockLogger.debug as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
-        expect(debugCalls.some(m => m.includes('Git API client initialized'))).toBe(true);
+        const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(infoCalls.some(m => m.includes('Git API client initialized'))).toBe(true);
     });
 
     it('logs error when getGitApi fails', async () => {

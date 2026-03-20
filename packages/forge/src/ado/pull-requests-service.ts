@@ -47,12 +47,12 @@ export class AdoPullRequestsService {
         skip?: number,
     ): Promise<GitPullRequest[]> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `listPullRequests: repo=${repositoryId} project=${project ?? '(default)'} top=${top ?? '(all)'} skip=${skip ?? 0} criteria=${JSON.stringify(searchCriteria)}`);
+        logger.info(LogCategory.ADO, `listPullRequests: repo=${repositoryId} project=${project ?? '(default)'} top=${top ?? '(all)'} skip=${skip ?? 0} criteria=${JSON.stringify(searchCriteria)}`);
         const api = await this.getGitApi();
         try {
             const result = await api.getPullRequests(repositoryId, searchCriteria, project, undefined, skip, top);
             const prs = result ?? [];
-            logger.debug(LogCategory.ADO, `listPullRequests: returned ${prs.length} PR(s) for repo=${repositoryId}`);
+            logger.info(LogCategory.ADO, `listPullRequests: returned ${prs.length} PR(s) for repo=${repositoryId}`);
             return prs;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -66,7 +66,7 @@ export class AdoPullRequestsService {
         project?: string,
     ): Promise<GitPullRequest> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `getPullRequestById: id=${pullRequestId} project=${project ?? '(default)'}`);
+        logger.info(LogCategory.ADO, `getPullRequestById: id=${pullRequestId} project=${project ?? '(default)'}`);
         const api = await this.getGitApi();
         try {
             const result = await api.getPullRequestById(pullRequestId, project);
@@ -74,7 +74,7 @@ export class AdoPullRequestsService {
                 logger.warn(LogCategory.ADO, `getPullRequestById: PR #${pullRequestId} not found`);
                 throw new AdoPullRequestNotFoundError(pullRequestId);
             }
-            logger.debug(LogCategory.ADO, `getPullRequestById: found PR #${pullRequestId} title="${result.title ?? ''}"`);
+            logger.info(LogCategory.ADO, `getPullRequestById: found PR #${pullRequestId} title="${result.title ?? ''}"`);
             return result;
         } catch (err) {
             if (err instanceof AdoPullRequestNotFoundError) { throw err; }
@@ -96,7 +96,7 @@ export class AdoPullRequestsService {
         project?: string,
     ): Promise<GitPullRequest> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `createPullRequest: repo=${repositoryId} project=${project ?? '(default)'} "${pr.sourceRefName}" -> "${pr.targetRefName}" title="${pr.title ?? ''}"`);
+        logger.info(LogCategory.ADO, `createPullRequest: repo=${repositoryId} project=${project ?? '(default)'} "${pr.sourceRefName}" -> "${pr.targetRefName}" title="${pr.title ?? ''}"`);
         const api = await this.getGitApi();
         const payload: GitPullRequest = {
             title: pr.title,
@@ -107,7 +107,7 @@ export class AdoPullRequestsService {
         };
         try {
             const result = await api.createPullRequest(payload, repositoryId, project);
-            logger.debug(LogCategory.ADO, `createPullRequest: created PR #${result.pullRequestId ?? '?'} in repo=${repositoryId}`);
+            logger.info(LogCategory.ADO, `createPullRequest: created PR #${result.pullRequestId ?? '?'} in repo=${repositoryId}`);
             return result;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -123,11 +123,11 @@ export class AdoPullRequestsService {
         project?: string,
     ): Promise<GitPullRequest> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `updatePullRequest: repo=${repositoryId} id=${pullRequestId} project=${project ?? '(default)'} fields=${Object.keys(update).join(',')}`);
+        logger.info(LogCategory.ADO, `updatePullRequest: repo=${repositoryId} id=${pullRequestId} project=${project ?? '(default)'} fields=${Object.keys(update).join(',')}`);
         const api = await this.getGitApi();
         try {
             const result = await api.updatePullRequest(update as GitPullRequest, repositoryId, pullRequestId, project);
-            logger.debug(LogCategory.ADO, `updatePullRequest: updated PR #${pullRequestId} in repo=${repositoryId}`);
+            logger.info(LogCategory.ADO, `updatePullRequest: updated PR #${pullRequestId} in repo=${repositoryId}`);
             return result;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -145,11 +145,11 @@ export class AdoPullRequestsService {
         project?: string,
     ): Promise<GitPullRequestCommentThread> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `createThread: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'} comments=${thread.comments?.length ?? 0}`);
+        logger.info(LogCategory.ADO, `createThread: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'} comments=${thread.comments?.length ?? 0}`);
         const api = await this.getGitApi();
         try {
             const result = await api.createThread(thread, repositoryId, pullRequestId, project);
-            logger.debug(LogCategory.ADO, `createThread: created thread id=${result.id ?? '?'} on PR #${pullRequestId}`);
+            logger.info(LogCategory.ADO, `createThread: created thread id=${result.id ?? '?'} on PR #${pullRequestId}`);
             return result;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -164,12 +164,12 @@ export class AdoPullRequestsService {
         project?: string,
     ): Promise<GitPullRequestCommentThread[]> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `getThreads: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`);
+        logger.info(LogCategory.ADO, `getThreads: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`);
         const api = await this.getGitApi();
         try {
             const result = await api.getThreads(repositoryId, pullRequestId, project);
             const threads = result ?? [];
-            logger.debug(LogCategory.ADO, `getThreads: returned ${threads.length} thread(s) for PR #${pullRequestId}`);
+            logger.info(LogCategory.ADO, `getThreads: returned ${threads.length} thread(s) for PR #${pullRequestId}`);
             return threads;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -187,12 +187,12 @@ export class AdoPullRequestsService {
         project?: string,
     ): Promise<IdentityRefWithVote[]> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `addReviewers: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'} count=${reviewers.length}`);
+        logger.info(LogCategory.ADO, `addReviewers: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'} count=${reviewers.length}`);
         const api = await this.getGitApi();
         try {
             const result = await api.createPullRequestReviewers(reviewers, repositoryId, pullRequestId, project);
             const added = result ?? [];
-            logger.debug(LogCategory.ADO, `addReviewers: added ${added.length} reviewer(s) to PR #${pullRequestId}`);
+            logger.info(LogCategory.ADO, `addReviewers: added ${added.length} reviewer(s) to PR #${pullRequestId}`);
             return added;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -207,12 +207,12 @@ export class AdoPullRequestsService {
         project?: string,
     ): Promise<IdentityRefWithVote[]> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `getReviewers: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`);
+        logger.info(LogCategory.ADO, `getReviewers: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`);
         const api = await this.getGitApi();
         try {
             const result = await api.getPullRequestReviewers(repositoryId, pullRequestId, project);
             const reviewers = result ?? [];
-            logger.debug(LogCategory.ADO, `getReviewers: returned ${reviewers.length} reviewer(s) for PR #${pullRequestId}`);
+            logger.info(LogCategory.ADO, `getReviewers: returned ${reviewers.length} reviewer(s) for PR #${pullRequestId}`);
             return reviewers;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -228,7 +228,7 @@ export class AdoPullRequestsService {
         const logger = getLogger();
         try {
             this.gitApi = await this.connection.getGitApi();
-            logger.debug(LogCategory.ADO, 'getGitApi: Git API client initialized');
+            logger.info(LogCategory.ADO, 'getGitApi: Git API client initialized');
             return this.gitApi;
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);

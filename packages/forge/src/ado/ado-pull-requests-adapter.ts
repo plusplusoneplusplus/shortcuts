@@ -126,10 +126,10 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         if (criteria?.sourceBranch) { adoCriteria['sourceRefName'] = `refs/heads/${criteria.sourceBranch}`; }
         if (criteria?.targetBranch) { adoCriteria['targetRefName'] = `refs/heads/${criteria.targetBranch}`; }
         if (criteria?.status) {
-            logger.debug(LogCategory.ADO, `listPullRequests: criteria.status="${criteria.status}" is not mapped to ADO search criteria — ADO defaults to active PRs only`);
+            logger.info(LogCategory.ADO, `listPullRequests: criteria.status="${criteria.status}" is not mapped to ADO search criteria — ADO defaults to active PRs only`);
         }
 
-        logger.debug(LogCategory.ADO, `listPullRequests: repo=${repositoryId} project=${this.project ?? '(default)'} adoCriteria=${JSON.stringify(adoCriteria)}`);
+        logger.info(LogCategory.ADO, `listPullRequests: repo=${repositoryId} project=${this.project ?? '(default)'} adoCriteria=${JSON.stringify(adoCriteria)}`);
 
         const results = await this.service.listPullRequests(
             repositoryId,
@@ -138,21 +138,21 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             criteria?.top,
             criteria?.skip,
         );
-        logger.debug(LogCategory.ADO, `listPullRequests: mapped ${results.length} PR(s) for repo=${repositoryId}`);
+        logger.info(LogCategory.ADO, `listPullRequests: mapped ${results.length} PR(s) for repo=${repositoryId}`);
         return results.map(pr => mapAdoPullRequest(pr, repositoryId));
     }
 
     async getPullRequest(repositoryId: string, pullRequestId: number | string): Promise<PullRequest> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `getPullRequest: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'}`);
+        logger.info(LogCategory.ADO, `getPullRequest: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'}`);
         const pr = await this.service.getPullRequestById(Number(pullRequestId), this.project);
-        logger.debug(LogCategory.ADO, `getPullRequest: resolved PR #${pr.pullRequestId ?? '?'} status=${pr.status ?? '?'}`);
+        logger.info(LogCategory.ADO, `getPullRequest: resolved PR #${pr.pullRequestId ?? '?'} status=${pr.status ?? '?'}`);
         return mapAdoPullRequest(pr, repositoryId);
     }
 
     async createPullRequest(repositoryId: string, input: CreatePullRequestInput): Promise<PullRequest> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `createPullRequest: repo=${repositoryId} project=${this.project ?? '(default)'} "${input.sourceBranch}" -> "${input.targetBranch}" title="${input.title}"`);
+        logger.info(LogCategory.ADO, `createPullRequest: repo=${repositoryId} project=${this.project ?? '(default)'} "${input.sourceBranch}" -> "${input.targetBranch}" title="${input.title}"`);
         const pr = await this.service.createPullRequest(
             repositoryId,
             {
@@ -164,7 +164,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             },
             this.project,
         );
-        logger.debug(LogCategory.ADO, `createPullRequest: created PR #${pr.pullRequestId ?? '?'} in repo=${repositoryId}`);
+        logger.info(LogCategory.ADO, `createPullRequest: created PR #${pr.pullRequestId ?? '?'} in repo=${repositoryId}`);
         return mapAdoPullRequest(pr, repositoryId);
     }
 
@@ -174,7 +174,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         update: UpdatePullRequestInput,
     ): Promise<PullRequest> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `updatePullRequest: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'} fields=${Object.keys(update).filter(k => update[k as keyof UpdatePullRequestInput] !== undefined).join(',')}`);
+        logger.info(LogCategory.ADO, `updatePullRequest: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'} fields=${Object.keys(update).filter(k => update[k as keyof UpdatePullRequestInput] !== undefined).join(',')}`);
         const adoUpdate: Record<string, unknown> = {};
         if (update.title !== undefined) { adoUpdate['title'] = update.title; }
         if (update.description !== undefined) { adoUpdate['description'] = update.description; }
@@ -185,15 +185,15 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             adoUpdate,
             this.project,
         );
-        logger.debug(LogCategory.ADO, `updatePullRequest: updated PR #${pr.pullRequestId ?? '?'}`);
+        logger.info(LogCategory.ADO, `updatePullRequest: updated PR #${pr.pullRequestId ?? '?'}`);
         return mapAdoPullRequest(pr, repositoryId);
     }
 
     async getThreads(repositoryId: string, pullRequestId: number | string): Promise<CommentThread[]> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `getThreads: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'}`);
+        logger.info(LogCategory.ADO, `getThreads: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'}`);
         const threads = await this.service.getThreads(repositoryId, Number(pullRequestId), this.project);
-        logger.debug(LogCategory.ADO, `getThreads: returned ${threads.length} thread(s) for PR #${pullRequestId}`);
+        logger.info(LogCategory.ADO, `getThreads: returned ${threads.length} thread(s) for PR #${pullRequestId}`);
         return threads.map(mapAdoThread);
     }
 
@@ -203,22 +203,22 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         body: string,
     ): Promise<CommentThread> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `createThread: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
+        logger.info(LogCategory.ADO, `createThread: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
         const thread = await this.service.createThread(
             repositoryId,
             Number(pullRequestId),
             { comments: [{ content: body, commentType: 1 }] },
             this.project,
         );
-        logger.debug(LogCategory.ADO, `createThread: created thread id=${thread.id ?? '?'} on PR #${pullRequestId}`);
+        logger.info(LogCategory.ADO, `createThread: created thread id=${thread.id ?? '?'} on PR #${pullRequestId}`);
         return mapAdoThread(thread);
     }
 
     async getReviewers(repositoryId: string, pullRequestId: number | string): Promise<Reviewer[]> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `getReviewers: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
+        logger.info(LogCategory.ADO, `getReviewers: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
         const reviewers = await this.service.getReviewers(repositoryId, Number(pullRequestId), this.project);
-        logger.debug(LogCategory.ADO, `getReviewers: returned ${reviewers.length} reviewer(s) for PR #${pullRequestId}`);
+        logger.info(LogCategory.ADO, `getReviewers: returned ${reviewers.length} reviewer(s) for PR #${pullRequestId}`);
         return reviewers.map(mapAdoReviewer);
     }
 
@@ -228,14 +228,14 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         reviewerIds: string[],
     ): Promise<Reviewer[]> {
         const logger = getLogger();
-        logger.debug(LogCategory.ADO, `addReviewers: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'} ids=${reviewerIds.join(',')}`);
+        logger.info(LogCategory.ADO, `addReviewers: repo=${repositoryId} PR #${pullRequestId} project=${this.project ?? '(default)'} ids=${reviewerIds.join(',')}`);
         const reviewers = await this.service.addReviewers(
             repositoryId,
             Number(pullRequestId),
             reviewerIds.map(id => ({ id })),
             this.project,
         );
-        logger.debug(LogCategory.ADO, `addReviewers: added ${reviewers.length} reviewer(s) to PR #${pullRequestId}`);
+        logger.info(LogCategory.ADO, `addReviewers: added ${reviewers.length} reviewer(s) to PR #${pullRequestId}`);
         return reviewers.map(mapAdoReviewer);
     }
 
