@@ -249,6 +249,76 @@ describe('Git API endpoints', () => {
             expect(capturedCmd).not.toContain('--grep');
         });
 
+        it('looks up by full commit hash (40-char hex) instead of --grep', async () => {
+            const hash = 'f4965316a6f17d4eea9d817102b90d68b17b9d21';
+            const logOutput = `${hash}\nf496531\nFix something\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n`;
+            let capturedCmd = '';
+            mockExecSync.mockImplementation((cmd: string) => {
+                capturedCmd = cmd;
+                return logOutput;
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${hash}`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.commits).toHaveLength(1);
+            expect(data.commits[0].hash).toBe(hash);
+            expect(capturedCmd).toContain(`${hash}^!`);
+            expect(capturedCmd).not.toContain('--grep');
+        });
+
+        it('looks up by short commit hash (7-char hex) instead of --grep', async () => {
+            const shortHash = 'f496531';
+            const logOutput = `f4965316a6f17d4eea9d817102b90d68b17b9d21\n${shortHash}\nFix something\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n`;
+            let capturedCmd = '';
+            mockExecSync.mockImplementation((cmd: string) => {
+                capturedCmd = cmd;
+                return logOutput;
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${shortHash}`);
+            expect(res.status).toBe(200);
+            expect(capturedCmd).toContain(`${shortHash}^!`);
+            expect(capturedCmd).not.toContain('--grep');
+        });
+
+        it('returns empty commits when hash does not exist in repo', async () => {
+            const hash = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('^!')) throw new Error('fatal: bad object ' + hash);
+                return '';
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${hash}`);
+            expect(res.status).toBe(200);
+            expect(res.json().commits).toEqual([]);
+        });
+
+        it('uses --grep for non-hex search terms (not treated as hash)', async () => {
+            let capturedCmd = '';
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+                return '';
+            });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=fix+auth`);
+            expect(capturedCmd).toContain('--grep=');
+            expect(capturedCmd).not.toContain('^!');
+        });
+
+        it('uses --grep for string that looks partially like a hash but has non-hex chars', async () => {
+            let capturedCmd = '';
+            mockExecSync.mockImplementation((cmd: string) => {
+                if (cmd.includes('log --format=')) { capturedCmd = cmd; return ''; }
+                return '';
+            });
+
+            // 'g' is not a valid hex character
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=abcdefg`);
+            expect(capturedCmd).toContain('--grep=');
+            expect(capturedCmd).not.toContain('^!');
+        });
+
         it('uses separate cache keys for different search queries', async () => {
             const logOutput = 'abc123def456789\nabc123d\nFix auth bug\nDev\ndev@example.com\n2026-01-01T00:00:00Z\n\n';
             let callCount = 0;

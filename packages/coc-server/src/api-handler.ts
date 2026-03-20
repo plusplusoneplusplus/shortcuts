@@ -586,13 +586,23 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
             try {
                 const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
-                const searchFlags = search
-                    ? ` --grep=${JSON.stringify(search)} --regexp-ignore-case`
-                    : '';
-                const raw = execGitSync(
-                    `log --format="${format}" --skip=${skip} --max-count=${limit} -z${searchFlags}`,
-                    ws.rootPath
-                );
+                const isHashLookup = search ? /^[0-9a-f]{7,40}$/i.test(search) : false;
+                let raw: string;
+                if (isHashLookup) {
+                    try {
+                        raw = execGitSync(`log --format="${format}" -z ${search}^!`, ws.rootPath);
+                    } catch {
+                        raw = '';
+                    }
+                } else {
+                    const searchFlags = search
+                        ? ` --grep=${JSON.stringify(search)} --regexp-ignore-case`
+                        : '';
+                    raw = execGitSync(
+                        `log --format="${format}" --skip=${skip} --max-count=${limit} -z${searchFlags}`,
+                        ws.rootPath
+                    );
+                }
 
                 const commits: Array<{
                     hash: string; shortHash: string; subject: string;
