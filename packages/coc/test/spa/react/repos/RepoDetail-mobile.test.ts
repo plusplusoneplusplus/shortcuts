@@ -38,10 +38,10 @@ describe('RepoDetail mobile: header layout', () => {
         // On desktop, the tab strip container appears before the action buttons
         const tabStripIdx = REPO_DETAIL_SOURCE.indexOf('repo-sub-tab-strip-container');
         const splitterIdx = REPO_DETAIL_SOURCE.indexOf('repo-header-splitter');
-        const editBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-edit-btn');
+        const generateBtnIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
         expect(tabStripIdx).toBeGreaterThan(-1);
         expect(splitterIdx).toBeGreaterThan(tabStripIdx);
-        expect(editBtnIdx).toBeGreaterThan(splitterIdx);
+        expect(generateBtnIdx).toBeGreaterThan(splitterIdx);
     });
 
     it('renders a vertical splitter between tabs and action buttons on desktop', () => {
@@ -86,12 +86,12 @@ describe('RepoDetail mobile: overflow menu', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-generate"');
     });
 
-    it('overflow menu has Edit action', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-edit"');
+    it('overflow menu does not have Edit action (removed from menu)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-edit"');
     });
 
-    it('overflow menu has Remove action', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-remove"');
+    it('overflow menu does not have Remove action (removed from menu)', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="repo-more-remove"');
     });
 
     it('more-menu container has data-testid', () => {
@@ -102,11 +102,11 @@ describe('RepoDetail mobile: overflow menu', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-more-menu-items"');
     });
 
-    it('Queue Task, Generate, Edit, Remove buttons are only rendered on non-mobile', () => {
+    it('Queue Task and Generate buttons are only rendered on non-mobile', () => {
         // These desktop-only buttons appear inside the !isMobile branch
         const desktopBranch = REPO_DETAIL_SOURCE.substring(
             REPO_DETAIL_SOURCE.indexOf('repo-more-menu-container'),
-            REPO_DETAIL_SOURCE.indexOf('repo-edit-btn')
+            REPO_DETAIL_SOURCE.indexOf('repo-generate-btn')
         );
         expect(desktopBranch).toContain(') : (');
     });

@@ -725,8 +725,8 @@ describe('Server Integration', () => {
                 });
                 expect(createRes.status).toBe(201);
 
-                // Verify processes/<workspaceId>/index.json exists on disk (per-workspace directory format)
-                const indexFile = path.join(persistDir, 'processes', 'ws-persist', 'index.json');
+                // Verify repos/<workspaceId>/processes/index.json exists on disk (per-repo directory format)
+                const indexFile = path.join(persistDir, 'repos', 'ws-persist', 'processes', 'index.json');
                 // FileProcessStore writes asynchronously — wait briefly
                 await new Promise(r => setTimeout(r, 200));
                 expect(fs.existsSync(indexFile)).toBe(true);
@@ -736,7 +736,7 @@ describe('Server Integration', () => {
                 expect(index.some((e: any) => e.id === 'persist-1')).toBe(true);
 
                 // Verify individual process file exists
-                const processFile = path.join(persistDir, 'processes', 'ws-persist', 'persist-1.json');
+                const processFile = path.join(persistDir, 'repos', 'ws-persist', 'processes', 'persist-1.json');
                 expect(fs.existsSync(processFile)).toBe(true);
                 const processRaw = fs.readFileSync(processFile, 'utf-8');
                 const processData = JSON.parse(processRaw);

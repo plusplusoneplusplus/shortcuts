@@ -167,7 +167,10 @@ describe('DataWiper', () => {
         it('should count schedule and git-ops files', async () => {
             const repoDir = path.join(dataDir, 'repos', 'abc123');
             fs.mkdirSync(repoDir, { recursive: true });
-            writeJSON(path.join(repoDir, 'schedules.json'), []);
+            // New YAML schedule format: individual files in schedules/ directory
+            const schedulesDir = path.join(repoDir, 'schedules');
+            fs.mkdirSync(schedulesDir, { recursive: true });
+            fs.writeFileSync(path.join(schedulesDir, 'sched-1.yaml'), 'id: sched-1\nname: Test');
             writeJSON(path.join(repoDir, 'schedule-runs.json'), []);
             writeJSON(path.join(repoDir, 'git-ops.json'), {});
             writeJSON(path.join(repoDir, 'preferences.json'), {});
@@ -348,7 +351,10 @@ describe('DataWiper', () => {
         it('should delete schedule and git-ops files from repos/', async () => {
             const repoDir = path.join(dataDir, 'repos', 'abc123');
             fs.mkdirSync(repoDir, { recursive: true });
-            writeJSON(path.join(repoDir, 'schedules.json'), []);
+            // New YAML schedule format: individual files in schedules/ directory
+            const schedulesDir = path.join(repoDir, 'schedules');
+            fs.mkdirSync(schedulesDir, { recursive: true });
+            fs.writeFileSync(path.join(schedulesDir, 'sched-1.yaml'), 'id: sched-1\nname: Test');
             writeJSON(path.join(repoDir, 'schedule-runs.json'), []);
             writeJSON(path.join(repoDir, 'git-ops.json'), {});
 
@@ -357,7 +363,7 @@ describe('DataWiper', () => {
 
             expect(result.deletedSchedules).toBe(2);
             expect(result.deletedGitOps).toBe(1);
-            expect(fs.existsSync(path.join(repoDir, 'schedules.json'))).toBe(false);
+            expect(fs.existsSync(schedulesDir)).toBe(false);
             expect(fs.existsSync(path.join(repoDir, 'schedule-runs.json'))).toBe(false);
             expect(fs.existsSync(path.join(repoDir, 'git-ops.json'))).toBe(false);
         });

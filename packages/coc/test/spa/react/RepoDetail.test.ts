@@ -106,10 +106,10 @@ describe('RepoDetail Generate button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-generate-btn"');
     });
 
-    it('generate button appears before edit button', () => {
+    it('generate button is present but edit button is removed', () => {
         const genIdx = REPO_DETAIL_SOURCE.indexOf('repo-generate-btn');
-        const editIdx = REPO_DETAIL_SOURCE.indexOf('repo-edit-btn');
-        expect(genIdx).toBeLessThan(editIdx);
+        expect(genIdx).toBeGreaterThan(-1);
+        expect(REPO_DETAIL_SOURCE).not.toContain('repo-edit-btn');
     });
 
     it('generate button uses primary variant', () => {

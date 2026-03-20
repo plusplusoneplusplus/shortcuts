@@ -667,13 +667,13 @@ describe('RepoDetail', () => {
         expect(tabLabels).toContain('Activity');
     });
 
-    it('renders Edit and Remove buttons', () => {
+    it('does not render Edit and Remove buttons (removed from header)', () => {
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
-        expect(screen.getByText('Edit')).toBeDefined();
-        expect(screen.getByText('Remove')).toBeDefined();
+        expect(screen.queryByText('Edit')).toBeNull();
+        expect(screen.queryByText('Remove')).toBeNull();
     });
 
     it('shows task count badge when tasks exist', () => {

@@ -102,28 +102,6 @@ describe('FileProcessStore - Retry on atomic writes (per-workspace paths)', () =
         expect(callCount).toBeGreaterThan(2);
     });
 
-    // 21. Retry on EBUSY writing _id-map.json
-    it('should retry and succeed when _id-map.json rename fails twice with EBUSY', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        let callCount = 0;
-        renameInterceptor = async (real, ...args) => {
-            const dest = path.basename(args[1] as string);
-            if (dest === '_id-map.json') {
-                callCount++;
-                if (callCount <= 2) {
-                    throw makeErrnoError('EBUSY', 'resource busy');
-                }
-            }
-            return real(...args);
-        };
-
-        await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
-        const p = await store.getProcess('p1');
-        expect(p).toBeDefined();
-        expect(callCount).toBeGreaterThan(2);
-    });
-
     // 22. Non-retryable error (ENOSPC) on process file propagates immediately
     it('should propagate ENOSPC immediately without retrying on process file', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });
@@ -142,26 +120,6 @@ describe('FileProcessStore - Retry on atomic writes (per-workspace paths)', () =
             store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }))
         ).rejects.toThrow('no space left on device');
         expect(callCount).toBe(1);
-    });
-
-    // 23. RetryExhaustedError after all retries on _id-map
-    it('should throw RetryExhaustedError when all retries fail on _id-map.json rename', async () => {
-        const store = new FileProcessStore({ dataDir: tmpDir });
-
-        renameInterceptor = async (_real, ...args) => {
-            const dest = path.basename(args[1] as string);
-            if (dest === '_id-map.json') {
-                throw makeErrnoError('EBUSY', 'resource busy');
-            }
-            return _real(...args);
-        };
-
-        try {
-            await store.addProcess(makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } }));
-            expect.fail('should have thrown');
-        } catch (err) {
-            expect(isRetryExhaustedError(err)).toBe(true);
-        }
     });
 
     // 24. Tmp file cleanup on exhaustion

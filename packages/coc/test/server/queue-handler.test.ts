@@ -1852,8 +1852,8 @@ describe('Queue Handler', () => {
         it('should fall back to completedAt when turns have no timestamps', async () => {
             // Write process JSON directly to simulate turns without valid timestamps
             // (bypasses addProcess serialization which requires Date objects)
-            const processesDir = path.join(dataDir, 'processes');
-            const defaultDir = path.join(processesDir, '_default');
+            const processesDir = path.join(dataDir, 'repos');
+            const defaultDir = path.join(processesDir, '_default', 'processes');
             fs.mkdirSync(defaultDir, { recursive: true });
             const startTimeStr = new Date().toISOString();
             fs.writeFileSync(path.join(defaultDir, 'proc-no-ts.json'), JSON.stringify({
@@ -1871,7 +1871,7 @@ describe('Queue Handler', () => {
                     ],
                 },
             }));
-            // Write per-workspace index and id-map so the store can find the process
+            // Write per-workspace index so the store can find the process
             fs.writeFileSync(path.join(defaultDir, 'index.json'), JSON.stringify([{
                 id: 'proc-no-ts',
                 workspaceId: '',
@@ -1880,7 +1880,6 @@ describe('Queue Handler', () => {
                 promptPreview: 'test',
                 startTime: startTimeStr,
             }]));
-            fs.writeFileSync(path.join(processesDir, '_id-map.json'), JSON.stringify({ 'proc-no-ts': '' }));
 
             const completedAt = Date.now() - 5000;
             const repoRoot = path.resolve('/test/last-activity-no-ts');
@@ -2056,8 +2055,8 @@ describe('Queue Handler', () => {
         });
 
         it('should include process title in chatMeta when set', async () => {
-            const processesDir = path.join(dataDir, 'processes');
-            const defaultDir = path.join(processesDir, '_default');
+            const processesDir = path.join(dataDir, 'repos');
+            const defaultDir = path.join(processesDir, '_default', 'processes');
             fs.mkdirSync(defaultDir, { recursive: true });
             const startTimeStr = new Date().toISOString();
             fs.writeFileSync(path.join(defaultDir, 'proc-titled.json'), JSON.stringify({
@@ -2125,8 +2124,8 @@ describe('Queue Handler', () => {
         });
 
         it('should have undefined chatMeta.title when process has no title', async () => {
-            const processesDir = path.join(dataDir, 'processes');
-            const defaultDir = path.join(processesDir, '_default');
+            const processesDir = path.join(dataDir, 'repos');
+            const defaultDir = path.join(processesDir, '_default', 'processes');
             fs.mkdirSync(defaultDir, { recursive: true });
             const startTimeStr = new Date().toISOString();
             fs.writeFileSync(path.join(defaultDir, 'proc-no-title.json'), JSON.stringify({
