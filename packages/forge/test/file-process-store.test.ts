@@ -284,5 +284,15 @@ describe('FileProcessStore — per-workspace layout', () => {
             const store = new FileProcessStore({ dataDir: tmpDir });
             expect(typeof store.getProcessFilePath).toBe('function');
         });
+
+        it('should return path consistent with addProcess file location', async () => {
+            const store = new FileProcessStore({ dataDir: tmpDir });
+            const p = makeProcess('p1', { metadata: { type: 'ai', workspaceId: 'ws-a' } });
+            await store.addProcess(p);
+            const expectedPath = store.getProcessFilePath('ws-a', 'p1');
+            const raw = await fs.readFile(expectedPath, 'utf-8');
+            const entry = JSON.parse(raw);
+            expect(entry.process.id).toBe('p1');
+        });
     });
 });

@@ -2777,5 +2777,63 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.error).toContain('non-empty string');
         });
+
+        it('should return 400 when processIds is an empty array', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: [],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('at least 2');
+        });
+
+        it('should accept exactly 20 processIds (maximum boundary)', async () => {
+            const srv = await startServer();
+            const ids = Array.from({ length: 20 }, (_, i) => `p${i}`);
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ids,
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBeDefined();
+        });
+
+        it('should return 201 with only a taskId field on success', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['a', 'b', 'c'],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(typeof body.taskId).toBe('string');
+            expect(body.taskId.length).toBeGreaterThan(0);
+        });
+
+        it('should return 400 for invalid JSON body', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/summarize`, {
+                method: 'POST',
+                body: 'not json',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('Invalid JSON');
+        });
+
+        it('should return 400 when processIds contains empty strings', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['a', ''],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('non-empty string');
+        });
     });
 });

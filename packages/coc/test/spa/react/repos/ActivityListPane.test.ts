@@ -540,6 +540,48 @@ describe('ActivityListPane pinned chats', () => {
                 expect(depsBlock).toContain('onSelectTask');
                 expect(depsBlock).toContain('fetchQueue');
             });
+
+            it('summarize uses POST method in fetch call', () => {
+                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
+                expect(summarizeIdx).toBeGreaterThan(-1);
+                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                expect(block).toContain("method: 'POST'");
+            });
+
+            it('summarize calls closeContextMenu before fetch', () => {
+                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
+                expect(summarizeIdx).toBeGreaterThan(-1);
+                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                expect(block).toContain('closeContextMenu()');
+            });
+
+            it('summarize calls fetchQueue after successful response', () => {
+                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
+                expect(summarizeIdx).toBeGreaterThan(-1);
+                const block = source.substring(summarizeIdx, summarizeIdx + 900);
+                expect(block).toContain('fetchQueue()');
+            });
+
+            it('summarize sends Content-Type application/json header', () => {
+                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
+                expect(summarizeIdx).toBeGreaterThan(-1);
+                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                expect(block).toContain("'Content-Type': 'application/json'");
+            });
+
+            it('summarize uses JSON.stringify for request body', () => {
+                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
+                expect(summarizeIdx).toBeGreaterThan(-1);
+                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                expect(block).toContain('JSON.stringify');
+            });
+
+            it('summarize checks res.ok before navigating', () => {
+                const summarizeIdx = source.indexOf("Summarize ${ids.length} chats");
+                expect(summarizeIdx).toBeGreaterThan(-1);
+                const block = source.substring(summarizeIdx, summarizeIdx + 600);
+                expect(block).toContain('res.ok');
+            });
         });
     });
 
