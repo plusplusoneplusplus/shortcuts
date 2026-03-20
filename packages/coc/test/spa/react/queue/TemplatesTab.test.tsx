@@ -45,7 +45,7 @@ describe('TemplatesTab – mode filtering', () => {
         expect(screen.queryByTestId('template-card-ask-1')).toBeNull();
     });
 
-    it('shows cross-mode empty state when templates exist but none match current mode', () => {
+    it('shows unified empty state when templates exist but none match current mode', () => {
         render(
             <TemplatesTab
                 {...defaultProps}
@@ -55,12 +55,12 @@ describe('TemplatesTab – mode filtering', () => {
         );
         const emptyState = screen.getByTestId('templates-empty-state');
         expect(emptyState.textContent).toContain('ask');
-        expect(emptyState.textContent).toContain('task');
-        // Should NOT show the generic "No templates yet" message
-        expect(emptyState.textContent).not.toContain('No templates yet');
+        expect(emptyState.textContent).toContain('templates yet');
+        // Should NOT show a "Switch to" hint
+        expect(emptyState.textContent).not.toContain('Switch to');
     });
 
-    it('shows generic empty state when no templates exist at all', () => {
+    it('shows unified empty state when no templates exist at all', () => {
         render(
             <TemplatesTab
                 {...defaultProps}
@@ -69,7 +69,8 @@ describe('TemplatesTab – mode filtering', () => {
             />
         );
         const emptyState = screen.getByTestId('templates-empty-state');
-        expect(emptyState.textContent).toContain('No templates yet');
+        expect(emptyState.textContent).toContain('ask');
+        expect(emptyState.textContent).toContain('templates yet');
     });
 
     it('shows loading spinner when loaded is false', () => {
@@ -126,7 +127,7 @@ describe('TemplatesTab – mode filtering', () => {
         expect(screen.getByTestId('template-selected-ask-1')).toBeDefined();
     });
 
-    it('cross-mode empty state mentions the other mode correctly in task mode', () => {
+    it('empty state shows current mode name correctly in task mode', () => {
         render(
             <TemplatesTab
                 {...defaultProps}
@@ -136,6 +137,7 @@ describe('TemplatesTab – mode filtering', () => {
         );
         const emptyState = screen.getByTestId('templates-empty-state');
         expect(emptyState.textContent).toContain('task');
-        expect(emptyState.textContent).toContain('ask');
+        expect(emptyState.textContent).toContain('templates yet');
+        expect(emptyState.textContent).not.toContain('Switch to');
     });
 });

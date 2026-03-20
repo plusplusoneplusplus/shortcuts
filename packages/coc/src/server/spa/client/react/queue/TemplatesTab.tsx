@@ -33,7 +33,6 @@ export function TemplatesTab({
 }: TemplatesTabProps) {
     const canSave = !!currentModel || currentSkills.length > 0;
     const filteredTemplates = templates.filter(t => t.mode === currentMode);
-    const otherMode = currentMode === 'ask' ? 'task' : 'ask';
 
     if (!loaded) {
         return (
@@ -62,10 +61,7 @@ export function TemplatesTab({
 
             {filteredTemplates.length === 0 ? (
                 <div className="flex items-center justify-center py-8 text-[#848484] text-sm text-center px-4" data-testid="templates-empty-state">
-                    {templates.length > 0
-                        ? <>No <strong className="mx-0.5">{currentMode}</strong> templates saved. Switch to <strong className="mx-0.5">{otherMode}</strong> mode to see your {otherMode} templates, or save a new one.</>
-                        : <>No templates yet. Configure model/skills in Advanced, then click <strong className="mx-1">+ Save current</strong>.</>
-                    }
+                    <>No <strong className="mx-0.5">{currentMode}</strong> templates yet. Configure model/skills in Advanced, then click <strong className="mx-1">+ Save current</strong>.</>
                 </div>
             ) : (
                 <div className="flex flex-col gap-2 overflow-y-auto max-h-[360px]">
