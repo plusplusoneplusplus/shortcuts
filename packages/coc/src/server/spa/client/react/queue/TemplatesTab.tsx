@@ -72,7 +72,7 @@ export function TemplatesTab({
                             key={t.id}
                             type="button"
                             onClick={() => onSelect(t)}
-                            className={`text-left w-full rounded border transition-colors px-3 py-2 relative group ${
+                            className={`text-left w-full rounded border transition-colors px-2 py-1 relative group ${
                                 isSelected
                                     ? 'border-[#0078d4] ring-2 ring-[#0078d4]/30 bg-[#f0f7ff] dark:bg-[#1e3a5f]'
                                     : 'border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:border-[#0078d4] hover:bg-[#f0f7ff] dark:hover:bg-[#1e3a5f]'
@@ -82,7 +82,7 @@ export function TemplatesTab({
                             {/* Selected checkmark */}
                             {isSelected && (
                                 <span
-                                    className="absolute top-1.5 right-1.5 text-[#0078d4] text-xs leading-none"
+                                    className="absolute top-1 right-1 text-[#0078d4] text-xs leading-none"
                                     data-testid={`template-selected-${t.id}`}
                                 >
                                     ✓
@@ -95,23 +95,16 @@ export function TemplatesTab({
                                 tabIndex={0}
                                 onClick={e => { e.stopPropagation(); onDelete(t.id); }}
                                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onDelete(t.id); } }}
-                                className={`absolute top-1.5 text-[#848484] hover:text-[#cc3333] opacity-0 group-hover:opacity-100 transition-opacity px-1 text-xs leading-none ${isSelected ? 'right-6' : 'right-1.5'}`}
+                                className={`absolute top-1 text-[#848484] hover:text-[#cc3333] opacity-0 group-hover:opacity-100 transition-opacity px-1 text-xs leading-none ${isSelected ? 'right-5' : 'right-1'}`}
                                 title="Delete template"
                                 data-testid={`template-delete-${t.id}`}
                             >
                                 ×
                             </span>
 
-                            {/* Optional name */}
-                            {t.name && (
-                                <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-1 pr-5 truncate">
-                                    {t.name}
-                                </div>
-                            )}
-
-                            {/* Mode badge + model tag */}
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                            {/* Mode badge + model tag + name — single row */}
+                            <div className="flex items-center gap-1 flex-wrap pr-5 min-w-0">
+                                <span className={`text-[10px] px-1 py-0.5 rounded-full font-medium shrink-0 ${
                                     t.mode === 'ask'
                                         ? 'bg-[#dbeafe] text-[#1d4ed8] dark:bg-[#1e3a5f] dark:text-[#93c5fd]'
                                         : 'bg-[#dcfce7] text-[#15803d] dark:bg-[#14532d] dark:text-[#86efac]'
@@ -119,19 +112,24 @@ export function TemplatesTab({
                                     {t.mode}
                                 </span>
                                 {t.model && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#848484]">
+                                    <span className="text-[10px] px-1 py-0.5 rounded font-mono bg-[#f3f3f3] dark:bg-[#3c3c3c] text-[#848484] shrink-0">
                                         {t.model}
+                                    </span>
+                                )}
+                                {t.name && (
+                                    <span className="text-[10px] font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate min-w-0">
+                                        {t.name}
                                     </span>
                                 )}
                             </div>
 
                             {/* Skill chips */}
                             {t.skills.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                <div className="flex flex-wrap gap-0.5 mt-0.5">
                                     {t.skills.map(s => (
                                         <span
                                             key={s}
-                                            className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-[#e0e0e0] dark:border-[#555] bg-[#f9f9f9] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                                            className="inline-flex items-center gap-0.5 text-[10px] px-1 py-0 rounded-full border border-[#e0e0e0] dark:border-[#555] bg-[#f9f9f9] dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
                                         >
                                             <span>⚡</span>
                                             <span>{s}</span>
