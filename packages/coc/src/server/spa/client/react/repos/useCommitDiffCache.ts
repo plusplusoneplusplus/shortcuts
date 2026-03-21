@@ -121,6 +121,19 @@ export function useCachedDiff(
     return { diff, loading, error, retry };
 }
 
+/**
+ * Evict all cache entries for a given commit hash.
+ * Both full-commit URLs (`/commits/:hash/diff`) and per-file URLs
+ * (`/commits/:hash/files/…`) contain the hash, so one pass covers both.
+ */
+export function clearCacheForHash(hash: string): void {
+    for (const key of [...diffCache.keys()]) {
+        if (key.includes(hash)) {
+            diffCache.delete(key);
+        }
+    }
+}
+
 /** Expose cache for testing. */
 export function _clearCache(): void {
     diffCache.clear();

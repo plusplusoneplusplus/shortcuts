@@ -29,6 +29,7 @@ import { WorkingTreeAllComments } from './WorkingTreeAllComments';
 import { BranchRangeAllComments } from './BranchRangeAllComments';
 import { BranchPickerModal } from './BranchPickerModal';
 import { AmendMessageModal } from './AmendMessageModal';
+import { clearCacheForHash } from './useCommitDiffCache';
 import { useApp } from '../context/AppContext';
 import { useQueue } from '../context/QueueContext';
 import { ContextMenu, type ContextMenuItem } from '../tasks/comments/ContextMenu';
@@ -228,6 +229,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setSkip(0);
         setWorkingChangesRefreshKey(k => k + 1);
         const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
+        if (prevSelectedHash) {
+            clearCacheForHash(prevSelectedHash);
+        }
         Promise.all([fetchCommits(true, 0, searchQuery), fetchBranchRange(true)])
             .then(([loaded]) => {
                 // Retain selection if the commit still exists

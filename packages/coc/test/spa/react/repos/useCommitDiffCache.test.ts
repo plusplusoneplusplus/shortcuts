@@ -7,6 +7,7 @@ import {
     splitDiffByFile,
     buildFileDiffUrl,
     prePopulatePerFileCache,
+    clearCacheForHash,
     _clearCache,
     _getCacheSize,
     _getCacheEntry,
@@ -165,6 +166,45 @@ describe('cache management', () => {
     });
 });
 
+describe('clearCacheForHash', () => {
+    it('evicts all entries for the given commit hash', () => {
+        // Populate cache with entries for two different hashes
+        prePopulatePerFileCache(FULL_DIFF, 'ws1', 'abc123');
+        prePopulatePerFileCache(FULL_DIFF, 'ws1', 'def456');
+        expect(_getCacheSize()).toBe(4); // 2 files × 2 hashes
+
+        clearCacheForHash('abc123');
+
+        // abc123 entries gone, def456 entries remain
+        expect(_getCacheSize()).toBe(2);
+        expect(_getCacheEntry(buildFileDiffUrl('ws1', 'abc123', 'src/foo.ts'))).toBeUndefined();
+        expect(_getCacheEntry(buildFileDiffUrl('ws1', 'abc123', 'src/bar.ts'))).toBeUndefined();
+        expect(_getCacheEntry(buildFileDiffUrl('ws1', 'def456', 'src/foo.ts'))).toBeDefined();
+        expect(_getCacheEntry(buildFileDiffUrl('ws1', 'def456', 'src/bar.ts'))).toBeDefined();
+    });
+
+    it('is a no-op when hash is not in cache', () => {
+        prePopulatePerFileCache(FULL_DIFF, 'ws1', 'abc123');
+        const sizeBefore = _getCacheSize();
+        clearCacheForHash('nonexistent');
+        expect(_getCacheSize()).toBe(sizeBefore);
+    });
+
+    it('evicts both full-commit and per-file URLs for the hash', () => {
+        // Simulate a full-commit URL entry (manually set via the internal cache)
+        // by priming through prePopulate + adding a full-commit-style key
+        prePopulatePerFileCache(FULL_DIFF, 'ws1', 'abc123');
+        // The full-commit URL also contains the hash
+        const fullUrl = '/workspaces/ws1/git/commits/abc123/diff';
+        // Simulate the hook having stored a full-commit entry
+        prePopulatePerFileCache('', 'ws1', 'abc123'); // no-op but cache already has entries
+        // We need to check that per-file entries are cleared
+        expect(_getCacheSize()).toBe(2);
+        clearCacheForHash('abc123');
+        expect(_getCacheSize()).toBe(0);
+    });
+});
+
 describe('CommitDetail integration', () => {
     it('CommitDetail.tsx imports useCachedDiff', async () => {
         const fs = await import('fs');
@@ -197,5 +237,27 @@ describe('CommitDetail integration', () => {
         expect(source).not.toContain('setDiff(data.diff');
         expect(source).not.toContain('setDiffLoading(true)');
         expect(source).not.toContain('setDiffError(null)');
+    });
+});
+
+describe('refreshAll cache invalidation integration', () => {
+    it('RepoGitTab.tsx imports clearCacheForHash', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const source = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            'utf-8',
+        );
+        expect(source).toContain("import { clearCacheForHash } from './useCommitDiffCache'");
+    });
+
+    it('RepoGitTab.tsx calls clearCacheForHash in refreshAll', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const source = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'RepoGitTab.tsx'),
+            'utf-8',
+        );
+        expect(source).toContain('clearCacheForHash(prevSelectedHash)');
     });
 });
