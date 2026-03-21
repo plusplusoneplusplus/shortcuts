@@ -27,7 +27,7 @@ import {
     setLogger,
     resolveClawHubToGitHub,
 } from '@plusplusoneplusplus/forge';
-import { listInstalledSkills } from '@plusplusoneplusplus/coc-server';
+import { listInstalledSkills } from '../server/skill-handler';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 
 // Wire a basic Pino-backed logger for pipeline-core operations in skills commands

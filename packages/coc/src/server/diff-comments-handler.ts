@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
 import type { Route } from './types';
-import type { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
+import type { ProcessWebSocketServer } from './websocket';
 import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge';
 import {
     DEFAULT_AI_COMMANDS,

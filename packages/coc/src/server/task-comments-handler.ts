@@ -20,7 +20,7 @@ import { parseBodyOrReject } from './shared/handler-utils';
 import { atomicWriteJSON } from './shared/fs-utils';
 import { getRepoDataPath } from './paths';
 import type { Route } from './types';
-import type { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
+import type { ProcessWebSocketServer } from './websocket';
 import {
     DEFAULT_AI_COMMANDS,
     type AICommand,

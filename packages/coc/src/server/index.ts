@@ -14,25 +14,32 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import { createRequestHandler } from './router';
-import { registerApiRoutes } from '@plusplusoneplusplus/coc-server';
+import { registerApiRoutes } from './api-handler';
 import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
 import { resolveTaskRoot } from './task-root-resolver';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
-import { registerAdminRoutes } from '@plusplusoneplusplus/coc-server';
+import { registerAdminRoutes } from './admin-handler';
 import { registerTaskCommentsRoutes } from './task-comments-handler';
 import { registerDiffCommentsRoutes } from './diff-comments-handler';
 import { registerWikiRoutes } from './wiki';
-import { registerMemoryRoutes, registerRepoRoutes, registerInstructionRoutes, registerProviderRoutes, registerPrRoutes, registerLogsRoutes, registerModelRoutes, RepoTreeService } from '@plusplusoneplusplus/coc-server';
+import { registerMemoryRoutes } from './memory/memory-routes';
+import { registerRepoRoutes } from './repos/repo-routes';
+import { registerInstructionRoutes } from './instruction-handler';
+import { registerProviderRoutes } from './providers/provider-routes';
+import { registerPrRoutes } from './repos/pr-routes';
+import { registerLogsRoutes } from './logs-routes';
+import { registerModelRoutes } from './models/model-routes';
+import { RepoTreeService } from './repos/tree-service';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
 import { registerReplicateApplyRoutes } from './replicate-apply-handler';
 import { TemplateWatcher } from './template-watcher';
 import { WorkflowWatcher } from './workflow-watcher';
-import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
+import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
@@ -584,7 +591,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         port: actualPort,
         host,
         url,
-        close: async (closeOptions?: import('@plusplusoneplusplus/coc-server').ServerCloseOptions) => {
+        close: async (closeOptions?: import('./types').ServerCloseOptions) => {
             // Stop stale task detection
             staleDetector.dispose();
             // Stop output pruner cleanup
@@ -635,16 +642,16 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/forge';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
-export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from '@plusplusoneplusplus/coc-server'; // sendJSON/sendError/parseBody/parseQueryParams stay; registerApiRoutes will move in a later commit
+export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
 export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 export { registerQueueRoutes } from './queue-handler';
 export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './global-workspace';
 export { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 export { registerTaskGenerationRoutes } from './task-generation-handler';
-export { handleProcessStream } from '@plusplusoneplusplus/coc-server';
-export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from '@plusplusoneplusplus/coc-server';
-export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, ServerMessage, ClientMessage } from '@plusplusoneplusplus/coc-server';
-export type { WSQueueSnapshot as QueueSnapshot } from '@plusplusoneplusplus/coc-server';
+export { handleProcessStream } from './sse-handler';
+export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from './websocket';
+export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, ServerMessage, ClientMessage } from './websocket';
+export type { QueueSnapshot } from './websocket';
 export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
@@ -674,8 +681,8 @@ export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments
 export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
 export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
 export type { DiffCommentsStorage } from './diff-comments-handler';
-export { registerAdminRoutes, resetWipeToken } from '@plusplusoneplusplus/coc-server';
-export type { AdminRouteOptions } from '@plusplusoneplusplus/coc-server';
+export { registerAdminRoutes, resetWipeToken } from './admin-handler';
+export type { AdminRouteOptions } from './admin-handler';
 export { DataWiper } from './data-wiper';
 export type { WipeOptions, WipeResult } from './data-wiper';
 export { ScheduleYamlPersistence } from './schedule-yaml-persistence';

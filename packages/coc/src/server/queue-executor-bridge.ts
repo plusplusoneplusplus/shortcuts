@@ -162,7 +162,7 @@ export interface CLITaskExecutorOptions {
     /** Follow-up suggestions configuration */
     followUpSuggestions?: { enabled: boolean; count: number };
     /** Lazy getter for the WebSocket server — used to broadcast comment-resolved events. */
-    getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
+    getWsServer?: () => import('./websocket').ProcessWebSocketServer | undefined;
 }
 
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
@@ -229,7 +229,7 @@ export class CLITaskExecutor implements TaskExecutor {
     /** Follow-up suggestions configuration */
     private readonly followUpSuggestions: { enabled: boolean; count: number };
     /** Lazy getter for the WebSocket server to broadcast file events */
-    private readonly getWsServer?: () => import('@plusplusoneplusplus/coc-server').ProcessWebSocketServer | undefined;
+    private readonly getWsServer?: () => import('./websocket').ProcessWebSocketServer | undefined;
     /** Optional queue manager for requeueing existing chat tasks during follow-ups */
     private queueManager?: TaskQueueManager;
     /** Shared store for tool-call Q&A capture (explore cache). */
