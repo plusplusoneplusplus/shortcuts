@@ -50,10 +50,7 @@ import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
-import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
-import { ScheduleRunPersistence } from './schedule-run-persistence';
-import { ScheduleManager } from './schedule-manager';
-import { RepoScheduleOverrideStore } from './repo-schedule-overrides';
+import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { registerScheduleRoutes } from './schedule-handler';
 import { registerStatsRoutes } from './stats-handler';
 import { OutputPruner } from './output-pruner';
@@ -186,13 +183,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     );
 
     // Initialize schedule manager with persistent storage
-    const schedulePersistence = new ScheduleYamlPersistence(dataDir);
-    schedulePersistence.migrateAllFromJson();           // non-destructive, idempotent
-    const scheduleRunPersistence = new ScheduleRunPersistence(dataDir);
-    const scheduleOverrideStore = new RepoScheduleOverrideStore(dataDir);
-    const scheduleManager = new ScheduleManager(schedulePersistence, queueFacade, scheduleOverrideStore);
-    scheduleManager.restore();
-    scheduleManager.restoreRunHistory(scheduleRunPersistence);
+    const { scheduleManager } = createScheduleInfrastructure(dataDir, queueFacade);
 
     // Wire up output file pruner for automatic cleanup
     const outputPruner = new OutputPruner(store, dataDir);
