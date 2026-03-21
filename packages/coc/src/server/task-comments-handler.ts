@@ -17,8 +17,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON, sendError } from './api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
-import { atomicWriteJSON } from './shared/fs-utils';
 import { getRepoDataPath } from './paths';
+import { BaseCommentsManager, isValidWorkspaceId } from './base-comments-manager';
 import type { Route } from './types';
 import type { ProcessWebSocketServer } from './websocket';
 import {
@@ -151,19 +151,25 @@ const DEFAULT_SETTINGS: CommentsStorage['settings'] = {
  * Manages task comments storage and operations.
  * Mirrors extension's CommentsManager but for server-side use.
  */
-export class TaskCommentsManager {
+export class TaskCommentsManager extends BaseCommentsManager<TaskComment, TaskCommentReply> {
     private readonly dataDir: string;
 
     /**
      * @param dataDir - Root data directory (e.g. ~/.coc)
      */
     constructor(dataDir: string) {
+        super();
         this.dataDir = dataDir;
     }
 
     /** Get comments directory for a workspace. */
-    private getWorkspaceDir(workspaceId: string): string {
+    protected getWorkspaceDir(workspaceId: string): string {
         return getRepoDataPath(this.dataDir, workspaceId, COMMENTS_DIR_NAME);
+    }
+
+    /** Build the storage envelope for serialization. */
+    protected buildStorage(comments: TaskComment[]): CommentsStorage {
+        return { comments, settings: DEFAULT_SETTINGS };
     }
 
     /**
@@ -174,8 +180,8 @@ export class TaskCommentsManager {
         return crypto.createHash('sha256').update(filePath).digest('hex');
     }
 
-    /** Get storage file path for a task file. */
-    private getStorageFile(workspaceId: string, taskPath: string): string {
+    /** Get storage file path for a task file (hashes the taskPath). */
+    protected override getStorageFile(workspaceId: string, taskPath: string): string {
         const hash = this.hashFilePath(taskPath);
         return path.join(this.getWorkspaceDir(workspaceId), `${hash}.json`);
     }
@@ -201,16 +207,8 @@ export class TaskCommentsManager {
         return { file: primary, usedLegacy: false };
     }
 
-    /** Ensure workspace directory exists. */
-    private ensureWorkspaceDir(workspaceId: string): void {
-        const dir = this.getWorkspaceDir(workspaceId);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-    }
-
     /** Read all comments for a task file, with fallback to legacy hash. */
-    async getComments(workspaceId: string, taskPath: string): Promise<TaskComment[]> {
+    override async getComments(workspaceId: string, taskPath: string): Promise<TaskComment[]> {
         const { file } = this.getStorageFileWithFallback(workspaceId, taskPath);
         if (!fs.existsSync(file)) {
             return [];
@@ -224,86 +222,13 @@ export class TaskCommentsManager {
         }
     }
 
-    /** Write comments to storage atomically (write to temp file then rename). */
-    async writeComments(
-        workspaceId: string,
-        taskPath: string,
-        comments: TaskComment[]
-    ): Promise<void> {
-        this.ensureWorkspaceDir(workspaceId);
-        const file = this.getStorageFile(workspaceId, taskPath);
-        const storage: CommentsStorage = {
-            comments,
-            settings: DEFAULT_SETTINGS,
-        };
-        await atomicWriteJSON(file, storage);
-    }
-
     /** Add a new comment. */
     async addComment(
         workspaceId: string,
         taskPath: string,
         commentData: Omit<TaskComment, 'id' | 'createdAt' | 'updatedAt'>
     ): Promise<TaskComment> {
-        const comments = await this.getComments(workspaceId, taskPath);
-        const now = new Date().toISOString();
-        const newComment: TaskComment = {
-            ...commentData,
-            id: crypto.randomUUID(),
-            createdAt: now,
-            updatedAt: now,
-        };
-        comments.push(newComment);
-        await this.writeComments(workspaceId, taskPath, comments);
-        return newComment;
-    }
-
-    /** Update an existing comment. Returns null if not found. */
-    async updateComment(
-        workspaceId: string,
-        taskPath: string,
-        commentId: string,
-        updates: Partial<Omit<TaskComment, 'id' | 'createdAt'>>
-    ): Promise<TaskComment | null> {
-        const comments = await this.getComments(workspaceId, taskPath);
-        const index = comments.findIndex(c => c.id === commentId);
-        if (index === -1) {
-            return null;
-        }
-        comments[index] = {
-            ...comments[index],
-            ...updates,
-            id: comments[index].id,
-            createdAt: comments[index].createdAt,
-            updatedAt: new Date().toISOString(),
-        };
-        await this.writeComments(workspaceId, taskPath, comments);
-        return comments[index];
-    }
-
-    /** Delete a comment. Returns false if not found. */
-    async deleteComment(
-        workspaceId: string,
-        taskPath: string,
-        commentId: string
-    ): Promise<boolean> {
-        const comments = await this.getComments(workspaceId, taskPath);
-        const filtered = comments.filter(c => c.id !== commentId);
-        if (filtered.length === comments.length) {
-            return false;
-        }
-        await this.writeComments(workspaceId, taskPath, filtered);
-        return true;
-    }
-
-    /** Get a single comment by ID. Returns null if not found. */
-    async getComment(
-        workspaceId: string,
-        taskPath: string,
-        commentId: string
-    ): Promise<TaskComment | null> {
-        const comments = await this.getComments(workspaceId, taskPath);
-        return comments.find(c => c.id === commentId) || null;
+        return this.addCommentCore(workspaceId, taskPath, commentData);
     }
 
     /** Delete all comments for a task file. */
@@ -312,34 +237,6 @@ export class TaskCommentsManager {
         if (fs.existsSync(file)) {
             await fs.promises.unlink(file);
         }
-    }
-
-    /** Add a reply to a comment. Returns null if comment not found. */
-    async addReply(
-        workspaceId: string,
-        taskPath: string,
-        commentId: string,
-        replyData: { author: string; text: string; isAI?: boolean }
-    ): Promise<TaskCommentReply | null> {
-        const comments = await this.getComments(workspaceId, taskPath);
-        const index = comments.findIndex(c => c.id === commentId);
-        if (index === -1) return null;
-
-        const reply: TaskCommentReply = {
-            id: crypto.randomUUID(),
-            author: replyData.author,
-            text: replyData.text,
-            createdAt: new Date().toISOString(),
-            isAI: replyData.isAI,
-        };
-
-        if (!comments[index].replies) {
-            comments[index].replies = [];
-        }
-        comments[index].replies!.push(reply);
-        comments[index].updatedAt = new Date().toISOString();
-        await this.writeComments(workspaceId, taskPath, comments);
-        return reply;
     }
 
     /**
@@ -390,11 +287,6 @@ function findMissingField(body: any): string | null {
         }
     }
     return null;
-}
-
-/** Validate workspace ID to prevent path traversal. */
-function isValidWorkspaceId(wsId: string): boolean {
-    return /^[a-zA-Z0-9_-]+$/.test(wsId) && !wsId.includes('..');
 }
 
 // ============================================================================

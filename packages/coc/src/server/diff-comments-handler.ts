@@ -29,6 +29,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
+import { BaseCommentsManager, isValidWorkspaceId } from './base-comments-manager';
 
 // ============================================================================
 // Types
@@ -78,16 +79,28 @@ const DEFAULT_DIFF_SETTINGS: DiffCommentsStorage['settings'] = {
 
 /**
  * Manages diff comments storage and operations.
- * Mirrors TaskCommentsManager but keyed by sha256(context) instead of filePath.
+ * Keyed by sha256(context) instead of filePath.
+ * Extends BaseCommentsManager for shared CRUD, read, and write logic.
  */
-export class DiffCommentsManager {
+export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCommentReply> {
     private readonly commentsRoot: string;
 
     /**
      * @param dataDir - Root data directory (e.g. ~/.coc)
      */
     constructor(dataDir: string) {
+        super();
         this.commentsRoot = path.join(dataDir, DIFF_COMMENTS_DIR_NAME);
+    }
+
+    /** Return the workspace directory (commentsRoot/<wsId>). */
+    protected getWorkspaceDir(wsId: string): string {
+        return path.join(this.commentsRoot, wsId);
+    }
+
+    /** Wrap comments in the diff-specific storage envelope. */
+    protected buildStorage(comments: DiffComment[]): DiffCommentsStorage {
+        return { comments, settings: DEFAULT_DIFF_SETTINGS };
     }
 
     /**
@@ -113,58 +126,6 @@ export class DiffCommentsManager {
             .digest('hex');
     }
 
-    /** Get comments directory for a workspace. */
-    private getWorkspaceDir(wsId: string): string {
-        return path.join(this.commentsRoot, wsId);
-    }
-
-    /** Get storage file path for a storage key. */
-    private getStorageFile(wsId: string, storageKey: string): string {
-        return path.join(this.getWorkspaceDir(wsId), `${storageKey}.json`);
-    }
-
-    /** Ensure workspace directory exists. */
-    private ensureWorkspaceDir(wsId: string): void {
-        const dir = this.getWorkspaceDir(wsId);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-    }
-
-    /** Read all comments for a storage key. */
-    async getComments(wsId: string, storageKey: string): Promise<DiffComment[]> {
-        const file = this.getStorageFile(wsId, storageKey);
-        if (!fs.existsSync(file)) {
-            return [];
-        }
-        try {
-            const content = await fs.promises.readFile(file, 'utf8');
-            const storage: DiffCommentsStorage = JSON.parse(content);
-            return storage.comments || [];
-        } catch {
-            return [];
-        }
-    }
-
-    /** Write comments to storage atomically (write to temp file then rename). */
-    async writeComments(wsId: string, storageKey: string, comments: DiffComment[]): Promise<void> {
-        this.ensureWorkspaceDir(wsId);
-        const file = this.getStorageFile(wsId, storageKey);
-        const storage: DiffCommentsStorage = {
-            comments,
-            settings: DEFAULT_DIFF_SETTINGS,
-        };
-        const tempFile = `${file}.tmp`;
-        try {
-            await fs.promises.writeFile(tempFile, JSON.stringify(storage, null, 2), 'utf8');
-            await fs.promises.rename(tempFile, file);
-        } catch (error) {
-            // Clean up temp file on error
-            try { await fs.promises.unlink(tempFile); } catch { /* ignore */ }
-            throw error;
-        }
-    }
-
     /**
      * Add a new comment.
      * Sets `ephemeral: true` when `ctx.newRef === 'working-tree'`.
@@ -175,86 +136,8 @@ export class DiffCommentsManager {
         commentData: Omit<DiffComment, 'id' | 'createdAt' | 'updatedAt' | 'ephemeral'>
     ): Promise<DiffComment> {
         const storageKey = this.hashContext(ctx);
-        const comments = await this.getComments(wsId, storageKey);
-        const now = new Date().toISOString();
-        const newComment: DiffComment = {
-            ...commentData,
-            id: crypto.randomUUID(),
-            createdAt: now,
-            updatedAt: now,
-            ...(ctx.newRef === 'working-tree' ? { ephemeral: true } : {}),
-        };
-        comments.push(newComment);
-        await this.writeComments(wsId, storageKey, comments);
-        return newComment;
-    }
-
-    /** Update an existing comment. Returns null if not found. */
-    async updateComment(
-        wsId: string,
-        storageKey: string,
-        id: string,
-        updates: Partial<Omit<DiffComment, 'id' | 'createdAt'>>
-    ): Promise<DiffComment | null> {
-        const comments = await this.getComments(wsId, storageKey);
-        const index = comments.findIndex(c => c.id === id);
-        if (index === -1) {
-            return null;
-        }
-        comments[index] = {
-            ...comments[index],
-            ...updates,
-            id: comments[index].id,
-            createdAt: comments[index].createdAt,
-            updatedAt: new Date().toISOString(),
-        };
-        await this.writeComments(wsId, storageKey, comments);
-        return comments[index];
-    }
-
-    /** Delete a comment. Returns false if not found. */
-    async deleteComment(wsId: string, storageKey: string, id: string): Promise<boolean> {
-        const comments = await this.getComments(wsId, storageKey);
-        const filtered = comments.filter(c => c.id !== id);
-        if (filtered.length === comments.length) {
-            return false;
-        }
-        await this.writeComments(wsId, storageKey, filtered);
-        return true;
-    }
-
-    /** Get a single comment by ID. Returns null if not found. */
-    async getComment(wsId: string, storageKey: string, id: string): Promise<DiffComment | null> {
-        const comments = await this.getComments(wsId, storageKey);
-        return comments.find(c => c.id === id) || null;
-    }
-
-    /** Add a reply to a comment. Returns null if comment not found. */
-    async addReply(
-        wsId: string,
-        storageKey: string,
-        id: string,
-        replyData: { author: string; text: string; isAI?: boolean }
-    ): Promise<DiffCommentReply | null> {
-        const comments = await this.getComments(wsId, storageKey);
-        const index = comments.findIndex(c => c.id === id);
-        if (index === -1) return null;
-
-        const reply: DiffCommentReply = {
-            id: crypto.randomUUID(),
-            author: replyData.author,
-            text: replyData.text,
-            createdAt: new Date().toISOString(),
-            isAI: replyData.isAI,
-        };
-
-        if (!comments[index].replies) {
-            comments[index].replies = [];
-        }
-        (comments[index].replies as DiffCommentReply[]).push(reply);
-        comments[index].updatedAt = new Date().toISOString();
-        await this.writeComments(wsId, storageKey, comments);
-        return reply;
+        const extra = ctx.newRef === 'working-tree' ? { ephemeral: true as const } : {};
+        return this.addCommentCore(wsId, storageKey, { ...commentData, ...extra });
     }
 
     /**
@@ -400,11 +283,6 @@ export class DiffCommentsManager {
 // ============================================================================
 // Validation Helpers
 // ============================================================================
-
-/** Validate workspace ID to prevent path traversal. */
-function isValidWorkspaceId(wsId: string): boolean {
-    return /^[a-zA-Z0-9_-]+$/.test(wsId) && !wsId.includes('..');
-}
 
 /** Validate storage key (SHA-256 hex, 64 chars). */
 function isValidStorageKey(key: string): boolean {
