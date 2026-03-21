@@ -302,4 +302,76 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         expect(mockQueueManager.returnToHistory).not.toHaveBeenCalled();
         expect(mockQueueManager.markCompleted).not.toHaveBeenCalled();
     });
+
+    // 12 — regression: task.payload must not be mutated after execute -----------
+    it('should leave task.payload intact after successful follow-up execution', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        await store.addProcess(proc);
+
+        const attachments = [{ type: 'file', path: '/a.ts' }];
+        const task = followUpTask({
+            processId: 'proc-1',
+            content: 'follow up',
+            attachments,
+            imageTempDir: '/tmp/img-123',
+        });
+
+        await executor.execute(task);
+
+        const payload = task.payload as any;
+        expect(payload.processId).toBe('proc-1');
+        expect(payload.attachments).toEqual(attachments);
+        expect(payload.imageTempDir).toBe('/tmp/img-123');
+    });
+
+    // 13 — regression: task.payload must not be mutated after follow-up failure --
+    it('should leave task.payload intact after failed follow-up execution', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        await store.addProcess(proc);
+
+        const spy = vi.spyOn(CLITaskExecutor.prototype as any, 'executeFollowUp');
+        spy.mockRejectedValue(new Error('boom'));
+
+        const attachments = [{ type: 'file', path: '/b.ts' }];
+        const task = followUpTask({
+            processId: 'proc-1',
+            content: 'follow up',
+            attachments,
+            imageTempDir: '/tmp/img-456',
+        });
+
+        await executor.execute(task);
+
+        const payload = task.payload as any;
+        expect(payload.processId).toBe('proc-1');
+        expect(payload.attachments).toEqual(attachments);
+        expect(payload.imageTempDir).toBe('/tmp/img-456');
+
+        spy.mockRestore();
+    });
+
+    // 14 — regression: task.payload must not be mutated on cancellation ---------
+    it('should leave task.payload intact when cancelled before execution', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        await store.addProcess({ ...proc, status: 'running' });
+
+        const attachments = [{ type: 'file', path: '/c.ts' }];
+        const task = followUpTask({
+            processId: 'proc-1',
+            content: 'follow up',
+            attachments,
+            imageTempDir: '/tmp/img-789',
+        });
+
+        executor.cancel(task.id);
+        await executor.execute(task);
+
+        const payload = task.payload as any;
+        expect(payload.processId).toBe('proc-1');
+        expect(payload.attachments).toEqual(attachments);
+        expect(payload.imageTempDir).toBe('/tmp/img-789');
+    });
 });

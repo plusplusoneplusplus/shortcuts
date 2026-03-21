@@ -607,7 +607,7 @@ describe('CLITaskExecutor', () => {
             expect((parentTask?.payload as any).prompt).toBe('Follow-up question');
         });
 
-        it('should clear follow-up payload metadata after successful execution', async () => {
+        it('should leave follow-up payload metadata intact after successful execution', async () => {
             const queueManager = new TaskQueueManager();
             const executor = new CLITaskExecutor(store);
             executor.setQueueManager(queueManager);
@@ -635,14 +635,13 @@ describe('CLITaskExecutor', () => {
 
             const result = await executor.execute(task);
             expect(result.success).toBe(true);
-            expect((task.payload as any).processId).toBeUndefined();
-            expect((task.payload as any).attachments).toBeUndefined();
-            expect((task.payload as any).imageTempDir).toBeUndefined();
+            // payload must NOT be mutated — fields should remain intact
+            expect((task.payload as any).processId).toBe('proc-fail-reactivate');
             // displayName should remain unchanged (AI-generated title preserved)
             expect(task.displayName).toBeUndefined();
         });
 
-        it('should clear follow-up payload metadata when sdkSessionId is missing', async () => {
+        it('should leave follow-up payload metadata intact when sdkSessionId is missing', async () => {
             const executor = new CLITaskExecutor(store);
 
             const proc = createCompletedProcessWithSession('proc-fail-followup', '');
@@ -665,9 +664,8 @@ describe('CLITaskExecutor', () => {
 
             const result = await executor.execute(task);
             expect(result.success).toBe(true);
-            expect((task.payload as any).processId).toBeUndefined();
-            expect((task.payload as any).attachments).toBeUndefined();
-            expect((task.payload as any).imageTempDir).toBeUndefined();
+            // payload must NOT be mutated — fields should remain intact
+            expect((task.payload as any).processId).toBe('proc-fail-followup');
         });
 
         it('should work without parent task metadata', async () => {

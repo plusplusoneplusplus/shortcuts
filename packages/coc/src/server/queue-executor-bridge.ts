@@ -196,6 +196,18 @@ export interface QueueExecutorBridge {
 // ============================================================================
 
 /**
+ * Consolidated per-process state held for the lifetime of a single task execution.
+ * Replaces five separate Maps (outputBuffers, timelineBuffers, throttleState,
+ * pendingSuggestions) with a single entry deleted atomically in cleanupSession().
+ */
+interface ProcessSessionState {
+    outputBuffer: string;
+    timelineBuffer: TimelineItem[];
+    throttleState: { chunksSinceLastFlush: number; lastFlushTime: number };
+    pendingSuggestions: string[] | undefined;
+}
+
+/**
  * Task executor that uses CopilotSDKService to execute queued tasks.
  * Creates AIProcess entries in the ProcessStore for tracking.
  */
@@ -209,17 +221,8 @@ export class CLITaskExecutor implements TaskExecutor {
     private readonly aiService: CopilotSDKService;
     /** Default timeout in ms for tasks without explicit timeoutMs */
     private readonly defaultTimeoutMs: number;
-    /** Per-process output accumulator for persisting conversation output */
-    private readonly outputBuffers: Map<string, string> = new Map();
-    /** Per-process timeline accumulator for chronological execution events */
-    private readonly timelineBuffers: Map<string, TimelineItem[]> = new Map();
-    /** Per-process throttle state for streaming conversation flushes */
-    private readonly throttleState: Map<string, {
-        chunksSinceLastFlush: number;
-        lastFlushTime: number;
-    }> = new Map();
-    /** Per-process buffered follow-up suggestions from the suggest_follow_ups tool */
-    private readonly pendingSuggestions: Map<string, string[]> = new Map();
+    /** Consolidated per-process session state (output, timeline, throttle, suggestions) */
+    private readonly sessions = new Map<string, ProcessSessionState>();
     /** Time-based throttle: flush every N milliseconds */
     private static readonly THROTTLE_TIME_MS = 5000;
     /** Count-based throttle: flush every N chunks */
@@ -295,9 +298,6 @@ export class CLITaskExecutor implements TaskExecutor {
                 } catch {
                     // Non-fatal: process may already be cleaned up
                 }
-                delete (task.payload as ChatPayload).processId;
-                delete (task.payload as ChatPayload).attachments;
-                delete (task.payload as ChatPayload).imageTempDir;
                 if (imageTempDir) {
                     cleanupTempDir(imageTempDir);
                 }
@@ -320,18 +320,12 @@ export class CLITaskExecutor implements TaskExecutor {
             try {
                 await this.executeFollowUp(followUpPayload.processId!, followUpPayload.prompt, followUpPayload.attachments, followUpPayload.mode, (followUpPayload as any).deliveryMode);
                 const duration = Date.now() - startTime;
-                delete (task.payload as ChatPayload).processId;
-                delete (task.payload as ChatPayload).attachments;
-                delete (task.payload as ChatPayload).imageTempDir;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
 
                 return { success: true, durationMs: duration };
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 const duration = Date.now() - startTime;
-                delete (task.payload as ChatPayload).processId;
-                delete (task.payload as ChatPayload).attachments;
-                delete (task.payload as ChatPayload).imageTempDir;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} failed in ${duration}ms: ${errorMsg}`);
 
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
@@ -414,11 +408,10 @@ export class CLITaskExecutor implements TaskExecutor {
             const responseText = (result as any)?.response ?? '';
 
             // Clean up throttle state
-            this.throttleState.delete(processId);
+            // (cleanupSession in finally handles the actual deletion)
 
             // Drain accumulated timeline items for the final assistant turn
-            const finalTimeline = mergeConsecutiveContentItems(this.timelineBuffers.get(processId) || []);
-            this.timelineBuffers.delete(processId);
+            const finalTimeline = mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
 
             // Build final conversation turns (re-read from store to include any flushed streaming data)
             const currentProcess = await this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined);
@@ -434,10 +427,10 @@ export class CLITaskExecutor implements TaskExecutor {
                     turnIndex: 1,
                     toolCalls: (result as any)?.toolCalls || undefined,
                     timeline: finalTimeline,
-                    suggestions: this.pendingSuggestions.get(processId),
+                    suggestions: this.sessions.get(processId)?.pendingSuggestions,
                 },
             ];
-            this.pendingSuggestions.delete(processId);
+            // pendingSuggestions will be cleared by cleanupSession in finally
 
             // Cold resume: prepend historical turns from the original session
             const resumedFrom = (task.payload as any)?.resumedFrom;
@@ -493,9 +486,6 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} failed in ${duration}ms: ${errorMsg}`);
 
-            // Clean up throttle state
-            this.throttleState.delete(processId);
-            this.timelineBuffers.delete(processId);
             try {
                 const currentProcess = await this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined);
                 const existingTurns = currentProcess?.conversationTurns || initialTurns;
@@ -519,8 +509,8 @@ export class CLITaskExecutor implements TaskExecutor {
             };
         } finally {
             // Persist accumulated conversation output to disk (both success and failure)
-            const buffer = this.outputBuffers.get(processId) ?? '';
-            this.outputBuffers.delete(processId);
+            const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
+            this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);
             await this.persistOutput(processId, buffer);
         }
@@ -669,7 +659,7 @@ export class CLITaskExecutor implements TaskExecutor {
             : this.buildConversationHistoryContext(process.conversationTurns);
 
         // Initialize output buffer for this follow-up
-        this.outputBuffers.set(processId, '');
+        this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         try {
@@ -704,8 +694,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 },
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate for persistence
-                    const existing = this.outputBuffers.get(processId) ?? '';
-                    this.outputBuffers.set(processId, existing + chunk);
+                    this.getOrCreateSession(processId).outputBuffer += chunk;
                     // Append content timeline item
                     this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                     try {
@@ -732,11 +721,10 @@ export class CLITaskExecutor implements TaskExecutor {
             logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
 
             // Clean up throttle state
-            this.throttleState.delete(processId);
+            // (cleanupSession in finally handles the actual deletion)
 
             // Drain accumulated timeline items for the final assistant turn
-            const followUpTimeline = mergeConsecutiveContentItems(this.timelineBuffers.get(processId) || []);
-            this.timelineBuffers.delete(processId);
+            const followUpTimeline = mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
 
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
@@ -755,10 +743,10 @@ export class CLITaskExecutor implements TaskExecutor {
                 turnIndex: cleanTurns.length,
                 toolCalls: result.toolCalls || undefined,
                 timeline: followUpTimeline,
-                suggestions: this.pendingSuggestions.get(processId),
+                suggestions: this.sessions.get(processId)?.pendingSuggestions,
                 tokenUsage: result.tokenUsage,
             };
-            this.pendingSuggestions.delete(processId);
+            // pendingSuggestions will be cleared by cleanupSession in finally
 
             // Update session-level context window tracking
             const tokenLimit = result.tokenUsage?.tokenLimit ?? refreshed?.tokenLimit;
@@ -814,9 +802,6 @@ export class CLITaskExecutor implements TaskExecutor {
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
-            // Clean up throttle state
-            this.throttleState.delete(processId);
-            this.timelineBuffers.delete(processId);
             const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
             const turns = refreshed?.conversationTurns || [];
             // Remove any in-progress streaming assistant turn
@@ -838,8 +823,8 @@ export class CLITaskExecutor implements TaskExecutor {
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
         } finally {
             // Persist accumulated output to disk
-            const buffer = this.outputBuffers.get(processId) ?? '';
-            this.outputBuffers.delete(processId);
+            const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
+            this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);
             // Append to existing output file rather than overwriting
             await this.persistOutput(processId, buffer);
@@ -881,7 +866,7 @@ export class CLITaskExecutor implements TaskExecutor {
                     const parsed = JSON.parse(event.result || '{}');
                     const suggestions: string[] = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
                     if (suggestions.length > 0) {
-                        this.pendingSuggestions.set(processId, suggestions);
+                        this.getOrCreateSession(processId).pendingSuggestions = suggestions;
                         this.store.emitProcessEvent(processId, {
                             type: 'suggestions',
                             suggestions,
@@ -1257,7 +1242,7 @@ export class CLITaskExecutor implements TaskExecutor {
         const processId = `queue_${task.id}`;
 
         // Initialize output accumulator for this process
-        this.outputBuffers.set(processId, '');
+        this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
         // Rehydrate externalized images from blob store if needed
@@ -1328,8 +1313,7 @@ export class CLITaskExecutor implements TaskExecutor {
                 // Stream response chunks to the process store for real-time UI updates
                 onStreamingChunk: (chunk: string) => {
                     // Accumulate output for disk persistence
-                    const existing = this.outputBuffers.get(processId) ?? '';
-                    this.outputBuffers.set(processId, existing + chunk);
+                    this.getOrCreateSession(processId).outputBuffer += chunk;
                     // Append content timeline item
                     this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
                     try {
@@ -1785,20 +1769,37 @@ export class CLITaskExecutor implements TaskExecutor {
         return undefined;
     }
 
+    /** Get or create the session state for a process. */
+    private getOrCreateSession(processId: string): ProcessSessionState {
+        let session = this.sessions.get(processId);
+        if (!session) {
+            session = {
+                outputBuffer: '',
+                timelineBuffer: [],
+                throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
+                pendingSuggestions: undefined,
+            };
+            this.sessions.set(processId, session);
+        }
+        return session;
+    }
+
+    /** Delete all session state for a process in one atomic operation. */
+    private cleanupSession(processId: string): void {
+        this.sessions.delete(processId);
+    }
+
     /**
      * Append a timeline item to the in-memory buffer for a process.
      */
     private appendTimelineItem(processId: string, item: TimelineItem): void {
-        if (!this.timelineBuffers.has(processId)) {
-            this.timelineBuffers.set(processId, []);
-        }
-        const buffer = this.timelineBuffers.get(processId)!;
-        const last = buffer.length > 0 ? buffer[buffer.length - 1] : undefined;
+        const session = this.getOrCreateSession(processId);
+        const last = session.timelineBuffer.length > 0 ? session.timelineBuffer[session.timelineBuffer.length - 1] : undefined;
         // Merge consecutive content items to avoid word-per-line rendering
         if (last && last.type === 'content' && item.type === 'content') {
             last.content = (last.content ?? '') + (item.content ?? '');
         } else {
-            buffer.push(item);
+            session.timelineBuffer.push(item);
         }
     }
 
@@ -1809,18 +1810,15 @@ export class CLITaskExecutor implements TaskExecutor {
      * - Chunks since last flush >= THROTTLE_CHUNK_COUNT (50 chunks)
      */
     private checkThrottleAndFlush(processId: string): void {
-        if (!this.throttleState.has(processId)) {
-            this.throttleState.set(processId, { chunksSinceLastFlush: 0, lastFlushTime: 0 });
-        }
-        const state = this.throttleState.get(processId)!;
-        state.chunksSinceLastFlush++;
+        const session = this.getOrCreateSession(processId);
+        session.throttleState.chunksSinceLastFlush++;
 
-        const timeSinceFlush = Date.now() - state.lastFlushTime;
-        if (state.chunksSinceLastFlush >= CLITaskExecutor.THROTTLE_CHUNK_COUNT ||
+        const timeSinceFlush = Date.now() - session.throttleState.lastFlushTime;
+        if (session.throttleState.chunksSinceLastFlush >= CLITaskExecutor.THROTTLE_CHUNK_COUNT ||
             timeSinceFlush >= CLITaskExecutor.THROTTLE_TIME_MS) {
             // Reset counters synchronously to prevent duplicate flushes
-            state.chunksSinceLastFlush = 0;
-            state.lastFlushTime = Date.now();
+            session.throttleState.chunksSinceLastFlush = 0;
+            session.throttleState.lastFlushTime = Date.now();
             this.flushConversationTurn(processId, true).catch(() => {
                 // Non-fatal: don't fail the task because of flush
             });
@@ -1833,12 +1831,13 @@ export class CLITaskExecutor implements TaskExecutor {
      * can show a streaming indicator. On completion, call with `streaming: false`.
      */
     private async flushConversationTurn(processId: string, streaming: boolean): Promise<void> {
-        const buffer = this.outputBuffers.get(processId);
-        const hasTimeline = (this.timelineBuffers.get(processId)?.length ?? 0) > 0;
+        const session = this.sessions.get(processId);
+        const buffer = session?.outputBuffer;
+        const hasTimeline = (session?.timelineBuffer.length ?? 0) > 0;
         if (buffer == null && !hasTimeline) return;
 
         // Snapshot current timeline for this flush, merging consecutive content items to reduce bloat
-        const timelineSnapshot = mergeConsecutiveContentItems([...(this.timelineBuffers.get(processId) || [])]);
+        const timelineSnapshot = mergeConsecutiveContentItems([...(session?.timelineBuffer || [])]);
 
         try {
             const currentProcess = await this.store.getProcess(processId);
