@@ -54,21 +54,27 @@ describe('useModels', () => {
             id: 'gpt-4',
             name: 'GPT-4',
             tokenLimit: 8192,
+            capabilities: {
+                supports: { vision: false, reasoningEffort: false },
+                limits: { max_context_window_tokens: 8192, max_prompt_tokens: undefined },
+            },
         });
     });
 
-    it('returns empty models on non-ok response', async () => {
-        fetchMock.mockResolvedValue({ ok: false, json: async () => [] } as Response);
+    it('returns empty models on non-ok response and sets error', async () => {
+        fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => [] } as Response);
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
+        expect(result.current.error).toBe('HTTP 500');
     });
 
-    it('returns empty models on fetch error', async () => {
+    it('returns empty models on fetch error and sets error', async () => {
         fetchMock.mockRejectedValue(new Error('network error'));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
+        expect(result.current.error).toBe('network error');
     });
 
     it('defaults tokenLimit to 0 when capabilities are missing', async () => {
@@ -76,6 +82,7 @@ describe('useModels', () => {
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].tokenLimit).toBe(0);
+        expect(result.current.models[0].capabilities?.supports?.vision).toBe(false);
     });
 
     it('handles non-array response gracefully', async () => {
@@ -83,5 +90,34 @@ describe('useModels', () => {
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
+    });
+
+    it('reload clears error and re-fetches', async () => {
+        fetchMock.mockRejectedValueOnce(new Error('fail'));
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.error).toBe('fail');
+
+        fetchMock.mockResolvedValueOnce(makeModelResponse([{ id: 'm1', name: 'M1' }]));
+        result.current.reload();
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.error).toBe(null);
+        expect(result.current.models).toHaveLength(1);
+    });
+
+    it('exposes vision and reasoning capabilities', async () => {
+        const raw = [{
+            id: 'vision-model',
+            name: 'Vision',
+            capabilities: {
+                supports: { vision: true, reasoningEffort: true },
+                limits: { max_context_window_tokens: 200000 },
+            },
+        }];
+        fetchMock.mockResolvedValue(makeModelResponse(raw));
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].capabilities?.supports?.vision).toBe(true);
+        expect(result.current.models[0].capabilities?.supports?.reasoningEffort).toBe(true);
     });
 });

@@ -142,6 +142,14 @@ describe('TopBar responsive behavior', () => {
         expect(btn.className).toContain('md:inline-flex');
     });
 
+    it('models button has hidden md:inline-flex classes (hidden on mobile)', () => {
+        viewportCleanup = mockViewport(375);
+        render(<TopBar />);
+        const btn = document.getElementById('models-toggle')!;
+        expect(btn.className).toContain('hidden');
+        expect(btn.className).toContain('md:inline-flex');
+    });
+
     it('admin button does NOT have hidden class (always visible)', () => {
         viewportCleanup = mockViewport(375);
         render(<TopBar />);

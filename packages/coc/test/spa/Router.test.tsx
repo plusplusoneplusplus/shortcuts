@@ -67,6 +67,10 @@ describe('tabFromHash', () => {
     it('returns "admin" for #admin', () => {
         expect(tabFromHash('#admin')).toBe('admin');
     });
+
+    it('returns "models" for #models', () => {
+        expect(tabFromHash('#models')).toBe('models');
+    });
 });
 
 // ── parseWikiDeepLink ─────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ const SkillsView = lazy(() => import('../views/skills/SkillsView').then(m => ({ 
 const UsageStatsView = lazy(() => import('../views/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 const LogsView = lazy(() => import('../views/logs/LogsView').then(m => ({ default: m.LogsView })));
+const ModelsView = lazy(() => import('../views/models/ModelsView').then(m => ({ default: m.ModelsView })));
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -32,6 +33,7 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'memory') return 'memory';
     if (h === 'skills') return 'skills';
     if (h === 'logs') return 'logs';
+    if (h === 'models') return 'models';
     if (h === 'admin') return 'admin';
     return null;
 }
@@ -445,6 +447,12 @@ export function Router() {
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <UsageStatsView />
+                </Suspense>
+            );
+        case 'models':
+            return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
+                    <ModelsView />
                 </Suspense>
             );
         case 'reports':

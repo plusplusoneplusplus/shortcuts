@@ -18,7 +18,7 @@ export interface ClientTokenUsage {
     currentTokens?: number;
 }
 
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs';
+export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'models';
 export type RepoSubTab = 'settings' | 'workflows' | 'tasks' | 'schedules' | 'git' | 'wiki' | 'workflow' | 'explorer' | 'activity' | 'pull-requests';
 export type SettingsSection = 'info' | 'preferences' | 'mcp' | 'skills' | 'instructions';
 /** @deprecated Use SettingsSection */

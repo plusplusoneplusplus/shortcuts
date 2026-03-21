@@ -220,6 +220,21 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     &#128202;
                 </button>
                 <button
+                    id="models-toggle"
+                    data-tab="models"
+                    className={
+                        `h-7 w-7 md:h-8 md:w-8 hidden md:inline-flex items-center justify-center rounded touch-target ` +
+                        (state.activeTab === 'models'
+                            ? 'bg-[#0078d4] text-white'
+                            : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
+                    }
+                    aria-label="Models"
+                    title="Models"
+                    onClick={() => switchTab('models')}
+                >
+                    &#127907;
+                </button>
+                <button
                     id="admin-toggle"
                     data-tab="admin"
                     className={
