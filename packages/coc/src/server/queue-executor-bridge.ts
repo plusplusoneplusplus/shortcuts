@@ -83,8 +83,8 @@ import { BaseExecutor } from './executors/base-executor';
 import { resolveTaskRoot } from './task-root-resolver';
 import { TaskStrategyRegistry } from './task-strategies';
 import type { ExecutionContext } from './task-strategies';
-import { RunScriptStrategy } from './task-strategies/run-script-strategy';
 import { ReplicateTemplateStrategy } from './task-strategies/replicate-template-strategy';
+import { ShellExecutor } from './executors/shell-executor';
 
 // ============================================================================
 // Constants
@@ -196,7 +196,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             ),
         );
         this.registry = new TaskStrategyRegistry();
-        this.registry.register('run-script', new RunScriptStrategy());
         this.registry.register('replicate-template', new ReplicateTemplateStrategy());
     }
 
@@ -793,9 +792,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             return this.executeRunPipeline(task);
         }
 
-        // Run script: spawn child process via registry
+        // Run script: spawn child process via ShellExecutor
         if (isRunScriptPayload(task.payload)) {
-            return this.registry.get('run-script')!.execute(task, this.buildExecutionContext(task));
+            return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
         }
 
         // All chat tasks (ask/plan/autopilot with optional context presets)
