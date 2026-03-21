@@ -45,11 +45,10 @@ import { getBundleETag } from './spa/html-template';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
-import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { FileProcessStore, getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
-import { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
-import { defaultIsExclusive } from './queue-executor-bridge';
+import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 import { ScheduleRunPersistence } from './schedule-run-persistence';
@@ -170,39 +169,21 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
 
-    // Create per-repo queue infrastructure
-    const registry = new RepoQueueRegistry({
-        maxQueueSize: 0,  // unlimited
-        keepHistory: true,
-        maxHistorySize: options.queue?.historyLimit ?? 100,
-        isExclusive: defaultIsExclusive,
-    });
-
     // Resolve config to derive default timeout for AI tasks
     const resolvedConfig = resolveConfig(options.configPath);
     const defaultTimeoutMs = resolvedConfig.timeout
         ? resolvedConfig.timeout * 1000
         : DEFAULT_AI_TIMEOUT_MS;
 
-    const bridge = new MultiRepoQueueExecutorBridge(registry, store, {
-        autoStart: options.queue?.autoStart !== false,
-        approvePermissions: true,
+    // Create per-repo queue infrastructure
+    const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
+        store,
         dataDir,
-        aiService: options.aiService,
+        options,
         defaultTimeoutMs,
-        followUpSuggestions: resolvedConfig.chat.followUpSuggestions,
-        getWsServer: () => wsServer,
-    });
-
-    // Restore persisted queue state before executor starts processing
-    const queuePersistence = new MultiRepoQueuePersistence(bridge, dataDir, {
-        restartPolicy: options.queue?.restartPolicy,
-        maxPersistedHistory: options.queue?.historyLimit,
-    });
-    queuePersistence.restore();
-
-    // Create aggregate facade for queue routes
-    const queueFacade = bridge.createAggregateFacade();
+        resolvedConfig.chat.followUpSuggestions,
+        () => wsServer,
+    );
 
     // Initialize schedule manager with persistent storage
     const schedulePersistence = new ScheduleYamlPersistence(dataDir);
