@@ -94,6 +94,45 @@ export class FileProcessStore implements ProcessStore {
         return path.join(this.workspaceDirFor(workspaceId), this.sanitizeId(processId) + '.json');
     }
 
+    // --- Pruned bucket helpers (processes/pruned/YYYY-MM/) ---
+
+    private prunedRootFor(workspaceId: string): string {
+        return path.join(this.workspaceDirFor(workspaceId), 'pruned');
+    }
+
+    private prunedBucketFor(workspaceId: string, startTime: string): string {
+        const bucket = new Date(startTime).toISOString().slice(0, 7);
+        return path.join(this.prunedRootFor(workspaceId), bucket);
+    }
+
+    private prunedBucketIndexPathFor(workspaceId: string, startTime: string): string {
+        return path.join(this.prunedBucketFor(workspaceId, startTime), 'index.json');
+    }
+
+    public getPrunedProcessFilePath(workspaceId: string, processId: string, startTime: string): string {
+        return path.join(this.prunedBucketFor(workspaceId, startTime), this.sanitizeId(processId) + '.json');
+    }
+
+    private async readPrunedBucketIndex(workspaceId: string, startTime: string): Promise<ProcessIndexEntry[]> {
+        try {
+            const data = await fs.readFile(this.prunedBucketIndexPathFor(workspaceId, startTime), 'utf-8');
+            return JSON.parse(data) as ProcessIndexEntry[];
+        } catch {
+            return [];
+        }
+    }
+
+    private async writePrunedBucketIndex(workspaceId: string, startTime: string, entries: ProcessIndexEntry[]): Promise<void> {
+        const bucketDir = this.prunedBucketFor(workspaceId, startTime);
+        await ensureDataDir(bucketDir);
+        const indexPath = this.prunedBucketIndexPathFor(workspaceId, startTime);
+        const tmpPath = indexPath + '.tmp';
+        await this.retryAtomicWrite(tmpPath, async () => {
+            await fs.writeFile(tmpPath, JSON.stringify(entries, null, 2), 'utf-8');
+            await fs.rename(tmpPath, indexPath);
+        });
+    }
+
     // --- Process CRUD ---
 
     async addProcess(process: AIProcess): Promise<void> {
@@ -617,6 +656,23 @@ export class FileProcessStore implements ProcessStore {
         });
     }
 
+    private async moveProcessToPruned(workspaceId: string, entry: ProcessIndexEntry): Promise<void> {
+        const src = this.getProcessFilePath(workspaceId, entry.id);
+        const destDir = this.prunedBucketFor(workspaceId, entry.startTime);
+        await ensureDataDir(destDir);
+        const dest = this.getPrunedProcessFilePath(workspaceId, entry.id, entry.startTime);
+        try {
+            await fs.rename(src, dest);
+        } catch {
+            // Cross-device fallback: copy then delete
+            const data = await fs.readFile(src, 'utf-8').catch(() => null);
+            if (data) {
+                await fs.writeFile(dest, data, 'utf-8');
+                await fs.unlink(src).catch(() => {});
+            }
+        }
+    }
+
     private async deleteProcessFile(workspaceId: string, id: string): Promise<void> {
         try {
             await fs.unlink(this.getProcessFilePath(workspaceId, id));
@@ -721,8 +777,20 @@ export class FileProcessStore implements ProcessStore {
                 }
             }
 
-            // Delete pruned process files
-            await Promise.all(prunedEntries.map(e => this.deleteProcessFile(workspaceId, e.id)));
+            // Group pruned entries by YYYY-MM bucket and write each bucket index
+            const byBucket = new Map<string, ProcessIndexEntry[]>();
+            for (const e of prunedEntries) {
+                const bucket = new Date(e.startTime).toISOString().slice(0, 7);
+                if (!byBucket.has(bucket)) { byBucket.set(bucket, []); }
+                byBucket.get(bucket)!.push(e);
+            }
+            for (const [, bucketEntries] of byBucket) {
+                const existing = await this.readPrunedBucketIndex(workspaceId, bucketEntries[0].startTime);
+                await this.writePrunedBucketIndex(workspaceId, bucketEntries[0].startTime, [...existing, ...bucketEntries]);
+            }
+
+            // Move pruned process files into their bucket directories
+            await Promise.all(prunedEntries.map(e => this.moveProcessToPruned(workspaceId, e)));
         }
 
         return [...nonTerminal, ...keptTerminal];

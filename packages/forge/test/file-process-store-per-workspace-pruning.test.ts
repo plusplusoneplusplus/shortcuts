@@ -117,21 +117,70 @@ describe('FileProcessStore per-workspace pruning', () => {
         }
     });
 
-    it('process files are deleted for pruned entries', async () => {
+    it('process files are moved to pruned bucket instead of deleted', async () => {
         const maxProcesses = 3;
         const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses });
+        const startTime = new Date('2026-03-01T10:00:00.000Z');
 
         for (let i = 0; i < 4; i++) {
             await store.addProcess(makeProcess(`p${i}`, {
                 status: 'completed',
-                startTime: new Date(1000 + i * 1000),
+                startTime: new Date(startTime.getTime() + i * 1000),
             }));
         }
 
-        // p0 was oldest and should have its file deleted
-        const prunedFile = path.join(tmpDir, 'repos', '_default', 'processes', 'p0.json');
-        const exists = await fs.access(prunedFile).then(() => true, () => false);
-        expect(exists).toBe(false);
+        // p0 was oldest — its file should have moved to pruned/2026-03/, not deleted
+        const activeFile = path.join(tmpDir, 'repos', '_default', 'processes', 'p0.json');
+        const activeExists = await fs.access(activeFile).then(() => true, () => false);
+        expect(activeExists).toBe(false);
+
+        const prunedFile = path.join(tmpDir, 'repos', '_default', 'processes', 'pruned', '2026-03', 'p0.json');
+        const prunedExists = await fs.access(prunedFile).then(() => true, () => false);
+        expect(prunedExists).toBe(true);
+    });
+
+    it('pruned bucket index.json accumulates entries', async () => {
+        const maxProcesses = 2;
+        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses });
+        const startTime = new Date('2026-03-01T10:00:00.000Z');
+
+        for (let i = 0; i < 4; i++) {
+            await store.addProcess(makeProcess(`p${i}`, {
+                status: 'completed',
+                startTime: new Date(startTime.getTime() + i * 1000),
+            }));
+        }
+
+        const bucketIndex = path.join(tmpDir, 'repos', '_default', 'processes', 'pruned', '2026-03', 'index.json');
+        const data = await fs.readFile(bucketIndex, 'utf-8');
+        const entries = JSON.parse(data) as { id: string }[];
+        expect(entries.map(e => e.id)).toContain('p0');
+        expect(entries.map(e => e.id)).toContain('p1');
+    });
+
+    it('processes pruned across different months land in separate buckets', async () => {
+        const maxProcesses = 2;
+        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses });
+
+        // p0 in Feb, p1 in Mar, p2 in Apr (all completed, sequential)
+        const times = [
+            new Date('2026-02-15T00:00:00.000Z'),
+            new Date('2026-03-15T00:00:00.000Z'),
+            new Date('2026-04-15T00:00:00.000Z'),
+            new Date('2026-05-15T00:00:00.000Z'),
+        ];
+        for (let i = 0; i < 4; i++) {
+            await store.addProcess(makeProcess(`p${i}`, {
+                status: 'completed',
+                startTime: times[i],
+            }));
+        }
+
+        // p0 (Feb) → pruned/2026-02/, p1 (Mar) → pruned/2026-03/
+        const febFile = path.join(tmpDir, 'repos', '_default', 'processes', 'pruned', '2026-02', 'p0.json');
+        const marFile = path.join(tmpDir, 'repos', '_default', 'processes', 'pruned', '2026-03', 'p1.json');
+        expect(await fs.access(febFile).then(() => true, () => false)).toBe(true);
+        expect(await fs.access(marFile).then(() => true, () => false)).toBe(true);
     });
 
     it('onPrune callback receives the correct evicted entries', async () => {
