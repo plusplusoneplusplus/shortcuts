@@ -54,6 +54,7 @@ import { createScheduleInfrastructure } from './infrastructure/schedule-infrastr
 import { registerScheduleRoutes } from './schedule-handler';
 import { registerStatsRoutes } from './stats-handler';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
+import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { TaskWatcher } from './task-watcher';
 import { resolveConfig } from '../config';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
@@ -161,6 +162,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const host = options.host ?? '0.0.0.0';
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
+
+    // Forward reference — assigned by createWebSocketInfrastructure below,
+    // before any request is processed (server not yet listening).
+    let wsServer: ProcessWebSocketServer;
 
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
@@ -295,154 +300,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     });
     const server = http.createServer(handler);
 
-    // Attach WebSocket server and bridge ProcessStore events
-    const wsServer = new ProcessWebSocketServer();
-    wsServer.attach(server);
-
-    // Wire drain events from multi-repo bridge to WebSocket
-    bridge.on('drain-start', (event: { queued: number; running: number }) => {
-        wsServer.broadcastProcessEvent({ type: 'drain-start', queued: event.queued, running: event.running });
-    });
-    bridge.on('drain-progress', (event: { queued: number; running: number }) => {
-        wsServer.broadcastProcessEvent({ type: 'drain-progress', queued: event.queued, running: event.running });
-    });
-    bridge.on('drain-complete', (event: { outcome: 'completed'; queued: number; running: number }) => {
-        wsServer.broadcastProcessEvent({ type: 'drain-complete', outcome: event.outcome, queued: event.queued, running: event.running });
-    });
-    bridge.on('drain-timeout', (event: { queued: number; running: number; timeoutMs?: number }) => {
-        wsServer.broadcastProcessEvent({ type: 'drain-timeout', queued: event.queued, running: event.running, timeoutMs: event.timeoutMs });
-    });
-
-    store.onProcessChange = (event) => {
-        switch (event.type) {
-            case 'process-added':
-                if (event.process) {
-                    wsServer.broadcastProcessEvent({
-                        type: 'process-added',
-                        process: toProcessSummary(event.process),
-                    });
-                }
-                break;
-            case 'process-updated':
-                if (event.process) {
-                    wsServer.broadcastProcessEvent({
-                        type: 'process-updated',
-                        process: toProcessSummary(event.process),
-                    });
-                }
-                break;
-            case 'process-removed':
-                if (event.process) {
-                    wsServer.broadcastProcessEvent({
-                        type: 'process-removed',
-                        processId: event.process.id,
-                    });
-                }
-                break;
-            case 'processes-cleared':
-                wsServer.broadcastProcessEvent({
-                    type: 'processes-cleared',
-                    count: 0,
-                });
-                break;
-        }
-    };
-
-    // Helper to map task arrays to WS-friendly summaries
-    const mapQueued = (t: any) => ({
-        id: t.id, repoId: t.repoId, type: t.type, priority: t.priority,
-        status: t.status, displayName: t.displayName, createdAt: t.createdAt,
-        workingDirectory: (t.payload as any)?.workingDirectory,
-        payload: {
-            kind: (t.payload as any)?.kind,
-            mode: (t.payload as any)?.mode,
-            prompt: (t.payload as any)?.prompt,
-            planFilePath: (t.payload as any)?.planFilePath,
-            filePath: (t.payload as any)?.filePath,
-            workingDirectory: (t.payload as any)?.workingDirectory,
-            context: (t.payload as any)?.context?.files
-                ? { files: (t.payload as any).context.files }
-                : undefined,
-            data: (t.payload as any)?.data ? {
-                originalTaskPath: (t.payload as any)?.data?.originalTaskPath,
-            } : undefined,
-        },
-    });
-    const mapRunning = (t: any) => ({
-        ...mapQueued(t), startedAt: t.startedAt,
-    });
-    const mapHistory = (t: any) => ({
-        ...mapRunning(t), completedAt: t.completedAt, error: t.error,
-    });
-
-    // Bridge queue change events from all repos to WebSocket
-    bridge.on('queueChange', (event: { repoPath: string; repoId: string; type: string; taskId?: string }) => {
-        // 1) Per-repo scoped broadcast
-        const repoManager = registry.getQueueForRepo(event.repoPath);
-        const repoStats = repoManager.getStats();
-        wsServer.broadcastProcessEvent({
-            type: 'queue-updated',
-            queue: {
-                repoId: event.repoId,
-                queued: repoManager.getQueued().map(mapQueued),
-                running: repoManager.getRunning().map(mapRunning),
-                history: repoManager.getHistory().map(mapHistory),
-                stats: repoStats,
-            },
-        } as any);
-
-        // 2) Global aggregate broadcast (no repoId) for top-level stats badge
-        const allQueued: any[] = [];
-        const allRunning: any[] = [];
-        const allHistory: any[] = [];
-        const combinedStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false };
-        let allPaused = true;
-        let anyManager = false;
-        let anyDraining = false;
-
-        for (const [, manager] of registry.getAllQueues()) {
-            allQueued.push(...manager.getQueued());
-            allRunning.push(...manager.getRunning());
-            allHistory.push(...manager.getHistory());
-            const s = manager.getStats();
-            combinedStats.queued += s.queued;
-            combinedStats.running += s.running;
-            combinedStats.completed += s.completed;
-            combinedStats.failed += s.failed;
-            combinedStats.cancelled += s.cancelled;
-            combinedStats.total += s.total;
-            if (!s.isPaused) { allPaused = false; }
-            if (s.isDraining) { anyDraining = true; }
-            anyManager = true;
-        }
-        combinedStats.isPaused = anyManager && allPaused;
-        combinedStats.isDraining = anyDraining;
-
-        // Debug: log queue state changes
-        const taskInfo = event.taskId ? ` task=${event.taskId}` : '';
-        process.stderr.write(`[Queue] ${event.type}${taskInfo} — queued=${combinedStats.queued} running=${combinedStats.running} completed=${combinedStats.completed} failed=${combinedStats.failed} ws_clients=${wsServer.clientCount}\n`);
-
-        wsServer.broadcastProcessEvent({
-            type: 'queue-updated',
-            queue: {
-                queued: allQueued.map(mapQueued),
-                running: allRunning.map(mapRunning),
-                history: allHistory.map(mapHistory),
-                stats: combinedStats,
-            },
-        } as any);
-    });
-
-    // Bridge schedule change events to WebSocket
-    scheduleManager.on('change', (event: any) => {
-        wsServer.broadcastProcessEvent({
-            type: event.type,
-            repoId: event.repoId,
-            scheduleId: event.scheduleId,
-            schedule: event.schedule,
-            run: event.run,
-        } as any);
-    });
+    // Attach WebSocket server and bridge all event sources
+    wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
 
     // Bridge task file changes to WebSocket
     const taskWatcher = new TaskWatcher((workspaceId) => {
