@@ -12,9 +12,8 @@ import * as os from 'os';
 import * as fs from 'fs';
 import type { Route, WikiServerOptions } from '../types';
 import { sendJson as sendJsonImpl, send404 as send404Impl, send500 as send500Impl, readJsonBody as readJsonBodyImpl } from '../shared/router';
-import { WikiManager } from '@plusplusoneplusplus/coc-server';
-import type { WikiRouteHelpers } from '@plusplusoneplusplus/coc-server';
-import type { AskAIFunction } from '@plusplusoneplusplus/coc-server';
+import { WikiManager } from './wiki-manager';
+import type { AskAIFunction } from './types';
 import type { ProcessStore, WikiInfo } from '@plusplusoneplusplus/forge';
 import { handleWikiAskRequest } from './ask-handler';
 import { handleWikiExploreRequest } from './explore-handler';
@@ -29,6 +28,14 @@ import {
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Injectable HTTP helper functions for wiki route handlers. */
+export interface WikiRouteHelpers {
+    sendJson: typeof sendJsonImpl;
+    send404: typeof send404Impl;
+    send500: typeof send500Impl;
+    readJsonBody: typeof readJsonBodyImpl;
+}
 
 export interface WikiRouteOptions {
     /** Initial wiki registrations (wikiId → { wikiDir, repoPath? }). */

@@ -5,7 +5,7 @@
  * and wiki HTTP route handlers.
  */
 
-// Types (re-exported from coc-server — single source of truth)
+// Types
 export type {
     // Domain types
     ProjectInfo,
@@ -22,50 +22,50 @@ export type {
     ExternalDependency,
     AskAIFunction,
     WikiServeCommandOptions,
-} from '@plusplusoneplusplus/coc-server';
+} from './types';
 
-// WikiData (re-exported from coc-server)
-export { WikiData } from '@plusplusoneplusplus/coc-server';
+// WikiData
+export { WikiData } from './wiki-data';
 export type {
     ComponentSummary,
     ComponentDetail,
     SpecialPage,
     ThemeArticleContent,
     ThemeArticleDetail,
-} from '@plusplusoneplusplus/coc-server';
+} from './wiki-data';
 
-// ContextBuilder (re-exported from coc-server — same instance as used by WikiManager)
-export { ContextBuilder, tokenize } from '@plusplusoneplusplus/coc-server';
+// ContextBuilder
+export { ContextBuilder, tokenize } from './context-builder';
 export type {
     RetrievedContext,
     ThemeContextEntry,
-} from '@plusplusoneplusplus/coc-server';
+} from './context-builder';
 
-// ConversationSessionManager (re-exported from coc-server — same instance as used by WikiManager)
-export { ConversationSessionManager } from '@plusplusoneplusplus/coc-server';
+// ConversationSessionManager
+export { ConversationSessionManager } from './conversation-session-manager';
 export type {
     ConversationSession,
     ConversationSessionManagerOptions,
     SessionSendResult,
-} from '@plusplusoneplusplus/coc-server';
+} from './conversation-session-manager';
 
-// FileWatcher (re-exported from coc-server)
-export { FileWatcher } from '@plusplusoneplusplus/coc-server';
+// FileWatcher
+export { FileWatcher } from './file-watcher';
 export type {
     FileWatcherOptions,
-} from '@plusplusoneplusplus/coc-server';
+} from './file-watcher';
 
-// WikiManager (re-exported from coc-server)
-export { WikiManager } from '@plusplusoneplusplus/coc-server';
+// WikiManager
+export { WikiManager } from './wiki-manager';
 export type {
     WikiRegistration,
     WikiRuntime,
     WikiManagerOptions,
-} from '@plusplusoneplusplus/coc-server';
+} from './wiki-manager';
 
 // Wiki Routes
 export { registerWikiRoutes } from './wiki-routes';
-export type { WikiRouteOptions } from './wiki-routes';
+export type { WikiRouteOptions, WikiRouteHelpers } from './wiki-routes';
 
 // Wiki Handlers (SSE utility shared across handlers)
 export { sendSSE, readBody, buildAskPrompt } from './ask-handler';
@@ -75,4 +75,14 @@ export type { ExploreRequest, WikiExploreHandlerOptions } from './explore-handle
 export { getGenerationState, resetGenerationState, resetAllGenerationStates } from './generate-handler';
 export type { GenerateRequest } from './generate-handler';
 
-// (Standalone wiki server, SPA template, WebSocket, router, and API handlers removed)
+// WebSocket (standalone wiki WebSocket, distinct from process WebSocket)
+export { WebSocketServer as WikiWebSocketServer } from './websocket';
+export type { WSClient, WSMessage } from './websocket';
+
+// Router
+export { createRequestHandler, sendJson, send404, send400, send500, readBody as readBodyRaw } from './router';
+export type { RouterOptions } from './router';
+
+// API Handlers
+export { handleApiRequest } from './api-handlers';
+export type { ApiHandlerContext } from './api-handlers';

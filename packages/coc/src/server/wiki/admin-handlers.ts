@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sendJson, send400, send500 } from '../shared/router';
 import { readBody, sendSSE } from './ask-handler';
-import type { WikiManager } from '@plusplusoneplusplus/coc-server';
+import type { WikiManager } from './wiki-manager';
 
 // ============================================================================
 // Seeds Handlers
