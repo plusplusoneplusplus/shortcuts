@@ -8,6 +8,7 @@
  */
 
 import { ConcurrencyLimiter, CancellationError } from './concurrency-limiter';
+import { isTimeoutError, TimeoutError } from '../runtime/timeout';
 import {
     DEFAULT_MAP_REDUCE_OPTIONS,
     ExecutionStats,
@@ -445,12 +446,9 @@ export class MapReduceExecutor {
                 baseTimeoutMs
             );
         } catch (error) {
-            // Check if it's a timeout error
-            const isTimeoutError = error instanceof Error && 
-                error.message.includes('timed out after');
-
-            // If not a timeout error, re-throw immediately
-            if (!isTimeoutError) {
+            // Check if it's a timeout error using structured type check
+            if (!isTimeoutError(error)) {
+                // Not a timeout error, re-throw immediately
                 throw error;
             }
 
@@ -494,7 +492,7 @@ export class MapReduceExecutor {
     private createTimeoutPromise<T>(timeoutMs: number): Promise<T> {
         return new Promise((_, reject) => {
             setTimeout(() => {
-                reject(new Error(`Operation timed out after ${timeoutMs}ms`));
+                reject(new TimeoutError(`Operation timed out after ${timeoutMs}ms`, { timeoutMs }));
             }, timeoutMs);
         });
     }
