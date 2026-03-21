@@ -14,28 +14,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import { createRequestHandler } from './router';
-import { registerApiRoutes } from './api-handler';
-import { registerQueueRoutes } from './queue-handler';
-import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
-import { registerTaskGenerationRoutes } from './task-generation-handler';
-import { registerPromptRoutes } from './prompt-handler';
-import { registerPreferencesRoutes } from './preferences-handler';
-import { registerAdminRoutes } from './admin-handler';
-import { registerTaskCommentsRoutes } from './task-comments-handler';
-import { registerDiffCommentsRoutes } from './diff-comments-handler';
-import { registerWikiRoutes } from './wiki';
-import { registerMemoryRoutes } from './memory/memory-routes';
-import { registerRepoRoutes } from './repos/repo-routes';
-import { registerInstructionRoutes } from './instruction-handler';
-import { registerProviderRoutes } from './providers/provider-routes';
-import { registerPrRoutes } from './repos/pr-routes';
-import { registerLogsRoutes } from './logs-routes';
-import { registerModelRoutes } from './models/model-routes';
-import { RepoTreeService } from './repos/tree-service';
-import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
-import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
-import { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
-import { registerReplicateApplyRoutes } from './replicate-apply-handler';
+import { registerAllRoutes } from './routes/index';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
@@ -47,15 +26,11 @@ import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
-import { registerScheduleRoutes } from './schedule-handler';
-import { registerStatsRoutes } from './stats-handler';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { resolveConfig } from '../config';
-import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
-import { createCLIAIInvoker } from '../ai-invoker';
 
 // ============================================================================
 // Stub Process Store
@@ -194,96 +169,20 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Build API routes
     const routes: Route[] = [];
-    registerApiRoutes(routes, store, bridge, dataDir, () => wsServer);
-    const repoTreeService = new RepoTreeService(dataDir);
-    registerRepoRoutes(routes, dataDir, repoTreeService);
-    registerPrRoutes(routes, dataDir, repoTreeService);
-    registerProviderRoutes(routes, dataDir);
-    registerProcessResumeRoutes(routes, store);
-    registerFreshChatTerminalRoutes(routes);
 
     // Bootstrap global workspace before queue routes so its rootPath is available
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
 
-    // Queue routes now receive the bridge directly for per-repo routing
-    registerQueueRoutes(routes, bridge, store, globalWorkspace.rootPath);
-    registerTaskRoutes(routes, store, dataDir);
-    registerTaskWriteRoutes(routes, store, dataDir);
-    registerWorkflowRoutes(routes, store);
-    registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
-        wsServer.broadcastProcessEvent({
-            type: 'workflows-changed',
-            workspaceId,
-            timestamp: Date.now(),
-        });
-    }, bridge, resolvedAiService);
-    registerTaskGenerationRoutes(routes, store, bridge, resolvedAiService, dataDir);
-    // Template read routes
-    registerTemplateRoutes(routes, store);
-    // Template write routes with WebSocket broadcast
-    registerTemplateWriteRoutes(routes, store, (workspaceId) => {
-        wsServer.broadcastProcessEvent({
-            type: 'templates-changed',
-            workspaceId,
-            timestamp: Date.now(),
-        });
-    });
-    registerReplicateApplyRoutes(routes, store);
-    registerPromptRoutes(routes, store);
-    registerPreferencesRoutes(routes, dataDir);
-    registerTaskCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
-    registerDiffCommentsRoutes(routes, dataDir, bridge, store, () => wsServer);
-    registerAdminRoutes(routes, { store, dataDir, getWsServer: () => wsServer, configPath: options.configPath, getQueueManager: () => queueFacade, getQueuePersistence: () => queuePersistence, restartExitCode: 75, configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile }, tokenTtlMs: options.tokenTtlMs });
-    registerScheduleRoutes(routes, scheduleManager, async (repoId) => {
-        const workspaces = await store.getWorkspaces();
-        return workspaces.find(w => w.id === repoId)?.rootPath;
-    });
-
-    // Register memory routes
-    registerMemoryRoutes(routes, dataDir, {
-        aggregateToolCallsAIInvoker: createCLIAIInvoker({ approvePermissions: true }),
-    });
-
-    // Register model routes
-    registerModelRoutes(routes, modelMetadataStore);
-
-    // Register server log streaming routes
-    registerLogsRoutes(routes);
-
-    // Register per-repo instruction file routes
-    registerInstructionRoutes(routes, store);
-
-    // Register token usage stats routes
-    registerStatsRoutes(routes, store);
-
-    // Always register wiki routes(they are safe even with no wikis registered)
-    const wikiManager = registerWikiRoutes(routes, {
-        wikis: options.wiki?.wikis,
-        aiEnabled: options.wiki?.aiEnabled,
-        dataDir,
-        store,
-        onWikiRebuilding: (wikiId, affectedComponentIds) => {
-            wsServer.broadcastWikiEvent({
-                type: 'wiki-rebuilding',
-                wikiId,
-                components: affectedComponentIds,
-            });
-        },
-        onWikiReloaded: (wikiId, affectedComponentIds) => {
-            wsServer.broadcastWikiEvent({
-                type: 'wiki-reload',
-                wikiId,
-                components: affectedComponentIds,
-            });
-        },
-        onWikiError: (wikiId, error) => {
-            wsServer.broadcastWikiEvent({
-                type: 'wiki-error',
-                wikiId,
-                message: error.message,
-            });
-        },
+    const { wikiManager } = registerAllRoutes(routes, {
+        store, bridge, queueFacade, scheduleManager,
+        dataDir, configPath: options.configPath,
+        tokenTtlMs: options.tokenTtlMs,
+        globalWorkspaceRootPath: globalWorkspace.rootPath,
+        resolvedAiService,
+        getWsServer: () => wsServer,
+        queuePersistence,
+        wikiOptions: options.wiki,
     });
 
     // Build request handler (health route is prepended automatically)
