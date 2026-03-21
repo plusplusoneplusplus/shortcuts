@@ -623,18 +623,16 @@ export function ActivityListPane({
                             {isAutopilotPaused ? '🤖▶' : '🤖⏸'}
                         </Button>
                     )}
-                    {(isPaused || running.length > 0 || queued.length > 0) && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={isPauseResumeLoading}
-                            onClick={onPauseResume}
-                            title={isPaused ? 'Resume queue' : 'Pause queue'}
-                            data-testid="repo-pause-resume-btn"
-                        >
-                            {isPaused ? '▶' : '⏸'}
-                        </Button>
-                    )}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isPauseResumeLoading}
+                        onClick={onPauseResume}
+                        title={isPaused ? 'Resume queue' : 'Pause queue'}
+                        data-testid="repo-pause-resume-btn"
+                    >
+                        {isPaused ? '▶' : '⏸'}
+                    </Button>
                 </div>
 
                 {searchVisible && (

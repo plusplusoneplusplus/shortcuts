@@ -441,6 +441,16 @@ describe('ActivityListPane: shared list component', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="queue-paused-banner"');
     });
 
+    it('pause button is always rendered regardless of queue state (regression: was hidden when empty)', () => {
+        // The pause button must NOT be wrapped in a condition that hides it when
+        // running/queued arrays are empty — users need to pause before adding tasks.
+        const pauseBtnIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="repo-pause-resume-btn"');
+        expect(pauseBtnIndex).toBeGreaterThan(-1);
+        // Verify there is no conditional guard on running/queued length before the button
+        const preceding = ACTIVITY_LIST_PANE_SOURCE.slice(Math.max(0, pauseBtnIndex - 200), pauseBtnIndex);
+        expect(preceding).not.toMatch(/running\.length > 0 \|\| queued\.length > 0.*\{/s);
+    });
+
     it('supports drag and drop', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('useQueueDragDrop');
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('draggable={!isMobile}');
