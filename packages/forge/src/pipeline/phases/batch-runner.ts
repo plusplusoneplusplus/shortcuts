@@ -395,14 +395,14 @@ export async function executeBatchMode(
 
     // Process batches with concurrency limit
     const batchPromises: Promise<PromptMapResult[]>[] = [];
-    const activeBatches: Promise<void>[] = [];
+    const active = new Set<Promise<void>>();
 
     for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
         
-        // Wait if we've reached the concurrency limit
-        if (activeBatches.length >= parallelLimit) {
-            await Promise.race(activeBatches);
+        // Wait until a slot is free; while handles multiple simultaneous completions
+        while (active.size >= parallelLimit) {
+            await Promise.race(active);
         }
 
         const batchPromise = processBatch(batch, i).then(results => {
@@ -430,14 +430,9 @@ export async function executeBatchMode(
 
         batchPromises.push(batchPromise);
         
-        // Track active batch for concurrency limiting
-        const activePromise = batchPromise.then(() => {
-            const index = activeBatches.indexOf(activePromise);
-            if (index > -1) {
-                activeBatches.splice(index, 1);
-            }
-        });
-        activeBatches.push(activePromise);
+        // Track active slot; finally ensures the slot is freed even if the batch rejects
+        const slot: Promise<void> = batchPromise.then((): void => { return; }).finally(() => active.delete(slot));
+        active.add(slot);
     }
 
     // Wait for all batches to complete
