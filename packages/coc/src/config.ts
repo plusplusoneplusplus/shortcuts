@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import yaml from 'js-yaml';
 import { validateConfigWithSchema } from './config/schema';
 
 // ============================================================================
@@ -226,8 +227,6 @@ function loadConfigFromPath(filePath: string): CLIConfig | undefined {
     }
     try {
         const content = fs.readFileSync(filePath, 'utf-8');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const yaml = require('js-yaml');
         const config = yaml.load(content);
         return validateConfig(config);
     } catch (error) {
@@ -254,8 +253,6 @@ function validateConfig(config: unknown): CLIConfig | undefined {
  * Creates parent directory if it does not exist.
  */
 export function writeConfigFile(configPath: string, config: CLIConfig): void {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const yaml = require('js-yaml');
     const dir = path.dirname(configPath);
     fs.mkdirSync(dir, { recursive: true });
     const tmpPath = configPath + '.tmp';
