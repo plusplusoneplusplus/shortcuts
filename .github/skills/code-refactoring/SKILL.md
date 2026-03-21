@@ -21,13 +21,13 @@ You are drafting a plan, not executing it. Do not use tools to edit the source c
 
 ### 3. Write to the Tasks Directory
 
-The generated plan must be written to the project's tasks directory (`.vscode/tasks/`).
-- Use the suffix `-plan.md` for the filename (e.g., `.vscode/tasks/auth-refactoring-plan.md`).
+The generated plan must be written to the given task directory (e.g., `.vscode/tasks/`).
+- Use the suffix `-plan.md` for the filename (e.g., `auth-refactoring-plan.md`).
 - Ensure the filename is descriptive of the area being refactored.
 
 ## Refactoring Plan Structure
 
-When drafting the plan file in `.vscode/tasks/`, follow this structure:
+When drafting the plan file, follow this structure:
 ```markdown
 # Refactoring Plan: [Area/Component Name]
 
@@ -60,5 +60,5 @@ Follow these steps when invoked:
 1. **Analyze:** Carefully review the provided code area, diff, or commit range.
 2. **Filter:** Discard low-value or low-confidence suggestions. Keep only the critical issues.
 3. **Draft:** Create the refactoring plan following the structure above.
-4. **Save:** Write the plan to a new file in `.vscode/tasks/` ending with `-plan.md`.
+4. **Save:** Write the plan to a new file in tasks folder ending with `-plan.md`.
 5. **Report:** Briefly inform the user in your response that the plan has been created, providing the path to the new file, and summarize the top critical issues you found.
