@@ -91,6 +91,7 @@ export {
     TaskQueueManagerOptions,
     DEFAULT_QUEUE_MANAGER_OPTIONS,
     QueueStats,
+    PauseReason,
 
     // Registry types
     RegistryStats,

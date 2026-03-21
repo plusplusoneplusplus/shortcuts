@@ -63,6 +63,8 @@ export interface TaskExecutionConfig {
     retryDelayMs?: number;
     /** Reasoning effort level for models that support it. */
     reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+    /** When true, the repo queue is paused automatically if this task fails. */
+    pauseOnFailure?: boolean;
 }
 
 /**
@@ -357,6 +359,15 @@ export const DEFAULT_QUEUE_MANAGER_OPTIONS: Required<Omit<TaskQueueManagerOption
 };
 
 /**
+ * Reason why a repo queue was paused (e.g., a task with pauseOnFailure failed).
+ */
+export interface PauseReason {
+    taskId: string;
+    displayName: string;
+    failedAt: string;
+}
+
+/**
  * Statistics about the queue
  */
 export interface QueueStats {
@@ -380,6 +391,8 @@ export interface QueueStats {
     pausedRepos?: string[];
     /** Whether autopilot is paused (new work will not be enqueued automatically) */
     isAutopilotPaused: boolean;
+    /** Why the queue was paused (present only when auto-paused due to task failure). */
+    pauseReason?: PauseReason;
 }
 
 // ============================================================================

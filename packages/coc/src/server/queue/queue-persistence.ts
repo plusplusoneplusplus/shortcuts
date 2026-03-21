@@ -32,6 +32,11 @@ export interface PersistedQueueState {
     pending: QueuedTask[];
     history: QueuedTask[];
     isPaused: boolean;
+    pauseReason?: {
+        taskId: string;
+        displayName: string;
+        failedAt: string;
+    };
 }
 
 export const CURRENT_VERSION = 3;
@@ -218,7 +223,7 @@ export function restoreRepoQueueState(
 
     // Restore per-repo pause state
     if (effectiveState.isPaused === true && effectiveState.repoId) {
-        queueManager.pauseRepo(effectiveState.repoId);
+        queueManager.pauseRepo(effectiveState.repoId, effectiveState.pauseReason);
     }
 
     return { restored: restoredPending, historyCount: historyToRestore.length };
@@ -404,6 +409,7 @@ export class QueuePersistence {
                 pending: sanitizedPending,
                 history: sanitizedHist.slice(0, this.maxPersistedHistory),
                 isPaused: this.queueManager.isRepoPaused(repoId),
+                pauseReason: this.queueManager.getPauseReason(repoId),
             };
             const filePath = getRepoQueueFilePath(this.dataDir, repoId);
             atomicWriteJson(filePath, state);

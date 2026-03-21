@@ -116,6 +116,8 @@ export interface ActivityListPaneProps {
     onRefresh: () => void;
     onOpenDialog: () => void;
     fetchQueue: () => Promise<void>;
+    /** Reason for the current pause (present when auto-paused due to task failure). */
+    pauseReason?: { taskId: string; displayName: string; failedAt: string };
 }
 
 export function ActivityListPane({
@@ -147,6 +149,7 @@ export function ActivityListPane({
     onRefresh,
     onOpenDialog,
     fetchQueue,
+    pauseReason,
 }: ActivityListPaneProps) {
     const [excludedTypes, setExcludedTypes] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
@@ -581,7 +584,22 @@ export function ActivityListPane({
             <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
-                        <span className="flex-1">⏸ Queue is paused — new tasks will not start.</span>
+                        <span className="flex-1">
+                            {pauseReason
+                                ? <>⏸ Queue paused — <strong>{pauseReason.displayName}</strong> failed at {new Date(pauseReason.failedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.</>
+                                : <>⏸ Queue is paused — new tasks will not start.</>
+                            }
+                        </span>
+                        {pauseReason && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onSelectTask(pauseReason.taskId)}
+                                data-testid="queue-banner-view-task-btn"
+                            >
+                                View Task
+                            </Button>
+                        )}
                         <Button variant="ghost" size="sm" disabled={isPauseResumeLoading} onClick={onPauseResume} data-testid="queue-banner-resume-btn">
                             ▶ Resume
                         </Button>
@@ -605,7 +623,7 @@ export function ActivityListPane({
                     </div>
                 )}
                 <div className={cn('flex items-center gap-2 mb-3')}>
-                    {isPaused && <Badge status="warning">Paused</Badge>}
+                    {isPaused && <Badge status="warning" title={pauseReason ? `${pauseReason.displayName} failed` : undefined}>Paused</Badge>}
                     {availableFilters.length >= 1 && (
                         <FilterDropdown
                             items={availableFilters}

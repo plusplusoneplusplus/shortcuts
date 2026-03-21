@@ -902,6 +902,103 @@ describe('QueuePersistence', () => {
     });
 
     // ========================================================================
+    // pauseReason persistence
+    // ========================================================================
+
+    describe('pauseReason persistence', () => {
+        it('saves pauseReason when repo is paused with reason', async () => {
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
+
+            queueManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/reason/repo' },
+                config: {},
+            });
+
+            const repoId = wsIdFor('/reason/repo');
+            const reason = { taskId: 't-1', displayName: 'lint.sh', failedAt: '2026-01-01T00:00:00Z' };
+            queueManager.pauseRepo(repoId, reason);
+
+            await flushSave();
+
+            const filePath = path.join(dataDir, 'repos', repoId, 'queues.json');
+            const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            expect(state.isPaused).toBe(true);
+            expect(state.pauseReason).toEqual(reason);
+        });
+
+        it('saves no pauseReason when repo is paused without reason', async () => {
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
+
+            queueManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/nreason/repo' },
+                config: {},
+            });
+
+            const repoId = wsIdFor('/nreason/repo');
+            queueManager.pauseRepo(repoId);
+
+            await flushSave();
+
+            const filePath = path.join(dataDir, 'repos', repoId, 'queues.json');
+            const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            expect(state.isPaused).toBe(true);
+            expect(state.pauseReason).toBeUndefined();
+        });
+
+        it('restores pauseReason on startup', () => {
+            const rootPath = '/restore-reason/repo';
+            const repoId = wsIdFor(rootPath);
+            const reason = { taskId: 't-2', displayName: 'test.sh', failedAt: '2026-02-01T12:00:00Z' };
+            const state = {
+                ...makeRepoState(rootPath, [makeTask('t1', 'queued', rootPath)], [], true),
+                pauseReason: reason,
+            };
+            const repoDir = path.join(dataDir, 'repos', repoId);
+            fs.mkdirSync(repoDir, { recursive: true });
+            fs.writeFileSync(path.join(repoDir, 'queues.json'), JSON.stringify(state));
+
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
+            persistence.restore();
+
+            expect(queueManager.isRepoPaused(repoId)).toBe(true);
+            expect(queueManager.getPauseReason(repoId)).toEqual(reason);
+        });
+
+        it('round-trip: save and restore pauseReason across instances', async () => {
+            persistence = new QueuePersistence(queueManager, dataDir, { resolveWorkspaceId: wsIdFor });
+
+            queueManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'test task', workingDirectory: '/rt-reason/repo' },
+                config: {},
+                displayName: 'Task RT',
+            });
+
+            const repoId = wsIdFor('/rt-reason/repo');
+            const reason = { taskId: 't-rt', displayName: 'build.sh', failedAt: '2026-03-01T08:00:00Z' };
+            queueManager.pauseRepo(repoId, reason);
+
+            await flushSave();
+            persistence.dispose();
+            persistence = undefined!;
+
+            const qm2 = createManager();
+            const p2 = new QueuePersistence(qm2, dataDir, { resolveWorkspaceId: wsIdFor });
+            p2.restore();
+
+            expect(qm2.isRepoPaused(repoId)).toBe(true);
+            expect(qm2.getPauseReason(repoId)).toEqual(reason);
+
+            p2.dispose();
+        });
+    });
+
+    // ========================================================================
     // G1: Pause state preserved for empty queues
     // ========================================================================
 

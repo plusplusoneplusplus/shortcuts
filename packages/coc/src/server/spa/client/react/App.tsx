@@ -23,6 +23,7 @@ import { ToastContainer, useToast } from './shared';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
+import { RunScriptDialog } from './queue/RunScriptDialog';
 import { isAbsolutePath, resolveRelativePath } from './utils/path-resolution';
 import { buildNotificationEntry } from './utils/build-notification-entry';
 
@@ -382,6 +383,7 @@ function AppInner() {
                 <BottomNav />
                 <ToastContainer toasts={toasts} removeToast={removeToast} />
                 <EnqueueDialog />
+                <RunScriptDialog />
                 <MarkdownReviewDialog
                     open={reviewDialog.open}
                     onClose={() => setReviewDialog(prev => ({ ...prev, open: false }))}

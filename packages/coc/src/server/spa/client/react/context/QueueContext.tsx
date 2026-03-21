@@ -16,6 +16,11 @@ export interface QueueStats {
     total: number;
     isPaused: boolean;
     isDraining: boolean;
+    pauseReason?: {
+        taskId: string;
+        displayName: string;
+        failedAt: string;
+    };
 }
 
 export interface QueueContextState {
@@ -35,6 +40,8 @@ export interface QueueContextState {
     dialogMode: 'task' | 'ask';
     /** Controls post-submit behaviour: 'floating-chat' opens the result as an overlay; 'default' enqueues normally. */
     dialogLaunchMode: 'default' | 'floating-chat';
+    /** Whether the Run Script dialog is shown. */
+    showScriptDialog: boolean;
     showHistory: boolean;
     isFollowUpStreaming: boolean;
     currentStreamingTurnIndex: number | null;
@@ -83,6 +90,7 @@ const initialState: QueueContextState = {
     dialogInitialPrompt: null,
     dialogMode: 'task',
     dialogLaunchMode: 'default',
+    showScriptDialog: false,
     showHistory: false,
     isFollowUpStreaming: false,
     currentStreamingTurnIndex: null,
@@ -116,7 +124,9 @@ export type QueueAction =
     | { type: 'REFRESH_SELECTED_QUEUE_TASK' }
     | { type: 'CHAT_STREAMING_STARTED'; workspaceId: string }
     | { type: 'CHAT_STREAMING_STOPPED'; workspaceId: string }
-    | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' };
+    | { type: 'SET_DIALOG_MODE'; mode: 'task' | 'ask' }
+    | { type: 'OPEN_SCRIPT_DIALOG' }
+    | { type: 'CLOSE_SCRIPT_DIALOG' };
 
 // ── Reducer ────────────────────────────────────────────────────────────
 
@@ -222,6 +232,10 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         }
         case 'SET_DIALOG_MODE':
             return { ...state, dialogMode: action.mode };
+        case 'OPEN_SCRIPT_DIALOG':
+            return { ...state, showScriptDialog: true };
+        case 'CLOSE_SCRIPT_DIALOG':
+            return { ...state, showScriptDialog: false };
         default:
             return state;
     }

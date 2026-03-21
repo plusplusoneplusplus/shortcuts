@@ -35,6 +35,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [isAutopilotPaused, setIsAutopilotPaused] = useState(false);
     const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [pauseReason, setPauseReason] = useState<{ taskId: string; displayName: string; failedAt: string } | undefined>();
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { dispatch: appDispatch } = useApp();
@@ -63,6 +64,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
+            setPauseReason(nextStats?.pauseReason);
             setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
             const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
             const nextHistory = historyData?.history || [];
@@ -94,6 +96,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         setHistory(repoQueue.history);
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
+            setPauseReason(repoQueue.stats.pauseReason);
         }
         if (repoQueue?.stats?.isAutopilotPaused !== undefined) {
             setIsAutopilotPaused(repoQueue.stats.isAutopilotPaused);
@@ -266,6 +269,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}
+            pauseReason={pauseReason}
         />
     );
 

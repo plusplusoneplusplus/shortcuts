@@ -355,6 +355,106 @@ describe('QueueExecutor', () => {
     });
 
     // ========================================================================
+    // pauseOnFailure
+    // ========================================================================
+
+    describe('pauseOnFailure', () => {
+        it('pauses repo queue when task with pauseOnFailure fails', async () => {
+            const repoQueueManager = new TaskQueueManager({
+                getTaskRepoId: (task) => task.repoId,
+            });
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                throw new Error('Script failed');
+            });
+
+            executor = new QueueExecutor(repoQueueManager, taskExecutor);
+
+            repoQueueManager.enqueue(createTestTask({
+                repoId: 'repo-X',
+                config: { pauseOnFailure: true },
+            }));
+
+            await waitFor(() => repoQueueManager.isRepoPaused('repo-X'), 1000);
+
+            expect(repoQueueManager.isRepoPaused('repo-X')).toBe(true);
+            const reason = repoQueueManager.getPauseReason('repo-X');
+            expect(reason).toBeDefined();
+            expect(reason!.displayName).toBeDefined();
+            expect(reason!.failedAt).toBeDefined();
+
+            executor.dispose();
+        });
+
+        it('does not pause when pauseOnFailure is not set', async () => {
+            const repoQueueManager = new TaskQueueManager({
+                getTaskRepoId: (task) => task.repoId,
+            });
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                throw new Error('Script failed');
+            });
+
+            executor = new QueueExecutor(repoQueueManager, taskExecutor);
+
+            const taskId = repoQueueManager.enqueue(createTestTask({
+                repoId: 'repo-Y',
+                config: {},
+            }));
+
+            await waitFor(() => repoQueueManager.getTask(taskId)?.status === 'failed', 1000);
+
+            expect(repoQueueManager.isRepoPaused('repo-Y')).toBe(false);
+
+            executor.dispose();
+        });
+
+        it('does not pause when task has no repoId', async () => {
+            const repoQueueManager = new TaskQueueManager({
+                getTaskRepoId: (task) => task.repoId,
+            });
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                throw new Error('Script failed');
+            });
+
+            executor = new QueueExecutor(repoQueueManager, taskExecutor);
+
+            const taskId = repoQueueManager.enqueue(createTestTask({
+                config: { pauseOnFailure: true },
+                // no repoId
+            }));
+
+            await waitFor(() => repoQueueManager.getTask(taskId)?.status === 'failed', 1000);
+
+            expect(repoQueueManager.getPausedRepos()).toHaveLength(0);
+
+            executor.dispose();
+        });
+
+        it('uses displayName in pauseReason when available', async () => {
+            const repoQueueManager = new TaskQueueManager({
+                getTaskRepoId: (task) => task.repoId,
+            });
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                throw new Error('Script failed');
+            });
+
+            executor = new QueueExecutor(repoQueueManager, taskExecutor);
+
+            repoQueueManager.enqueue(createTestTask({
+                repoId: 'repo-Z',
+                displayName: 'lint.sh',
+                config: { pauseOnFailure: true },
+            }));
+
+            await waitFor(() => repoQueueManager.isRepoPaused('repo-Z'), 1000);
+
+            const reason = repoQueueManager.getPauseReason('repo-Z');
+            expect(reason!.displayName).toBe('lint.sh');
+
+            executor.dispose();
+        });
+    });
+
+    // ========================================================================
     // Task Cancellation
     // ========================================================================
 

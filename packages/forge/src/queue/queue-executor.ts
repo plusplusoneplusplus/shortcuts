@@ -443,6 +443,15 @@ export class QueueExecutor extends EventEmitter {
             // Mark as failed
             this.queueManager.markFailed(task.id, error);
             this.emit('taskFailed', task, error);
+
+            // Auto-pause the repo queue when pauseOnFailure is set
+            if (config.pauseOnFailure && task.repoId) {
+                this.queueManager.pauseRepo(task.repoId, {
+                    taskId: task.id,
+                    displayName: task.displayName ?? task.id,
+                    failedAt: new Date().toISOString(),
+                });
+            }
         }
     }
 

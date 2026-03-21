@@ -16,8 +16,10 @@ function makeState(overrides: Partial<QueueContextState> = {}): QueueContextStat
         showDialog: false,
         dialogInitialFolderPath: null,
         dialogInitialWorkspaceId: null,
+        dialogInitialPrompt: null,
         dialogMode: 'task' as const,
         dialogLaunchMode: 'default' as const,
+        showScriptDialog: false,
         showHistory: false,
         isFollowUpStreaming: false,
         currentStreamingTurnIndex: null,
@@ -616,6 +618,57 @@ describe('QueueContext reducer', () => {
             const result = queueReducer(state, { type: 'SET_DIALOG_MODE', mode: 'ask' });
             expect(result.selectedTaskId).toBe('abc');
             expect(result.showDialog).toBe(true);
+        });
+    });
+
+    // ── OPEN_SCRIPT_DIALOG / CLOSE_SCRIPT_DIALOG ────────────────────
+    describe('OPEN_SCRIPT_DIALOG / CLOSE_SCRIPT_DIALOG', () => {
+        it('OPEN_SCRIPT_DIALOG sets showScriptDialog to true', () => {
+            const result = queueReducer(makeState(), { type: 'OPEN_SCRIPT_DIALOG' });
+            expect(result.showScriptDialog).toBe(true);
+        });
+
+        it('CLOSE_SCRIPT_DIALOG sets showScriptDialog to false', () => {
+            const state = makeState({ showScriptDialog: true });
+            const result = queueReducer(state, { type: 'CLOSE_SCRIPT_DIALOG' });
+            expect(result.showScriptDialog).toBe(false);
+        });
+
+        it('OPEN_SCRIPT_DIALOG does not affect other dialog state', () => {
+            const state = makeState({ showDialog: true, selectedTaskId: 'abc' });
+            const result = queueReducer(state, { type: 'OPEN_SCRIPT_DIALOG' });
+            expect(result.showDialog).toBe(true);
+            expect(result.selectedTaskId).toBe('abc');
+        });
+    });
+
+    // ── pauseReason in stats ────────────────────────────────────────
+    describe('pauseReason in stats', () => {
+        it('QUEUE_UPDATED preserves pauseReason from stats', () => {
+            const reason = { taskId: 't-1', displayName: 'lint.sh', failedAt: '2026-01-01T00:00:00Z' };
+            const result = queueReducer(makeState(), {
+                type: 'QUEUE_UPDATED',
+                queue: {
+                    queued: [],
+                    running: [],
+                    stats: { queued: 0, running: 0, completed: 0, failed: 1, cancelled: 0, total: 1, isPaused: true, isDraining: false, pauseReason: reason },
+                },
+            });
+            expect(result.stats.pauseReason).toEqual(reason);
+        });
+
+        it('REPO_QUEUE_UPDATED preserves pauseReason from repo stats', () => {
+            const reason = { taskId: 't-2', displayName: 'test.sh', failedAt: '2026-01-02T00:00:00Z' };
+            const result = queueReducer(makeState(), {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'repo-a',
+                queue: {
+                    queued: [],
+                    running: [],
+                    stats: { isPaused: true, pauseReason: reason },
+                },
+            });
+            expect(result.repoQueueMap['repo-a'].stats.pauseReason).toEqual(reason);
         });
     });
 });

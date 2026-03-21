@@ -20,6 +20,7 @@ import {
     QueueChangeEvent,
     QueueChangeType,
     QueueStats,
+    PauseReason,
     TaskQueueManagerOptions,
     DEFAULT_QUEUE_MANAGER_OPTIONS,
     comparePriority,
@@ -57,6 +58,8 @@ export class TaskQueueManager extends EventEmitter {
     private readonly options: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId' | 'isExclusive'>>;
     /** Set of paused repository IDs */
     private pausedRepos = new Set<string>();
+    /** Per-repo pause reason (present when paused due to task failure). */
+    private pauseReasons = new Map<string, PauseReason>();
     /** Function to extract repo ID from a task (injected) */
     private readonly getTaskRepoId?: (task: QueuedTask) => string | undefined;
     /** Optional function to classify a task as exclusive (for non-exclusive fast-path insertion) */
@@ -243,7 +246,7 @@ export class TaskQueueManager extends EventEmitter {
      */
     getStats(): QueueStats {
         const taskCount = this.queue.filter(t => !isPauseMarker(t)).length;
-        return {
+        const stats: QueueStats = {
             queued: taskCount,
             running: this.running.size,
             completed: this.history.filter(t => t.status === 'completed').length,
@@ -255,6 +258,11 @@ export class TaskQueueManager extends EventEmitter {
             pausedRepos: Array.from(this.pausedRepos),
             isAutopilotPaused: this.autopilotPaused,
         };
+        // Attach the first available pause reason (single-repo manager → at most one).
+        if (this.pauseReasons.size > 0) {
+            stats.pauseReason = this.pauseReasons.values().next().value;
+        }
+        return stats;
     }
 
     // ========================================================================
@@ -846,9 +854,12 @@ export class TaskQueueManager extends EventEmitter {
      * Pause queue processing for a specific repository.
      * Tasks from this repo will remain in queue but won't be dequeued.
      */
-    pauseRepo(repoId: string): void {
+    pauseRepo(repoId: string, reason?: PauseReason): void {
         if (!this.pausedRepos.has(repoId)) {
             this.pausedRepos.add(repoId);
+            if (reason) {
+                this.pauseReasons.set(repoId, reason);
+            }
             this.emitChange('repo-paused');
             this.emit('repo-paused', repoId);
         }
@@ -859,6 +870,7 @@ export class TaskQueueManager extends EventEmitter {
      */
     resumeRepo(repoId: string): void {
         if (this.pausedRepos.delete(repoId)) {
+            this.pauseReasons.delete(repoId);
             this.emitChange('repo-resumed');
             this.emit('repo-resumed', repoId);
         }
@@ -876,6 +888,13 @@ export class TaskQueueManager extends EventEmitter {
      */
     getPausedRepos(): string[] {
         return Array.from(this.pausedRepos);
+    }
+
+    /**
+     * Get the pause reason for a specific repository (if any).
+     */
+    getPauseReason(repoId: string): PauseReason | undefined {
+        return this.pauseReasons.get(repoId);
     }
 
     // ========================================================================

@@ -6,6 +6,7 @@ export interface BadgeProps {
     children?: ReactNode;
     className?: string;
     id?: string;
+    title?: string;
 }
 
 const statusMap: Record<string, string> = {
@@ -17,9 +18,9 @@ const statusMap: Record<string, string> = {
     warning: 'bg-[#f59e0b]/15 text-[#f59e0b] dark:text-[#fbbf24]',
 };
 
-export function Badge({ status, children, className, id }: BadgeProps) {
+export function Badge({ status, children, className, id, title }: BadgeProps) {
     return (
-        <span id={id}
+        <span id={id} title={title}
             className={cn(
                 'inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded',
                 statusMap[status] ?? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',

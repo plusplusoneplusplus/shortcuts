@@ -1816,6 +1816,37 @@ describe('TaskQueueManager', () => {
             // repo-A task should be skipped
             expect(undefinedRepoManager.dequeue()).toBeUndefined();
         });
+
+        it('pauseRepo stores reason when provided', () => {
+            const reason = { taskId: 't1', displayName: 'lint.sh', failedAt: '2026-01-01T00:00:00Z' };
+            repoManager.pauseRepo('repo-A', reason);
+            expect(repoManager.getPauseReason('repo-A')).toEqual(reason);
+        });
+
+        it('pauseRepo without reason stores no reason', () => {
+            repoManager.pauseRepo('repo-A');
+            expect(repoManager.getPauseReason('repo-A')).toBeUndefined();
+        });
+
+        it('resumeRepo clears reason', () => {
+            const reason = { taskId: 't1', displayName: 'lint.sh', failedAt: '2026-01-01T00:00:00Z' };
+            repoManager.pauseRepo('repo-A', reason);
+            repoManager.resumeRepo('repo-A');
+            expect(repoManager.getPauseReason('repo-A')).toBeUndefined();
+        });
+
+        it('getStats includes pauseReason when repo is paused with reason', () => {
+            const reason = { taskId: 't1', displayName: 'test.sh', failedAt: '2026-01-01T12:00:00Z' };
+            repoManager.pauseRepo('repo-A', reason);
+            const stats = repoManager.getStats();
+            expect(stats.pauseReason).toEqual(reason);
+        });
+
+        it('getStats has no pauseReason when paused without reason', () => {
+            repoManager.pauseRepo('repo-A');
+            const stats = repoManager.getStats();
+            expect(stats.pauseReason).toBeUndefined();
+        });
     });
 
     // ========================================================================
