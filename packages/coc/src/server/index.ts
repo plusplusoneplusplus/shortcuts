@@ -29,7 +29,7 @@ import { createScheduleInfrastructure } from './infrastructure/schedule-infrastr
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
-import { resolveConfig } from '../config';
+import { resolveConfig, mergeConfig, DEFAULT_CONFIG } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -142,7 +142,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     fs.mkdirSync(dataDir, { recursive: true });
 
     // Resolve config to derive default timeout for AI tasks
-    const resolvedConfig = resolveConfig(options.configPath);
+    const resolvedConfig = options.fileConfig !== undefined
+        ? mergeConfig(DEFAULT_CONFIG, options.fileConfig)
+        : resolveConfig(options.configPath);
     const defaultTimeoutMs = resolvedConfig.timeout
         ? resolvedConfig.timeout * 1000
         : DEFAULT_AI_TIMEOUT_MS;

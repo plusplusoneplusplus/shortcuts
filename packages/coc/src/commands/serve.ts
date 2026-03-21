@@ -69,6 +69,7 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
             dataDir,
             store,
             theme: options.theme ?? 'auto',
+            fileConfig,
             queue: (options.queueRestartPolicy || options.queueHistoryLimit) ? {
                 restartPolicy: options.queueRestartPolicy,
                 historyLimit: options.queueHistoryLimit,

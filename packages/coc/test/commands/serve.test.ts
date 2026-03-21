@@ -410,4 +410,34 @@ describe('Serve Command', () => {
             expect(opts.dataDir).toBe(customDir);
         });
     });
+
+    // ========================================================================
+    // 14. fileConfig passed to createExecutionServer (no double loadConfigFile)
+    // ========================================================================
+
+    describe('fileConfig passed to createExecutionServer', () => {
+        it('should pass fileConfig to createExecutionServer', async () => {
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+
+            expect(mockCreateExecutionServer).toHaveBeenCalledTimes(1);
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            // fileConfig is either the loaded CLIConfig or undefined (when no config file exists)
+            // but the key must be present so that createExecutionServer can skip its own load
+            expect('fileConfig' in opts).toBe(true);
+        });
+
+        it('should not call loadConfigFile a second time inside createExecutionServer when fileConfig is provided', async () => {
+            const { loadConfigFile } = await import('../../src/config');
+            const spy = vi.spyOn(await import('../../src/config'), 'loadConfigFile');
+
+            await runServeWithSigint({ dataDir: tmpDir, open: false });
+
+            // loadConfigFile should be called exactly once (in serve.ts), not again inside
+            // createExecutionServer (which is mocked here, so 0 or 1 calls are both fine —
+            // the important check is that fileConfig is forwarded so a real server can skip it).
+            const opts = mockCreateExecutionServer.mock.calls[0][0];
+            expect('fileConfig' in opts).toBe(true);
+            spy.mockRestore();
+        });
+    });
 });

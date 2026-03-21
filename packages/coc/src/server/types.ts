@@ -9,6 +9,7 @@
 
 import type * as http from 'http';
 import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/forge';
+import type { CLIConfig } from '../config';
 export type { Route } from './shared/router';
 
 /** Options for the `coc serve` CLI command. */
@@ -71,6 +72,8 @@ export interface ExecutionServerOptions {
     aiService?: CopilotSDKService;
     /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */
     configPath?: string;
+    /** Pre-loaded config file contents. When provided, createExecutionServer skips loadConfigFile(). */
+    fileConfig?: CLIConfig;
     /** Admin token TTL override in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
     tokenTtlMs?: number;
     /** Queue-specific options. */
