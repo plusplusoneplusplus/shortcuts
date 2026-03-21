@@ -21,6 +21,7 @@ import type {
 } from './tool-call-cache-types';
 import { getRemoteUrl, computeRemoteHash } from '../git/remote';
 import { computeRepoHash } from './memory-store';
+import { BaseFileStore } from './base-file-store';
 
 /**
  * Resolve the appropriate {@link ToolCallCacheStoreOptions} for a given
@@ -51,12 +52,11 @@ export function resolveToolCallCacheOptions(
     return { ...base, level: 'repo', repoHash: computeRepoHash(workDir) };
 }
 
-export class FileToolCallCacheStore implements ToolCallCacheStore {
+export class FileToolCallCacheStore extends BaseFileStore implements ToolCallCacheStore {
     private readonly cacheDir: string;
     private readonly rawDir: string;
     private readonly dataDir: string;
     private readonly cacheSubDir: string;
-    private writeQueue: Promise<void>;
     private migrated = false;
 
     private static DEFAULT_INDEX: ToolCallCacheIndex = {
@@ -66,6 +66,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
     };
 
     constructor(options?: ToolCallCacheStoreOptions) {
+        super();
         const dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
         const cacheSubDir = options?.cacheSubDir ?? 'explore-cache';
         const level = options?.level ?? 'system';
@@ -87,27 +88,6 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
         }
 
         this.rawDir = path.join(this.cacheDir, 'raw');
-        this.writeQueue = Promise.resolve();
-    }
-
-    // --- Write queue serialization (FileMemoryStore pattern) ---
-
-    private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
-        const result = this.writeQueue.then(fn);
-        this.writeQueue = result.then(
-            () => {},
-            () => {},
-        );
-        return result;
-    }
-
-    // --- Atomic write helper ---
-
-    private async atomicWrite(filePath: string, content: string): Promise<void> {
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        const tmpPath = filePath + '.tmp';
-        await fs.writeFile(tmpPath, content, 'utf-8');
-        await fs.rename(tmpPath, filePath);
     }
 
     // --- Filename helpers ---
@@ -285,12 +265,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
 
     async readConsolidatedIndex(): Promise<ConsolidatedIndexEntry[]> {
         await this.migrateIfNeeded();
-        try {
-            const data = await fs.readFile(this.consolidatedIndexPath, 'utf-8');
-            return JSON.parse(data) as ConsolidatedIndexEntry[];
-        } catch {
-            return [];
-        }
+        return this.readJSON<ConsolidatedIndexEntry[]>(this.consolidatedIndexPath, []);
     }
 
     async readEntryAnswer(id: string): Promise<string | undefined> {
@@ -313,11 +288,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
             await this.atomicWrite(answerPath, entry.answer);
 
             // Update index — read, upsert, write
-            let indexEntries: ConsolidatedIndexEntry[] = [];
-            try {
-                const data = await fs.readFile(this.consolidatedIndexPath, 'utf-8');
-                indexEntries = JSON.parse(data) as ConsolidatedIndexEntry[];
-            } catch { /* no index yet */ }
+            const indexEntries = await this.readJSON<ConsolidatedIndexEntry[]>(this.consolidatedIndexPath, []);
 
             const indexEntry = FileToolCallCacheStore.toIndexEntry(entry);
             const existingIdx = indexEntries.findIndex(e => e.id === entry.id);
@@ -359,13 +330,7 @@ export class FileToolCallCacheStore implements ToolCallCacheStore {
     // --- Index ---
 
     async readIndex(): Promise<ToolCallCacheIndex> {
-        const filePath = path.join(this.cacheDir, 'index.json');
-        try {
-            const data = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(data) as ToolCallCacheIndex;
-        } catch {
-            return { ...FileToolCallCacheStore.DEFAULT_INDEX };
-        }
+        return this.readJSON(path.join(this.cacheDir, 'index.json'), { ...FileToolCallCacheStore.DEFAULT_INDEX });
     }
 
     async updateIndex(updates: Partial<ToolCallCacheIndex>): Promise<void> {

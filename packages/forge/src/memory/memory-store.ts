@@ -22,6 +22,7 @@ import {
     RepoInfo,
     GitRemoteInfo,
 } from './types';
+import { BaseFileStore } from './base-file-store';
 
 /** Compute a stable 16-char hex hash for a repository root path. */
 export function computeRepoHash(repoPath: string): string {
@@ -32,30 +33,18 @@ export function computeRepoHash(repoPath: string): string {
         .substring(0, 16);
 }
 
-export class FileMemoryStore implements MemoryStore {
+export class FileMemoryStore extends BaseFileStore implements MemoryStore {
     private readonly dataDir: string;
     private readonly systemDir: string;
     private readonly reposDir: string;
     private readonly gitRemotesDir: string;
-    private writeQueue: Promise<void>;
 
     constructor(options?: MemoryStoreOptions) {
+        super();
         this.dataDir = options?.dataDir ?? process.env.COC_DATA_DIR ?? path.join(os.homedir(), '.coc', 'memory');
         this.systemDir = path.join(this.dataDir, 'system');
         this.reposDir = path.join(this.dataDir, 'repos');
         this.gitRemotesDir = path.join(this.dataDir, 'git-remotes');
-        this.writeQueue = Promise.resolve();
-    }
-
-    // --- Write queue serialization (FileProcessStore pattern) ---
-
-    private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
-        const result = this.writeQueue.then(fn);
-        this.writeQueue = result.then(
-            () => {},
-            () => {},
-        );
-        return result;
     }
 
     // --- Path helpers ---
@@ -279,15 +268,6 @@ export class FileMemoryStore implements MemoryStore {
         return deleted;
     }
 
-    // --- Atomic write helper ---
-
-    private async atomicWrite(filePath: string, content: string): Promise<void> {
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        const tmpPath = filePath + '.tmp';
-        await fs.writeFile(tmpPath, content, 'utf-8');
-        await fs.rename(tmpPath, filePath);
-    }
-
     // --- Consolidated memory ---
 
     /** Resolve the base directory for a given level + hash. */
@@ -329,13 +309,7 @@ export class FileMemoryStore implements MemoryStore {
         repoHash: string | undefined,
     ): Promise<MemoryIndex> {
         const dir = this.levelDir(level, repoHash);
-        const filePath = path.join(dir, 'index.json');
-        try {
-            const data = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(data) as MemoryIndex;
-        } catch {
-            return { lastAggregation: null, rawCount: 0, factCount: 0, categories: [] };
-        }
+        return this.readJSON(path.join(dir, 'index.json'), { lastAggregation: null, rawCount: 0, factCount: 0, categories: [] } as MemoryIndex);
     }
 
     async updateIndex(
@@ -355,14 +329,7 @@ export class FileMemoryStore implements MemoryStore {
     // --- Repo info ---
 
     async getRepoInfo(repoHash: string): Promise<RepoInfo | null> {
-        const dir = this.getRepoDir(repoHash);
-        const filePath = path.join(dir, 'repo-info.json');
-        try {
-            const data = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(data) as RepoInfo;
-        } catch {
-            return null;
-        }
+        return this.readJSON<RepoInfo | null>(path.join(this.getRepoDir(repoHash), 'repo-info.json'), null);
     }
 
     async updateRepoInfo(repoHash: string, info: Partial<RepoInfo>): Promise<void> {
@@ -381,14 +348,7 @@ export class FileMemoryStore implements MemoryStore {
     // --- Git remote info ---
 
     async getGitRemoteInfo(remoteHash: string): Promise<GitRemoteInfo | null> {
-        const dir = this.getGitRemoteDir(remoteHash);
-        const filePath = path.join(dir, 'remote-info.json');
-        try {
-            const data = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(data) as GitRemoteInfo;
-        } catch {
-            return null;
-        }
+        return this.readJSON<GitRemoteInfo | null>(path.join(this.getGitRemoteDir(remoteHash), 'remote-info.json'), null);
     }
 
     async updateGitRemoteInfo(remoteHash: string, info: Partial<GitRemoteInfo>): Promise<void> {
@@ -405,12 +365,7 @@ export class FileMemoryStore implements MemoryStore {
     }
 
     async listGitRemotes(): Promise<string[]> {
-        try {
-            const entries = await fs.readdir(this.gitRemotesDir, { withFileTypes: true });
-            return entries.filter(e => e.isDirectory()).map(e => e.name);
-        } catch {
-            return [];
-        }
+        return this.listDirectory(this.gitRemotesDir);
     }
 
     // --- Management ---
@@ -474,11 +429,6 @@ export class FileMemoryStore implements MemoryStore {
     }
 
     async listRepos(): Promise<string[]> {
-        try {
-            const entries = await fs.readdir(this.reposDir, { withFileTypes: true });
-            return entries.filter(e => e.isDirectory()).map(e => e.name);
-        } catch {
-            return [];
-        }
+        return this.listDirectory(this.reposDir);
     }
 }

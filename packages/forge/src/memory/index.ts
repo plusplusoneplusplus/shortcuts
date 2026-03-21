@@ -18,6 +18,7 @@ export type {
 } from './types';
 
 export { FileMemoryStore, computeRepoHash } from './memory-store';
+export { BaseFileStore } from './base-file-store';
 export { MemoryRetriever } from './memory-retriever';
 export { createWriteMemoryTool, WriteMemoryToolOptions, WriteMemoryArgs } from './write-memory-tool';
 export { MemoryAggregator } from './memory-aggregator';
