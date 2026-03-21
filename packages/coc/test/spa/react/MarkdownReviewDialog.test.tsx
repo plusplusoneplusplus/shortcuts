@@ -64,6 +64,10 @@ vi.mock('../../../src/server/spa/client/react/context/AppContext', () => ({
     useApp: () => ({ state: { workspaces: [] }, dispatch: vi.fn() }),
 }));
 
+vi.mock('../../../src/server/spa/client/react/context/MarkdownPopOutContext', () => ({
+    useMarkdownPopOut: () => ({ markPoppedOut: vi.fn(), isPoppedOut: vi.fn(() => false) }),
+}));
+
 function setupFetch(content = '# Hello') {
     const fetchSpy = vi.fn().mockImplementation((input: RequestInfo | URL) => {
         const url = String(input);
@@ -293,5 +297,110 @@ describe('MarkdownReviewDialog', () => {
         );
         fireEvent.keyDown(document, { key: 'Escape' });
         expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('renders exactly one minimize button when onMinimize is provided (no duplicates)', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                onMinimize={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const minimizeBtns = document.querySelectorAll('[aria-label="Minimize"]');
+        expect(minimizeBtns.length).toBe(1);
+    });
+
+    it('renders exactly one close button (no duplicates)', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                onMinimize={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const closeBtns = document.querySelectorAll('[aria-label="Close"]');
+        expect(closeBtns.length).toBe(1);
+    });
+
+    it('renders pop-out button', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]');
+        expect(btn).not.toBeNull();
+        expect(btn!.getAttribute('aria-label')).toBe('Open in new window');
+    });
+
+    it('pop-out button calls window.open and onClose', () => {
+        const mockPopup = { focus: vi.fn() };
+        const windowOpenSpy = vi.spyOn(window, 'open').mockReturnValue(mockPopup as any);
+        const onClose = vi.fn();
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={onClose}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]') as HTMLElement;
+        fireEvent.click(btn);
+        expect(windowOpenSpy).toHaveBeenCalledOnce();
+        const url = windowOpenSpy.mock.calls[0][0] as string;
+        expect(url).toContain('#popout/markdown');
+        expect(url).toContain('workspace=ws1');
+        expect(url).toContain('filePath=test.md');
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('pop-out button does not close dialog when window.open returns null', () => {
+        vi.spyOn(window, 'open').mockReturnValue(null);
+        const onClose = vi.fn();
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={onClose}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const btn = document.querySelector('[data-testid="markdown-review-popout-btn"]') as HTMLElement;
+        fireEvent.click(btn);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('renders inside a FloatingDialog (portal to body)', () => {
+        render(
+            <MarkdownReviewDialog
+                open={true}
+                onClose={vi.fn()}
+                wsId="ws1"
+                filePath="test.md"
+                displayPath="/workspace/test.md"
+                fetchMode="tasks"
+            />
+        );
+        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
+        expect(panel).not.toBeNull();
     });
 });

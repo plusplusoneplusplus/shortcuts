@@ -16,9 +16,15 @@ export interface DialogProps {
     id?: string;
     /** When true, the header close button is visually disabled and non-interactive. */
     disableClose?: boolean;
+    /**
+     * When provided, replaces the built-in header entirely. The consumer owns all
+     * header UI. When set, `title`, `onMinimize`, and `disableClose` have no effect
+     * on the header.
+     */
+    renderHeader?: () => ReactNode;
 }
 
-export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose }: DialogProps) {
+export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader }: DialogProps) {
     const { isMobile } = useBreakpoint();
 
     useEffect(() => {
@@ -62,7 +68,9 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
                 className={isMobile ? panelClass : panelClass}
                 onClick={e => e.stopPropagation()}
             >
-                {showCloseBtn && (
+                {renderHeader
+                    ? renderHeader()
+                    : (showCloseBtn && (
                     <div className="flex items-center gap-2">
                         {title && <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{title}</h2>}
                         {onMinimize && (
@@ -92,7 +100,7 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
                             ×
                         </button>
                     </div>
-                )}
+                ))}
                 <div className={cn('text-sm text-[#1e1e1e] dark:text-[#cccccc] flex-1 min-h-0 overflow-y-auto')}>{children}</div>
                 {footer && (
                     <div className="flex justify-end gap-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">

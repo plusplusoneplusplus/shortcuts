@@ -11,6 +11,7 @@ import { NotificationProvider, useNotifications } from './context/NotificationCo
 import { ToastProvider } from './context/ToastContext';
 import { MinimizedDialogsProvider, useMinimizedDialog, MinimizedDialogsTray } from './context/MinimizedDialogsContext';
 import { PopOutProvider } from './context/PopOutContext';
+import { MarkdownPopOutProvider } from './context/MarkdownPopOutContext';
 import { FloatingChatsProvider } from './context/FloatingChatsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
@@ -406,13 +407,15 @@ export function App() {
             <QueueProvider>
                 <NotificationProvider>
                     <PopOutProvider>
-                        <FloatingChatsProvider>
+                        <MarkdownPopOutProvider>
+                            <FloatingChatsProvider>
                             <MinimizedDialogsProvider>
                                 <ThemeProvider>
                                     <AppInner />
                                 </ThemeProvider>
                             </MinimizedDialogsProvider>
                         </FloatingChatsProvider>
+                        </MarkdownPopOutProvider>
                     </PopOutProvider>
                 </NotificationProvider>
             </QueueProvider>

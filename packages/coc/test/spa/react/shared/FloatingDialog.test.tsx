@@ -106,4 +106,59 @@ describe('FloatingDialog', () => {
         );
         expect(screen.getByText('OK')).toBeTruthy();
     });
+
+    it('renderHeader replaces built-in header', () => {
+        render(
+            <FloatingDialog open={true} onClose={vi.fn()} title="Ignored"
+                renderHeader={({ onMouseDown }) => (
+                    <div data-testid="custom-header" onMouseDown={onMouseDown}>Custom</div>
+                )}
+            >
+                Body
+            </FloatingDialog>
+        );
+        expect(screen.getByTestId('custom-header')).toBeTruthy();
+        // Built-in title and header must not appear
+        expect(screen.queryByText('Ignored')).toBeNull();
+        expect(screen.queryByTestId('dialog-close-btn')).toBeNull();
+        expect(screen.queryByTestId('floating-dialog-drag-handle')).toBeNull();
+    });
+
+    it('renderHeader suppresses built-in minimize and close buttons', () => {
+        const onMinimize = vi.fn();
+        render(
+            <FloatingDialog open={true} onClose={vi.fn()} onMinimize={onMinimize}
+                renderHeader={({ onMouseDown }) => (
+                    <div data-testid="custom-header" onMouseDown={onMouseDown}>
+                        <button data-testid="custom-minimize" onClick={onMinimize}>−</button>
+                        <button data-testid="custom-close">✕</button>
+                    </div>
+                )}
+            >
+                Body
+            </FloatingDialog>
+        );
+        // Only custom buttons — no built-in ones
+        expect(document.querySelectorAll('[data-testid="dialog-minimize-btn"]').length).toBe(0);
+        expect(document.querySelectorAll('[data-testid="dialog-close-btn"]').length).toBe(0);
+        expect(document.querySelectorAll('[data-testid="custom-minimize"]').length).toBe(1);
+        expect(document.querySelectorAll('[data-testid="custom-close"]').length).toBe(1);
+    });
+
+    it('renderHeader receives drag onMouseDown handler', () => {
+        const dragHandlerCalled: boolean[] = [];
+        render(
+            <FloatingDialog open={true} onClose={vi.fn()}
+                renderHeader={({ onMouseDown }) => (
+                    <div data-testid="custom-drag-header" onMouseDown={(e) => { dragHandlerCalled.push(true); onMouseDown(e); }}>
+                        Header
+                    </div>
+                )}
+            >
+                Body
+            </FloatingDialog>
+        );
+        fireEvent.mouseDown(screen.getByTestId('custom-drag-header'), { clientX: 100, clientY: 50 });
+        expect(dragHandlerCalled).toHaveLength(1);
+    });
 });

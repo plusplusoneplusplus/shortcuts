@@ -1,12 +1,17 @@
 /**
- * MarkdownReviewDialog — large modal surface for reviewing markdown files
+ * MarkdownReviewDialog — resizable/draggable floating dialog for reviewing markdown files
  * opened from process conversation file-path links.
+ *
+ * Uses FloatingDialog (draggable + 8-direction resize) on desktop.
+ * Includes a "pop out" button to open the review in a separate browser window.
  */
 
 import { useRef } from 'react';
-import { Dialog } from '../shared';
+import { FloatingDialog } from '../shared/FloatingDialog';
 import { MarkdownReviewEditor } from '../shared/MarkdownReviewEditor';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useMarkdownPopOut } from '../context/MarkdownPopOutContext';
+import { mdPopOutKey } from '../layout/PopOutMarkdownShell';
 
 export interface MarkdownReviewDialogProps {
     open: boolean;
@@ -40,80 +45,141 @@ export function MarkdownReviewDialog({
 }: MarkdownReviewDialogProps) {
     const { isMobile } = useBreakpoint();
     const scrollTopRef = useRef(0);
+    const { markPoppedOut } = useMarkdownPopOut();
 
     if (!open || !wsId || !filePath) return null;
 
     const title = getTitle(displayPath, filePath);
     const handleMinimize = onMinimize ? () => onMinimize(scrollTopRef.current) : undefined;
 
+    const handlePopOut = () => {
+        const params = new URLSearchParams();
+        params.set('workspace', wsId);
+        params.set('filePath', filePath);
+        if (displayPath) params.set('displayPath', displayPath);
+        params.set('fetchMode', fetchMode);
+        const url = `${window.location.origin}${window.location.pathname}?${params.toString()}#popout/markdown`;
+        const popup = window.open(url, '_blank', 'noopener');
+        if (popup) {
+            markPoppedOut(mdPopOutKey(wsId, filePath));
+            onClose();
+        }
+    };
+
     const headerBtnClass = 'shrink-0 flex items-center justify-center w-8 h-8 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 
-    const headerButtons = (
-        <div className="flex items-center gap-0.5 shrink-0">
-            {handleMinimize && (
-                <button
-                    data-testid="markdown-review-minimize-btn"
-                    onClick={handleMinimize}
-                    className={headerBtnClass}
-                    aria-label="Minimize"
-                >
-                    −
-                </button>
-            )}
-            <button
-                onClick={onClose}
-                className={headerBtnClass}
-                aria-label="Close"
-            >
-                ✕
-            </button>
-        </div>
-    );
-
     return (
-        <Dialog
+        <FloatingDialog
             open={open}
             onClose={onClose}
-            onMinimize={handleMinimize}
-            className="max-w-[95vw] w-[95vw] h-[92vh] p-0 gap-0"
-        >
-            <div className="flex h-full flex-col">
-                {isMobile ? (
-                    /* Mobile: compact single-row header with title + minimize + close */
-                    <div className="flex items-center justify-between px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]" style={{ minHeight: 44 }}>
-                        <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate mr-2" title={displayPath || filePath}>
-                            {title}
-                        </span>
-                        {headerButtons}
-                    </div>
-                ) : (
-                    /* Desktop: full header with title + subtitle + minimize + close */
-                    <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                            <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                                {title}
-                            </div>
-                            <div
-                                className="text-xs text-[#848484] truncate mt-0.5"
-                                title={displayPath || filePath}
+            resizable
+            noPadding
+            minWidth={600}
+            minHeight={400}
+            className="max-w-[900px] w-[900px] h-[700px]"
+            renderHeader={({ onMouseDown }) => isMobile ? (
+                /* Mobile: compact single-row header */
+                <div
+                    className="flex items-center justify-between px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] cursor-move select-none"
+                    style={{ minHeight: 44 }}
+                    onMouseDown={onMouseDown}
+                    data-testid="floating-dialog-drag-handle"
+                >
+                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate mr-2" title={displayPath || filePath}>
+                        {title}
+                    </span>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                            data-testid="markdown-review-popout-btn"
+                            onClick={handlePopOut}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label="Open in new window"
+                            title="Open in new window"
+                        >
+                            ⤢
+                        </button>
+                        {handleMinimize && (
+                            <button
+                                data-testid="markdown-review-minimize-btn"
+                                onClick={handleMinimize}
+                                onMouseDown={e => e.stopPropagation()}
+                                className={headerBtnClass}
+                                aria-label="Minimize"
                             >
-                                {displayPath || filePath}
-                            </div>
-                        </div>
-                        {headerButtons}
+                                −
+                            </button>
+                        )}
+                        <button
+                            onClick={onClose}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label="Close"
+                        >
+                            ✕
+                        </button>
                     </div>
-                )}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                    <MarkdownReviewEditor
-                        wsId={wsId}
-                        filePath={filePath}
-                        fetchMode={fetchMode}
-                        showAiButtons={true}
-                        initialScrollTop={initialScrollTop}
-                        onScrollTopChange={(st) => { scrollTopRef.current = st; }}
-                    />
                 </div>
-            </div>
-        </Dialog>
+            ) : (
+                /* Desktop: full header with title + subtitle + pop-out + minimize + close */
+                <div
+                    className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-start justify-between gap-2 cursor-move select-none"
+                    onMouseDown={onMouseDown}
+                    data-testid="floating-dialog-drag-handle"
+                >
+                    <div className="min-w-0">
+                        <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
+                            {title}
+                        </div>
+                        <div
+                            className="text-xs text-[#848484] truncate mt-0.5"
+                            title={displayPath || filePath}
+                        >
+                            {displayPath || filePath}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                            data-testid="markdown-review-popout-btn"
+                            onClick={handlePopOut}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label="Open in new window"
+                            title="Open in new window"
+                        >
+                            ⤢
+                        </button>
+                        {handleMinimize && (
+                            <button
+                                data-testid="markdown-review-minimize-btn"
+                                onClick={handleMinimize}
+                                onMouseDown={e => e.stopPropagation()}
+                                className={headerBtnClass}
+                                aria-label="Minimize"
+                            >
+                                −
+                            </button>
+                        )}
+                        <button
+                            onClick={onClose}
+                            onMouseDown={e => e.stopPropagation()}
+                            className={headerBtnClass}
+                            aria-label="Close"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                </div>
+            )}
+        >
+            <MarkdownReviewEditor
+                wsId={wsId}
+                filePath={filePath}
+                fetchMode={fetchMode}
+                showAiButtons={true}
+                initialScrollTop={initialScrollTop}
+                onScrollTopChange={(st) => { scrollTopRef.current = st; }}
+            />
+        </FloatingDialog>
     );
 }

@@ -59,6 +59,13 @@ export interface FloatingDialogProps {
     noPadding?: boolean;
     /** Optional id applied to the close (×) button for test selection. */
     closeButtonId?: string;
+    /**
+     * When provided, replaces the built-in header entirely. Receives the mouseDown handler
+     * needed for drag support so the consumer can attach it to their custom header element.
+     * When this prop is set, `title`, `onMinimize`, `disableClose`, and `closeButtonId` have
+     * no effect on the header (the consumer owns all header UI).
+     */
+    renderHeader?: (dragProps: { onMouseDown: (e: React.MouseEvent) => void }) => ReactNode;
 }
 
 /**
@@ -85,6 +92,7 @@ export function FloatingDialog({
     maxHeight,
     noPadding = false,
     closeButtonId,
+    renderHeader,
 }: FloatingDialogProps) {
     const panelRef = useRef<HTMLDivElement>(null);
     const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
@@ -250,7 +258,9 @@ export function FloatingDialog({
                     }}
                 />
             )}
-            {showHeader && (
+            {renderHeader
+                ? renderHeader({ onMouseDown: handleTitleBarMouseDown })
+                : (showHeader && (
                 <div
                     className={cn(
                         'flex items-center gap-2 cursor-move select-none',
@@ -293,7 +303,7 @@ export function FloatingDialog({
                         ×
                     </button>
                 </div>
-            )}
+            ))}
             <div className={cn(
                 noPadding ? 'flex-1 min-h-0 overflow-hidden flex flex-col' : cn('text-sm text-[#1e1e1e] dark:text-[#cccccc]', resizable && size && 'overflow-y-auto flex-1 min-h-0'),
             )}>{children}</div>

@@ -11,6 +11,7 @@
 import { createRoot } from 'react-dom/client';
 import { App } from './react/App';
 import { PopOutActivityShell } from './react/layout/PopOutActivityShell';
+import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
 import './react/file-path-preview';
 import './react/repos/explorer/monaco-setup';
 
@@ -20,6 +21,8 @@ const root = createRoot(container);
 
 if (window.location.hash.startsWith('#popout/activity/')) {
     root.render(<PopOutActivityShell />);
+} else if (window.location.hash.startsWith('#popout/markdown')) {
+    root.render(<PopOutMarkdownShell />);
 } else {
     root.render(<App />);
 }

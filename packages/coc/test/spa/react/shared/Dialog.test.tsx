@@ -98,4 +98,35 @@ describe('Dialog', () => {
         const closeBtn = screen.getByTestId('dialog-close-btn');
         expect(closeBtn).toBeDisabled();
     });
+
+    it('renderHeader replaces built-in header', () => {
+        render(
+            <Dialog open={true} onClose={vi.fn()} title="Ignored" renderHeader={() => (
+                <div data-testid="custom-header">Custom</div>
+            )}>
+                Body
+            </Dialog>
+        );
+        expect(screen.getByTestId('custom-header')).toBeTruthy();
+        // Built-in title must not appear
+        expect(screen.queryByText('Ignored')).toBeNull();
+        // Built-in close button must not appear
+        expect(screen.queryByTestId('dialog-close-btn')).toBeNull();
+    });
+
+    it('renderHeader suppresses built-in minimize button', () => {
+        const onMinimize = vi.fn();
+        render(
+            <Dialog open={true} onClose={vi.fn()} onMinimize={onMinimize}
+                renderHeader={() => (
+                    <button data-testid="custom-minimize" onClick={onMinimize}>−</button>
+                )}
+            >
+                Body
+            </Dialog>
+        );
+        // Only the custom minimize button, not the built-in one
+        expect(document.querySelectorAll('[data-testid="dialog-minimize-btn"]').length).toBe(0);
+        expect(document.querySelectorAll('[data-testid="custom-minimize"]').length).toBe(1);
+    });
 });
