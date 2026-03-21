@@ -45,7 +45,7 @@ import { getBundleETag } from './spa/html-template';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
-import { FileProcessStore, getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
@@ -53,8 +53,7 @@ import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { registerScheduleRoutes } from './schedule-handler';
 import { registerStatsRoutes } from './stats-handler';
-import { OutputPruner } from './output-pruner';
-import { StaleTaskDetector } from './stale-task-detector';
+import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { TaskWatcher } from './task-watcher';
 import { resolveConfig } from '../config';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
@@ -185,22 +184,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Initialize schedule manager with persistent storage
     const { scheduleManager } = createScheduleInfrastructure(dataDir, queueFacade);
 
-    // Wire up output file pruner for automatic cleanup
-    const outputPruner = new OutputPruner(store, dataDir);
-
-    // Wire prune hook so pruned entries trigger output file deletion
-    if (store instanceof FileProcessStore) {
-        store.onPrune = (entries) => outputPruner.handlePrunedEntries(entries);
-    }
-
-    // StaleTaskDetector: use aggregate facade to scan all per-repo managers
-    const staleDetector = new StaleTaskDetector(queueFacade, store);
-    staleDetector.start();
-
-    // Start event-driven output cleanup and run initial orphan scan
-    outputPruner.startListening();
-    outputPruner.cleanupOrphans().catch(() => {});
-    outputPruner.cleanupStaleQueueEntries().catch(() => {});
+    // Wire up output pruner and stale task detector
+    const { outputPruner, staleDetector } = createCleanupInfrastructure(store, dataDir, queueFacade);
 
     const spaHtmlFactory = () => generateDashboardHtml({ enableWiki: true });
 
