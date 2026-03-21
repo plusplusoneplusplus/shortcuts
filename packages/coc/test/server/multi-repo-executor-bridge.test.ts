@@ -9,6 +9,7 @@
  * - Auto-registration via getOrCreateBridge
  * - queueChange event forwarding with repoPath and repoId
  * - dispose() cleanup
+ * - createAggregateFacade restoreHistory deterministic routing
  *
  * Uses real RepoQueueRegistry and TaskQueueManager (pure in-memory).
  */
@@ -565,4 +566,139 @@ describe('MultiRepoQueueExecutorBridge', () => {
             bridge.dispose();
         });
     });
+
+    // ========================================================================
+    // createAggregateFacade — restoreHistory deterministic routing
+    // ========================================================================
+
+    describe('createAggregateFacade restoreHistory', () => {
+        it('restores history to the correct manager for each repoId', () => {
+            const { bridge, registry } = createBridge();
+
+            const rootA = '/repo/restore-a';
+            const rootB = '/repo/restore-b';
+            const idA = 'ws-restore-a';
+            const idB = 'ws-restore-b';
+
+            bridge.registerRepoId(idA, rootA);
+            bridge.registerRepoId(idB, rootB);
+            bridge.getOrCreateBridge(rootA);
+            bridge.getOrCreateBridge(rootB);
+
+            const managerA = registry.getQueueForRepo(require('path').resolve(rootA));
+            const managerB = registry.getQueueForRepo(require('path').resolve(rootB));
+
+            const facade = bridge.createAggregateFacade();
+
+            // Simulate history entries that belong to different repos
+            const taskForA = {
+                id: 'task-a-1',
+                repoId: idA,
+                type: 'chat',
+                priority: 'normal' as const,
+                status: 'completed' as const,
+                createdAt: Date.now(),
+                payload: { prompt: 'hello from A' },
+                config: {},
+            };
+            const taskForB = {
+                id: 'task-b-1',
+                repoId: idB,
+                type: 'chat',
+                priority: 'normal' as const,
+                status: 'completed' as const,
+                createdAt: Date.now(),
+                payload: { prompt: 'hello from B' },
+                config: {},
+            };
+
+            facade.restoreHistory([taskForA, taskForB]);
+
+            // Each task must appear in its own manager's history only
+            const histA = managerA.getHistory();
+            const histB = managerB.getHistory();
+
+            expect(histA.map(t => t.id)).toContain('task-a-1');
+            expect(histA.map(t => t.id)).not.toContain('task-b-1');
+
+            expect(histB.map(t => t.id)).toContain('task-b-1');
+            expect(histB.map(t => t.id)).not.toContain('task-a-1');
+
+            bridge.dispose();
+        });
+
+        it('logs a warning and skips tasks with no matching manager', () => {
+            const { bridge } = createBridge();
+
+            bridge.registerRepoId('ws-known', '/repo/known');
+            bridge.getOrCreateBridge('/repo/known');
+
+            const facade = bridge.createAggregateFacade();
+
+            const stderrWrites: string[] = [];
+            vi.spyOn(process.stderr, 'write').mockImplementation((msg: any) => {
+                stderrWrites.push(String(msg));
+                return true;
+            });
+
+            try {
+                facade.restoreHistory([
+                    {
+                        id: 'orphan',
+                        repoId: 'ws-unknown-xyz',
+                        type: 'chat',
+                        priority: 'normal' as const,
+                        status: 'completed' as const,
+                        createdAt: Date.now(),
+                        payload: {},
+                        config: {},
+                    },
+                ]);
+            } finally {
+                vi.restoreAllMocks();
+            }
+
+            const warning = stderrWrites.find(m => m.includes('ws-unknown-xyz'));
+            expect(warning).toBeDefined();
+            expect(warning).toMatch(/skipping/);
+
+            bridge.dispose();
+        });
+
+        it('skips tasks with no repoId and logs a warning', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/noid');
+            const facade = bridge.createAggregateFacade();
+
+            const stderrWrites: string[] = [];
+            vi.spyOn(process.stderr, 'write').mockImplementation((msg: any) => {
+                stderrWrites.push(String(msg));
+                return true;
+            });
+
+            try {
+                facade.restoreHistory([
+                    {
+                        id: 'no-id-task',
+                        // no repoId
+                        type: 'chat',
+                        priority: 'normal' as const,
+                        status: 'completed' as const,
+                        createdAt: Date.now(),
+                        payload: {},
+                        config: {},
+                    },
+                ]);
+            } finally {
+                vi.restoreAllMocks();
+            }
+
+            const warning = stderrWrites.find(m => m.includes('no repoId'));
+            expect(warning).toBeDefined();
+
+            bridge.dispose();
+        });
+    });
+
 });
+
