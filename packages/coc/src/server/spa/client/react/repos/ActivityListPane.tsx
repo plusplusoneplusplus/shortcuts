@@ -107,6 +107,12 @@ export interface ActivityListPaneProps {
     onUnarchiveChat?: (taskId: string) => void;
     onSelectTask: (id: string, task?: any) => void;
     onPauseResume: () => void;
+    /** Whether the autopilot scheduler is currently paused. */
+    isAutopilotPaused?: boolean;
+    /** True while the pause/resume autopilot request is in-flight. */
+    isAutopilotPauseLoading?: boolean;
+    /** Toggle autopilot pause/resume. */
+    onPauseResumeAutopilot?: () => void;
     onRefresh: () => void;
     onOpenDialog: () => void;
     fetchQueue: () => Promise<void>;
@@ -135,6 +141,9 @@ export function ActivityListPane({
     onUnarchiveChat,
     onSelectTask,
     onPauseResume,
+    isAutopilotPaused,
+    isAutopilotPauseLoading,
+    onPauseResumeAutopilot,
     onRefresh,
     onOpenDialog,
     fetchQueue,
@@ -563,6 +572,23 @@ export function ActivityListPane({
                         </Button>
                     </div>
                 )}
+                {isAutopilotPaused && (
+                    <div
+                        className="rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 px-3 py-1.5 text-xs flex items-center gap-2"
+                        data-testid="autopilot-paused-banner"
+                    >
+                        <span className="flex-1">🤖⏸ Autopilot is paused — queued autopilot tasks will not start.</span>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isAutopilotPauseLoading}
+                            onClick={onPauseResumeAutopilot}
+                            data-testid="autopilot-banner-resume-btn"
+                        >
+                            🤖▶ Resume
+                        </Button>
+                    </div>
+                )}
                 <div className={cn('flex items-center gap-2 mb-3')}>
                     {isPaused && <Badge status="warning">Paused</Badge>}
                     {availableFilters.length >= 1 && (
@@ -585,6 +611,18 @@ export function ActivityListPane({
                     >
                         {!isRefreshing && '↺'}
                     </Button>
+                    {(isAutopilotPaused || running.length > 0 || queued.length > 0) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isAutopilotPauseLoading}
+                            onClick={onPauseResumeAutopilot}
+                            title={isAutopilotPaused ? 'Resume autopilot' : 'Pause autopilot'}
+                            data-testid="autopilot-pause-resume-btn"
+                        >
+                            {isAutopilotPaused ? '🤖▶' : '🤖⏸'}
+                        </Button>
+                    )}
                     {(isPaused || running.length > 0 || queued.length > 0) && (
                         <Button
                             variant="ghost"
@@ -643,6 +681,7 @@ export function ActivityListPane({
                                         now={now}
                                         selected={selectedTaskId === task.id}
                                         isPinned={pinnedChatIds?.has(task.id) ?? false}
+                                        isAutopilotPaused={isAutopilotPaused}
                                         onClick={() => onSelectTask(task.id, task)}
                                         onContextMenu={e => handleTaskContextMenu(e, task.id, 'running')}
                                         onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, task.id, 'running')}
@@ -708,6 +747,7 @@ export function ActivityListPane({
                                                     status="queued"
                                                     now={now}
                                                     selected={selectedTaskId === item.id}
+                                                    isAutopilotPaused={isAutopilotPaused}
                                                     onClick={() => onSelectTask(item.id, item)}
                                                     onContextMenu={e => handleTaskContextMenu(e, item.id, 'queued')}
                                                     onLongPress={(x, y) => handleTaskContextMenu({ clientX: x, clientY: y, preventDefault: () => {}, stopPropagation: () => {}, shiftKey: false } as any, item.id, 'queued')}
@@ -951,12 +991,13 @@ export function ActivityListPane({
     );
 }
 
-export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, onContextMenu, onLongPress, cancelLongPress }: {
+export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopilotPaused, onClick, onContextMenu, onLongPress, cancelLongPress }: {
     task: any;
     status: 'running' | 'queued';
     now: number;
     selected?: boolean;
     isPinned?: boolean;
+    isAutopilotPaused?: boolean;
     onClick?: () => void;
     onContextMenu?: (e: React.MouseEvent) => void;
     onLongPress?: (x: number, y: number) => void;
@@ -968,6 +1009,9 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, 
     const showProgress = task.type === 'run-workflow' && status === 'running';
     const progress = useWorkflowProgress(showProgress ? (task.processId || task.id) : null);
     const hasDraft = !!getDraft(task.id);
+    const isHeld = isAutopilotPaused === true
+        && status === 'queued'
+        && task.payload?.mode === 'autopilot';
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());
@@ -987,7 +1031,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, 
 
     return (
         <Card
-            className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500")}
+            className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60")}
             onClick={handleClick}
             onContextMenu={onContextMenu}
             onTouchStart={longPress.onTouchStart}
@@ -997,9 +1041,17 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, onClick, 
         >
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
-                    <span className="shrink-0">{task.frozen ? '❄️' : icon}</span>
+                    <span className="shrink-0">{task.frozen ? '❄️' : isHeld ? '🤖⏸' : icon}</span>
                     <span className="truncate" title={name}>{name}</span>
                     {isPinned && <span className="shrink-0 text-[10px]" data-testid="running-pin-badge">📌</span>}
+                    {isHeld && (
+                        <span
+                            className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400 font-medium"
+                            data-testid="held-badge"
+                        >
+                            [held]
+                        </span>
+                    )}
                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}
                 </div>
                 {elapsed && (

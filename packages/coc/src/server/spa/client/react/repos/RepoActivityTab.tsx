@@ -32,6 +32,8 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [isAutopilotPaused, setIsAutopilotPaused] = useState(false);
+    const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -61,6 +63,7 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
+            setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
             const historyData = await fetchApi('/queue/history?repoId=' + encodeURIComponent(workspaceId)).catch(() => null);
             const nextHistory = historyData?.history || [];
             setHistory(nextHistory);
@@ -91,6 +94,9 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         setHistory(repoQueue.history);
         if (repoQueue?.stats?.isPaused !== undefined) {
             setIsPaused(repoQueue.stats.isPaused);
+        }
+        if (repoQueue?.stats?.isAutopilotPaused !== undefined) {
+            setIsAutopilotPaused(repoQueue.stats.isAutopilotPaused);
         }
         setLoading(false);
     }, [repoQueue]);
@@ -203,6 +209,19 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
         }
     }
 
+    async function handlePauseResumeAutopilot() {
+        setIsAutopilotPauseLoading(true);
+        try {
+            const endpoint = isAutopilotPaused
+                ? '/queue/resume-autopilot'
+                : '/queue/pause-autopilot';
+            await fetchApi(endpoint + '?repoId=' + encodeURIComponent(workspaceId), { method: 'POST' });
+            await fetchQueue();
+        } finally {
+            setIsAutopilotPauseLoading(false);
+        }
+    }
+
     const handleRefresh = useCallback(async () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
@@ -241,6 +260,9 @@ export function RepoActivityTab({ workspaceId }: RepoActivityTabProps) {
             onUnarchiveChat={unarchiveChat}
             onSelectTask={selectTask}
             onPauseResume={handlePauseResume}
+            isAutopilotPaused={isAutopilotPaused}
+            isAutopilotPauseLoading={isAutopilotPauseLoading}
+            onPauseResumeAutopilot={handlePauseResumeAutopilot}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}
