@@ -43,7 +43,7 @@ import {
 } from './executors/prompt-builder';
 import { applyFollowUpToTask } from './shared/queue-utils';
 import { emitMessageSteering } from './sse-handler';
-import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, DeliveryMode, PipelinePhase, PipelinePhaseStatus, ProcessStore, SelectedContext, SystemMessageConfig, Tool, ToolEvent } from '@plusplusoneplusplus/forge';
+import type { AIProcess, AgentMode, Attachment, AutoFolderContext, ConversationTurn, CopilotSDKService, ProcessStore, SelectedContext, SystemMessageConfig, Tool, ToolEvent } from '@plusplusoneplusplus/forge';
 import {
     approveAllPermissions,
     applyDeepModePrefix,
@@ -56,9 +56,6 @@ import {
     createQueueExecutor,
     DEFAULT_AI_TIMEOUT_MS,
     TASK_FILTER,
-    compileToWorkflow,
-    executeWorkflow,
-    flattenWorkflowResult,
     FileToolCallCacheStore,
     gatherFeatureContext,
     getCopilotSDKService,
@@ -78,13 +75,14 @@ import {
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createCLIAIInvoker } from '../ai-invoker';
 import { BaseExecutor } from './executors/base-executor';
 import { resolveTaskRoot } from './task-root-resolver';
 import { TaskStrategyRegistry } from './task-strategies';
 import type { ExecutionContext } from './task-strategies';
 import { ReplicateTemplateStrategy } from './task-strategies/replicate-template-strategy';
 import { ShellExecutor } from './executors/shell-executor';
+import { WorkflowExecutor } from './executors/workflow-executor';
+import { FollowUpExecutor } from './executors/follow-up-executor';
 
 // ============================================================================
 // Constants
@@ -180,6 +178,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly toolCallCacheStore: FileToolCallCacheStore;
     /** Registry of task strategies for dispatch by type key. */
     private readonly registry: TaskStrategyRegistry;
+    /** Executor for DAG workflow tasks. */
+    private readonly workflowExecutor: WorkflowExecutor;
+    /** Executor for follow-up message dispatching. */
+    private readonly followUpExecutor: FollowUpExecutor;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -197,6 +199,19 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         );
         this.registry = new TaskStrategyRegistry();
         this.registry.register('replicate-template', new ReplicateTemplateStrategy());
+        this.workflowExecutor = new WorkflowExecutor(store, {
+            approvePermissions: this.approvePermissions,
+            workingDirectory: this.defaultWorkingDirectory,
+        }, this.dataDir);
+        this.followUpExecutor = new FollowUpExecutor(store, {
+            workingDirectory: this.defaultWorkingDirectory,
+            approvePermissions: this.approvePermissions,
+            aiService: this.aiService,
+            followUpSuggestions: this.followUpSuggestions,
+            resolveWorkspaceIdForPath: (rootPath) => this.resolveWorkspaceIdForPath(rootPath),
+            resolveSkillConfig: (wsId, workDir) => this.resolveSkillConfig(wsId, workDir),
+            onTitleNeeded: (processId, turns) => this.generateTitleIfNeeded(processId, turns),
+        }, this.dataDir);
     }
 
     /** Inject the queue manager (called by createQueueExecutorBridge after construction). */
@@ -536,240 +551,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     /**
      * Execute a follow-up message on an existing process's SDK session.
-     *
-     * Flow:
-     * 1. Look up process → get sdkSessionId
-     * 2. Call sdkService.sendFollowUp(sdkSessionId, message, { onStreamingChunk })
-     * 3. Stream chunks via store.emitProcessOutput()
-     * 4. On completion, append assistant turn to conversationTurns
-     * 5. Update process status back to 'completed'
+     * Delegates to FollowUpExecutor which owns the full follow-up lifecycle.
      */
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string): Promise<void> {
-        const logger = getLogger();
-        const startTime = Date.now();
-
-        logger.debug(LogCategory.AI, `[FollowUp] Starting follow-up for process ${processId}`);
-
-        const process = await this.store.getProcess(processId);
-        if (!process) {
-            throw new Error(`Process not found: ${processId}`);
-        }
-        const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
-
-        // Detect mode transitions involving ask mode
-        const previousMode = process.metadata?.mode as ChatMode | undefined;
-        const currentMode = mode ?? previousMode;
-
-        // Update process metadata with current mode when it changes
-        if (mode && mode !== previousMode) {
-            await this.store.updateProcess(processId, {
-                metadata: {
-                    type: process.metadata?.type ?? 'chat',
-                    ...(process.metadata ?? {}),
-                    previousMode,
-                    mode: currentMode,
-                },
-            });
-        }
-
-        // Inject read-only system message for ask/plan modes
-        let autoFolderContextForFollowUp: AutoFolderContext | undefined;
-        const wsId = (process.metadata?.workspaceId as string) ?? (workingDirectory ? await this.resolveWorkspaceIdForPath(workingDirectory) : undefined);
-        if (workingDirectory) {
-            const tasksRoot = resolveTaskRoot({ dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'), rootPath: workingDirectory, workspaceId: wsId }).absolutePath;
-            const entries = await fs.promises.readdir(tasksRoot, { withFileTypes: true }).catch(() => [] as fs.Dirent[]);
-            const existingFolders = entries.filter(e => e.isDirectory()).map(e => e.name);
-            autoFolderContextForFollowUp = { tasksRoot, existingFolders };
-        }
-        const systemMessage = await withRepoInstructions(
-            buildModeSystemMessage(currentMode, autoFolderContextForFollowUp),
-            workingDirectory,
-            currentMode
-        );
-
-        // Resolve per-workspace skill configuration for follow-up
-        const { skillDirectories, disabledSkills } = await this.resolveSkillConfig(wsId, workingDirectory);
-
-        // When an SDK session ID exists, resume it natively instead of
-        // replaying conversation history as a system message.
-        const canResumeSession = !!process.sdkSessionId;
-
-        // Build conversation history context only when we cannot resume the SDK session
-        const historyContext = canResumeSession
-            ? undefined
-            : buildConversationHistoryContext(process.conversationTurns);
-
-        // Initialize output buffer for this follow-up
-        this.getOrCreateSession(processId).outputBuffer = '';
-        this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
-
-        try {
-            // Only attach follow-up suggestions tool on the first AI response (no prior assistant turns)
-            const isFirstTurn = !(process.conversationTurns?.some(t => t.role === 'assistant'));
-            const { tools: suggestTools, suffix: followUpSuffix } = buildFollowUpSuggestionsAddon(this.followUpSuggestions.enabled && isFirstTurn, this.followUpSuggestions.count);
-            const followUpMessage = followUpSuffix ? `${message}${followUpSuffix}` : message;
-            const agentMode = toAgentMode(currentMode);
-
-            // Build system message: combine conversation history + mode-specific instructions
-            const historySystemMessage = historyContext
-                ? { mode: 'append' as const, content: historyContext + (systemMessage ? '\n\n' + systemMessage.content : '') }
-                : systemMessage;
-
-            const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
-
-            const result = await this.aiService.sendMessage({
-                prompt: followUpMessage,
-                sessionId: process.sdkSessionId,
-                mode: agentMode,
-                workingDirectory,
-                reasoningEffort: 'high',
-                systemMessage: historySystemMessage,
-                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
-                attachments,
-                deliveryMode: resolvedDeliveryMode,
-                tools: suggestTools.length > 0 ? suggestTools : undefined,
-                skillDirectories,
-                disabledSkills,
-                onSessionCreated: (sessionId: string) => {
-                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {});
-                },
-                onStreamingChunk: (chunk: string) => {
-                    // Accumulate for persistence
-                    this.getOrCreateSession(processId).outputBuffer += chunk;
-                    // Append content timeline item
-                    this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
-                    try {
-                        this.store.emitProcessOutput(processId, chunk);
-                    } catch {
-                        // Non-fatal
-                    }
-                    // Check throttle conditions and flush if necessary
-                    this.checkThrottleAndFlush(processId);
-                },
-                onToolEvent: this.buildToolEventHandler(
-                    processId,
-                    () => process.conversationTurns?.length ?? 0,
-                ),
-            });
-
-            // Emit message-steering SSE event for immediate-mode messages
-            if (resolvedDeliveryMode === 'immediate') {
-                const turnIndex = process.conversationTurns?.length ?? 0;
-                emitMessageSteering(this.store, processId, { turnIndex: turnIndex - 1 });
-            }
-
-            const duration = Date.now() - startTime;
-            logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
-
-            // Clean up throttle state
-            // (cleanupSession in finally handles the actual deletion)
-
-            // Drain accumulated timeline items for the final assistant turn
-            const followUpTimeline = mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
-
-            if (!result.success) {
-                throw new Error(result.error || 'Follow-up execution failed');
-            }
-
-            // Append or replace the assistant turn in conversationTurns
-            const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
-            const turns = refreshed?.conversationTurns || [];
-
-            // Remove any in-progress streaming assistant turn (will be replaced with final)
-            const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
-            const assistantTurn: ConversationTurn = {
-                role: 'assistant',
-                content: result.response || '(No text response)',
-                timestamp: new Date(),
-                turnIndex: cleanTurns.length,
-                toolCalls: result.toolCalls || undefined,
-                timeline: followUpTimeline,
-                suggestions: this.sessions.get(processId)?.pendingSuggestions,
-                tokenUsage: result.tokenUsage,
-            };
-            // pendingSuggestions will be cleared by cleanupSession in finally
-
-            // Update session-level context window tracking
-            const tokenLimit = result.tokenUsage?.tokenLimit ?? refreshed?.tokenLimit;
-            const currentTokens = result.tokenUsage?.currentTokens ?? refreshed?.currentTokens;
-            const prevCumulative = refreshed?.cumulativeTokenUsage;
-            const cumulativeTokenUsage = result.tokenUsage ? {
-                inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
-                outputTokens: (prevCumulative?.outputTokens ?? 0) + result.tokenUsage.outputTokens,
-                cacheReadTokens: (prevCumulative?.cacheReadTokens ?? 0) + result.tokenUsage.cacheReadTokens,
-                cacheWriteTokens: (prevCumulative?.cacheWriteTokens ?? 0) + result.tokenUsage.cacheWriteTokens,
-                totalTokens: (prevCumulative?.totalTokens ?? 0) + result.tokenUsage.totalTokens,
-                turnCount: (prevCumulative?.turnCount ?? 0) + result.tokenUsage.turnCount,
-                cost: result.tokenUsage.cost !== undefined
-                    ? (prevCumulative?.cost ?? 0) + result.tokenUsage.cost
-                    : prevCumulative?.cost,
-                duration: result.tokenUsage.duration !== undefined
-                    ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
-                    : prevCumulative?.duration,
-            } : prevCumulative;
-
-            await this.store.updateProcess(processId, {
-                conversationTurns: [...cleanTurns, assistantTurn],
-                status: 'completed',
-                endTime: new Date(),
-                result: result.response || undefined,
-                ...(tokenLimit !== undefined ? { tokenLimit } : {}),
-                ...(currentTokens !== undefined ? { currentTokens } : {}),
-                ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
-            });
-
-            // Emit token-usage SSE event if token data is available
-            if (result.tokenUsage) {
-                try {
-                    this.store.emitProcessEvent(processId, {
-                        type: 'token-usage',
-                        turnIndex: assistantTurn.turnIndex,
-                        tokenUsage: result.tokenUsage,
-                        sessionTokenLimit: tokenLimit,
-                        sessionCurrentTokens: currentTokens,
-                    });
-                } catch {
-                    // Non-fatal
-                }
-            }
-
-            this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
-
-            // Generate a human-readable title if not already set (fire-and-forget)
-            this.generateTitleIfNeeded(processId, [...cleanTurns, assistantTurn]);
-
-        } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            const duration = Date.now() - startTime;
-            logger.debug(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
-
-            const refreshed = await this.store.getProcess(processId, process.metadata?.workspaceId as string | undefined);
-            const turns = refreshed?.conversationTurns || [];
-            // Remove any in-progress streaming assistant turn
-            const cleanTurns = turns.filter(t => !(t.role === 'assistant' && t.streaming));
-            const errorTurn: ConversationTurn = {
-                role: 'assistant',
-                content: `Error: ${errorMsg}`,
-                timestamp: new Date(),
-                turnIndex: cleanTurns.length,
-                timeline: [],
-            };
-
-            await this.store.updateProcess(processId, {
-                conversationTurns: [...cleanTurns, errorTurn],
-                status: 'failed',
-                endTime: new Date(),
-                error: errorMsg,
-            });
-            this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
-        } finally {
-            // Persist accumulated output to disk
-            const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
-            this.cleanupSession(processId);
-            this.store.unregisterFlushHandler?.(processId);
-            // Append to existing output file rather than overwriting
-            await this.persistOutput(processId, buffer);
-        }
+        return this.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode);
     }
 
     // ========================================================================
@@ -787,9 +572,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     private async executeByType(task: QueuedTask, prompt: string): Promise<unknown> {
-        // Run workflow: parse YAML and execute via pipeline-core
+        // Run workflow: parse YAML and execute via WorkflowExecutor
         if (isRunWorkflowPayload(task.payload)) {
-            return this.executeRunPipeline(task);
+            return this.workflowExecutor.execute(task);
         }
 
         // Run script: spawn child process via ShellExecutor
@@ -1031,150 +816,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         return this.executeWithAI(task, aiPrompt, {
             systemMessage: { mode: 'append', content: systemPrompt },
         });
-    }
-
-    private async executeRunPipeline(task: QueuedTask): Promise<unknown> {
-        const payload = task.payload as unknown as RunWorkflowPayload;
-        const yamlPath = path.join(payload.workflowPath, 'pipeline.yaml');
-
-        // Read and parse pipeline YAML
-        const yamlContent = fs.readFileSync(yamlPath, 'utf-8');
-        const config = compileToWorkflow(yamlContent);
-
-        // Create AIInvoker using the same factory as `coc run`
-        const aiInvoker = createCLIAIInvoker({
-            model: payload.model,
-            approvePermissions: this.approvePermissions,
-            workingDirectory: payload.workingDirectory,
-            mcpServers: payload.mcpServers,          // forward per-workspace MCP filter
-        });
-
-        // Execute
-        const processId = `queue_${task.id}`;
-        const childProcessIds: string[] = [];
-        const result = await executeWorkflow(config, {
-            aiInvoker,
-            workflowDirectory: payload.workflowPath,
-            workspaceRoot: payload.workingDirectory,
-            model: payload.model,
-            parameters: payload.params,
-            onProgress: (event) => {
-                // Map WorkflowNodePhase to PipelinePhaseStatus for backward compat with SPA
-                const statusMap: Record<string, PipelinePhaseStatus> = {
-                    pending: 'started', running: 'started', completed: 'completed', failed: 'failed', warned: 'completed',
-                };
-                // Emit pipeline-phase SSE event for backward compat with SPA
-                try {
-                    this.store.emitProcessEvent(processId, {
-                        type: 'pipeline-phase',
-                        pipelinePhase: {
-                            phase: event.nodeId as PipelinePhase,
-                            status: statusMap[event.phase] ?? 'started',
-                            timestamp: event.timestamp,
-                            durationMs: event.durationMs,
-                            error: event.error,
-                            itemCount: event.inputItemCount,
-                        },
-                    });
-                } catch {
-                    // Non-fatal: store may be a stub
-                }
-                // Emit pipeline-progress SSE event when item progress is available
-                if (event.itemProgress) {
-                    try {
-                        const total = event.itemProgress.total;
-                        const completed = event.itemProgress.completed;
-                        this.store.emitProcessEvent(processId, {
-                            type: 'pipeline-progress',
-                            pipelineProgress: {
-                                phase: event.nodeId as PipelinePhase,
-                                totalItems: total,
-                                completedItems: completed,
-                                failedItems: event.itemProgress.failed,
-                                percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
-                                message: `Node ${event.nodeId}: ${completed}/${total}`,
-                            },
-                        });
-                    } catch {
-                        // Non-fatal
-                    }
-                }
-            },
-            onItemProcess: (event) => {
-                childProcessIds.push(event.processId);
-                const label = event.itemLabel ?? `Item ${event.itemIndex}`;
-                const childProcess: AIProcess = {
-                    id: event.processId,
-                    type: 'pipeline-item',
-                    parentProcessId: processId,
-                    promptPreview: label.length > 80 ? label.substring(0, 77) + '...' : label,
-                    fullPrompt: label,
-                    status: event.status === 'completed' ? 'completed' : (event.status === 'failed' ? 'failed' : 'running'),
-                    startTime: new Date(),
-                    metadata: {
-                        type: 'pipeline-item',
-                        itemIndex: event.itemIndex,
-                        nodeId: event.nodeId,
-                        parentPipelineId: processId,
-                    },
-                };
-                if (event.error) {
-                    childProcess.error = event.error;
-                }
-                this.store.addProcess(childProcess).catch(() => {
-                    // Non-fatal: don't fail the pipeline if store write fails
-                });
-                try {
-                    this.store.emitProcessEvent(processId, {
-                        type: 'pipeline-progress',
-                        pipelineProgress: {
-                            phase: 'map',
-                            totalItems: 0,
-                            completedItems: 0,
-                            failedItems: 0,
-                            percentage: 0,
-                            message: `Item process created: ${event.processId}`,
-                        },
-                    });
-                } catch {
-                    // Non-fatal
-                }
-            },
-        });
-
-        const flatResult = flattenWorkflowResult(result, config);
-
-        // Update parent process with child process IDs
-        if (childProcessIds.length) {
-            this.store.updateProcess(processId, {
-                groupMetadata: {
-                    type: 'pipeline-execution',
-                    childProcessIds,
-                },
-            }).catch(() => {
-                // Non-fatal
-            });
-        }
-
-        // Persist execution stats and pipeline config into metadata so WorkflowDetailView can render the DAG
-        this.store.getProcess(processId, (task.payload as any)?.workspaceId as string | undefined).then(current => {
-            return this.store.updateProcess(processId, {
-                metadata: {
-                    type: current?.metadata?.type ?? task.type,
-                    ...(current?.metadata ?? {}),
-                    executionStats: flatResult.stats,
-                    pipelineConfig: config,
-                },
-            });
-        }).catch(() => {
-            // Non-fatal
-        });
-
-        return {
-            response: flatResult.formattedOutput ?? JSON.stringify(flatResult.stats),
-            pipelineName: config.name,
-            stats: flatResult.stats,
-        };
     }
 
     private async executeResolveComments(task: QueuedTask): Promise<unknown> {
