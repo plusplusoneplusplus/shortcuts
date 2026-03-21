@@ -231,7 +231,7 @@ function validateAndParseTask(taskSpec: any): TaskValidationResult {
  */
 function aggregateStats(bridge: MultiRepoQueueExecutorBridge): QueueStats {
     let queued = 0, running = 0, completed = 0, failed = 0, cancelled = 0, total = 0;
-    let allPaused = true, any = false, anyDraining = false;
+    let allPaused = true, allAutopilotPaused = true, any = false, anyDraining = false;
     for (const m of bridge.registry.getAllQueues().values()) {
         const s = m.getStats();
         queued += s.queued;
@@ -241,10 +241,11 @@ function aggregateStats(bridge: MultiRepoQueueExecutorBridge): QueueStats {
         cancelled += s.cancelled;
         total += s.total;
         if (!s.isPaused) { allPaused = false; }
+        if (!s.isAutopilotPaused) { allAutopilotPaused = false; }
         if (s.isDraining) { anyDraining = true; }
         any = true;
     }
-    return { queued, running, completed, failed, cancelled, total, isPaused: any && allPaused, isDraining: anyDraining, isAutopilotPaused: false };
+    return { queued, running, completed, failed, cancelled, total, isPaused: any && allPaused, isAutopilotPaused: any && allAutopilotPaused, isDraining: anyDraining };
 }
 
 
@@ -344,6 +345,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
 
     // Track global pause state so newly-created bridges inherit it
     let globalPaused = false;
+    let globalAutopilotPaused = false;
 
     /**
      * Resolve rootPath from payload.workingDirectory or payload.workspaceId (via store).
@@ -375,6 +377,9 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
         // Auto-pause newly created managers if global pause is active
         if (globalPaused && !queueManager.getStats().isPaused) {
             queueManager.pause();
+        }
+        if (globalAutopilotPaused && !queueManager.getStats().isAutopilotPaused) {
+            queueManager.pauseAutopilot();
         }
         return queueManager.enqueue(input);
     }
@@ -416,6 +421,9 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
         const stats = aggregateStats(bridge);
         if (globalPaused && bridge.registry.getAllQueues().size === 0) {
             stats.isPaused = true;
+        }
+        if (globalAutopilotPaused && bridge.registry.getAllQueues().size === 0) {
+            stats.isAutopilotPaused = true;
         }
         return stats;
     }
@@ -951,6 +959,64 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
     });
 
     // ------------------------------------------------------------------
+    // POST /api/queue/pause-autopilot — Pause autopilot task execution
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/pause-autopilot',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+
+            if (repoId) {
+                const mgr = await getManagerByRepoIdentifier(repoId);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+                mgr.pauseAutopilot();
+                process.stderr.write(`[Queue] pause-autopilot repoId=${repoId}\n`);
+                sendJSON(res, 200, { repoId, isAutopilotPaused: true, stats: mgr.getStats() });
+            } else {
+                globalAutopilotPaused = true;
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    m.pauseAutopilot();
+                }
+                process.stderr.write(`[Queue] pause-autopilot repoId=global\n`);
+                sendJSON(res, 200, { isAutopilotPaused: true, stats: getAggregateStats() });
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/resume-autopilot — Resume autopilot task execution
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/resume-autopilot',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = typeof parsed.query.repoId === 'string' ? parsed.query.repoId : undefined;
+
+            if (repoId) {
+                const mgr = await getManagerByRepoIdentifier(repoId);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+                mgr.resumeAutopilot();
+                process.stderr.write(`[Queue] resume-autopilot repoId=${repoId}\n`);
+                sendJSON(res, 200, { repoId, isAutopilotPaused: false, stats: mgr.getStats() });
+            } else {
+                globalAutopilotPaused = false;
+                for (const m of bridge.registry.getAllQueues().values()) {
+                    m.resumeAutopilot();
+                }
+                process.stderr.write(`[Queue] resume-autopilot repoId=global\n`);
+                sendJSON(res, 200, { isAutopilotPaused: false, stats: getAggregateStats() });
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // GET /api/queue/repos — List repos with pause states and task counts
     // ------------------------------------------------------------------
     routes.push({
@@ -1450,7 +1516,7 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             const id = decodeURIComponent(match![1]);
 
             // Skip known sub-routes
-            if (['stats', 'history', 'pause', 'resume', 'force-fail-running', 'bulk', 'repos', 'pause-marker', 'summarize'].includes(id)) {
+            if (['stats', 'history', 'pause', 'resume', 'pause-autopilot', 'resume-autopilot', 'force-fail-running', 'bulk', 'repos', 'pause-marker', 'summarize'].includes(id)) {
                 return sendError(res, 404, 'Task not found');
             }
 

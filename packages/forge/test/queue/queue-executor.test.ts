@@ -447,6 +447,41 @@ describe('QueueExecutor', () => {
     });
 
     // ========================================================================
+    // Autopilot pause hold
+    // ========================================================================
+
+    describe('autopilot pause hold', () => {
+        it('holds exclusive tasks in queue when autopilot is paused', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                isExclusive: () => true,
+            });
+
+            queueManager.pauseAutopilot();
+            const taskId = queueManager.enqueue(createTestTask());
+
+            await delay(200);
+            expect(queueManager.getTask(taskId)?.status).toBe('queued');
+
+            // Resume autopilot — task should proceed
+            queueManager.resumeAutopilot();
+            await waitFor(() => queueManager.getTask(taskId)?.status === 'completed');
+            expect(queueManager.getTask(taskId)?.status).toBe('completed');
+        });
+
+        it('allows shared tasks to run when autopilot is paused', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                isExclusive: () => false,
+            });
+
+            queueManager.pauseAutopilot();
+            const taskId = queueManager.enqueue(createTestTask());
+
+            await waitFor(() => queueManager.getTask(taskId)?.status === 'completed');
+            expect(queueManager.getTask(taskId)?.status).toBe('completed');
+        });
+    });
+
+    // ========================================================================
     // Timeout
     // ========================================================================
 

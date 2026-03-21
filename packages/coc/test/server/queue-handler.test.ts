@@ -1160,6 +1160,82 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // Pause Autopilot / Resume Autopilot
+    // ========================================================================
+
+    describe('Pause Autopilot / Resume Autopilot', () => {
+        it('POST /api/queue/pause-autopilot should return isAutopilotPaused: true', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/pause-autopilot`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.isAutopilotPaused).toBe(true);
+            expect(body.stats).toBeDefined();
+            expect(body.stats.isAutopilotPaused).toBe(true);
+        });
+
+        it('POST /api/queue/resume-autopilot should return isAutopilotPaused: false', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause-autopilot`, {});
+            const res = await postJSON(`${srv.url}/api/queue/resume-autopilot`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.isAutopilotPaused).toBe(false);
+            expect(body.stats.isAutopilotPaused).toBe(false);
+        });
+
+        it('GET /api/queue/stats should reflect isAutopilotPaused after pause-autopilot', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause-autopilot`, {});
+            const res = await request(`${srv.url}/api/queue/stats`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.stats.isAutopilotPaused).toBe(true);
+        });
+
+        it('pause-autopilot on unknown repoId should return 404', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/pause-autopilot?repoId=no-such-repo`, {});
+            expect(res.status).toBe(404);
+        });
+
+        it('resume-autopilot on unknown repoId should return 404', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/resume-autopilot?repoId=no-such-repo`, {});
+            expect(res.status).toBe(404);
+        });
+
+        it('pause-autopilot per-repo should return repoId + stats', async () => {
+            const srv = await startServer();
+            // Pause globally to prevent auto-execution, then enqueue to create bridge
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'x', workingDirectory: '/test/repo-ap' },
+            }));
+            // Resolve the repoId from stats endpoint
+            const statsRes = await request(`${srv.url}/api/queue/repos`);
+            const repos = JSON.parse(statsRes.body).repos;
+            const repoId = repos[0]?.repoId;
+            expect(repoId).toBeDefined();
+
+            const res = await postJSON(`${srv.url}/api/queue/pause-autopilot?repoId=${repoId}`, {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.repoId).toBe(repoId);
+            expect(body.isAutopilotPaused).toBe(true);
+            expect(body.stats.isAutopilotPaused).toBe(true);
+        });
+
+        it('GET /api/queue/:id guard — pause-autopilot and resume-autopilot should not match task ID route', async () => {
+            const srv = await startServer();
+            const res1 = await request(`${srv.url}/api/queue/pause-autopilot`);
+            expect(res1.status).toBe(404);
+            const res2 = await request(`${srv.url}/api/queue/resume-autopilot`);
+            expect(res2.status).toBe(404);
+        });
+    });
+
+    // ========================================================================
     // Clear queue
     // ========================================================================
 
