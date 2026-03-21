@@ -281,6 +281,80 @@ describe('POST /api/processes/:id/message', () => {
             expect(sentContent).toContain('[Task]\nanalyze auth module');
         });
 
+        it('should store raw content (with /slash tokens) in conversationTurns for display', async () => {
+            const proc: AIProcess = {
+                id: 'proc-raw-display',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-raw-display',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-raw-display/message`, {
+                content: '/impl analyze auth module',
+                skillNames: ['impl'],
+            });
+
+            const updated = await store.getProcess('proc-raw-display');
+            expect(updated?.conversationTurns).toHaveLength(1);
+            // Stored content must be the raw input (including /impl) for UI display
+            expect(updated!.conversationTurns![0].content).toBe('/impl analyze auth module');
+        });
+
+        it('should strip /skill tokens from AI-facing prompt but preserve rest of message', async () => {
+            const proc: AIProcess = {
+                id: 'proc-strip-token',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-strip-token',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            await postJSON(`${baseUrl}/api/processes/proc-strip-token/message`, {
+                content: '/impl analyze auth module',
+                skillNames: ['impl'],
+            });
+
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
+            // /impl must be stripped, only the actual task text remains
+            expect(sentContent).toContain('[Task]\nanalyze auth module');
+            expect(sentContent).not.toContain('/impl');
+        });
+
+        it('should leave unknown /tokens in AI prompt when not in skillNames', async () => {
+            const proc: AIProcess = {
+                id: 'proc-unknown-token',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'sess-unknown-token',
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            // /unknown-skill is NOT in skillNames, so it should not be stripped
+            await postJSON(`${baseUrl}/api/processes/proc-unknown-token/message`, {
+                content: '/impl /unknown-skill analyze',
+                skillNames: ['impl'],
+            });
+
+            const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
+            const sentContent = enqueueFn.mock.calls[0][0].payload.prompt;
+            expect(sentContent).toContain('/unknown-skill');
+            expect(sentContent).not.toContain('/impl');
+        });
+
         it('should not prepend directives when skillNames is empty', async () => {
             const proc: AIProcess = {
                 id: 'proc-noskill',

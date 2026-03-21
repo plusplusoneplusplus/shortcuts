@@ -158,8 +158,7 @@ export function useSendMessage({
         const rawContent = (overrideContent ?? followUpInputRef.current).trim();
         if (!rawContent || !processId || inputDisabled) return;
 
-        const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(rawContent);
-        const content = cleanedPrompt || rawContent;
+        const { skills: extractedSkills } = slashCommands.parseAndExtract(rawContent);
 
         setSuggestions([]);
         setFollowUpInput('');
@@ -179,7 +178,7 @@ export function useSendMessage({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content,
+                    content: rawContent,
                     images: images.length > 0 ? images : undefined,
                     mode: selectedMode,
                     deliveryMode,
@@ -206,7 +205,7 @@ export function useSendMessage({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    content,
+                    content: rawContent,
                     images: images.length > 0 ? images : undefined,
                     mode: selectedMode,
                     deliveryMode,

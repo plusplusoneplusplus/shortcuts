@@ -1979,8 +1979,17 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
             if (Array.isArray(body.skillNames) && body.skillNames.length > 0) {
                 const validSkills = body.skillNames.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0);
                 if (validSkills.length > 0) {
+                    // Strip /skillname tokens from the raw content before sending to AI
+                    let cleanPrompt = messageContent;
+                    for (const skill of validSkills) {
+                        cleanPrompt = cleanPrompt.replace(
+                            new RegExp(`(?:^|\\s)\\/${skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'gi'),
+                            ' '
+                        );
+                    }
+                    cleanPrompt = cleanPrompt.replace(/\s+/g, ' ').trim();
                     const directives = validSkills.map((n: string) => `Use ${n} skill when available`).join('\n');
-                    messageContent = `${directives}\n\n[Task]\n${messageContent}`;
+                    messageContent = `${directives}\n\n[Task]\n${cleanPrompt}`;
                 }
             }
 
