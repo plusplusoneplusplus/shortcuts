@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { copyToClipboard } from '../utils/format';
+import { useCachedDiff } from './useCommitDiffCache';
 import { Spinner, Button } from '../shared';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
@@ -69,9 +70,6 @@ export interface CommitDetailProps {
 export function CommitDetail({ workspaceId, hash, filePath, commit, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, onQueueTask }: CommitDetailProps) {
     const isRangeMode = !!range;
     const { dispatch: queueDispatch } = useQueue();
-    const [diff, setDiff] = useState<string | null>(null);
-    const [diffLoading, setDiffLoading] = useState(true);
-    const [diffError, setDiffError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [popupState, setPopupState] = useState<PopupState>(null);
     const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
@@ -98,6 +96,8 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
             : `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${hash}/diff`)
         : null;
 
+    const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);
+
     const diffContext = (!isRangeMode && filePath && hash)
         ? { repositoryId: workspaceId, filePath, oldRef: `${hash}^`, newRef: hash }
         : null;
@@ -115,28 +115,6 @@ export function CommitDetail({ workspaceId, hash, filePath, commit, range, commi
         deleteComment: deleteCommitComment,
         updateComment: updateCommitComment,
     } = useAllCommitComments((!isRangeMode && !filePath) ? workspaceId : '', (!isRangeMode && !filePath && hash) ? hash : '');
-
-    // Fetch diff on mount / hash / filePath change (single-commit mode only)
-    useEffect(() => {
-        if (!diffUrl) { setDiffLoading(false); return; }
-        setDiffLoading(true);
-        setDiffError(null);
-        setDiff(null);
-        fetchApi(diffUrl)
-            .then(data => setDiff(data.diff || ''))
-            .catch(err => setDiffError(err.message || 'Failed to load diff'))
-            .finally(() => setDiffLoading(false));
-    }, [diffUrl]);
-
-    const handleRetryDiff = useCallback(() => {
-        if (!diffUrl) return;
-        setDiffLoading(true);
-        setDiffError(null);
-        fetchApi(diffUrl)
-            .then(data => setDiff(data.diff || ''))
-            .catch(err => setDiffError(err.message || 'Failed to load diff'))
-            .finally(() => setDiffLoading(false));
-    }, [diffUrl]);
 
     const handleAddComment = useCallback(
         (selection: DiffCommentSelection, selectedText: string, position: { top: number; left: number }) => {

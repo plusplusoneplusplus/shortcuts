@@ -121,17 +121,17 @@ describe('CommitDetail', () => {
     });
 
     describe('error handling', () => {
-        it('tracks diff error state', () => {
+        it('tracks diff error state via useCachedDiff hook', () => {
             expect(source).toContain('diffError');
-            expect(source).toContain('setDiffError');
+            expect(source).toContain('useCachedDiff');
         });
 
         it('shows visible error for diff loading failure', () => {
             expect(source).toContain('data-testid="diff-error"');
         });
 
-        it('does NOT silently catch errors', () => {
-            expect(source).toContain('catch(err');
+        it('delegates error handling to useCachedDiff hook', () => {
+            expect(source).toContain("import { useCachedDiff } from './useCommitDiffCache'");
         });
     });
 
