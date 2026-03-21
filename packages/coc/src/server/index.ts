@@ -18,7 +18,6 @@ import { registerApiRoutes } from './api-handler';
 import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
-import { resolveTaskRoot } from './task-root-resolver';
 import { registerPromptRoutes } from './prompt-handler';
 import { registerPreferencesRoutes } from './preferences-handler';
 import { registerAdminRoutes } from './admin-handler';
@@ -37,8 +36,6 @@ import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from './workflows-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from './templates-handler';
 import { registerReplicateApplyRoutes } from './replicate-apply-handler';
-import { TemplateWatcher } from './template-watcher';
-import { WorkflowWatcher } from './workflow-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
@@ -47,7 +44,6 @@ import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
 import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
-import { isMigrationNeeded, migrateTasksToRepoScoped } from './task-migration';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './global-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
@@ -55,7 +51,7 @@ import { registerScheduleRoutes } from './schedule-handler';
 import { registerStatsRoutes } from './stats-handler';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
-import { TaskWatcher } from './task-watcher';
+import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { resolveConfig } from '../config';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../config';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
@@ -303,78 +299,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Attach WebSocket server and bridge all event sources
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
 
-    // Bridge task file changes to WebSocket
-    const taskWatcher = new TaskWatcher((workspaceId) => {
-        wsServer.broadcastProcessEvent({
-            type: 'tasks-changed',
-            workspaceId,
-            timestamp: Date.now(),
-        });
-    });
-
-    // Bridge workflow file changes to WebSocket
-    const pipelineWatcher = new WorkflowWatcher((workspaceId) => {
-        wsServer.broadcastProcessEvent({
-            type: 'workflows-changed',
-            workspaceId,
-            timestamp: Date.now(),
-        });
-    });
-
-    // Bridge template file changes to WebSocket
-    const templateWatcher = new TemplateWatcher((workspaceId) => {
-        wsServer.broadcastProcessEvent({
-            type: 'templates-changed',
-            workspaceId,
-            timestamp: Date.now(),
-        });
-    });
-
-    // Watch tasks and workflows directories for already-registered workspaces (handles server restart)
-    const existingWorkspaces = await store.getWorkspaces();
-
-    for (const ws of existingWorkspaces) {
-        if (isMigrationNeeded(ws.rootPath, ws.id, dataDir)) {
-            const migResult = await migrateTasksToRepoScoped({
-                workspaceRoot: ws.rootPath, workspaceId: ws.id, dataDir,
-            });
-            if (migResult.migrated) {
-                process.stderr.write(`[TaskMigration] ${migResult.fileCount} files: ${ws.rootPath}\n`);
-            }
-        }
-        taskWatcher.watchWorkspace(ws.id, resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath);
-        pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
-        templateWatcher.watchWorkspace(ws.id, ws.rootPath);
-        // Register workspace ID so bridge.getBridgeByRepoId() works for pre-existing workspaces
-        bridge.registerRepoId(ws.id, ws.rootPath);
-    }
-
-    // Intercept workspace registration/removal to manage task watchers
-    const originalRegister = store.registerWorkspace!.bind(store);
-    const originalRemove = store.removeWorkspace!.bind(store);
-
-    store.registerWorkspace = async (workspace: any) => {
-        await originalRegister(workspace);
-        if (isMigrationNeeded(workspace.rootPath, workspace.id, dataDir)) {
-            const migResult = await migrateTasksToRepoScoped({
-                workspaceRoot: workspace.rootPath, workspaceId: workspace.id, dataDir,
-            });
-            if (migResult.migrated) {
-                process.stderr.write(`[TaskMigration] ${migResult.fileCount} files: ${workspace.rootPath}\n`);
-            }
-        }
-        taskWatcher.watchWorkspace(workspace.id, resolveTaskRoot({ dataDir, rootPath: workspace.rootPath, workspaceId: workspace.id }).absolutePath);
-        pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
-        templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
-        bridge.registerRepoId(workspace.id, workspace.rootPath);
-    };
-
-    store.removeWorkspace = async (id: string) => {
-        taskWatcher.unwatchWorkspace(id);
-        pipelineWatcher.unwatchWorkspace(id);
-        templateWatcher.unwatchWorkspace(id);
-        return originalRemove(id);
-    };
+    // Set up file watchers (task/workflow/template) and wire workspace hooks
+    const { taskWatcher, pipelineWatcher, templateWatcher } =
+        await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
     // Start listening
     await new Promise<void>((resolve, reject) => {
