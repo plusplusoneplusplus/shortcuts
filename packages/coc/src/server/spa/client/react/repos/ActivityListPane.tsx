@@ -644,28 +644,44 @@ export function ActivityListPane({
                     >
                         {!isRefreshing && '↺'}
                     </Button>
-                    {(isAutopilotPaused || running.length > 0 || queued.length > 0) && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={isAutopilotPauseLoading}
-                            onClick={onPauseResumeAutopilot}
-                            title={isAutopilotPaused ? 'Resume autopilot' : 'Pause autopilot'}
-                            data-testid="autopilot-pause-resume-btn"
-                        >
-                            {isAutopilotPaused ? '🤖▶' : '🤖⏸'}
-                        </Button>
-                    )}
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={isPauseResumeLoading}
-                        onClick={onPauseResume}
-                        title={isPaused ? 'Resume queue' : 'Pause queue'}
-                        data-testid="repo-pause-resume-btn"
+                    <div
+                        className="flex items-center text-xs rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden"
+                        data-testid="pause-toggle-group"
                     >
-                        {isPaused ? '▶' : '⏸'}
-                    </Button>
+                        <button
+                            disabled={isPauseResumeLoading}
+                            onClick={onPauseResume}
+                            title={isPaused ? 'Resume all tasks' : 'Pause all tasks'}
+                            data-testid="repo-pause-resume-btn"
+                            className={cn(
+                                'flex items-center gap-1 px-2 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                isPaused
+                                    ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
+                                    : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                            )}
+                        >
+                            {isPaused ? '▶' : '⏸'} All
+                        </button>
+                        {onPauseResumeAutopilot && (
+                            <>
+                                <div className="w-px self-stretch bg-[#e0e0e0] dark:bg-[#474749]" />
+                                <button
+                                    disabled={isAutopilotPauseLoading}
+                                    onClick={onPauseResumeAutopilot}
+                                    title={isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}
+                                    data-testid="autopilot-pause-resume-btn"
+                                    className={cn(
+                                        'flex items-center gap-1 px-2 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+                                        isAutopilotPaused
+                                            ? 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#0078d4]/20'
+                                            : 'text-[#606060] dark:text-[#9d9d9d] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                                    )}
+                                >
+                                    🤖 Auto
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {searchVisible && (

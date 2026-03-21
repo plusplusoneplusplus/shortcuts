@@ -451,6 +451,40 @@ describe('ActivityListPane: shared list component', () => {
         expect(preceding).not.toMatch(/running\.length > 0 \|\| queued\.length > 0.*\{/s);
     });
 
+    it('renders pause controls as a segmented toggle group', () => {
+        expect(ACTIVITY_LIST_PANE_SOURCE).toContain('data-testid="pause-toggle-group"');
+    });
+
+    it('segmented group has All segment for queue-wide pause', () => {
+        const groupIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="pause-toggle-group"');
+        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 1000);
+        expect(section).toContain('data-testid="repo-pause-resume-btn"');
+        expect(section).toContain('All');
+    });
+
+    it('segmented group has Auto segment for autopilot-only pause', () => {
+        const groupIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="pause-toggle-group"');
+        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 1600);
+        expect(section).toContain('data-testid="autopilot-pause-resume-btn"');
+        expect(section).toContain('Auto');
+    });
+
+    it('autopilot segment is conditionally rendered via onPauseResumeAutopilot prop', () => {
+        const autoPilotBtnIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="autopilot-pause-resume-btn"');
+        expect(autoPilotBtnIndex).toBeGreaterThan(-1);
+        // Must be guarded by onPauseResumeAutopilot check
+        const preceding = ACTIVITY_LIST_PANE_SOURCE.slice(Math.max(0, autoPilotBtnIndex - 300), autoPilotBtnIndex);
+        expect(preceding).toContain('onPauseResumeAutopilot');
+    });
+
+    it('active segment uses accent highlight style', () => {
+        // Both pause states should apply an accent bg class when active
+        const groupIndex = ACTIVITY_LIST_PANE_SOURCE.indexOf('data-testid="pause-toggle-group"');
+        const section = ACTIVITY_LIST_PANE_SOURCE.slice(groupIndex, groupIndex + 1400);
+        expect(section).toContain('bg-[#0078d4]/10');
+        expect(section).toContain('text-[#0078d4]');
+    });
+
     it('supports drag and drop', () => {
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('useQueueDragDrop');
         expect(ACTIVITY_LIST_PANE_SOURCE).toContain('draggable={!isMobile}');
