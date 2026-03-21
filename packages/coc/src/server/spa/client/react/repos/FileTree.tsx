@@ -33,6 +33,28 @@ type TreeNode = DirNode | FileNode;
 
 // ----- Tree builder -----
 
+/**
+ * Collapses single-child directory chains into one node whose name is the
+ * combined path (e.g. `packages/coc/src`).  Directories with more than one
+ * child, or whose only child is a file, are left untouched.
+ */
+export function compactFolders(nodes: TreeNode[]): TreeNode[] {
+    return nodes.map((node) => {
+        if (node.type !== 'dir') return node;
+        const compacted = compactFolders(node.children);
+        if (compacted.length === 1 && compacted[0].type === 'dir') {
+            const child = compacted[0] as DirNode;
+            return {
+                type: 'dir' as const,
+                name: `${node.name}/${child.name}`,
+                path: child.path,
+                children: child.children,
+            };
+        }
+        return { ...node, children: compacted };
+    });
+}
+
 export function buildFileTree(files: FileChange[]): TreeNode[] {
     const root: TreeNode[] = [];
 

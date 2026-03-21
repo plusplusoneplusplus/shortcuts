@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { mockViewport } from '../../../spa/helpers/viewport-mock';
-import { buildFileTree } from '../../../../src/server/spa/client/react/repos/FileTree';
+import { buildFileTree, compactFolders } from '../../../../src/server/spa/client/react/repos/FileTree';
 
 // --- Module mocks (same pattern as CommitList.comment.test.tsx) ---
 
@@ -57,6 +57,77 @@ beforeEach(() => {
 
 afterEach(() => {
     restoreViewport();
+});
+
+// ── compactFolders unit tests ─────────────────────────────────────────
+
+describe('compactFolders', () => {
+    it('collapses a single-child directory chain into one node', () => {
+        const tree = buildFileTree([{ status: 'M', path: 'packages/coc/src/index.ts' }]);
+        const compacted = compactFolders(tree);
+        expect(compacted).toHaveLength(1);
+        const node = compacted[0];
+        expect(node).toMatchObject({ type: 'dir', name: 'packages/coc/src', path: 'packages/coc/src' });
+        if (node.type === 'dir') {
+            expect(node.children).toHaveLength(1);
+            expect(node.children[0]).toMatchObject({ type: 'file', name: 'index.ts' });
+        }
+    });
+
+    it('does not collapse a directory with multiple children', () => {
+        const tree = buildFileTree([
+            { status: 'M', path: 'src/foo.ts' },
+            { status: 'A', path: 'src/bar.ts' },
+        ]);
+        const compacted = compactFolders(tree);
+        expect(compacted).toHaveLength(1);
+        expect(compacted[0]).toMatchObject({ type: 'dir', name: 'src' });
+        if (compacted[0].type === 'dir') {
+            expect(compacted[0].children).toHaveLength(2);
+        }
+    });
+
+    it('does not collapse a single-child directory whose child is a file', () => {
+        const tree = buildFileTree([{ status: 'A', path: 'src/index.ts' }]);
+        const compacted = compactFolders(tree);
+        expect(compacted).toHaveLength(1);
+        // "src" has one file child — not collapsed (child is not a dir)
+        expect(compacted[0]).toMatchObject({ type: 'dir', name: 'src' });
+        if (compacted[0].type === 'dir') {
+            expect(compacted[0].children[0]).toMatchObject({ type: 'file', name: 'index.ts' });
+        }
+    });
+
+    it('partially collapses: stops at branch points', () => {
+        // packages/coc has two children (src and test), so it should NOT be collapsed
+        const tree = buildFileTree([
+            { status: 'M', path: 'packages/coc/src/index.ts' },
+            { status: 'A', path: 'packages/coc/test/foo.test.ts' },
+        ]);
+        const compacted = compactFolders(tree);
+        // "packages" has one child "coc", but "coc" has 2 children → packages/coc compacted
+        expect(compacted).toHaveLength(1);
+        expect(compacted[0]).toMatchObject({ type: 'dir', name: 'packages/coc', path: 'packages/coc' });
+        if (compacted[0].type === 'dir') {
+            // "src" and "test" are both single-child dirs that each contain a file, no further compaction
+            expect(compacted[0].children).toHaveLength(2);
+        }
+    });
+
+    it('leaves root-level files unchanged', () => {
+        const tree = buildFileTree([
+            { status: 'M', path: 'README.md' },
+            { status: 'A', path: 'LICENSE' },
+        ]);
+        const compacted = compactFolders(tree);
+        expect(compacted).toHaveLength(2);
+        expect(compacted[0]).toMatchObject({ type: 'file', name: 'README.md' });
+        expect(compacted[1]).toMatchObject({ type: 'file', name: 'LICENSE' });
+    });
+
+    it('returns empty array for empty input', () => {
+        expect(compactFolders([])).toEqual([]);
+    });
 });
 
 // ── buildFileTree unit tests ──────────────────────────────────────────
