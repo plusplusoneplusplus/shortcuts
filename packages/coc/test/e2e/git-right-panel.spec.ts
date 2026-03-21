@@ -46,7 +46,7 @@ test.describe('Git right-panel — CommitDetail per-file', () => {
             await expect(page.getByTestId('commit-files-loading')).toBeHidden({ timeout: 5_000 });
 
             // Click the first file entry
-            await page.getByTestId('commit-file-0').click();
+            await page.locator('[data-testid^="commit-file-"]').first().click();
 
             // Right panel should show per-file diff
             await expect(page.getByTestId('diff-file-path')).toBeVisible({ timeout: 10_000 });

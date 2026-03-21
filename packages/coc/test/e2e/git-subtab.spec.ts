@@ -68,7 +68,7 @@ test.describe('Git sub-tab — CommitList', () => {
 
             // Should show at least one file entry
             await expect(page.getByTestId('commit-file-list')).toBeVisible();
-            await expect(page.getByTestId('commit-file-0')).toBeVisible();
+            await expect(page.locator('[data-testid^="commit-file-"]').first()).toBeVisible();
         } finally {
             safeRmSync(tmpDir);
         }

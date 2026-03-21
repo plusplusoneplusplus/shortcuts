@@ -91,9 +91,10 @@ describe('CommitList — deep-link auto-expansion', () => {
             expect(screen.getByTestId(`commit-files-${COMMIT_A.shortHash}`)).toBeTruthy();
         });
 
-        // Files should be visible
-        expect(screen.getByText('src/foo.ts')).toBeTruthy();
-        expect(screen.getByText('src/bar.ts')).toBeTruthy();
+        // Files should be visible (tree view shows basenames + folder)
+        expect(screen.getByTestId('file-tree-dir-src')).toBeTruthy();
+        expect(screen.getByTestId('commit-file-src/foo.ts')).toBeTruthy();
+        expect(screen.getByTestId('commit-file-src/bar.ts')).toBeTruthy();
 
         // API should have been called with the correct URL
         expect(mockFetchApi).toHaveBeenCalledWith(
@@ -231,9 +232,10 @@ describe('CommitList — deep-link auto-expansion', () => {
             expect(screen.getByTestId(`commit-files-${COMMIT_A.shortHash}`)).toBeTruthy();
         });
 
-        // Files should be visible
-        expect(screen.getByText('src/foo.ts')).toBeTruthy();
-        expect(screen.getByText('src/bar.ts')).toBeTruthy();
+        // Files should be visible (tree view shows basenames + folder)
+        expect(screen.getByTestId('file-tree-dir-src')).toBeTruthy();
+        expect(screen.getByTestId('commit-file-src/foo.ts')).toBeTruthy();
+        expect(screen.getByTestId('commit-file-src/bar.ts')).toBeTruthy();
 
         // API should have been called with the correct URL
         expect(mockFetchApi).toHaveBeenCalledWith(

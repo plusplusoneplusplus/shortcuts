@@ -11,8 +11,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchApi } from '../hooks/useApi';
 import { formatRelativeTime } from '../utils/format';
-import { TruncatedPath } from '../shared';
 import { CommitTooltip } from './CommitTooltip';
+import { buildFileTree, FileTreeView } from './FileTree';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { useCommitCommentTotals } from '../hooks/useCommitCommentTotals';
 import { computeDiffCommentKey } from '../../diff-comment-utils';
@@ -37,21 +37,6 @@ interface FileChange {
 // Uses CSS `(hover: none)` which matches devices with no fine pointer (mouse/trackpad).
 const isTouchOnly = (): boolean =>
     typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
-
-const STATUS_COLORS: Record<string, string> = {
-    A: 'text-[#16825d]',
-    M: 'text-[#0078d4]',
-    D: 'text-[#d32f2f]',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-    A: 'Added',
-    M: 'Modified',
-    D: 'Deleted',
-    R: 'Renamed',
-    C: 'Copied',
-    T: 'Type changed',
-};
 
 interface CommitListProps {
     title: string;
@@ -387,46 +372,13 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                         {isFilesLoading ? (
                                             <div className="text-[11px] text-[#848484] py-1" data-testid="commit-files-loading">Loading files...</div>
                                         ) : files && files.length > 0 ? (
-                                            <div className="flex flex-col gap-0.5" data-testid="commit-file-list">
-                                                {files.map((f, i) => {
-                                                    const isActiveFile = selectedFile?.hash === commit.hash && selectedFile?.filePath === f.path;
-                                                    return (
-                                                    <button
-                                                        key={i}
-                                                        className={`flex items-center gap-2 text-[11px] py-0.5 px-1 rounded text-left w-full transition-colors ${
-                                                            isActiveFile
-                                                                ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
-                                                                : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
-                                                        }`}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onFileSelect?.(commit.hash, f.path);
-                                                        }}
-                                                        data-testid={`commit-file-${i}`}
-                                                    >
-                                                        {(() => {
-                                                            const count = fileCommentMap.get(f.path) ?? 0;
-                                                            return count > 0 ? (
-                                                                <span
-                                                                    className="text-xs text-[#848484] flex-shrink-0"
-                                                                    title={`${count} active comment${count > 1 ? 's' : ''}`}
-                                                                    data-testid={`commit-file-comment-badge-${i}`}
-                                                                >
-                                                                    💬{count}
-                                                                </span>
-                                                            ) : null;
-                                                        })()}
-                                                        <span
-                                                            className={`font-mono font-bold w-3 text-center flex-shrink-0 ${STATUS_COLORS[f.status] || 'text-[#848484]'}`}
-                                                            title={STATUS_LABELS[f.status] || f.status}
-                                                        >
-                                                            {f.status}
-                                                        </span>
-                                                        <TruncatedPath path={f.path} className="text-[#1e1e1e] dark:text-[#ccc]" />
-                                                    </button>
-                                                    );
-                                                })}
-                                            </div>
+                                            <FileTreeView
+                                                nodes={buildFileTree(files)}
+                                                commitHash={commit.hash}
+                                                selectedFile={selectedFile}
+                                                onFileSelect={onFileSelect}
+                                                fileCommentMap={fileCommentMap}
+                                            />
                                         ) : files ? (
                                             <div className="text-[11px] text-[#848484] py-1">No files changed</div>
                                         ) : null}

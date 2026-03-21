@@ -88,7 +88,7 @@ describe('CommitList — comment count badges', () => {
         });
 
         await waitFor(() => {
-            const badge = screen.getByTestId('commit-file-comment-badge-0');
+            const badge = screen.getByTestId('commit-file-comment-badge-src/foo.ts');
             expect(badge.textContent).toContain('💬2');
         });
     });
@@ -109,9 +109,9 @@ describe('CommitList — comment count badges', () => {
             expect(screen.getByTestId(`commit-files-${COMMIT_A.shortHash}`)).toBeTruthy();
         });
 
-        await waitFor(() => screen.getByTestId('commit-file-0'));
-        expect(screen.queryByTestId('commit-file-comment-badge-0')).toBeNull();
-        expect(screen.queryByTestId('commit-file-comment-badge-1')).toBeNull();
+        await waitFor(() => screen.getByTestId('commit-file-src/foo.ts'));
+        expect(screen.queryByTestId('commit-file-comment-badge-src/foo.ts')).toBeNull();
+        expect(screen.queryByTestId('commit-file-comment-badge-src/bar.ts')).toBeNull();
     });
 
     it('shows correct counts for multiple files in the expanded commit', async () => {
@@ -133,8 +133,8 @@ describe('CommitList — comment count badges', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByTestId('commit-file-comment-badge-0').textContent).toContain('💬3');
-            expect(screen.getByTestId('commit-file-comment-badge-1').textContent).toContain('💬1');
+            expect(screen.getByTestId('commit-file-comment-badge-src/foo.ts').textContent).toContain('💬3');
+            expect(screen.getByTestId('commit-file-comment-badge-src/bar.ts').textContent).toContain('💬1');
         });
     });
 
@@ -168,7 +168,7 @@ describe('CommitList — comment count badges', () => {
             />
         );
 
-        await waitFor(() => screen.getByTestId('commit-file-comment-badge-0'));
+        await waitFor(() => screen.getByTestId('commit-file-comment-badge-src/foo.ts'));
 
         // Collapse COMMIT_A and expand COMMIT_B
         await act(async () => {
@@ -183,6 +183,6 @@ describe('CommitList — comment count badges', () => {
         });
 
         // Badge from COMMIT_A's file should no longer be visible
-        expect(screen.queryByTestId('commit-file-comment-badge-0')).toBeNull();
+        expect(screen.queryByTestId('commit-file-comment-badge-src/foo.ts')).toBeNull();
     });
 });
