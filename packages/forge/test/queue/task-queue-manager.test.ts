@@ -2664,6 +2664,56 @@ describe('TaskQueueManager.requeueFromHistory', () => {
 
         expect(manager.getTask(id)?.createdAt).toBe(originalCreatedAt);
     });
+
+    // Regression: requeueFromHistory must respect isExclusiveFn so that
+    // non-exclusive (ask/plan) follow-ups are not buried behind exclusive
+    // (autopilot) tasks when the queue is autopilot-paused.
+    describe('non-exclusive routing (regression)', () => {
+        const isExclusive = (t: QueuedTask) => t.type !== 'readonly-chat';
+
+        it('requeued non-exclusive task is placed before existing exclusive tasks', () => {
+            const m = new TaskQueueManager({ isExclusive });
+
+            // Complete a non-exclusive (ask/plan) task
+            const chatId = m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'chat' }));
+            m.markStarted(chatId);
+            m.markCompleted(chatId, 'done');
+
+            // Queue up two exclusive (autopilot) tasks while chat is in history
+            m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ap1' }));
+            m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ap2' }));
+
+            // Simulate follow-up reply: requeue the chat task
+            m.requeueFromHistory(chatId);
+
+            // The non-exclusive chat task must sit BEFORE the exclusive tasks
+            const queued = m.getQueued();
+            const chatIdx = queued.findIndex(t => t.id === chatId);
+            const ap1Idx = queued.findIndex(t => t.displayName === 'ap1');
+            expect(chatIdx).toBeLessThan(ap1Idx);
+        });
+
+        it('requeued non-exclusive task is visible via peek when autopilot is paused', () => {
+            const m = new TaskQueueManager({ isExclusive });
+
+            // Complete a non-exclusive task
+            const chatId = m.enqueue(createTestTask({ type: 'readonly-chat', displayName: 'chat' }));
+            m.markStarted(chatId);
+            m.markCompleted(chatId, 'done');
+
+            // Queue an exclusive task and pause autopilot
+            m.enqueue(createTestTask({ type: 'run-pipeline', displayName: 'ap1' }));
+            m.pauseAutopilot();
+
+            // Requeue the non-exclusive follow-up
+            m.requeueFromHistory(chatId);
+
+            // peek() should return the non-exclusive chat task, not undefined or ap1
+            const next = m.peek();
+            expect(next).toBeDefined();
+            expect((next as QueuedTask).id).toBe(chatId);
+        });
+    });
 });
 
 // ============================================================================

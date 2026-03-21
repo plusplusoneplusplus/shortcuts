@@ -101,13 +101,7 @@ export class TaskQueueManager extends EventEmitter {
             retryCount: 0,
         };
 
-        // Insert: non-exclusive tasks jump before the first exclusive task in the queue
-        // so they are not blocked behind an exclusive-limiter backlog.
-        if (this.isExclusiveFn && !this.isExclusiveFn(task)) {
-            this.insertBeforeFirstExclusive(task);
-        } else {
-            this.insertByPriority(task);
-        }
+        this.insertTask(task);
 
         // Emit events
         this.emitChange('added', task);
@@ -502,7 +496,7 @@ export class TaskQueueManager extends EventEmitter {
         task.completedAt = undefined;
         task.result = undefined;
         task.error = undefined;
-        this.insertByPriority(task);
+        this.insertTask(task);
 
         this.emitChange('updated', task);
         this.emit('taskUpdated', task, { status: 'queued' });
@@ -511,7 +505,7 @@ export class TaskQueueManager extends EventEmitter {
 
     /**
      * Move a queued task back to history as completed.
-     * Reverses requeueFromHistory — used when a follow-up is cancelled
+     * Reverses requeueFromHistory— used when a follow-up is cancelled
      * so the parent task returns to the completed section.
      *
      * @param id Task ID to return to history
@@ -1100,6 +1094,20 @@ export class TaskQueueManager extends EventEmitter {
             for (const resolve of resolvers) {
                 resolve();
             }
+        }
+    }
+
+    /**
+     * Route a task to the correct insertion method based on exclusivity.
+     * Non-exclusive tasks jump before the first exclusive task so they are not
+     * blocked behind an exclusive-limiter backlog. Exclusive tasks use standard
+     * priority insertion.
+     */
+    private insertTask(task: QueuedTask): void {
+        if (this.isExclusiveFn && !this.isExclusiveFn(task)) {
+            this.insertBeforeFirstExclusive(task);
+        } else {
+            this.insertByPriority(task);
         }
     }
 
