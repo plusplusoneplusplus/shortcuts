@@ -316,12 +316,6 @@ export class QueueExecutor extends EventEmitter {
 
             const task = item as import('./types').QueuedTask;
 
-            // Hold autopilot tasks when autopilot-pause is active (task stays in queue)
-            if (this.queueManager.isAutopilotPaused() && this.isExclusive(task)) {
-                await this.delay(100);
-                continue;
-            }
-
             // Check if we have capacity on the correct limiter
             const limiter = this.isExclusive(task) ? this.exclusiveLimiter : this.sharedLimiter;
             if (limiter.runningCount >= limiter.limit) {

@@ -134,6 +134,9 @@ export interface QueuedTask {
 
     /** Whether this task is frozen (skipped by the executor but stays in queue) */
     frozen?: boolean;
+
+    /** Whether this task has been admitted to run despite autopilot being paused */
+    admitted?: boolean;
 }
 
 /**
@@ -178,7 +181,9 @@ export type QueueChangeType =
     | 'pause-marker-added'
     | 'pause-marker-removed'
     | 'autopilot-paused'
-    | 'autopilot-resumed';
+    | 'autopilot-resumed'
+    | 'admitted'
+    | 'unadmitted';
 
 /**
  * Event emitted when the queue changes

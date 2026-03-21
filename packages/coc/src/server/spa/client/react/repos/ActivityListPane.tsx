@@ -300,6 +300,16 @@ export function ActivityListPane({
         fetchQueue();
     };
 
+    const handleAdmit = async (taskId: string) => {
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/admit', { method: 'POST' });
+        fetchQueue();
+    };
+
+    const handleUnadmit = async (taskId: string) => {
+        await fetch(getApiBase() + '/queue/' + encodeURIComponent(taskId) + '/unadmit', { method: 'POST' });
+        fetchQueue();
+    };
+
     const handleInsertPauseMarker = async (afterIndex: number) => {
         setInsertingPauseAt(null);
         await fetch(getApiBase() + '/queue/pause-marker', {
@@ -517,16 +527,21 @@ export function ActivityListPane({
         const queuedIndex = queued.findIndex(t => t.id === taskId);
         const task = queued[queuedIndex];
         const isFrozen = task?.frozen;
+        const isHeld = isAutopilotPaused && task?.payload?.mode === 'autopilot' && !task?.admitted;
+        const isAdmitted = isAutopilotPaused && task?.payload?.mode === 'autopilot' && !!task?.admitted;
         return [
             ...(queuedIndex > 0 ? [{ label: 'Move Up', icon: '▲', onClick: () => handleMoveUp(taskId) }] : []),
             { label: 'Move to Top', icon: '⏬', onClick: () => handleMoveToTop(taskId) },
             { label: '', icon: '', separator: true, onClick: () => {} },
+            ...(isHeld ? [{ label: 'Schedule Immediately', icon: '🚀', onClick: () => handleAdmit(taskId) }] : []),
+            ...(isAdmitted ? [{ label: 'Cancel Scheduling', icon: '🚫', onClick: () => handleUnadmit(taskId) }] : []),
+            ...((isHeld || isAdmitted) ? [{ label: '', icon: '', separator: true, onClick: () => {} }] : []),
             isFrozen
                 ? { label: 'Unfreeze', icon: '▶', onClick: () => handleUnfreeze(taskId) }
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue]);
+    }, [contextMenu, queued, unseenTaskIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
 
     if (running.length === 0 && queued.length === 0 && history.length === 0) {
         return (
@@ -1009,7 +1024,12 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
     const hasDraft = !!getDraft(task.id);
     const isHeld = isAutopilotPaused === true
         && status === 'queued'
-        && task.payload?.mode === 'autopilot';
+        && task.payload?.mode === 'autopilot'
+        && !task.admitted;
+    const isAdmitted = isAutopilotPaused === true
+        && status === 'queued'
+        && task.payload?.mode === 'autopilot'
+        && !!task.admitted;
     let elapsed = '';
     if (status === 'running' && task.startedAt) {
         elapsed = formatDuration(now - new Date(task.startedAt).getTime());
@@ -1029,7 +1049,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
 
     return (
         <Card
-            className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60")}
+            className={cn("p-2 cursor-pointer", selected && "ring-2 ring-[#0078d4]", task.frozen && "task-frozen", isPinned && "border-l-2 border-l-amber-400 dark:border-l-amber-500", isHeld && !isPinned && "border-l-2 border-l-amber-500 dark:border-l-amber-400 opacity-60", isAdmitted && !isPinned && "border-l-2 border-l-green-500 dark:border-l-green-400")}
             onClick={handleClick}
             onContextMenu={onContextMenu}
             onTouchStart={longPress.onTouchStart}
@@ -1039,7 +1059,7 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
         >
             <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] min-w-0">
-                    <span className="shrink-0">{task.frozen ? '❄️' : isHeld ? '🤖⏸' : icon}</span>
+                    <span className="shrink-0">{task.frozen ? '❄️' : isAdmitted ? '🚀' : isHeld ? '🤖⏸' : icon}</span>
                     <span className="truncate" title={name}>{name}</span>
                     {isPinned && <span className="shrink-0 text-[10px]" data-testid="running-pin-badge">📌</span>}
                     {isHeld && (
@@ -1048,6 +1068,14 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
                             data-testid="held-badge"
                         >
                             [held]
+                        </span>
+                    )}
+                    {isAdmitted && (
+                        <span
+                            className="shrink-0 text-[10px] text-green-600 dark:text-green-400 font-medium"
+                            data-testid="admitted-badge"
+                        >
+                            [scheduled]
                         </span>
                     )}
                     {hasDraft && <span className="shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Unsent draft" data-testid="draft-badge">✏️</span>}

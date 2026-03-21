@@ -803,6 +803,17 @@ describe('TaskQueueManager', () => {
             manager.pause();
             expect(manager.isAutopilotPaused()).toBe(false);
         });
+
+        it('resumeAutopilot clears admitted flags on queued tasks', () => {
+            manager = createTaskQueueManager({ isExclusive: () => true });
+            manager.pauseAutopilot();
+            const id = manager.enqueue(createTestTask());
+            manager.admitTask(id);
+            expect(manager.getTask(id)!.admitted).toBe(true);
+
+            manager.resumeAutopilot();
+            expect(manager.getTask(id)!.admitted).toBe(false);
+        });
     });
 
     describe('clear', () => {
@@ -1940,6 +1951,122 @@ describe('TaskQueueManager', () => {
 
             const next = manager.dequeue();
             expect(next!.id).toBe(id1);
+        });
+    });
+
+    describe('admitTask', () => {
+        it('admits a queued task', () => {
+            const id = manager.enqueue(createTestTask());
+            expect(manager.admitTask(id)).toBe(true);
+            expect(manager.getTask(id)!.admitted).toBe(true);
+        });
+
+        it('returns false for non-existent task', () => {
+            expect(manager.admitTask('no-such-id')).toBe(false);
+        });
+
+        it('returns false for running task', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.markStarted(id);
+            expect(manager.admitTask(id)).toBe(false);
+        });
+
+        it('emits admitted change event', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+            const id = manager.enqueue(createTestTask());
+            listener.mockClear();
+
+            manager.admitTask(id);
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener.mock.calls[0][0].type).toBe('admitted');
+            expect(listener.mock.calls[0][0].taskId).toBe(id);
+        });
+
+        it('task stays in queued status after admit', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.admitTask(id);
+            expect(manager.getTask(id)!.status).toBe('queued');
+        });
+    });
+
+    describe('unadmitTask', () => {
+        it('unadmits an admitted task', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.admitTask(id);
+            expect(manager.unadmitTask(id)).toBe(true);
+            expect(manager.getTask(id)!.admitted).toBe(false);
+        });
+
+        it('returns false for non-admitted task', () => {
+            const id = manager.enqueue(createTestTask());
+            expect(manager.unadmitTask(id)).toBe(false);
+        });
+
+        it('returns false for non-existent task', () => {
+            expect(manager.unadmitTask('no-such-id')).toBe(false);
+        });
+
+        it('emits unadmitted change event', () => {
+            const listener = vi.fn();
+            manager.on('change', listener);
+            const id = manager.enqueue(createTestTask());
+            manager.admitTask(id);
+            listener.mockClear();
+
+            manager.unadmitTask(id);
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener.mock.calls[0][0].type).toBe('unadmitted');
+            expect(listener.mock.calls[0][0].taskId).toBe(id);
+        });
+    });
+
+    describe('peek with autopilot-paused tasks', () => {
+        it('skips non-admitted exclusive tasks when autopilot is paused', () => {
+            manager = createTaskQueueManager({ isExclusive: () => true });
+            const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'T2' }));
+            manager.pauseAutopilot();
+
+            // Both exclusive, neither admitted → no eligible task
+            expect(manager.peek()).toBeUndefined();
+        });
+
+        it('returns admitted task when autopilot is paused', () => {
+            manager = createTaskQueueManager({ isExclusive: () => true });
+            const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'T2' }));
+            manager.pauseAutopilot();
+            manager.admitTask(id2);
+
+            // id1 is held, id2 is admitted → peek returns id2
+            const next = manager.peek();
+            expect(next).toBeDefined();
+            expect(next!.id).toBe(id2);
+        });
+
+        it('returns first admitted task in queue order', () => {
+            manager = createTaskQueueManager({ isExclusive: () => true });
+            const id1 = manager.enqueue(createTestTask({ displayName: 'T1' }));
+            const id2 = manager.enqueue(createTestTask({ displayName: 'T2' }));
+            const id3 = manager.enqueue(createTestTask({ displayName: 'T3' }));
+            manager.pauseAutopilot();
+            manager.admitTask(id2);
+            manager.admitTask(id3);
+
+            // id1 held, id2 admitted, id3 admitted → returns id2 (first admitted in order)
+            expect(manager.peek()!.id).toBe(id2);
+        });
+
+        it('does not skip tasks without isExclusive configured', () => {
+            // No isExclusive → autopilot pause does not affect peek
+            manager = createTaskQueueManager();
+            const id = manager.enqueue(createTestTask());
+            manager.pauseAutopilot();
+
+            expect(manager.peek()!.id).toBe(id);
         });
     });
 });

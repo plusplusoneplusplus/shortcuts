@@ -1658,4 +1658,40 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             sendJSON(res, 200, { unfrozen: true, task });
         },
     });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/admit — Admit a held autopilot task to run immediately
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/admit$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const admitted = bridge.findManagerForTask(id)?.admitTask(id) ?? false;
+            if (!admitted) {
+                return sendError(res, 404, 'Task not found in queue');
+            }
+            process.stderr.write(`[Queue] admit task=${id}\n`);
+            const task = bridge.findManagerForTask(id)?.getTask(id);
+            sendJSON(res, 200, { admitted: true, task });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/:id/unadmit — Unadmit a previously admitted task
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/queue\/([^/]+)\/unadmit$/,
+        handler: async (_req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const unadmitted = bridge.findManagerForTask(id)?.unadmitTask(id) ?? false;
+            if (!unadmitted) {
+                return sendError(res, 404, 'Task not found in queue or not admitted');
+            }
+            process.stderr.write(`[Queue] unadmit task=${id}\n`);
+            const task = bridge.findManagerForTask(id)?.getTask(id);
+            sendJSON(res, 200, { unadmitted: true, task });
+        },
+    });
 }

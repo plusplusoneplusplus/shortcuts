@@ -452,6 +452,7 @@ describe('QueueExecutor', () => {
 
     describe('autopilot pause hold', () => {
         it('holds exclusive tasks in queue when autopilot is paused', async () => {
+            queueManager = createTaskQueueManager({ isExclusive: () => true });
             executor = new QueueExecutor(queueManager, taskExecutor, {
                 isExclusive: () => true,
             });
@@ -469,6 +470,7 @@ describe('QueueExecutor', () => {
         });
 
         it('allows shared tasks to run when autopilot is paused', async () => {
+            queueManager = createTaskQueueManager({ isExclusive: () => false });
             executor = new QueueExecutor(queueManager, taskExecutor, {
                 isExclusive: () => false,
             });
@@ -478,6 +480,49 @@ describe('QueueExecutor', () => {
 
             await waitFor(() => queueManager.getTask(taskId)?.status === 'completed');
             expect(queueManager.getTask(taskId)?.status).toBe('completed');
+        });
+
+        it('runs admitted tasks despite autopilot being paused', async () => {
+            queueManager = createTaskQueueManager({ isExclusive: () => true });
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                isExclusive: () => true,
+            });
+
+            queueManager.pauseAutopilot();
+            const taskId = queueManager.enqueue(createTestTask());
+
+            await delay(200);
+            expect(queueManager.getTask(taskId)?.status).toBe('queued');
+
+            // Admit the task — should run despite autopilot pause
+            queueManager.admitTask(taskId);
+            await waitFor(() => queueManager.getTask(taskId)?.status === 'completed');
+            expect(queueManager.getTask(taskId)?.status).toBe('completed');
+        });
+
+        it('unadmitting a task re-holds it', async () => {
+            queueManager = createTaskQueueManager({ isExclusive: () => true });
+            taskExecutor = createSimpleTaskExecutor(async () => {
+                await delay(500);
+                return 'done';
+            });
+            executor = new QueueExecutor(queueManager, taskExecutor, {
+                isExclusive: () => true,
+            });
+
+            queueManager.pauseAutopilot();
+            const taskId = queueManager.enqueue(createTestTask());
+
+            await delay(100);
+            expect(queueManager.getTask(taskId)?.status).toBe('queued');
+
+            // Admit then immediately unadmit
+            queueManager.admitTask(taskId);
+            queueManager.unadmitTask(taskId);
+
+            await delay(200);
+            // Task should still be queued because it was unadmitted before executor picked it up
+            expect(queueManager.getTask(taskId)?.status).toBe('queued');
         });
     });
 

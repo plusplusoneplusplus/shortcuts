@@ -146,7 +146,8 @@ export class TaskQueueManager extends EventEmitter {
     /**
      * Get the next eligible item without removing it.
      * Pause markers are returned when encountered in order.
-     * Skips frozen tasks and (when configured) tasks from paused repos.
+     * Skips frozen tasks, tasks from paused repos, and non-admitted
+     * exclusive tasks when autopilot is paused.
      * @returns The next eligible item, or undefined if none available
      */
     peek(): QueueItem | undefined {
@@ -160,6 +161,7 @@ export class TaskQueueManager extends EventEmitter {
                 const repoId = this.getTaskRepoId(task);
                 if (repoId && this.pausedRepos.has(repoId)) continue;
             }
+            if (this.autopilotPaused && this.isExclusiveFn?.(task) && !task.admitted) continue;
             return task;
         }
         return undefined;
@@ -598,6 +600,36 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     // ========================================================================
+    // Admit / Unadmit (autopilot override)
+    // ========================================================================
+
+    /**
+     * Admit a held autopilot task so it runs despite autopilot being paused.
+     * @param id Task ID
+     * @returns true if the task was found in the queue and admitted
+     */
+    admitTask(id: string): boolean {
+        const task = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
+        if (!task) return false;
+        task.admitted = true;
+        this.emitChange('admitted', task);
+        return true;
+    }
+
+    /**
+     * Unadmit a previously admitted task, reverting it to held state.
+     * @param id Task ID
+     * @returns true if the task was found in the queue and unadmitted
+     */
+    unadmitTask(id: string): boolean {
+        const task = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
+        if (!task || !task.admitted) return false;
+        task.admitted = false;
+        this.emitChange('unadmitted', task);
+        return true;
+    }
+
+    // ========================================================================
     // Pause Markers
     // ========================================================================
 
@@ -784,10 +816,16 @@ export class TaskQueueManager extends EventEmitter {
 
     /**
      * Resume autopilot — allows automatic enqueuing to proceed again.
+     * Clears any stale admitted flags on queued tasks.
      */
     resumeAutopilot(): void {
         if (this.autopilotPaused) {
             this.autopilotPaused = false;
+            for (const item of this.queue) {
+                if (!isPauseMarker(item)) {
+                    (item as QueuedTask).admitted = false;
+                }
+            }
             this.emitChange('autopilot-resumed');
             this.emit('autopilot-resumed');
         }
