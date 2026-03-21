@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AdoPullRequestsAdapter } from '../../src/ado/ado-pull-requests-adapter';
 import type { AdoPullRequestsService } from '../../src/ado/pull-requests-service';
+import { VersionControlChangeType } from '../../src/ado/pull-requests-service';
 import type { PullRequest, CommentThread, Reviewer } from '../../src/providers/types';
 import { setLogger, nullLogger } from '../../src/logger';
 import type { Logger } from '../../src/logger';
@@ -58,6 +59,9 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
         createThread: vi.fn().mockResolvedValue(mockAdoThread),
         getReviewers: vi.fn().mockResolvedValue([mockAdoReviewer]),
         addReviewers: vi.fn().mockResolvedValue([mockAdoReviewer]),
+        getPullRequestIterations: vi.fn().mockResolvedValue([]),
+        getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
+        getFileContent: vi.fn().mockResolvedValue(''),
         ...overrides,
     } as unknown as AdoPullRequestsService;
 }
@@ -232,9 +236,116 @@ describe('AdoPullRequestsAdapter', () => {
     // ── getDiff ──────────────────────────────────────────────
 
     describe('getDiff', () => {
-        it('returns empty string (ADO diff not implemented)', async () => {
-            const diff = await adapter.getDiff('repo-id', 42);
+        const validIteration = {
+            id: 1,
+            sourceRefCommit: { commitId: 'head-sha-abc' },
+            commonRefCommit: { commitId: 'base-sha-xyz' },
+        };
+
+        it('returns unified diff for an edited file', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([validIteration]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({
+                    changeEntries: [{ item: { path: '/src/foo.ts' }, changeType: VersionControlChangeType.Edit }],
+                }),
+                getFileContent: vi.fn().mockImplementation((_repo: string, _path: string, commitId: string) =>
+                    Promise.resolve(commitId === 'base-sha-xyz' ? 'old content\n' : 'new content\n'),
+                ),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
+            expect(diff).toContain('---');
+            expect(diff).toContain('+++');
+            expect(diff).toContain('@@');
+        });
+
+        it('returns empty string when no iterations', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
             expect(diff).toBe('');
+            expect(svc.getPullRequestIterationChanges).not.toHaveBeenCalled();
+            expect(svc.getFileContent).not.toHaveBeenCalled();
+        });
+
+        it('returns empty string when iteration is missing SHAs', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([{ id: 1 }]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
+            expect(diff).toBe('');
+        });
+
+        it('returns empty string when no change entries', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([validIteration]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
+            expect(diff).toBe('');
+            expect(svc.getFileContent).not.toHaveBeenCalled();
+        });
+
+        it('added file — base content is empty, old header shows /dev/null', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([validIteration]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({
+                    changeEntries: [{ item: { path: '/src/new-file.ts' }, changeType: VersionControlChangeType.Add }],
+                }),
+                getFileContent: vi.fn().mockResolvedValue('brand new content\n'),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
+            // Only called once (head), not for base
+            expect(svc.getFileContent).toHaveBeenCalledTimes(1);
+            expect(diff).toContain('/dev/null');
+        });
+
+        it('deleted file — head content is empty, new header shows /dev/null', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([validIteration]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({
+                    changeEntries: [{ item: { path: '/src/old-file.ts' }, changeType: VersionControlChangeType.Delete }],
+                }),
+                getFileContent: vi.fn().mockResolvedValue('deleted content\n'),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
+            // Only called once (base), not for head
+            expect(svc.getFileContent).toHaveBeenCalledTimes(1);
+            expect(diff).toContain('/dev/null');
+        });
+
+        it('renamed file — originalPath in --- header, new path in +++ header', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([validIteration]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({
+                    changeEntries: [{
+                        item: { path: '/src/renamed.ts', originalPath: '/src/original.ts' },
+                        changeType: VersionControlChangeType.Rename,
+                    }],
+                }),
+                getFileContent: vi.fn().mockResolvedValue('content\n'),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
+            expect(diff).toContain('a/src/original.ts');
+            expect(diff).toContain('b/src/renamed.ts');
+        });
+
+        it('returns empty string on service error (outer catch)', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockRejectedValue(new Error('network timeout')),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const diff = await a.getDiff('repo-id', 42);
+            expect(diff).toBe('');
+            const warnCalls = (mockLogger.warn as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+            expect(warnCalls.some(m => m.includes('getDiff failed') && m.includes('network timeout'))).toBe(true);
         });
     });
 

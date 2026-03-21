@@ -14,6 +14,8 @@ import type {
     UpdatePullRequestInput,
 } from '../providers/types';
 import type { AdoPullRequestsService } from './pull-requests-service';
+import { VersionControlChangeType } from './pull-requests-service';
+import { buildUnifiedDiff } from './diff-builder';
 import { getLogger, LogCategory } from '../logger';
 
 // ── mapping helpers ──────────────────────────────────────────
@@ -239,8 +241,61 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         return reviewers.map(mapAdoReviewer);
     }
 
-    async getDiff(_repositoryId: string, _pullRequestId: number | string): Promise<string> {
-        // ADO diff API is not supported in this adapter.
-        return '';
+    async getDiff(repositoryId: string, pullRequestId: number | string): Promise<string> {
+        const logger = getLogger();
+        try {
+            // Step 1: get iterations, pick last one
+            const iterations = await this.service.getPullRequestIterations(
+                repositoryId,
+                Number(pullRequestId),
+                this.project,
+            );
+            if (!iterations.length) return '';
+
+            const lastIteration = iterations[iterations.length - 1];
+            const headSha = lastIteration.sourceRefCommit?.commitId;
+            const baseSha = lastIteration.commonRefCommit?.commitId;
+            if (!headSha || !baseSha) return '';
+
+            // Step 2: get changed files for that iteration
+            const iterationId = lastIteration.id!;
+            const changes = await this.service.getPullRequestIterationChanges(
+                repositoryId,
+                Number(pullRequestId),
+                iterationId,
+                this.project,
+            );
+            const entries = changes.changeEntries ?? [];
+            if (!entries.length) return '';
+
+            // Step 3: fetch base+head content per file (parallel)
+            const fileDiffs = await Promise.all(
+                entries.map(async (entry) => {
+                    const filePath = entry.item?.path ?? '';
+                    const originalPath = (entry.item as Record<string, unknown> | undefined)?.originalPath as string | undefined;
+                    const changeType = entry.changeType ?? 0;
+
+                    const isAdd    = (changeType & VersionControlChangeType.Add)    !== 0;
+                    const isDelete = (changeType & VersionControlChangeType.Delete) !== 0;
+
+                    const baseContent = isAdd
+                        ? ''
+                        : await this.service.getFileContent(repositoryId, filePath, baseSha, this.project);
+                    const headContent = isDelete
+                        ? ''
+                        : await this.service.getFileContent(repositoryId, filePath, headSha, this.project);
+
+                    return buildUnifiedDiff(filePath, originalPath, baseContent, headContent);
+                }),
+            );
+
+            return fileDiffs.filter(Boolean).join('\n');
+        } catch (err) {
+            logger.warn(
+                LogCategory.ADO,
+                `getDiff failed for PR #${pullRequestId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return '';
+        }
     }
 }
