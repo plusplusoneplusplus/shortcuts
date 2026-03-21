@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AdoPullRequestsService, AdoPullRequestError, AdoPullRequestNotFoundError } from '../../src/ado/pull-requests-service';
+import { Readable } from 'node:stream';
+import { AdoPullRequestsService, AdoPullRequestError, AdoPullRequestNotFoundError, GitVersionType } from '../../src/ado/pull-requests-service';
 import type { WebApi } from 'azure-devops-node-api';
 import { setLogger, nullLogger } from '../../src/logger';
 import type { Logger } from '../../src/logger';
@@ -14,6 +15,9 @@ function makeMockGitApi(overrides: Record<string, unknown> = {}) {
         getThreads: vi.fn().mockResolvedValue([]),
         createPullRequestReviewers: vi.fn().mockResolvedValue([]),
         getPullRequestReviewers: vi.fn().mockResolvedValue([]),
+        getPullRequestIterations: vi.fn().mockResolvedValue([]),
+        getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
+        getItemText: vi.fn().mockResolvedValue(null),
         ...overrides,
     };
 }
@@ -229,6 +233,95 @@ describe('AdoPullRequestsService', () => {
 
         const infoCalls = (mockLogger.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
         expect(infoCalls.some(m => m.includes('Git API client initialized'))).toBe(true);
+    });
+
+    // ── getPullRequestIterations ────────────────────────────
+
+    it('getPullRequestIterations delegates with correct arguments and returns the array', async () => {
+        gitApi.getPullRequestIterations.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+
+        const result = await service.getPullRequestIterations('repo-1', 42, 'proj');
+
+        expect(gitApi.getPullRequestIterations).toHaveBeenCalledOnce();
+        expect(gitApi.getPullRequestIterations).toHaveBeenCalledWith('repo-1', 42, 'proj', false);
+        expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+    });
+
+    it('getPullRequestIterations returns [] when the API resolves with undefined', async () => {
+        gitApi.getPullRequestIterations.mockResolvedValue(undefined);
+        const result = await service.getPullRequestIterations('repo-1', 42);
+        expect(result).toEqual([]);
+    });
+
+    it('getPullRequestIterations throws AdoPullRequestError when the API rejects', async () => {
+        gitApi.getPullRequestIterations.mockRejectedValue(new Error('network error'));
+
+        await expect(service.getPullRequestIterations('repo-1', 42)).rejects.toThrow(AdoPullRequestError);
+        await expect(service.getPullRequestIterations('repo-1', 42)).rejects.toThrow('Failed to get iterations for PR 42');
+    });
+
+    // ── getPullRequestIterationChanges ───────────────────────
+
+    it('getPullRequestIterationChanges delegates with correct arguments and returns the changes object', async () => {
+        gitApi.getPullRequestIterationChanges.mockResolvedValue({ changeEntries: [{ changeTrackingId: 1 }] });
+
+        const result = await service.getPullRequestIterationChanges('repo-1', 42, 3, 'proj');
+
+        expect(gitApi.getPullRequestIterationChanges).toHaveBeenCalledOnce();
+        expect(gitApi.getPullRequestIterationChanges).toHaveBeenCalledWith('repo-1', 42, 3, 'proj');
+        expect(result).toEqual({ changeEntries: [{ changeTrackingId: 1 }] });
+    });
+
+    it('getPullRequestIterationChanges returns { changeEntries: [] } when the API resolves with undefined', async () => {
+        gitApi.getPullRequestIterationChanges.mockResolvedValue(undefined);
+        const result = await service.getPullRequestIterationChanges('repo-1', 42, 3);
+        expect(result).toEqual({ changeEntries: [] });
+    });
+
+    it('getPullRequestIterationChanges throws AdoPullRequestError when the API rejects', async () => {
+        gitApi.getPullRequestIterationChanges.mockRejectedValue(new Error('timeout'));
+
+        await expect(service.getPullRequestIterationChanges('repo-1', 42, 3)).rejects.toThrow(AdoPullRequestError);
+        await expect(service.getPullRequestIterationChanges('repo-1', 42, 3)).rejects.toThrow('Failed to get iteration changes for PR 42, iteration 3');
+    });
+
+    // ── getFileContent ───────────────────────────────────────
+
+    it('getFileContent reads stream chunks and returns them joined as a string', async () => {
+        const stream = Readable.from(['hello', ' ', 'world']);
+        gitApi.getItemText.mockResolvedValue(stream);
+
+        const result = await service.getFileContent('repo-1', '/src/foo.ts', 'abc123', 'proj');
+
+        expect(gitApi.getItemText).toHaveBeenCalledOnce();
+        expect(gitApi.getItemText).toHaveBeenCalledWith(
+            'repo-1', '/src/foo.ts', 'proj',
+            undefined, undefined, false, false, false,
+            { version: 'abc123', versionType: GitVersionType.Commit },
+        );
+        expect(result).toBe('hello world');
+    });
+
+    it('getFileContent returns empty string when the API resolves with null', async () => {
+        gitApi.getItemText.mockResolvedValue(null);
+        const result = await service.getFileContent('repo-1', '/src/foo.ts', 'abc123');
+        expect(result).toBe('');
+    });
+
+    it('getFileContent returns empty string and does not throw when the API rejects', async () => {
+        gitApi.getItemText.mockRejectedValue(new Error('TF401174: File not found'));
+        const result = await service.getFileContent('repo-1', '/src/new-file.ts', 'abc123');
+        expect(result).toBe('');
+    });
+
+    it('getFileContent passes versionDescriptor with GitVersionType.Commit (value 2)', async () => {
+        const stream = Readable.from([]);
+        gitApi.getItemText.mockResolvedValue(stream);
+
+        await service.getFileContent('repo-1', '/src/foo.ts', 'deadbeef');
+
+        const versionDescriptor = gitApi.getItemText.mock.calls[0][8];
+        expect(versionDescriptor).toEqual({ version: 'deadbeef', versionType: 2 });
     });
 
     it('logs error when getGitApi fails', async () => {

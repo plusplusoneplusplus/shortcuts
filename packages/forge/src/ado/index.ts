@@ -14,10 +14,15 @@ export {
     AdoPullRequestError,
     AdoPullRequestNotFoundError,
     PullRequestStatus,
+    VersionControlChangeType,
+    GitVersionType,
     type GitPullRequest,
     type GitPullRequestSearchCriteria,
     type GitPullRequestCommentThread,
     type IdentityRefWithVote,
+    type GitPullRequestIteration,
+    type GitPullRequestIterationChanges,
+    type GitPullRequestChange,
 } from './pull-requests-service';
 export { AdoPullRequestsAdapter } from './ado-pull-requests-adapter';
 export { AdoWorkItemsAdapter } from './ado-work-items-adapter';

@@ -4,12 +4,22 @@ import type {
     GitPullRequestSearchCriteria,
     GitPullRequestCommentThread,
     IdentityRefWithVote,
+    GitPullRequestIteration,
+    GitPullRequestIterationChanges,
+    GitPullRequestChange,
+    GitVersionDescriptor,
+} from 'azure-devops-node-api/interfaces/GitInterfaces';
+import {
+    VersionControlChangeType,
+    GitVersionType,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import type { WebApi } from 'azure-devops-node-api';
 import { getLogger, LogCategory } from '../logger';
 
 export type { GitPullRequest, GitPullRequestSearchCriteria, GitPullRequestCommentThread };
 export type { IdentityRefWithVote };
+export type { GitPullRequestIteration, GitPullRequestIterationChanges, GitPullRequestChange };
+export { VersionControlChangeType, GitVersionType };
 export { PullRequestStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
 
 /** Error class for pull-request operations. */
@@ -218,6 +228,108 @@ export class AdoPullRequestsService {
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.error(LogCategory.ADO, `getReviewers failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`);
             throw new AdoPullRequestError(`Failed to get reviewers for PR ${pullRequestId}`, err);
+        }
+    }
+
+    // ── iterations & file content ───────────────────────────
+
+    async getPullRequestIterations(
+        repositoryId: string,
+        pullRequestId: number,
+        project?: string,
+    ): Promise<GitPullRequestIteration[]> {
+        const api = await this.getGitApi();
+        try {
+            getLogger().info(
+                LogCategory.ADO,
+                `Getting iterations for PR ${pullRequestId} in repo ${repositoryId}`,
+            );
+            const result = await api.getPullRequestIterations(
+                repositoryId,
+                pullRequestId,
+                project,
+                false,
+            );
+            return result ?? [];
+        } catch (error) {
+            throw new AdoPullRequestError(
+                `Failed to get iterations for PR ${pullRequestId}: ${error}`,
+            );
+        }
+    }
+
+    async getPullRequestIterationChanges(
+        repositoryId: string,
+        pullRequestId: number,
+        iterationId: number,
+        project?: string,
+    ): Promise<GitPullRequestIterationChanges> {
+        const api = await this.getGitApi();
+        try {
+            getLogger().info(
+                LogCategory.ADO,
+                `Getting iteration changes for PR ${pullRequestId}, iteration ${iterationId}`,
+            );
+            const result = await api.getPullRequestIterationChanges(
+                repositoryId,
+                pullRequestId,
+                iterationId,
+                project,
+            );
+            return result ?? { changeEntries: [] };
+        } catch (error) {
+            throw new AdoPullRequestError(
+                `Failed to get iteration changes for PR ${pullRequestId}, iteration ${iterationId}: ${error}`,
+            );
+        }
+    }
+
+    async getFileContent(
+        repositoryId: string,
+        filePath: string,
+        commitId: string,
+        project?: string,
+    ): Promise<string> {
+        const api = await this.getGitApi();
+        try {
+            getLogger().info(
+                LogCategory.ADO,
+                `Getting file content for ${filePath} at commit ${commitId}`,
+            );
+            const versionDescriptor: GitVersionDescriptor = {
+                version: commitId,
+                versionType: GitVersionType.Commit,
+            };
+            const stream = await api.getItemText(
+                repositoryId,
+                filePath,
+                project,
+                undefined,           // scopePath
+                undefined,           // recursionLevel
+                false,               // includeContentMetadata
+                false,               // latestProcessedChange
+                false,               // download
+                versionDescriptor,
+            );
+            if (!stream) {
+                return '';
+            }
+            const chunks: string[] = [];
+            await new Promise<void>((resolve, reject) => {
+                stream.on('data', (chunk: Buffer | string) => {
+                    chunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+                });
+                stream.on('end', resolve);
+                stream.on('error', reject);
+            });
+            return chunks.join('');
+        } catch (error) {
+            // File may not exist at this commit (Add/Delete cases) — return empty string.
+            getLogger().info(
+                LogCategory.ADO,
+                `File ${filePath} not found at commit ${commitId}: ${error}`,
+            );
+            return '';
         }
     }
 
