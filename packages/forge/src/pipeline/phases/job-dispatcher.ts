@@ -24,6 +24,7 @@ import {
     emitPhase,
 } from './shared';
 import { deriveWorkspaceRoot, buildPromptWithSkill } from './prompt-resolution';
+import { withRetry } from '../retry-utils';
 
 /**
  * Execute a single AI job (no map-reduce cycle)
@@ -93,15 +94,24 @@ export async function executeSingleJob(
         // 4. Set up timeout
         const timeoutMs = job.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
 
-        // 5. Call AI with timeout and retry
+        // 5. Call AI with timeout; retry once with doubled timeout on timeout error
         emitPhase(options, 'job', 'started');
         const jobStart = Date.now();
-        let aiResult = await Promise.race([
-            options.aiInvoker(prompt, { model: job.model }),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Job timed out after ${timeoutMs}ms`)), timeoutMs)
-            )
-        ]);
+        let aiResult = await withRetry(
+            async (attempt) => {
+                const t = attempt === 0 ? timeoutMs : timeoutMs * 2;
+                return await Promise.race([
+                    options.aiInvoker(prompt, { model: job.model }),
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error(`Job timed out after ${t}ms`)), t)
+                    )
+                ]);
+            },
+            {
+                maxAttempts: 2,
+                shouldRetry: (err) => err instanceof Error && err.message.includes('timed out'),
+            }
+        );
 
         // 6. Process result
         const jobProcessId = `${config.name}-job-${startTime}`;
@@ -239,74 +249,6 @@ export async function executeSingleJob(
 
         const executionTimeMs = Date.now() - startTime;
         const errorMsg = error instanceof Error ? error.message : String(error);
-        if (errorMsg.includes('timed out')) {
-            const job = config.job!;
-            const timeoutMs = job.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
-
-            try {
-                let prompt: string;
-                if (job.prompt) {
-                    prompt = job.prompt;
-                } else {
-                    prompt = await resolvePromptFile(job.promptFile!, options.pipelineDirectory);
-                }
-
-                if (config.parameters && config.parameters.length > 0) {
-                    const paramValues = convertParametersToObject(config.parameters);
-                    prompt = substituteVariables(prompt, paramValues, {
-                        strict: false,
-                        missingValueBehavior: 'empty',
-                        preserveSpecialVariables: false
-                    });
-                }
-
-                const retryResult = await Promise.race([
-                    options.aiInvoker(prompt, { model: job.model }),
-                    new Promise<never>((_, reject) =>
-                        setTimeout(() => reject(new Error(`Job retry timed out after ${timeoutMs * 2}ms`)), timeoutMs * 2)
-                    )
-                ]);
-
-                if (retryResult.success && retryResult.response) {
-                    const retryTimeMs = Date.now() - startTime;
-                    let parsedOutput: Record<string, unknown> = {};
-                    let formattedOutput: string = retryResult.response;
-
-                    if (job.output && job.output.length > 0) {
-                        const jsonMatch = retryResult.response.match(/\{[\s\S]*\}/);
-                        if (jsonMatch) {
-                            const parsed = JSON.parse(jsonMatch[0]);
-                            for (const field of job.output) {
-                                parsedOutput[field] = field in parsed ? parsed[field] : null;
-                            }
-                            formattedOutput = JSON.stringify(parsedOutput, null, 2);
-                        }
-                    }
-
-                    emitPhase(options, 'job', 'completed', { durationMs: retryTimeMs });
-                    return {
-                        success: true,
-                        output: {
-                            results: [],
-                            formattedOutput,
-                            summary: { totalItems: 1, successfulItems: 1, failedItems: 0, outputFields: job.output || [] }
-                        },
-                        mapResults: [{
-                            workItemId: 'job-0',
-                            success: true,
-                            output: parsedOutput as any,
-                            executionTimeMs: retryTimeMs
-                        }],
-                        reduceStats: { inputCount: 1, outputCount: 1, mergedCount: 1, reduceTimeMs: 0, usedAIReduce: false },
-                        totalTimeMs: retryTimeMs,
-                        executionStats: { totalItems: 1, successfulMaps: 1, failedMaps: 0, mapPhaseTimeMs: retryTimeMs, reducePhaseTimeMs: 0, maxConcurrency: 1 }
-                    };
-                }
-            } catch {
-                // Retry also failed, fall through to error return
-            }
-        }
-
         emitPhase(options, 'job', 'failed', { durationMs: executionTimeMs, error: errorMsg });
         return {
             success: false,

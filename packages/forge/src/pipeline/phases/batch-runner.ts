@@ -24,6 +24,7 @@ import {
     convertParametersToObject,
 } from './shared';
 import { executeReducePhase } from './output-collector';
+import { withRetry } from '../retry-utils';
 
 /**
  * Split items into batches of specified size
@@ -290,11 +291,20 @@ export async function executeBatchMode(
             // Resolve model (use first item for template substitution if model is templated)
             const model = substituteModelTemplate(config.map.model, batch[0]);
 
-            // Call AI with timeout
-            const aiResult = await Promise.race([
-                options.aiInvoker(batchPrompt, { model }),
-                createBatchTimeoutPromise(timeoutMs, batchIndex, totalBatches)
-            ]);
+            // Call AI with timeout; retry once with doubled timeout on timeout error
+            const aiResult = await withRetry(
+                async (attempt) => {
+                    const t = attempt === 0 ? timeoutMs : timeoutMs * 2;
+                    return await Promise.race([
+                        options.aiInvoker(batchPrompt, { model }),
+                        createBatchTimeoutPromise(t, batchIndex, totalBatches)
+                    ]);
+                },
+                {
+                    maxAttempts: 2,
+                    shouldRetry: (err) => err instanceof Error && err.message.includes('timed out'),
+                }
+            );
 
             if (!aiResult.success || !aiResult.response) {
                 // AI call failed - mark all items in batch as failed
@@ -338,45 +348,6 @@ export async function executeBatchMode(
             return batchResults;
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            
-            // Check if it's a timeout - retry with doubled timeout
-            if (errorMsg.includes('timed out')) {
-                try {
-                    const batchPrompt = buildBatchPrompt(prompts.mapPrompt, batch, outputFields);
-                    const model = substituteModelTemplate(config.map.model, batch[0]);
-
-                    const aiResult = await Promise.race([
-                        options.aiInvoker(batchPrompt, { model }),
-                        createBatchTimeoutPromise(timeoutMs * 2, batchIndex, totalBatches)
-                    ]);
-
-                    if (aiResult.success && aiResult.response) {
-                        const batchResults = parseBatchResponse(
-                            aiResult.response,
-                            batch,
-                            outputFields,
-                            isTextMode,
-                            aiResult.sessionId
-                        );
-
-                        if (options.processTracker && processId) {
-                            const successCount = batchResults.filter(r => r.success).length;
-                            options.processTracker.updateProcess(
-                                processId,
-                                'completed',
-                                `${successCount}/${batch.length} items succeeded (after retry)`,
-                                undefined,
-                                JSON.stringify(batchResults.map(r => r.output))
-                            );
-                        }
-
-                        emitItemEvents(batchResults, batchIndex, processId);
-                        return batchResults;
-                    }
-                } catch (retryError) {
-                    // Retry also failed
-                }
-            }
 
             // Mark all items in batch as failed
             if (options.processTracker && processId) {

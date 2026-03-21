@@ -129,6 +129,10 @@ export {
 } from './skill-resolver';
 export type { SkillResolutionResult, SkillMetadata } from './skill-resolver';
 
+// Retry Utility
+export { withRetry } from './retry-utils';
+export type { RetryPolicy } from './retry-utils';
+
 // Input Generator
 export {
     generateInputItems,
