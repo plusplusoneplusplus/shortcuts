@@ -106,9 +106,14 @@ export class FileProcessStore implements ProcessStore {
             };
             // Write per-process file first (orphan on crash is harmless)
             await this.writeProcessFile(workspaceId, process.id, entry);
-            // Append to workspace index, prune, then write back
+            // Upsert into workspace index, prune, then write back
             const index = await this.readIndex(workspaceId);
-            index.push(this.toIndexEntry(entry));
+            const existingIdx = index.findIndex(e => e.id === process.id);
+            if (existingIdx >= 0) {
+                index[existingIdx] = this.toIndexEntry(entry);
+            } else {
+                index.push(this.toIndexEntry(entry));
+            }
             const pruned = await this.pruneWorkspaceIfNeeded(workspaceId, index);
             await this.writeIndex(workspaceId, pruned);
         });

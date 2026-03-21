@@ -737,9 +737,11 @@ export function registerQueueRoutes(routes: Route[], bridge: MultiRepoQueueExecu
             }
 
             const workspaceId = body.workspaceId.trim();
-            const filePaths: string[] = body.processIds.map(
-                (id: string) => store!.getProcessFilePath!(workspaceId, id.trim())
-            );
+            const filePaths: string[] = body.processIds.map((id: string) => {
+                const trimmed = id.trim();
+                const normalized = trimmed.startsWith('queue_') ? trimmed : `queue_${trimmed}`;
+                return store!.getProcessFilePath!(workspaceId, normalized);
+            });
 
             const prompt = buildSummarizePrompt(filePaths);
 

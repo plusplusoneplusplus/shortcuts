@@ -57,6 +57,7 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
         processes,
         outputs,
         completions,
+        // addProcess uses Map.set — naturally upsert (matching FileProcessStore behavior).
         addProcess: vi.fn(async (process: AIProcess) => {
             processes.set(process.id, { ...process });
         }),

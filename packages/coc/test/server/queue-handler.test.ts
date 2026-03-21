@@ -2834,5 +2834,49 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.error).toContain('non-empty string');
         });
+
+        it('should normalize bare task IDs by prepending queue_ prefix', async () => {
+            const store = new FileProcessStore({ dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
+            // Send bare IDs (without queue_ prefix)
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['abc123', 'def456'],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.taskId).toBeDefined();
+
+            // Verify paths contain queue_ prefix by checking the enqueued task prompt
+            const queueRes = await request(`${srv.url}/api/queue`);
+            const queueBody = JSON.parse(queueRes.body);
+            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
+            expect(task).toBeDefined();
+            expect(task.payload.prompt).toContain('queue_abc123');
+            expect(task.payload.prompt).toContain('queue_def456');
+        });
+
+        it('should preserve IDs that already have queue_ prefix', async () => {
+            const store = new FileProcessStore({ dataDir });
+            const srv = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+            server = srv;
+
+            const res = await postJSON(`${srv.url}/api/queue/summarize`, {
+                processIds: ['queue_abc123', 'queue_def456'],
+                workspaceId: 'ws1',
+            });
+            expect(res.status).toBe(201);
+
+            const queueRes = await request(`${srv.url}/api/queue`);
+            const queueBody = JSON.parse(queueRes.body);
+            const body = JSON.parse(res.body);
+            const task = queueBody.queued.find((t: any) => t.id === body.taskId);
+            expect(task).toBeDefined();
+            // Should NOT double-prefix
+            expect(task.payload.prompt).toContain('queue_abc123');
+            expect(task.payload.prompt).not.toContain('queue_queue_abc123');
+        });
     });
 });

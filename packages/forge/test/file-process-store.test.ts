@@ -295,4 +295,51 @@ describe('FileProcessStore — per-workspace layout', () => {
             expect(entry.process.id).toBe('p1');
         });
     });
+
+    // Regression: addProcess with duplicate ID should upsert, not duplicate
+    it('addProcess called twice with same id replaces index entry (upsert)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const ws = 'ws-upsert';
+
+        const p1 = makeProcess('queue_abc', {
+            status: 'failed' as AIProcessStatus,
+            metadata: { type: 'ai', workspaceId: ws },
+        });
+        await store.addProcess(p1);
+
+        const p2 = makeProcess('queue_abc', {
+            status: 'running' as AIProcessStatus,
+            metadata: { type: 'ai', workspaceId: ws },
+        });
+        await store.addProcess(p2);
+
+        const { entries: list } = await store.getProcessSummaries({ workspaceId: ws });
+        const entries = list.filter(e => e.id === 'queue_abc');
+        expect(entries).toHaveLength(1);
+        expect(entries[0].status).toBe('running');
+    });
+
+    it('addProcess upsert preserves other entries in the index', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const ws = 'ws-upsert2';
+
+        await store.addProcess(makeProcess('p-other', {
+            metadata: { type: 'ai', workspaceId: ws },
+        }));
+        await store.addProcess(makeProcess('p-dup', {
+            status: 'failed' as AIProcessStatus,
+            metadata: { type: 'ai', workspaceId: ws },
+        }));
+        await store.addProcess(makeProcess('p-dup', {
+            status: 'running' as AIProcessStatus,
+            metadata: { type: 'ai', workspaceId: ws },
+        }));
+
+        const { entries: list } = await store.getProcessSummaries({ workspaceId: ws });
+        expect(list).toHaveLength(2);
+        expect(list.find(e => e.id === 'p-other')).toBeDefined();
+        const dupEntry = list.find(e => e.id === 'p-dup');
+        expect(dupEntry).toBeDefined();
+        expect(dupEntry!.status).toBe('running');
+    });
 });
