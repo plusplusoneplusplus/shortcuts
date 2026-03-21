@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { getRepoDataPath } from '@plusplusoneplusplus/coc-server';
+import { getRepoDataPath } from './paths';
 import type { ScheduleEntry } from './schedule-manager';
 
 /** Shape of the legacy JSON persistence file used by the old SchedulePersistence class. */

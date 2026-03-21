@@ -10,8 +10,8 @@
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
-import type { Route, WikiServerOptions } from '@plusplusoneplusplus/coc-server';
-import { sendJson as sendJsonImpl, send404 as send404Impl, send500 as send500Impl, readJsonBody as readJsonBodyImpl } from '@plusplusoneplusplus/coc-server';
+import type { Route, WikiServerOptions } from '../types';
+import { sendJson as sendJsonImpl, send404 as send404Impl, send500 as send500Impl, readJsonBody as readJsonBodyImpl } from '../shared/router';
 import { WikiManager } from '@plusplusoneplusplus/coc-server';
 import type { WikiRouteHelpers } from '@plusplusoneplusplus/coc-server';
 import type { AskAIFunction } from '@plusplusoneplusplus/coc-server';

@@ -11,8 +11,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBodyOrReject, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { parseBodyOrReject } from './shared/handler-utils';
+import { getRepoDataPath } from './paths';
+import type { Route } from './types';
 
 // ============================================================================
 // Types

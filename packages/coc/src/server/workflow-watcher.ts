@@ -13,7 +13,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { DebouncedWatcherRegistry } from '@plusplusoneplusplus/coc-server';
+import { DebouncedWatcherRegistry } from './shared/debounced-watcher-registry';
 
 // ============================================================================
 // Types

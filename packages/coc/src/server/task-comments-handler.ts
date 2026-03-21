@@ -15,8 +15,12 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { sendJSON, sendError, parseBodyOrReject, atomicWriteJSON, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
-import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { parseBodyOrReject } from './shared/handler-utils';
+import { atomicWriteJSON } from './shared/fs-utils';
+import { getRepoDataPath } from './paths';
+import type { Route } from './types';
+import type { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import {
     DEFAULT_AI_COMMANDS,
     type AICommand,

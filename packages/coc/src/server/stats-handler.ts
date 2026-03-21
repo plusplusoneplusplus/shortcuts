@@ -11,8 +11,8 @@
 import { aggregateTokenUsageStats, serializeProcess } from '@plusplusoneplusplus/forge';
 import type { TokenUsageStatsResponse } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { sendJson } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import { sendJson } from './shared/router';
+import type { Route } from './types';
 
 /**
  * Register token-usage stats routes on the given route table.

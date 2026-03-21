@@ -1,0 +1,9 @@
+openapi: '3.1.0'
+info:
+  title: CoC Server API
+  description: HTTP API for the CoC execution server
+  version: 1.0.0
+servers:
+  - url: /
+    description: Local server
+paths: {}

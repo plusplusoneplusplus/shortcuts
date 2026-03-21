@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendError, sendJSON, parseBody } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import type { Route } from './types';
 
 export interface LaunchResumeInput {
     sessionId: string;

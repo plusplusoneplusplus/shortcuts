@@ -22,7 +22,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { RunWorkflowPayload, RunScriptPayload, ChatPayload, ChatMode } from '@plusplusoneplusplus/coc-server';
+import type { RunWorkflowPayload, RunScriptPayload, ChatPayload, ChatMode } from './task-types';
 import {
     cleanupTempDir,
     createSuggestFollowUpsTool,

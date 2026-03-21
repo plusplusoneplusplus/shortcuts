@@ -11,7 +11,8 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getErrorMessage, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
+import { getErrorMessage } from './shared/fs-utils';
+import { getRepoDataPath } from './paths';
 
 export interface MigrationResult {
     migrated: boolean;

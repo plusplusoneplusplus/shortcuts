@@ -16,8 +16,10 @@ import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { TaskManager, ARCHIVE_UNDO_FILE, scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory, VALID_TASK_STATUSES } from '@plusplusoneplusplus/forge';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError, resolveWorkspaceOrFail, parseBodyOrReject, resolveCollision, getErrorMessage } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
+import { resolveWorkspaceOrFail, parseBodyOrReject } from './shared/handler-utils';
+import { resolveCollision, getErrorMessage } from './shared/fs-utils';
+import type { Route } from './types';
 import { resolveTaskRoot } from './task-root-resolver';
 
 /**

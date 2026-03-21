@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { EventEmitter } from 'events';
-import { createRequestHandler } from '@plusplusoneplusplus/coc-server';
+import { createRequestHandler } from './router';
 import { registerApiRoutes } from '@plusplusoneplusplus/coc-server';
 import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
@@ -35,8 +35,8 @@ import { WorkflowWatcher } from './workflow-watcher';
 import { ProcessWebSocketServer, toProcessSummary } from '@plusplusoneplusplus/coc-server';
 import { generateDashboardHtml } from './spa';
 import { getBundleETag } from './spa/html-template';
-import type { ExecutionServerOptions, ExecutionServer } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import type { ExecutionServerOptions, ExecutionServer } from './types';
+import type { Route } from './types';
 import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
 import { RepoQueueRegistry, FileProcessStore, getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
@@ -632,10 +632,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 }
 
 // Re-exports
-export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from '@plusplusoneplusplus/coc-server';
+export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/forge';
-export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from '@plusplusoneplusplus/coc-server';
-export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from '@plusplusoneplusplus/coc-server';
+export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
+export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from '@plusplusoneplusplus/coc-server'; // sendJSON/sendError/parseBody/parseQueryParams stay; registerApiRoutes will move in a later commit
 export { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from './process-resume-handler';
 export { registerQueueRoutes } from './queue-handler';
 export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } from './global-workspace';
@@ -645,7 +645,7 @@ export { handleProcessStream } from '@plusplusoneplusplus/coc-server';
 export { ProcessWebSocketServer, toProcessSummary, toCommentSummary } from '@plusplusoneplusplus/coc-server';
 export type { WSClient, ProcessSummary, MarkdownCommentSummary, QueueTaskSummary, QueueHistoryTaskSummary, ServerMessage, ClientMessage } from '@plusplusoneplusplus/coc-server';
 export type { WSQueueSnapshot as QueueSnapshot } from '@plusplusoneplusplus/coc-server';
-export type { RouterOptions } from '@plusplusoneplusplus/coc-server';
+export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
 export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from './queue-executor-bridge';

@@ -11,8 +11,9 @@
 
 import type { TaskQueueManager, QueuedTask, CreateTaskInput, TaskPriority, QueueStats, ProcessStore, ConversationTurn, PauseMarker } from '@plusplusoneplusplus/forge';
 import { getActiveModels, modelMetadataStore } from '@plusplusoneplusplus/forge';
-import { sendJSON, sendError, parseBody, ImageBlobStore, truncateDisplayName } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import { sendJSON, sendError, parseBody, ImageBlobStore } from '@plusplusoneplusplus/coc-server';
+import { truncateDisplayName } from './shared/queue-utils';
+import type { Route } from './types';
 import type { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 import * as url from 'url';
 import * as path from 'path';

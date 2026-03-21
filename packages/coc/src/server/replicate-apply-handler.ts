@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '@plusplusoneplusplus/coc-server';
-import type { Route } from '@plusplusoneplusplus/coc-server';
+import type { Route } from './types';
 
 // ============================================================================
 // Workspace resolution helper

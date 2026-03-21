@@ -20,7 +20,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import { sendSSE, readBody } from './ask-handler';
-import { sendJson, send400, send404, send500 } from '@plusplusoneplusplus/coc-server';
+import { sendJson, send400, send404, send500 } from '../shared/router';
 import type { WikiManager } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================

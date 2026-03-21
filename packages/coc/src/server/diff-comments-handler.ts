@@ -18,7 +18,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sendJSON, sendError, parseBody } from '@plusplusoneplusplus/coc-server';
-import type { Route, ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
+import type { Route } from './types';
+import type { ProcessWebSocketServer } from '@plusplusoneplusplus/coc-server';
 import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge';
 import {
     DEFAULT_AI_COMMANDS,

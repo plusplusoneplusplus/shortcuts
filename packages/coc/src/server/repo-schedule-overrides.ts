@@ -11,7 +11,8 @@
  */
 
 import * as fs from 'fs';
-import { atomicWriteJson, getRepoDataPath } from '@plusplusoneplusplus/coc-server';
+import { atomicWriteJson } from './shared/fs-utils';
+import { getRepoDataPath } from './paths';
 import type { ScheduleStatus } from './schedule-manager';
 
 // ============================================================================

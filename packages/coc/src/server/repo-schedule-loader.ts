@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ScheduleEntry, ScheduleStatus, ScheduleOnFailure } from './schedule-manager';
-import type { TargetType, ChatMode } from '@plusplusoneplusplus/coc-server';
+import type { TargetType, ChatMode } from './task-types';
 import type { RepoScheduleOverrides } from './repo-schedule-overrides';
 
 // ============================================================================
