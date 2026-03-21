@@ -21,6 +21,7 @@ import { SlashCommandMenu } from '../repos/SlashCommandMenu';
 import { useSkillTemplates } from '../hooks/useSkillTemplates';
 import { TemplatesTab } from './TemplatesTab';
 import { useFloatingChats } from '../context/FloatingChatsContext';
+import { SkillPicker } from './SkillPicker';
 
 interface FolderOption { label: string; value: string; }
 interface SkillOption { name: string; description?: string; }
@@ -382,34 +383,11 @@ export function EnqueueDialog() {
             ) : (
             <>
             {workspaceId && skills.length > 0 && (
-                <div>
-                    <label className="block text-xs font-medium text-[#848484] mb-1">Skills (optional)</label>
-                    <div className="flex flex-wrap gap-1.5" data-testid="skill-chips">
-                        {skills.map(s => {
-                            const isActive = selectedSkills.includes(s.name);
-                            const source = (s as any).source;
-                            return (
-                                <button
-                                    key={s.name}
-                                    type="button"
-                                    onClick={() => handleSkillChange(s.name)}
-                                    className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border transition-colors ${
-                                        isActive
-                                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
-                                            : 'bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] border-[#e0e0e0] dark:border-[#555] hover:border-[#0078d4]'
-                                    }`}
-                                    title={s.description || s.name}
-                                    data-testid={`skill-chip-${s.name}`}
-                                >
-                                    <span>⚡</span>
-                                    <span>{s.name}</span>
-                                    {source && <span className="opacity-60 text-[10px]">[{source}]</span>}
-                                    {isActive && <span className="ml-0.5">✕</span>}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
+                <SkillPicker
+                    skills={skills}
+                    selectedSkills={selectedSkills}
+                    onSkillChange={handleSkillChange}
+                />
             )}
             <div>
                 <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>

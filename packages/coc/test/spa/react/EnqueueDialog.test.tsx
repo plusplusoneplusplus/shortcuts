@@ -383,13 +383,15 @@ describe('EnqueueDialog', () => {
         const wsSelect = screen.getAllByRole('combobox')[1];
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
-        // Wait for skill chips to appear
+        // Wait for skill chips area to appear
         await waitFor(() => {
             expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        expect(screen.getByTestId('skill-chip-impl')).toBeTruthy();
-        expect(screen.getByTestId('skill-chip-go-deep')).toBeTruthy();
+        // Open popover to verify skills are listed
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        expect(screen.getByTestId('skill-picker-item-impl')).toBeTruthy();
+        expect(screen.getByTestId('skill-picker-item-go-deep')).toBeTruthy();
     });
 
     it('submits skill-based task to /queue/tasks when skill is selected', async () => {
@@ -442,8 +444,9 @@ describe('EnqueueDialog', () => {
             expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        // Select skill
-        fireEvent.click(screen.getByTestId('skill-chip-impl'));
+        // Select skill via popover
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        fireEvent.click(screen.getByTestId('skill-picker-item-impl'));
 
         // Submit without explicit prompt (should use default)
         fireEvent.click(screen.getByText('Enqueue'));
@@ -505,8 +508,11 @@ describe('EnqueueDialog', () => {
             expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        // Select skill and enter custom prompt
-        fireEvent.click(screen.getByTestId('skill-chip-impl'));
+        // Select skill via popover and enter custom prompt
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        fireEvent.click(screen.getByTestId('skill-picker-item-impl'));
+        // Close popover before accessing the main textarea
+        fireEvent.mouseDown(document.body);
         const textarea = screen.getByRole('textbox');
         fireEvent.change(textarea, { target: { value: 'Fix the login bug' } });
 
@@ -599,8 +605,9 @@ describe('EnqueueDialog', () => {
             expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        // Select a skill
-        fireEvent.click(screen.getByTestId('skill-chip-impl'));
+        // Select a skill via popover
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        fireEvent.click(screen.getByTestId('skill-picker-item-impl'));
 
         // Enqueue should now be enabled even without prompt
         expect((screen.getByText('Enqueue') as HTMLButtonElement).disabled).toBe(false);
@@ -720,7 +727,8 @@ describe('EnqueueDialog', () => {
             expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        fireEvent.click(screen.getByTestId('skill-chip-impl'));
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        fireEvent.click(screen.getByTestId('skill-picker-item-impl'));
 
         // Submit — no images pasted so images field should be omitted
         fireEvent.click(screen.getByText('Enqueue'));
@@ -777,8 +785,9 @@ describe('EnqueueDialog', () => {
         const modelSelect = screen.getAllByRole('combobox')[0];
         fireEvent.change(modelSelect, { target: { value: 'claude-sonnet' } });
 
-        // Select skill
-        fireEvent.click(screen.getByTestId('skill-chip-impl'));
+        // Select skill via popover
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        fireEvent.click(screen.getByTestId('skill-picker-item-impl'));
 
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => {
@@ -964,10 +973,9 @@ describe('EnqueueDialog', () => {
             expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        // Select skill
-        fireEvent.click(screen.getByTestId('skill-chip-impl'));
-
-        // Selecting skill alone should NOT trigger a PATCH (save on submit only)
+        // Select skill via popover
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        fireEvent.click(screen.getByTestId('skill-picker-item-impl'));
         await new Promise(r => setTimeout(r, 50));
         const patchCallsBefore = fetchSpy.mock.calls.filter(
             ([u, opts]: [string, any]) =>
@@ -1037,9 +1045,9 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Wait for skill chips to appear with pre-selected value
+        // Wait for skill chip to appear (pre-selected from preferences)
         await waitFor(() => {
-            expect(screen.getByTestId('skill-chip-go-deep').className).toContain('bg-[#0078d4]');
+            expect(screen.getByTestId('skill-chip-go-deep')).toBeTruthy();
         });
     });
 
@@ -1088,8 +1096,9 @@ describe('EnqueueDialog', () => {
             expect(screen.getByTestId('skill-chips')).toBeTruthy();
         });
 
-        // Should have no active chips since the saved skill doesn't exist
-        expect(screen.getByTestId('skill-chip-impl').className).not.toContain('bg-[#0078d4]');
+        // Should have no selected skill chips since the saved skill doesn't exist in available skills
+        expect(screen.queryByTestId('skill-chip-impl')).toBeNull();
+        expect(screen.queryByTestId('skill-chip-nonexistent-skill')).toBeNull();
     });
 
     // ── floating vs modal dialog layout ────────────────────────────────────
@@ -1554,9 +1563,9 @@ describe('EnqueueDialog slash commands', () => {
         const implItem = within(menu).getByText('impl');
         fireEvent.mouseDown(implItem);
 
-        // Skill chip should now show 'impl' as active
+        // Skill chip should now show 'impl' as selected
         await waitFor(() => {
-            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
+            expect(screen.getByTestId('skill-chip-impl')).toBeTruthy();
         });
     });
 
@@ -1653,8 +1662,9 @@ describe('EnqueueDialog slash commands', () => {
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
         await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
-        // Select 'draft' chip
-        fireEvent.click(screen.getByTestId('skill-chip-draft'));
+        // Select 'draft' via popover
+        fireEvent.click(screen.getByTestId('skill-picker-trigger'));
+        fireEvent.click(screen.getByTestId('skill-picker-item-draft'));
 
         // Type '/impl do stuff' in prompt
         const textarea = screen.getByPlaceholderText(/context for draft/) as HTMLTextAreaElement;
@@ -1767,9 +1777,9 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
         await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
-        // Task skill should be selected
+        // Task skill should be selected (chip visible)
         await waitFor(() => {
-            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
+            expect(screen.getByTestId('skill-chip-impl')).toBeTruthy();
         });
 
         // Close and reopen in ask mode
@@ -1782,9 +1792,9 @@ describe('EnqueueDialog mode-switch state isolation', () => {
 
         // Ask skill should be selected, not task skill
         await waitFor(() => {
-            expect(screen.getByTestId('skill-chip-go-deep').className).toContain('bg-[#0078d4]');
+            expect(screen.getByTestId('skill-chip-go-deep')).toBeTruthy();
         });
-        expect(screen.getByTestId('skill-chip-impl').className).not.toContain('bg-[#0078d4]');
+        expect(screen.queryByTestId('skill-chip-impl')).toBeNull();
     });
 
     it('switching from task to ask mode applies ask-mode model, not task-mode model', async () => {
@@ -1843,7 +1853,7 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
         await waitFor(() => {
-            expect(screen.getByTestId('skill-chip-go-deep').className).toContain('bg-[#0078d4]');
+            expect(screen.getByTestId('skill-chip-go-deep')).toBeTruthy();
         });
 
         // Close and reopen in task mode
@@ -1856,9 +1866,9 @@ describe('EnqueueDialog mode-switch state isolation', () => {
 
         // Task skill should be selected, not ask skill
         await waitFor(() => {
-            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
+            expect(screen.getByTestId('skill-chip-impl')).toBeTruthy();
         });
-        expect(screen.getByTestId('skill-chip-go-deep').className).not.toContain('bg-[#0078d4]');
+        expect(screen.queryByTestId('skill-chip-go-deep')).toBeNull();
     });
 
     it('switching to mode with no saved skills clears selected skills', async () => {
@@ -1879,7 +1889,7 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
         await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
         await waitFor(() => {
-            expect(screen.getByTestId('skill-chip-impl').className).toContain('bg-[#0078d4]');
+            expect(screen.getByTestId('skill-chip-impl')).toBeTruthy();
         });
 
         // Close and reopen in ask mode — no saved ask skills, so impl should NOT leak
@@ -1890,9 +1900,9 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
         await waitFor(() => expect(screen.getByTestId('skill-chips')).toBeTruthy());
 
-        // Neither skill should be selected
-        expect(screen.getByTestId('skill-chip-impl').className).not.toContain('bg-[#0078d4]');
-        expect(screen.getByTestId('skill-chip-go-deep').className).not.toContain('bg-[#0078d4]');
+        // Neither skill should be selected (no chips visible)
+        expect(screen.queryByTestId('skill-chip-impl')).toBeNull();
+        expect(screen.queryByTestId('skill-chip-go-deep')).toBeNull();
     });
 
     it('switching to mode with no saved model resets to default', async () => {
