@@ -23,7 +23,7 @@ import {
     CURRENT_VERSION,
     DEBOUNCE_MS,
     MAX_PERSISTED_HISTORY_DEFAULT,
-} from '@plusplusoneplusplus/coc-server';
+} from './queue/queue-persistence';
 import type { QueuedTask, QueueChangeEvent } from '@plusplusoneplusplus/forge';
 
 // ============================================================================

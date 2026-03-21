@@ -652,7 +652,7 @@ export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
 export { MultiRepoQueueExecutorBridge } from './multi-repo-executor-bridge';
 export { MultiRepoQueuePersistence } from './multi-repo-queue-persistence';
-export { QueuePersistence } from '@plusplusoneplusplus/coc-server';
+export { QueuePersistence } from './queue/queue-persistence';
 export { OutputPruner } from './output-pruner';
 export { StaleTaskDetector } from './stale-task-detector';
 export type { StaleTaskDetectorOptions } from './stale-task-detector';
@@ -674,8 +674,10 @@ export { registerTaskCommentsRoutes, TaskCommentsManager } from './task-comments
 export type { TaskComment, CommentAnchor, CommentsStorage } from './task-comments-handler';
 export { registerDiffCommentsRoutes, DiffCommentsManager } from './diff-comments-handler';
 export type { DiffCommentsStorage } from './diff-comments-handler';
-export { registerAdminRoutes, resetWipeToken, DataWiper } from '@plusplusoneplusplus/coc-server';
-export type { AdminRouteOptions, WipeOptions, WipeResult } from '@plusplusoneplusplus/coc-server';
+export { registerAdminRoutes, resetWipeToken } from '@plusplusoneplusplus/coc-server';
+export type { AdminRouteOptions } from '@plusplusoneplusplus/coc-server';
+export { DataWiper } from './data-wiper';
+export type { WipeOptions, WipeResult } from './data-wiper';
 export { ScheduleYamlPersistence } from './schedule-yaml-persistence';
 export { ScheduleRunPersistence } from './schedule-run-persistence';
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule-manager';
