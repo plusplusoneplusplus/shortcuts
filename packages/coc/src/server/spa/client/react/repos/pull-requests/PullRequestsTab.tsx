@@ -52,7 +52,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
     // Track current offset without causing the callback to change on every fetch.
     const skipRef = useRef(0);
 
-    const fetchPrs = useCallback((reset = false) => {
+    const fetchPrs = useCallback((reset = false, force = false) => {
         const offset = reset ? 0 : skipRef.current;
         setLoading(true);
         if (reset) {
@@ -62,7 +62,7 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
             skipRef.current = 0;
         }
 
-        const url = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/pull-requests?status=${statusFilter}&top=${PAGE_SIZE}&skip=${offset}`;
+        const url = `${getApiBase()}/repos/${encodeURIComponent(repoId)}/pull-requests?status=${statusFilter}&top=${PAGE_SIZE}&skip=${offset}${force ? '&force=true' : ''}`;
         fetch(url)
             .then(async res => {
                 const body = await res.json().catch(() => ({}));
@@ -146,6 +146,25 @@ export function PullRequestsTab({ repoId }: PullRequestsTabProps) {
                     onChange={e => setAuthorFilter(e.target.value)}
                     data-testid="author-filter"
                 />
+                <button
+                    onClick={() => fetchPrs(true, true)}
+                    disabled={loading}
+                    title="Refresh pull requests"
+                    data-testid="refresh-button"
+                    className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <svg
+                        className={loading ? 'animate-spin' : ''}
+                        width="14" height="14" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" strokeWidth="2"
+                        strokeLinecap="round" strokeLinejoin="round"
+                    >
+                        <path d="M21 2v6h-6" />
+                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                        <path d="M3 22v-6h6" />
+                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                    </svg>
+                </button>
             </div>
 
             {/* Unconfigured provider — prompts user to configure credentials */}

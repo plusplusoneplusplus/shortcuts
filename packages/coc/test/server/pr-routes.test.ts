@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
@@ -112,6 +112,7 @@ async function stopServer(): Promise<void> {
 }
 
 beforeEach(async () => {
+    clearPrListCache();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-routes-test-'));
     dataDir = path.join(tmpDir, 'data');
     fs.mkdirSync(dataDir, { recursive: true });
@@ -152,19 +153,19 @@ describe('GET /api/repos/:id/pull-requests', () => {
         expect(body.total).toBe(1);
     });
 
-    it('passes status, top, skip query params to the service', async () => {
+    it('passes status to upstream and always fetches top 100', async () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed&top=10&skip=5`);
-        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'closed', top: 10, skip: 5 });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'closed', top: 100 });
     });
 
-    it('caps top at 100', async () => {
+    it('always fetches top 100 from upstream regardless of client top', async () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?top=200`);
-        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, expect.objectContaining({ top: 100 }));
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100 });
     });
 
-    it('defaults status=open, top=25, skip=0', async () => {
+    it('defaults status=open and fetches top 100 from upstream', async () => {
         await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
-        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 25, skip: 0 });
+        expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100 });
     });
 
     it('returns 401 with unconfigured body when no provider config', async () => {
@@ -221,6 +222,61 @@ describe('GET /api/repos/:id/pull-requests', () => {
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network failure'));
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
         expect(res.status).toBe(500);
+    });
+
+    it('serves from cache on second call without hitting upstream', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(res2.status).toBe(200);
+        const body = await res2.json() as { pullRequests: unknown[] };
+        expect(body.pullRequests).toHaveLength(1);
+        // Still only one upstream call
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('force=true bypasses cache and repopulates', async () => {
+        // Warm the cache
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+
+        // Force refresh
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?force=true`);
+        expect(res.status).toBe(200);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+    });
+
+    it('paginates from cache without upstream call', async () => {
+        const prs = Array.from({ length: 50 }, (_, i) => ({ ...mockPr, id: i, number: i, title: `PR ${i}` }));
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue(prs);
+
+        // First call warms cache
+        const res1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?top=25&skip=0`);
+        expect(res1.status).toBe(200);
+        const body1 = await res1.json() as { pullRequests: any[] };
+        expect(body1.pullRequests).toHaveLength(25);
+
+        // Second page from cache
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?top=25&skip=25`);
+        expect(res2.status).toBe(200);
+        const body2 = await res2.json() as { pullRequests: any[] };
+        expect(body2.pullRequests).toHaveLength(25);
+        expect(body2.pullRequests[0].title).toBe('PR 25');
+
+        // Only one upstream call total
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses separate cache entries per status filter', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=open`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+
+        // Both are now cached — no additional calls
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=open`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests?status=closed`);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
     });
 });
 

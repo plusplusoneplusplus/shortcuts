@@ -38,6 +38,29 @@ function isNoAdoCredentials(svc: unknown): svc is AdoNoCredentialsSentinel {
 }
 
 // ============================================================================
+// PR list cache (in-memory, 60-min TTL)
+// ============================================================================
+
+const PR_LIST_TTL_MS = 60 * 60 * 1000;
+const PR_LIST_FETCH_TOP = 100;
+
+interface PrCacheEntry {
+    data: any[];
+    expiresAt: number;
+}
+
+const prListCache = new Map<string, PrCacheEntry>();
+
+function makePrCacheKey(repoId: string, status: string): string {
+    return `${repoId}|${status}`;
+}
+
+/** Clear all cached PR list entries. Exported for testing. */
+export function clearPrListCache(): void {
+    prListCache.clear();
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -60,41 +83,56 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
         handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) return send404(res, `Repo ${repoId} not found`);
-
-                const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
-                    }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
-                }
-
                 const query = url.parse(req.url ?? '', true).query;
                 const status = typeof query.status === 'string' ? query.status : 'open';
                 const top = Math.min(+(query.top ?? 25), 100);
                 const skip = +(query.skip ?? 0);
+                const force = query.force === 'true';
+                const cacheKey = makePrCacheKey(repoId, status);
 
-                const prs = await prSvc.listPullRequests(repoId, { status, top, skip });
+                let prs: any[];
+
+                // Serve from cache if valid and not forced
+                const cached = !force ? prListCache.get(cacheKey) : undefined;
+                if (force) prListCache.delete(cacheKey);
+
+                if (cached && cached.expiresAt > Date.now()) {
+                    prs = cached.data;
+                } else {
+                    const repo = await svc.resolveRepo(repoId);
+                    if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                    const cfg = await readProvidersConfig(dataDir);
+                    const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                    if (!prSvc || isNoAdoCredentials(prSvc)) {
+                        if (isNoAdoCredentials(prSvc)) {
+                            return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                        }
+                        const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                        return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                    }
+
+                    prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP });
+                    prListCache.set(cacheKey, { data: prs, expiresAt: Date.now() + PR_LIST_TTL_MS });
+                }
+
+                // Apply in-memory pagination
+                let page = prs.slice(skip, skip + top);
 
                 // Apply server-side author and title filters
-                let filtered = prs;
                 if (typeof query.author === 'string' && query.author) {
                     const authorFilter = query.author.toLowerCase();
-                    filtered = filtered.filter(pr =>
+                    page = page.filter((pr: any) =>
                         pr.author?.displayName?.toLowerCase().includes(authorFilter) ||
                         pr.author?.id?.toLowerCase().includes(authorFilter),
                     );
                 }
                 if (typeof query.search === 'string' && query.search) {
                     const searchFilter = query.search.toLowerCase();
-                    filtered = filtered.filter(pr => pr.title.toLowerCase().includes(searchFilter));
+                    page = page.filter((pr: any) => pr.title.toLowerCase().includes(searchFilter));
                 }
 
-                sendJson(res, { pullRequests: filtered, total: filtered.length });
+                sendJson(res, { pullRequests: page, total: page.length });
             } catch (err) {
                 if (isAuthError(err)) {
                     sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
