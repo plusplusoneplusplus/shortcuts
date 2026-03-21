@@ -13,6 +13,9 @@ export {
     createCancellationToken,
 } from './cancellation';
 
+// Concurrency limiter (canonical location)
+export { ConcurrencyLimiter } from './concurrency-limiter';
+
 // Timeout
 export {
     TimeoutError,

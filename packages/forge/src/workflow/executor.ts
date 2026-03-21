@@ -17,6 +17,7 @@ import { executeMap } from './nodes/map';
 import { executeReduce } from './nodes/reduce';
 import { executeAI } from './nodes/ai';
 import { getLogger, LogCategory } from '../logger';
+import { CancellationError as RuntimeCancellationError } from '../runtime/cancellation';
 import type {
     WorkflowConfig, WorkflowExecutionOptions, WorkflowSettings, WorkflowResult,
     NodeResult, Items,
@@ -45,10 +46,9 @@ function applySettingsDefaults(
     };
 }
 
-class CancellationError extends Error {
+class CancellationError extends RuntimeCancellationError {
     constructor() {
         super('Workflow execution was cancelled');
-        this.name = 'CancellationError';
     }
 }
 
